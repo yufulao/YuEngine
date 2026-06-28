@@ -195,6 +195,18 @@ enum class RuntimeAssetLoadTransactionPhase {
 };
 
 /**
+ * @brief Rollback proof reported after a RuntimeAsset graph commit failure.
+ */
+enum class RuntimeAssetLoadTransactionRollbackStatus {
+    NotRequired,
+    NotAttempted,
+    Success,
+    AssetRollbackFailed,
+    ResourceRollbackFailed,
+    SnapshotMismatch
+};
+
+/**
  * @brief Describes one runtime asset file expected by a graph load request.
  */
 struct RuntimeAssetFileDesc final {
@@ -591,7 +603,18 @@ struct RuntimeAssetLoadTransactionResult final {
     std::uint32_t committed_cache_payload_count = 0U;
     std::uint32_t committed_decoded_payload_count = 0U;
     std::uint32_t committed_dependency_edge_count = 0U;
+    RuntimeAssetLoadTransactionRollbackStatus rollback_status =
+        RuntimeAssetLoadTransactionRollbackStatus::NotRequired;
+    std::uint32_t rolled_back_resource_count = 0U;
+    std::uint32_t rolled_back_asset_count = 0U;
+    std::uint32_t rolled_back_cache_payload_count = 0U;
+    std::uint32_t rolled_back_decoded_payload_count = 0U;
+    std::uint32_t rolled_back_dependency_edge_count = 0U;
     bool mutated_state = false;
+    bool rollback_attempted = false;
+    bool rollback_completed = false;
+    bool snapshot_restored = false;
+    bool no_output_mutation_proven = false;
 };
 
 /**

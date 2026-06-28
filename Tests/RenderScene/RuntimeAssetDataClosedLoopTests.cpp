@@ -279,6 +279,7 @@ using yuengine::runtimeasset::RuntimeAssetLoadedFile;
 using yuengine::runtimeasset::RuntimeAssetMaterialAlphaMode;
 using yuengine::runtimeasset::RuntimeAssetLoadedShaderProgramData;
 using yuengine::runtimeasset::RuntimeAssetLoadTransactionPhase;
+using yuengine::runtimeasset::RuntimeAssetLoadTransactionRollbackStatus;
 using yuengine::runtimeasset::RuntimeAssetPackedMaterialConstants;
 using yuengine::runtimeasset::RuntimeAssetPackageArtifactProductRunMissingLayer;
 using yuengine::runtimeasset::RuntimeAssetPackageArtifactProductRunRequest;
@@ -442,6 +443,8 @@ constexpr const char *TEST_LOADER_TRANSACTION_INVALID_SCHEMA =
     "RuntimeAssetData_LoaderRejectsMissingSchemaBeforeMutation";
 constexpr const char *TEST_LOADER_TRANSACTION_COMMIT_FAILURE =
     "RuntimeAssetData_LoaderCommitFailureReportsMutatedState";
+constexpr const char *TEST_LOADER_TRANSACTION_ROLLBACK_PROOF =
+    "RuntimeAssetData_LoaderCommitFailureRollsBackCommittedRecords";
 constexpr const char *TEST_LOADER_TRANSACTION_FILE_COUNT_PREFLIGHT =
     "RuntimeAssetData_LoaderRejectsOversizedFileCountBeforeReadAndMutation";
 constexpr const char *TEST_SHADER_PROGRAM_DEPENDENCIES =
@@ -7242,6 +7245,20 @@ int RuntimeAssetDataLoaderCommitFailureReportsMutatedState() {
         return Fail("commit failure did not report post-commit mutation diagnostics");
     }
 
+    if (load_result.transaction_result.rollback_status !=
+            RuntimeAssetLoadTransactionRollbackStatus::NotRequired ||
+        load_result.transaction_result.rollback_attempted ||
+        load_result.transaction_result.rollback_completed ||
+        !load_result.transaction_result.snapshot_restored ||
+        !load_result.transaction_result.no_output_mutation_proven ||
+        load_result.transaction_result.rolled_back_resource_count != 0U ||
+        load_result.transaction_result.rolled_back_asset_count != 0U ||
+        load_result.transaction_result.rolled_back_cache_payload_count != 0U ||
+        load_result.transaction_result.rolled_back_decoded_payload_count != 0U ||
+        load_result.transaction_result.rolled_back_dependency_edge_count != 0U) {
+        return Fail("commit failure did not report no-rollback proof diagnostics");
+    }
+
     if (load_result.scene_registered ||
         load_result.loaded_file_count != 0U ||
         load_result.resource_dependency_count != 0U ||
@@ -7268,6 +7285,171 @@ int RuntimeAssetDataLoaderCommitFailureReportsMutatedState() {
         after_asset_snapshot.active_asset_count != before_asset_snapshot.active_asset_count ||
         after_asset_snapshot.active_dependency_edge_count != before_asset_snapshot.active_dependency_edge_count) {
         return Fail("commit failure registered graph records before reporting failure");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataLoaderCommitFailureRollsBackCommittedRecords() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("LoaderCommitRollbackProof"), &table)) {
+        return Fail("mount setup failed");
+    }
+
+    if (!WriteCanonicalFixture(table)) {
+        return Fail("generator write failed");
+    }
+
+    const std::array<FixtureFile, FIXTURE_FILE_COUNT> files = CanonicalFiles();
+    std::array<RuntimeAssetFileDesc, FIXTURE_FILE_COUNT> file_descs{};
+    for (std::size_t index = 0U; index < files.size(); ++index) {
+        file_descs[index] = files[index].desc;
+    }
+
+    ResourceRegistry registry;
+    const std::size_t duplicate_file_index = 1U;
+    ResourceDescriptor duplicate_file{};
+    duplicate_file.type = file_descs[duplicate_file_index].resource_type;
+    const std::string duplicate_key =
+        "radc." + std::to_string(file_descs[duplicate_file_index].stable_id);
+    duplicate_file.logical_key = ResourceLogicalKey(duplicate_key);
+    if (!registry.RegisterSyntheticDescriptor(duplicate_file).Succeeded()) {
+        return Fail("duplicate file resource seed failed");
+    }
+
+    AssetManager manager;
+    const ResourceSnapshot before_resource_snapshot = registry.Snapshot();
+    const auto before_cache_snapshot = registry.CachePayloadSnapshot();
+    const auto before_decode_plan_snapshot = registry.DecodePlanSnapshot();
+    const auto before_decode_result_snapshot = registry.DecodeResultSnapshot();
+    const auto before_decoded_payload_snapshot = registry.DecodedPayloadSnapshot();
+    const AssetSnapshot before_asset_snapshot = manager.Snapshot();
+
+    LoadedGraph graph{};
+    SeedSceneLoaderFailureSentinels(
+        graph.scene_resource_refs,
+        graph.scene_cameras,
+        graph.scene_entities,
+        graph.scene_transforms,
+        &graph.scene_output);
+
+    RuntimeAssetGraphLoadRequest load_request{};
+    load_request.mount_table = &table;
+    load_request.mount = MountId(MOUNT_ID);
+    load_request.scene_path = VirtualPath(SCENE_PATH);
+    load_request.scene_resource_type = ResourceTypeId{RESOURCE_TYPE_SCENE};
+    load_request.scene_asset_type = AssetTypeId{ASSET_TYPE_SCENE};
+    load_request.scene_stable_id = 6001U;
+    load_request.files = file_descs.data();
+    load_request.file_count = static_cast<std::uint32_t>(file_descs.size());
+    load_request.resource_registry = &registry;
+    load_request.asset_manager = &manager;
+    load_request.loaded_files = graph.assets.data();
+    load_request.loaded_file_capacity = static_cast<std::uint32_t>(graph.assets.size());
+    load_request.scene_resource_refs = graph.scene_resource_refs.data();
+    load_request.scene_resource_ref_capacity = static_cast<std::uint32_t>(graph.scene_resource_refs.size());
+    load_request.scene_cameras = graph.scene_cameras.data();
+    load_request.scene_camera_capacity = static_cast<std::uint32_t>(graph.scene_cameras.size());
+    load_request.scene_entities = graph.scene_entities.data();
+    load_request.scene_entity_capacity = static_cast<std::uint32_t>(graph.scene_entities.size());
+    load_request.scene_transforms = graph.scene_transforms.data();
+    load_request.scene_transform_capacity = static_cast<std::uint32_t>(graph.scene_transforms.size());
+    load_request.scene_output = &graph.scene_output;
+    load_request.animation_frame_context.frame_index = 1U;
+    load_request.animation_frame_context.delta_time_nanoseconds = HALF_SECOND_NANOSECONDS;
+    load_request.animation_frame_context.fixed_time_nanoseconds = HALF_SECOND_NANOSECONDS;
+
+    RuntimeAssetGraphLoadResult load_result{};
+    const RuntimeAssetDataStatus status = LoadRuntimeAssetDataGraph(load_request, &load_result);
+    if (status != RuntimeAssetDataStatus::ResourceRegistrationFailed ||
+        load_result.status != RuntimeAssetDataStatus::ResourceRegistrationFailed) {
+        return Fail("rollback proof failure did not return duplicate resource status");
+    }
+
+    const auto &transaction = load_result.transaction_result;
+    if (transaction.status != RuntimeAssetDataStatus::ResourceRegistrationFailed ||
+        transaction.phase != RuntimeAssetLoadTransactionPhase::CommitResources ||
+        !transaction.mutated_state ||
+        !transaction.rollback_attempted ||
+        !transaction.rollback_completed ||
+        transaction.rollback_status != RuntimeAssetLoadTransactionRollbackStatus::Success ||
+        !transaction.snapshot_restored ||
+        !transaction.no_output_mutation_proven) {
+        return Fail("rollback proof diagnostics did not report success");
+    }
+
+    if (transaction.committed_resource_count != 2U ||
+        transaction.committed_asset_count != 2U ||
+        transaction.committed_cache_payload_count != 3U ||
+        transaction.committed_decoded_payload_count != 1U ||
+        transaction.committed_dependency_edge_count != 0U) {
+        return Fail("rollback proof committed counters changed");
+    }
+
+    if (transaction.rolled_back_resource_count != 2U ||
+        transaction.rolled_back_asset_count != 2U ||
+        transaction.rolled_back_cache_payload_count != 3U ||
+        transaction.rolled_back_decoded_payload_count != 1U ||
+        transaction.rolled_back_dependency_edge_count != 0U) {
+        return Fail("rollback proof counters did not match committed records");
+    }
+
+    if (load_result.scene_registered ||
+        load_result.loaded_file_count != 0U ||
+        load_result.cache_payload_count != 0U ||
+        load_result.decoded_payload_count != 0U ||
+        load_result.resource_dependency_count != 0U ||
+        load_result.asset_dependency_count != 0U) {
+        return Fail("rollback proof left published graph state");
+    }
+
+    if (graph.assets[0U].resource.IsValid() ||
+        graph.assets[0U].asset.IsValid() ||
+        graph.assets[0U].stable_id != 0U ||
+        graph.assets[0U].cache_payload_stored ||
+        graph.assets[0U].decoded_payload_stored) {
+        return Fail("rollback proof did not clear committed loaded file output");
+    }
+
+    if (!SceneLoaderFailureSentinelsUnchanged(
+            graph.scene_resource_refs,
+            graph.scene_cameras,
+            graph.scene_entities,
+            graph.scene_transforms,
+            graph.scene_output)) {
+        return Fail("rollback proof mutated scene loader outputs");
+    }
+
+    const ResourceSnapshot after_resource_snapshot = registry.Snapshot();
+    const auto after_cache_snapshot = registry.CachePayloadSnapshot();
+    const auto after_decode_plan_snapshot = registry.DecodePlanSnapshot();
+    const auto after_decode_result_snapshot = registry.DecodeResultSnapshot();
+    const auto after_decoded_payload_snapshot = registry.DecodedPayloadSnapshot();
+    const AssetSnapshot after_asset_snapshot = manager.Snapshot();
+    if (after_resource_snapshot.registered_resource_count != before_resource_snapshot.registered_resource_count ||
+        after_resource_snapshot.dependency_edge_count != before_resource_snapshot.dependency_edge_count ||
+        after_cache_snapshot.cached_byte_count != before_cache_snapshot.cached_byte_count ||
+        after_cache_snapshot.cached_payload_count != before_cache_snapshot.cached_payload_count ||
+        after_cache_snapshot.cache_payload_record_count != before_cache_snapshot.cache_payload_record_count ||
+        after_decode_plan_snapshot.planned_decoded_byte_count !=
+            before_decode_plan_snapshot.planned_decoded_byte_count ||
+        after_decode_plan_snapshot.active_plan_count != before_decode_plan_snapshot.active_plan_count ||
+        after_decode_plan_snapshot.decode_plan_record_count !=
+            before_decode_plan_snapshot.decode_plan_record_count ||
+        after_decode_result_snapshot.committed_decoded_byte_count !=
+            before_decode_result_snapshot.committed_decoded_byte_count ||
+        after_decode_result_snapshot.active_result_count != before_decode_result_snapshot.active_result_count ||
+        after_decode_result_snapshot.decode_result_record_count !=
+            before_decode_result_snapshot.decode_result_record_count ||
+        after_decoded_payload_snapshot.stored_decoded_byte_count !=
+            before_decoded_payload_snapshot.stored_decoded_byte_count ||
+        after_decoded_payload_snapshot.active_payload_count != before_decoded_payload_snapshot.active_payload_count ||
+        after_decoded_payload_snapshot.decoded_payload_record_count !=
+            before_decoded_payload_snapshot.decoded_payload_record_count ||
+        after_asset_snapshot.active_asset_count != before_asset_snapshot.active_asset_count ||
+        after_asset_snapshot.active_dependency_edge_count !=
+            before_asset_snapshot.active_dependency_edge_count) {
+        return Fail("rollback proof did not restore active Resource/Asset snapshots");
     }
 
     return 0;
@@ -14257,6 +14439,7 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
      RuntimeAssetDataLoaderRejectsSchemaKindAndMisleadingSuffixBeforeMutation},
     {TEST_LOADER_TRANSACTION_INVALID_SCHEMA, RuntimeAssetDataLoaderRejectsMissingSchemaBeforeMutation},
     {TEST_LOADER_TRANSACTION_COMMIT_FAILURE, RuntimeAssetDataLoaderCommitFailureReportsMutatedState},
+    {TEST_LOADER_TRANSACTION_ROLLBACK_PROOF, RuntimeAssetDataLoaderCommitFailureRollsBackCommittedRecords},
     {TEST_LOADER_TRANSACTION_FILE_COUNT_PREFLIGHT,
      RuntimeAssetDataLoaderRejectsOversizedFileCountBeforeReadAndMutation},
     {TEST_SHADER_PROGRAM_DEPENDENCIES, RuntimeAssetDataShaderProgramDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs},

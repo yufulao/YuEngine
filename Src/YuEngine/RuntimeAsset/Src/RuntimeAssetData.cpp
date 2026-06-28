@@ -4392,12 +4392,31 @@ RuntimeAssetDataStatus StoreDecodedPayload(
     return RuntimeAssetDataStatus::Success;
 }
 
+bool HasRuntimeAssetRollbackRecord(const RuntimeAssetLoadedFile &record) {
+    if (record.resource.IsValid()) {
+        return true;
+    }
+
+    return record.asset.IsValid();
+}
+
+void CopyRuntimeAssetRollbackRecord(
+    const RuntimeAssetLoadedFile &record,
+    RuntimeAssetLoadedFile *out_record) {
+    if (out_record == nullptr) {
+        return;
+    }
+
+    *out_record = record;
+}
+
 RuntimeAssetDataStatus RegisterLoadedFile(
     ResourceRegistry &registry,
     AssetManager &manager,
     const RuntimeAssetFileDesc &desc,
     std::span<const std::uint8_t> bytes,
-    RuntimeAssetLoadedFile *out_record) {
+    RuntimeAssetLoadedFile *out_record,
+    RuntimeAssetLoadedFile *out_rollback_record) {
     if (out_record == nullptr) {
         return RuntimeAssetDataStatus::InvalidArgument;
     }
@@ -4405,6 +4424,8 @@ RuntimeAssetDataStatus RegisterLoadedFile(
     if (desc.path == nullptr) {
         return RuntimeAssetDataStatus::InvalidArgument;
     }
+
+    CopyRuntimeAssetRollbackRecord(RuntimeAssetLoadedFile{}, out_rollback_record);
 
     RuntimeAssetValidationResult validation{};
     RuntimeAssetDataStatus status = ValidateRuntimeAssetDataBytes(bytes, desc.kind, &validation);
@@ -4431,6 +4452,8 @@ RuntimeAssetDataStatus RegisterLoadedFile(
     if (!resource_result.Succeeded()) {
         return RuntimeAssetDataStatus::ResourceRegistrationFailed;
     }
+    record.resource = resource_result.handle;
+    CopyRuntimeAssetRollbackRecord(record, out_rollback_record);
 
     ResourceLoadCommitRequest commit_request{};
     commit_request.resource = resource_result.handle;
@@ -4441,6 +4464,7 @@ RuntimeAssetDataStatus RegisterLoadedFile(
     commit_request.staging_request_id = desc.stable_id + STAGING_ID_OFFSET;
     commit_request.upload_byte_count = static_cast<std::uint32_t>(bytes.size());
     if (registry.CommitUploadCompletion(commit_request) != ResourceLoadCommitStatus::Success) {
+        CopyRuntimeAssetRollbackRecord(record, out_rollback_record);
         return RuntimeAssetDataStatus::ResourceLoadCommitFailed;
     }
 
@@ -4448,6 +4472,7 @@ RuntimeAssetDataStatus RegisterLoadedFile(
     residency_request.resource = resource_result.handle;
     residency_request.expected_type = desc.resource_type;
     if (registry.AdmitResident(residency_request) != ResourceResidencyStatus::Success) {
+        CopyRuntimeAssetRollbackRecord(record, out_rollback_record);
         return RuntimeAssetDataStatus::ResourceResidencyFailed;
     }
 
@@ -4458,13 +4483,17 @@ RuntimeAssetDataStatus RegisterLoadedFile(
         bytes,
         &record);
     if (status != RuntimeAssetDataStatus::Success) {
+        CopyRuntimeAssetRollbackRecord(record, out_rollback_record);
         return status;
     }
+    CopyRuntimeAssetRollbackRecord(record, out_rollback_record);
 
     status = StoreDecodedPayload(registry, resource_result.handle, desc, bytes, &record);
     if (status != RuntimeAssetDataStatus::Success) {
+        CopyRuntimeAssetRollbackRecord(record, out_rollback_record);
         return status;
     }
+    CopyRuntimeAssetRollbackRecord(record, out_rollback_record);
 
     AssetDescriptor asset_descriptor{};
     asset_descriptor.stable_id = desc.stable_id;
@@ -4473,11 +4502,12 @@ RuntimeAssetDataStatus RegisterLoadedFile(
     asset_descriptor.resource_type = desc.resource_type;
     const AssetRegistrationResult asset_result = manager.RegisterRuntimeAsset(&registry, asset_descriptor);
     if (!asset_result.Succeeded()) {
+        CopyRuntimeAssetRollbackRecord(record, out_rollback_record);
         return RuntimeAssetDataStatus::AssetRegistrationFailed;
     }
 
-    record.resource = resource_result.handle;
     record.asset = asset_result.handle;
+    CopyRuntimeAssetRollbackRecord(record, out_rollback_record);
     *out_record = record;
     return RuntimeAssetDataStatus::Success;
 }
@@ -5722,6 +5752,21 @@ RuntimeAssetDataStatus CommitSceneLoaderOutput(
     return RuntimeAssetDataStatus::Success;
 }
 
+struct RuntimeAssetCommitSnapshot final {
+    ResourceSnapshot resource;
+    ResourceCachePayloadSnapshot cache_payload;
+    ResourceDecodePlanSnapshot decode_plan;
+    ResourceDecodeResultSnapshot decode_result;
+    ResourceDecodedPayloadSnapshot decoded_payload;
+    AssetSnapshot asset;
+};
+
+struct RuntimeAssetCommittedFileJournalEntry final {
+    RuntimeAssetLoadedFile file;
+    std::uint32_t output_index = 0U;
+    bool has_output_slot = false;
+};
+
 struct RuntimeAssetGraphTransactionData final {
     RuntimeAssetLoadTransactionPlan plan;
     RuntimeAssetGraphLoadResult result;
@@ -5730,6 +5775,8 @@ struct RuntimeAssetGraphTransactionData final {
     std::string scene_text;
     std::string animation_text;
     RuntimeAssetSceneLoaderStage scene_stage;
+    RuntimeAssetCommitSnapshot before_commit_snapshot;
+    std::vector<RuntimeAssetCommittedFileJournalEntry> commit_journal;
 };
 
 void SetTransactionFailure(
@@ -6097,17 +6144,204 @@ void SetCommitFailure(
     transaction->result.transaction_result.phase = phase;
 }
 
+RuntimeAssetCommitSnapshot CaptureRuntimeAssetCommitSnapshot(
+    const RuntimeAssetGraphLoadRequest &request) {
+    RuntimeAssetCommitSnapshot snapshot{};
+    snapshot.resource = request.resource_registry->Snapshot();
+    snapshot.cache_payload = request.resource_registry->CachePayloadSnapshot();
+    snapshot.decode_plan = request.resource_registry->DecodePlanSnapshot();
+    snapshot.decode_result = request.resource_registry->DecodeResultSnapshot();
+    snapshot.decoded_payload = request.resource_registry->DecodedPayloadSnapshot();
+    snapshot.asset = request.asset_manager->Snapshot();
+    return snapshot;
+}
+
+void AppendRuntimeAssetCommitJournal(
+    RuntimeAssetGraphTransactionData *transaction,
+    const RuntimeAssetLoadedFile &file,
+    std::uint32_t output_index,
+    bool has_output_slot) {
+    if (!HasRuntimeAssetRollbackRecord(file)) {
+        return;
+    }
+
+    RuntimeAssetCommittedFileJournalEntry entry{};
+    entry.file = file;
+    entry.output_index = output_index;
+    entry.has_output_slot = has_output_slot;
+    transaction->commit_journal.emplace_back(entry);
+}
+
+void ClearRuntimeAssetCommittedCallerOutputs(
+    const RuntimeAssetGraphLoadRequest &request,
+    RuntimeAssetGraphTransactionData *transaction) {
+    for (const RuntimeAssetCommittedFileJournalEntry &entry : transaction->commit_journal) {
+        if (!entry.has_output_slot) {
+            continue;
+        }
+
+        if (request.loaded_files == nullptr) {
+            continue;
+        }
+
+        if (entry.output_index >= request.loaded_file_capacity) {
+            continue;
+        }
+
+        request.loaded_files[entry.output_index] = RuntimeAssetLoadedFile{};
+    }
+
+    transaction->result.scene = RuntimeAssetLoadedFile{};
+    transaction->result.scene_registered = false;
+    transaction->result.loaded_file_count = 0U;
+    transaction->result.cache_payload_count = 0U;
+    transaction->result.decoded_payload_count = 0U;
+    transaction->result.resource_dependency_count = 0U;
+    transaction->result.asset_dependency_count = 0U;
+}
+
+bool RuntimeAssetActiveSnapshotsRestored(
+    const RuntimeAssetCommitSnapshot &before,
+    const RuntimeAssetCommitSnapshot &after) {
+    if (after.resource.registered_resource_count != before.resource.registered_resource_count) {
+        return false;
+    }
+
+    if (after.resource.dependency_edge_count != before.resource.dependency_edge_count) {
+        return false;
+    }
+
+    if (after.cache_payload.cached_byte_count != before.cache_payload.cached_byte_count ||
+        after.cache_payload.cached_payload_count != before.cache_payload.cached_payload_count ||
+        after.cache_payload.cache_payload_record_count != before.cache_payload.cache_payload_record_count) {
+        return false;
+    }
+
+    if (after.decode_plan.planned_decoded_byte_count != before.decode_plan.planned_decoded_byte_count ||
+        after.decode_plan.active_plan_count != before.decode_plan.active_plan_count ||
+        after.decode_plan.decode_plan_record_count != before.decode_plan.decode_plan_record_count) {
+        return false;
+    }
+
+    if (after.decode_result.committed_decoded_byte_count != before.decode_result.committed_decoded_byte_count ||
+        after.decode_result.active_result_count != before.decode_result.active_result_count ||
+        after.decode_result.decode_result_record_count != before.decode_result.decode_result_record_count) {
+        return false;
+    }
+
+    if (after.decoded_payload.stored_decoded_byte_count != before.decoded_payload.stored_decoded_byte_count ||
+        after.decoded_payload.active_payload_count != before.decoded_payload.active_payload_count ||
+        after.decoded_payload.decoded_payload_record_count != before.decoded_payload.decoded_payload_record_count) {
+        return false;
+    }
+
+    if (after.asset.active_asset_count != before.asset.active_asset_count ||
+        after.asset.active_dependency_edge_count != before.asset.active_dependency_edge_count ||
+        after.asset.texture_ready_count != before.asset.texture_ready_count ||
+        after.asset.audio_ready_count != before.asset.audio_ready_count) {
+        return false;
+    }
+
+    return true;
+}
+
+void MarkRuntimeAssetRollbackSnapshotProof(
+    const RuntimeAssetGraphLoadRequest &request,
+    RuntimeAssetGraphTransactionData *transaction) {
+    RuntimeAssetLoadTransactionResult &result = transaction->result.transaction_result;
+    const RuntimeAssetCommitSnapshot after = CaptureRuntimeAssetCommitSnapshot(request);
+    result.snapshot_restored =
+        RuntimeAssetActiveSnapshotsRestored(transaction->before_commit_snapshot, after);
+    result.no_output_mutation_proven =
+        result.phase != RuntimeAssetLoadTransactionPhase::CommitSceneOutput;
+}
+
+RuntimeAssetLoadTransactionRollbackStatus RollbackRuntimeAssetGraphTransaction(
+    const RuntimeAssetGraphLoadRequest &request,
+    RuntimeAssetGraphTransactionData *transaction) {
+    RuntimeAssetLoadTransactionResult &result = transaction->result.transaction_result;
+    if (transaction->commit_journal.empty()) {
+        MarkRuntimeAssetRollbackSnapshotProof(request, transaction);
+        if (!result.snapshot_restored) {
+            result.rollback_status = RuntimeAssetLoadTransactionRollbackStatus::SnapshotMismatch;
+        }
+
+        return result.rollback_status;
+    }
+
+    result.rollback_attempted = true;
+    result.rollback_status = RuntimeAssetLoadTransactionRollbackStatus::NotAttempted;
+    for (const RuntimeAssetCommittedFileJournalEntry &entry : transaction->commit_journal) {
+        const RuntimeAssetLoadedFile &file = entry.file;
+        if (file.asset.IsValid()) {
+            const AssetStatus asset_status =
+                request.asset_manager->ReleaseRuntimeAsset(request.resource_registry, file.asset);
+            if (asset_status != AssetStatus::Success) {
+                result.rollback_status = RuntimeAssetLoadTransactionRollbackStatus::AssetRollbackFailed;
+                return result.rollback_status;
+            }
+
+            ++result.rolled_back_asset_count;
+        }
+
+        if (file.resource.IsValid()) {
+            const ResourceStatus resource_status = request.resource_registry->Retire(file.resource);
+            if (resource_status != ResourceStatus::Success) {
+                result.rollback_status = RuntimeAssetLoadTransactionRollbackStatus::ResourceRollbackFailed;
+                return result.rollback_status;
+            }
+
+            ++result.rolled_back_resource_count;
+        }
+
+        if (file.cache_payload_stored) {
+            ++result.rolled_back_cache_payload_count;
+        }
+
+        if (file.decode_plan_created) {
+            ++result.rolled_back_cache_payload_count;
+        }
+
+        if (file.decoded_payload_stored) {
+            ++result.rolled_back_decoded_payload_count;
+        }
+    }
+
+    result.rolled_back_dependency_edge_count = result.committed_dependency_edge_count;
+    ClearRuntimeAssetCommittedCallerOutputs(request, transaction);
+    MarkRuntimeAssetRollbackSnapshotProof(request, transaction);
+    if (!result.snapshot_restored) {
+        result.rollback_status = RuntimeAssetLoadTransactionRollbackStatus::SnapshotMismatch;
+        return result.rollback_status;
+    }
+
+    result.rollback_completed = true;
+    result.rollback_status = RuntimeAssetLoadTransactionRollbackStatus::Success;
+    return result.rollback_status;
+}
+
+RuntimeAssetDataStatus SetCommitFailureAndRollback(
+    const RuntimeAssetGraphLoadRequest &request,
+    RuntimeAssetGraphTransactionData *transaction,
+    RuntimeAssetDataStatus status,
+    RuntimeAssetLoadTransactionPhase phase) {
+    SetCommitFailure(transaction, status, phase);
+    RollbackRuntimeAssetGraphTransaction(request, transaction);
+    return status;
+}
+
 RuntimeAssetDataStatus CommitRuntimeAssetGraphTransaction(
     const RuntimeAssetGraphLoadRequest &request,
     RuntimeAssetGraphTransactionData *transaction) {
+    transaction->before_commit_snapshot = CaptureRuntimeAssetCommitSnapshot(request);
     SetCommitPhase(transaction, RuntimeAssetLoadTransactionPhase::CommitResources);
     transaction->result.transaction_result.mutated_state = true;
     if (!ConfigureRuntimeAssetResourceBudgets(*request.resource_registry)) {
-        SetCommitFailure(
+        return SetCommitFailureAndRollback(
+            request,
             transaction,
             RuntimeAssetDataStatus::ResourceResidencyFailed,
             RuntimeAssetLoadTransactionPhase::CommitResources);
-        return transaction->result.status;
     }
 
     RuntimeAssetFileDesc scene_desc{};
@@ -6116,23 +6350,31 @@ RuntimeAssetDataStatus CommitRuntimeAssetGraphTransaction(
     scene_desc.resource_type = request.scene_resource_type;
     scene_desc.asset_type = request.scene_asset_type;
     scene_desc.stable_id = request.scene_stable_id;
+    RuntimeAssetLoadedFile rollback_record{};
     RuntimeAssetDataStatus status = RegisterLoadedFile(
         *request.resource_registry,
         *request.asset_manager,
         scene_desc,
         std::span<const std::uint8_t>(transaction->scene_bytes.data(), transaction->scene_bytes.size()),
-        &transaction->result.scene);
+        &transaction->result.scene,
+        &rollback_record);
     if (status != RuntimeAssetDataStatus::Success) {
-        SetCommitFailure(transaction, status, RuntimeAssetLoadTransactionPhase::CommitResources);
-        return status;
+        AppendRuntimeAssetCommitJournal(transaction, rollback_record, 0U, false);
+        return SetCommitFailureAndRollback(
+            request,
+            transaction,
+            status,
+            RuntimeAssetLoadTransactionPhase::CommitResources);
     }
 
     transaction->result.scene_registered = true;
+    AppendRuntimeAssetCommitJournal(transaction, transaction->result.scene, 0U, false);
     RecordCommittedRuntimeAssetFile(transaction->result.scene, &transaction->result);
 
     std::uint32_t file_index = 0U;
     while (file_index < request.file_count) {
         const RuntimeAssetFileDesc &file = request.files[file_index];
+        rollback_record = RuntimeAssetLoadedFile{};
         status = RegisterLoadedFile(
             *request.resource_registry,
             *request.asset_manager,
@@ -6140,13 +6382,19 @@ RuntimeAssetDataStatus CommitRuntimeAssetGraphTransaction(
             std::span<const std::uint8_t>(
                 transaction->file_bytes[file_index].data(),
                 transaction->file_bytes[file_index].size()),
-            &request.loaded_files[file_index]);
+            &request.loaded_files[file_index],
+            &rollback_record);
         if (status != RuntimeAssetDataStatus::Success) {
-            SetCommitFailure(transaction, status, RuntimeAssetLoadTransactionPhase::CommitResources);
-            return status;
+            AppendRuntimeAssetCommitJournal(transaction, rollback_record, file_index, true);
+            return SetCommitFailureAndRollback(
+                request,
+                transaction,
+                status,
+                RuntimeAssetLoadTransactionPhase::CommitResources);
         }
 
         ++transaction->result.loaded_file_count;
+        AppendRuntimeAssetCommitJournal(transaction, request.loaded_files[file_index], file_index, true);
         RecordCommittedRuntimeAssetFile(request.loaded_files[file_index], &transaction->result);
         ++file_index;
     }
@@ -6160,8 +6408,11 @@ RuntimeAssetDataStatus CommitRuntimeAssetGraphTransaction(
             transaction->result.scene,
             request.loaded_files[file_index]);
         if (status != RuntimeAssetDataStatus::Success) {
-            SetCommitFailure(transaction, status, RuntimeAssetLoadTransactionPhase::CommitDependencies);
-            return status;
+            return SetCommitFailureAndRollback(
+                request,
+                transaction,
+                status,
+                RuntimeAssetLoadTransactionPhase::CommitDependencies);
         }
 
         ++transaction->result.resource_dependency_count;
@@ -6173,8 +6424,11 @@ RuntimeAssetDataStatus CommitRuntimeAssetGraphTransaction(
     SetCommitPhase(transaction, RuntimeAssetLoadTransactionPhase::CommitSceneOutput);
     status = CommitSceneLoaderOutput(request, transaction->result, transaction->scene_stage);
     if (status != RuntimeAssetDataStatus::Success) {
-        SetCommitFailure(transaction, status, RuntimeAssetLoadTransactionPhase::CommitSceneOutput);
-        return status;
+        return SetCommitFailureAndRollback(
+            request,
+            transaction,
+            status,
+            RuntimeAssetLoadTransactionPhase::CommitSceneOutput);
     }
 
     transaction->result.status = RuntimeAssetDataStatus::Success;
