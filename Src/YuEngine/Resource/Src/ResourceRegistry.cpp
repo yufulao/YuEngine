@@ -1321,18 +1321,18 @@ ResourceDecodedPayloadStatus ResourceRegistry::StoreDecodedPayload(const Resourc
             ResourceDecodedPayloadStatus::DuplicateDecodedPayloadId);
     }
 
-    if (decoded_payload_snapshot_.active_payload_count >= decoded_payload_snapshot_.budget_payload_reference_capacity) {
-        return RecordDecodedPayloadRejected(
-            ResourceDecodedPayloadOperation::Store,
-            request,
-            ResourceDecodedPayloadStatus::ReferenceBudgetExceeded);
-    }
-
     if (decoded_payload_snapshot_.active_payload_count >= MAX_RESOURCE_DECODED_PAYLOAD_RECORD_COUNT) {
         return RecordDecodedPayloadRejected(
             ResourceDecodedPayloadOperation::Store,
             request,
             ResourceDecodedPayloadStatus::CapacityExceeded);
+    }
+
+    if (decoded_payload_snapshot_.active_payload_count >= decoded_payload_snapshot_.budget_payload_reference_capacity) {
+        return RecordDecodedPayloadRejected(
+            ResourceDecodedPayloadOperation::Store,
+            request,
+            ResourceDecodedPayloadStatus::ReferenceBudgetExceeded);
     }
 
     const std::uint32_t remaining_decoded_byte_capacity =
