@@ -134,7 +134,7 @@ target identity work.
 | RTSPINE-005 | Define minimal interpolation | Step and Linear sampling at fixed times are deterministic and caller-owned-output only |
 | RTSPINE-006 | Define invalid target failure model | missing target, unsupported property, unsupported interpolation, capacity overflow, and invalid selected clip fail without output mutation |
 | RTSPINE-007 | Design instance mapping gate | asset target to runtime instance mapping is designed before implementation touches WorldObject |
-| RTSPINE-008 | Define package/resource pressure gate | archive/index/hash/budget requirements are checked against the 6 GB plus product content target |
+| RTSPINE-008 | Define package/resource pressure gate | archive/index/hash/budget requirements are checked against shipped-content pressure examples and explicit budget assumptions |
 
 ## 1.3 Continuous Multi-Agent Execution Governance
 
