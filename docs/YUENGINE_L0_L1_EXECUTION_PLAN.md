@@ -3,7 +3,7 @@
 Status: handoff plan for landing team
 Owner: 八云紫, 总架构师
 Requested: 2026-06-19
-Current observed code checkpoint: `ed8350d42e0e52757bb5b34799b9ba5a57a5cc8f`
+Current observed code checkpoint: `f211f7f95299388987ccef00b4d1e8ee6f7bf0c1`
 Scope: progress adjustment, L0 closure plan, L1 runtime-core plan
 
 ## 1. Executive Decision
@@ -140,14 +140,24 @@ interpolation, transform application, and capture diagnostics are separate
 foundation floors. Each floor must pass or name its blocker before the combined
 runtime visual sample can be used as closure evidence.
 
-Current RuntimeAsset shader/reflection evidence at
-`ed8350d42e0e52757bb5b34799b9ba5a57a5cc8f` covers NativeHlsl unsupported
+RuntimeAsset shader/reflection hardening evidence covers NativeHlsl unsupported
 backend prevalidation, `input=layout:none` as `InvalidInputLayout` before RHI
 mutation, and non-canonical `position,texcoord` input with `textures=0`
 success. QA evidence is focused-first: shader/reflection discovery reports `12`
 rows, the required exact focused rows are `5/5` PASS, the focused
 `YuRuntimeAssetDataClosedLoopTests` build passed, and diff/check/scans were
-clean without running broad full CTest for the docs lane.
+clean without running broad full CTest for that docs lane.
+
+Current RuntimeAsset scene-animation evidence at
+`f211f7f95299388987ccef00b4d1e8ee6f7bf0c1` covers bounded multi-clip animation
+records, `selected_animation_clip_id`, explicit selected-clip sampling, reusable
+runtime animation tables, RenderScene submission resampling, and missing selected
+clip `InvalidDependency` without output mutation. QA evidence is focused-first:
+the focused `YuRuntimeAssetDataClosedLoopTests` build passed, exact
+scene-animation/runtime animation CTest discovery found `11` rows, exact
+execution reports `11/11` PASS, `git diff --check` passed, added-line hygiene
+passed, and dependency boundary checks passed without running broad full CTest
+for the docs lane.
 
 ## 3. Updated Layer Model
 
@@ -1661,15 +1671,15 @@ engine capabilities.
 | L1-CAMERA-003 | Camera capture metadata | L1-CAMERA-002, L0-RHI-002 | runtime capture records frame index, camera pose, capture target/status, and bounded output metadata |
 | L1-GEOM-001 | Runtime primitive geometry records | L0-REN-003, L1-ASSET-001 | cube/cylinder/cone geometry records expose bounded vertex/index/draw ranges |
 | L1-MAT-001 | Runtime material texture-slot record | L0-REN-004, L1-ASSET-005 | one material binds at least three texture inputs by slot with explicit missing/invalid statuses |
-| L1-ANIM-001 | Animation clip/track/keyframe records | L1-KERN-003 | bounded runtime records exist without editor timeline or gameplay dependency |
+| L1-ANIM-001 | Animation clip/track/keyframe records | L1-KERN-003 | bounded multi-clip runtime records and explicit selected clip ids exist without editor timeline or gameplay dependency |
 | L1-ANIM-002 | Interpolation sampler | L1-ANIM-001 | deterministic scalar/vector/rotation or transform interpolation tests pass at fixed times |
 | L1-ANIM-003 | Runtime time sampling | L1-ANIM-002 | `FrameContext` time samples tracks without hidden global time |
-| L1-ANIM-004 | Apply sampled transform | L1-ANIM-003, L1-OBJ-003 | sampled output updates object transform records before RenderScene consumes them |
-| L1-ANIM-005 | Animation failure states | L1-ANIM-001 | missing clip/track, unsupported interpolation, out-of-range time, and capacity overflow return explicit statuses |
+| L1-ANIM-004 | Apply sampled transform | L1-ANIM-003, L1-OBJ-003 | sampled output, including explicitly selected clip output, updates object transform records before RenderScene consumes them |
+| L1-ANIM-005 | Animation failure states | L1-ANIM-001 | missing selected clip, missing clip/track, unsupported interpolation, out-of-range time, and capacity overflow return explicit statuses without output mutation |
 | L1-VIS-001 | Static one-cube capture | L1-CAMERA-003, L1-GEOM-001, L1-MAT-001 | checked-in runtime command captures one cube through YuEngine modules |
 | L1-VIS-002 | Three-primitive placed scene | L1-VIS-001, L1-RSCENE-006 | cube/cylinder/cone submit as three entities with fixed-seed transforms |
 | L1-VIS-003 | Shared three-texture material scene | L1-VIS-002, L1-MAT-001 | all primitives use one material with three distinct texture inputs |
-| L1-VIS-004 | Animated transform scene | L1-VIS-002, L1-ANIM-004 | object rotations are driven by runtime animation or the command reports `L1-ANIM-*` blocker |
+| L1-VIS-004 | Animated transform scene | L1-VIS-002, L1-ANIM-004 | object rotations are driven by runtime animation, including explicit selected clip output, or the command reports `L1-ANIM-*` blocker |
 | L1-VIS-005 | Camera tween capture sequence | L1-VIS-003, L1-VIS-004 | explicit perspective camera tween keyframes emit bounded frame/capture set |
 | L1-VIS-006 | Missing-layer diagnostic route | L1-VIS-005 | failure names the exact missing layer: camera, geometry/model, material, shader/pipeline, scene placement, animation, RenderScene, RenderCore/RHI, capture, or resource resolution; shader/pipeline value-contract evidence includes unsupported backend and invalid input-layout prevalidation before RHI mutation |
 
@@ -1731,8 +1741,8 @@ engine capabilities.
 | L1-SAMPLE-008 | Serialize and reload snapshot | L1-SER-004, L1-SAMPLE-003 | sample state roundtrips through value streams without File/Package dependency in Serialize |
 | L1-SAMPLE-009 | Shutdown and cleanup proof | all L1 sample tasks | world/runtime/resources shut down with no leaked active records |
 | L1-SAMPLE-010 | Debug/Release/Fast validation | all L1 sample tasks | fast gate plus sample smoke pass; release validation command is documented |
-| L1-SAMPLE-011 | Runtime visual scene proof | L1-VIS-005, L1-RSCENE-006, L1-ASSET-005, L1-OBJ-003 | cube/cylinder/cone scene renders with deterministic placement, animation-driven or explicitly blocked per-object rotation, shared three-texture material, explicit perspective camera tween, shader/reflection value-contract proof, and bounded capture set |
-| L1-SAMPLE-012 | Runtime visual blocker report | L1-SAMPLE-011 | if the visual scene cannot run, output names the missing layer exactly: camera, geometry/model path, material texture slots, shader/pipeline, scene placement, animation interpolation, transform application, RenderScene multi-entity, RenderCore multi-draw, RHI capture, camera tween sampling, or resource resolution; shader/pipeline failures must surface exact unsupported backend or invalid input-layout status instead of mutating RHI output |
+| L1-SAMPLE-011 | Runtime visual scene proof | L1-VIS-005, L1-RSCENE-006, L1-ASSET-005, L1-OBJ-003 | cube/cylinder/cone scene renders with deterministic placement, explicit selected-clip animation-driven or explicitly blocked per-object rotation, shared three-texture material, explicit perspective camera tween, shader/reflection value-contract proof, and bounded capture set |
+| L1-SAMPLE-012 | Runtime visual blocker report | L1-SAMPLE-011 | if the visual scene cannot run, output names the missing layer exactly: camera, geometry/model path, material texture slots, shader/pipeline, scene placement, animation interpolation, selected animation clip, transform application, RenderScene multi-entity, RenderCore multi-draw, RHI capture, camera tween sampling, or resource resolution; shader/pipeline failures must surface exact unsupported backend or invalid input-layout status instead of mutating RHI output |
 
 ## 13. Guardrails
 

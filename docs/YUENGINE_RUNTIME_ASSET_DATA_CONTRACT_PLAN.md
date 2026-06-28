@@ -173,7 +173,7 @@ Asset, RenderScene, RenderCore, RHI, or scene loader output mutation.
 | Texture | texture id, format, extent, mip count, color space, sampler ref, payload ref/hash | descriptor plus decoded payload bytes or Resource decoded payload id | format/extent/mip bounds, alignment, byte count, hash, decoded payload budget, material slot compatibility |
 | Shader/program | program id, stage refs, bytecode refs/hashes, entry semantics, input layout, constants, texture slots | shader bytecode payloads and pipeline/input-layout descriptor | stage presence, bytecode size/hash, unsupported semantics, input-layout validity, RHI module/pipeline no-mutation failures |
 | Scene/camera | scene id, entity ids, transforms, mesh/material/texture/shader refs, camera refs, dependency order | staged scene loader output records and camera records | typed refs, entity/camera bounds, transform bounds, missing decoded payload/program/camera, output capacity |
-| Animation | clip id, track id, target entity/transform refs, sample rate, interpolation, keyframe ranges | sampled transform inputs or approved clip payload records consumed by Animation sampler | time/keyframe bounds, unsupported interpolation, target mismatch, sample budget, no partial scene transform output |
+| Animation | clip ids, selected clip id, track id, target entity/transform refs, sample rate, interpolation, keyframe ranges | sampled transform inputs or approved clip payload records consumed by Animation sampler | selected clip validity, time/keyframe bounds, unsupported interpolation, target mismatch, sample budget, no partial scene transform output |
 
 ### Status Vocabulary
 
@@ -237,7 +237,7 @@ Minimum generated fixture set:
 5. at least one texture payload or deterministic texture payload reference;
 6. one shader/program descriptor with the input layout required by the meshes;
 7. one scene file referencing the mesh/material/texture/shader/camera graph;
-8. one animation clip file or an explicit same-gate blocker row.
+8. one animation clip file with explicit selected-clip coverage or an explicit same-gate blocker row.
 
 The generator must be deterministic under repeated runs from the same source
 inputs. A required test must compare output file sizes and hashes across two
@@ -277,6 +277,9 @@ C++ in-memory construction alone.
 | Cooked shader mismatch no-mutation | PASS | `RuntimeAssetData_CookedShaderPayloadRejectsStageBytecodeHashAndReflectionMismatchWithoutMutation` rejects stage bytecode hash and reflection mismatch before mutating Resource/Asset/RHI output; `RuntimeAssetData_ShaderProgramBridgeRejectsInvalidProgramDataWithoutRhiMutation` rejects `input=layout:none` as `InvalidInputLayout` before RHI mutation |
 | Cooked shader partial RHI cleanup | PASS | `RuntimeAssetData_CookedShaderProgramRhiPartialCreationFailureDestroysTransientHandles` destroys transient RHI handles on partial program creation failure |
 | Scene camera family failures | PASS | `RuntimeAssetData_SceneAnimationLoaderRejectsCameraFamilyFailuresWithoutMutation` validates duplicate active camera, no active camera, invalid camera row, and invalid entity camera ref failures without Resource/Asset/RenderScene output mutation |
+| Runtime animation output tables | PASS | `RuntimeAssetData_SceneAnimationLoaderEmitsReusableRuntimeAnimationTables` and `RuntimeAssetData_RuntimeAnimationTablesResampleAndFeedRenderSceneSubmission` prove bounded clip/track/keyframe tables can be emitted and consumed by RenderScene submission |
+| Scene animation explicit clip selection | PASS | `RuntimeAssetData_SceneAnimationLoaderSamplesExplicitSelectedClip` proves `selected_animation_clip_id` selects the requested clip from a multi-clip file; `RuntimeAssetData_SceneAnimationLoaderRejectsMissingSelectedClipWithoutMutation` rejects a missing selected clip as `InvalidDependency` without mutating output |
+| Scene animation focused QA | PASS | `origin/main@f211f7f95299388987ccef00b4d1e8ee6f7bf0c1` has focused `YuRuntimeAssetDataClosedLoopTests` build PASS, exact scene-animation/runtime animation CTest `11/11` PASS, `git diff --check` PASS, added-line hygiene PASS, and dependency boundary PASS |
 | Mesh/material/texture cook payloads | PASS | `RuntimeAssetData_CookStoresDecodedPayloadsForMeshMaterialTexture` stores decoded payload records for seven decodable runtime records |
 | RenderScene records | PASS | loaded handles feed cube/cylinder/cone geometry, shared material, camera, and frame records |
 | Generic RenderScene CPU submission | PASS | `RuntimeAssetData_GenericRenderSceneSubmissionBuildsFrameFromLoadedSceneRecords`, `RuntimeAssetData_GenericRenderSceneSubmissionBindsActiveCameraIntoFrame`, `RuntimeAssetData_GenericRenderSceneSubmissionRejectsMissingCameraWithoutMutation`, `RuntimeAssetData_GenericRenderSceneSubmissionUsesMeshRefsNotEntityOrder`, `RuntimeAssetData_GenericRenderSceneSubmissionRejectsMissingTransformWithoutMutation`, `RuntimeAssetData_GenericRenderSceneSubmissionRejectsMissingMeshRefWithoutMutation`, `RuntimeAssetData_GenericRenderSceneSubmissionRejectsMissingMaterialRefWithoutMutation`, `RuntimeAssetData_GenericRenderSceneSubmissionReportsMaterialVariantsUntilFrameApiSupportsThem`, `RuntimeAssetData_GenericRenderSceneSubmissionBuildsPerEntityMaterialTableFromRefs`, `RuntimeAssetData_GenericRenderSceneSubmissionPreservesPerEntityMaterialBlendState`, `RuntimeAssetData_GenericRenderSceneSubmissionUsesMaterialRefOrderNotEntityOrder`, `RuntimeAssetData_GenericRenderSceneSubmissionRejectsSmallMaterialTableWithoutMutation`, and `RuntimeAssetData_GenericRenderSceneSubmissionRejectsDuplicateMaterialIdWithoutMutation` prove loaded scene records can build RenderScene frame records, active camera bindings, and per-entity material tables with bounded no-mutation failures |
@@ -293,11 +296,12 @@ compiler backend identity, unsupported native backend prevalidation, cooked
 shader module creation, cooked reflection/input-layout bridge, shader
 reflection hardening for variable input/texture-slot counts, cooked shader
 no-mutation failures, disk animation sampling, staged scene loader output,
+runtime animation output tables, explicit selected animation clip sampling,
 generic RenderScene CPU submission records, per-entity material tables,
 package/cook/run ledgers, and product-run smoke as the current mainline closed
 loop. The remaining work is production hardening for broader material and scene
-variants, native/non-fixture shader compiler integration, reusable animation
-runtime record tables, and scene/animation/camera production variants beyond
+variants, native/non-fixture shader compiler integration, richer animation
+blending and clip-family variants, and scene/animation/camera production variants beyond
 the canonical cube/cylinder/cone graph.
 
 ## Validator, Cook, Load, Render
@@ -367,8 +371,8 @@ Reviewers should answer these before the next implementation slice starts:
 2. Which RVF layers must be reworked because they are test-side struct
    construction, CPU helper image generation, GDI/software viewer output, or
    non-File/VFS/Resource bypasses?
-3. Should animation be inside the first gate slice or recorded as an explicit
-   same-gate blocker until a separate clip-file contract is approved?
+3. Which broader animation production variants must follow the bounded
+   selected-clip contract without reintroducing editor or gameplay ownership?
 4. Which tiny source fixture files, if any, are allowed in the repo, and which
    generated outputs must stay under ignored artifact directories?
 5. Which File/VFS/Resource/Package path owns source bytes, cooked bytes, and
