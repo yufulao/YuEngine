@@ -6,9 +6,10 @@ Current decision: `RUNTIME_ASSET_DATA_CLOSED_LOOP_CURRENT_SLICE_PASS`
 Owner: Architecture
 Task: #73 baseline; #50 RAV1 production contract amendment
 Related plan: `docs/YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md`
-Latest RuntimeAsset spine evidence: RTSPINE-003 VQ COMPLETE-PASS by workspace
-task `fdd78da4-da12-4956-b6ac-63ff9e377121`; RTSPINE-004 is the next released
-implementation lane.
+Latest RuntimeAsset spine evidence: RTSPINE-004 implementation
+`ebe9ea35f531aa40133262b701e5e751f8ed9ccf` plus focused QA workspace task
+`2e2d5a4e-0bb0-4cf4-bd1b-ab3a87987b7f` is COMPLETE-PASS; RTSPINE-004 VQ is
+pending this docs sync.
 Production-gap closure: `docs/YUENGINE_RUNTIME_ASSET_V0_PRODUCTION_GAP_CLOSURE_PLAN.md`
 Format policy and validator vocabulary: `docs/YUENGINE_RUNTIME_ASSET_V0_FORMAT_POLICY_AND_VALIDATOR_VOCABULARY.md`
 Loader transaction plan: `docs/YUENGINE_RUNTIME_ASSET_V0_LOADER_TRANSACTION_PLAN.md`
@@ -324,6 +325,7 @@ Current slice status:
 | 23. RHI constant-buffer command/list binding | PASS |
 | 24. generic RenderScene CPU submission builder | PASS |
 | 25. asset-internal target identity table | PASS |
+| 26. animation track target/property binding | PASS |
 
 Current RuntimeAssetData proof names that future slices must keep passing or
 supersede with approved equivalents:
@@ -354,6 +356,10 @@ supersede with approved equivalents:
 - `RuntimeAssetData_TargetIdentityTableRejectsDuplicateIdWithoutMutation`
 - `RuntimeAssetData_TargetIdentityTableRejectsMissingParentWithoutMutation`
 - `RuntimeAssetData_TargetIdentityTableRejectsCapacityOverflowWithoutMutation`
+- `RuntimeAssetData_AnimationTrackTargetBindingResolvesTargetIdAndProperty`
+- `RuntimeAssetData_AnimationTrackTargetBindingRejectsMissingTargetWithoutMutation`
+- `RuntimeAssetData_AnimationTrackTargetBindingRejectsUnsupportedPropertyWithoutMutation`
+- `RuntimeAssetData_AnimationTrackTargetBindingRejectsCapacityOverflowWithoutMutation`
 - `RuntimeAssetData_ShaderProgramBridgeCreatesRhiPipelineFromLoadedBytecode`
 - `RuntimeAssetData_ShaderProgramBridgeRejectsInvalidProgramDataWithoutRhiMutation`
 - `RuntimeAssetData_ProductionSceneLoaderOutputsDeterministicRecords`
@@ -394,7 +400,8 @@ This gate records these mainline implementation slices:
 | RAV1-O | RHI constant-buffer binding | PASS; RHI command/list records bounded constant-buffer slots, rejects overflow and stale handles, submits null-device snapshots, and propagates RenderCore fixture/material bindings |
 | RAV1-P | Generic RenderScene CPU submission builder | PASS; RuntimeAsset builds frame records from loaded scene records, validates transform/mesh/material refs without mutation, and reports material variants until frame API support lands |
 | RAV1-Q | Asset target identity table | PASS; RuntimeAsset writes bounded scene node, model node, and skeleton joint target identity records to caller-owned output, and rejects duplicate ids, missing parents, and output capacity overflow without mutation |
-| Next slice | Animation track target binding | bind animation tracks to target id plus property, then prove missing target, unsupported property, unsupported interpolation, and capacity overflow failures before any WorldObject-facing mapping |
+| RAV1-R | Animation track target/property binding | PASS; RuntimeAsset writes caller-owned SceneNode target binding records for animation tracks keyed by `target_id` plus property, and rejects missing target, unsupported property, and output capacity overflow without mutation; focused QA reports `17/17` PASS without broad/full CTest |
+| Next slice | Minimal interpolation and remaining failure model | keep RTSPINE-005/006/007 separate: Step/Linear interpolation expansion, unsupported interpolation and broader invalid target coverage, and runtime instance mapping must be gated before any WorldObject-facing mapping |
 
 The slice may split implementation tasks later, but those tasks must stay
 parallelizable by file family or stage and must not authorize upper-layer

@@ -131,9 +131,9 @@ target identity work.
 | RTSPINE-001 | Close current scene-animation evidence gate | implementation, QA, docs, VQ, `origin/main`, and matrices agree before any next lane opens |
 | RTSPINE-002 | Update production target planning docs | TouhouNewWorld-class native runtime, shipped-content-scale package pressure examples, and no-compatibility policy are written into the active plans |
 | RTSPINE-003 | Define asset-internal target identity | PASS at `origin/main@5ea838f6fd3428e7e67b77c1ca85c41e6e1c09e4`: scene node, model node, and skeleton joint ids are stable bounded output records independent from WorldObject; duplicate id, missing parent, and capacity overflow fail without mutation |
-| RTSPINE-004 | Define animation track target binding | track binds to target id plus property; no world instance, editor object, raw pointer, display name, or file path |
-| RTSPINE-005 | Define minimal interpolation | Step and Linear sampling at fixed times are deterministic and caller-owned-output only |
-| RTSPINE-006 | Define invalid target failure model | missing target, unsupported property, unsupported interpolation, capacity overflow, and invalid selected clip fail without output mutation |
+| RTSPINE-004 | Define animation track target binding | PASS at `origin/main@ebe9ea35f531aa40133262b701e5e751f8ed9ccf`: SceneNode animation tracks bind to `target_id` plus property through caller-owned binding records; missing target, unsupported property, and capacity overflow fail without mutation; no world instance, editor object, raw pointer, display name, or file path |
+| RTSPINE-005 | Define minimal interpolation | Step and Linear sampling at fixed times are deterministic and caller-owned-output only; not opened by RTSPINE-004 completion |
+| RTSPINE-006 | Define invalid target failure model | remaining unsupported interpolation, broader target-family mismatch, and invalid selected clip failures must fail without output mutation; missing target, unsupported property, and binding capacity are covered by RTSPINE-004 |
 | RTSPINE-007 | Design instance mapping gate | asset target to runtime instance mapping is designed before implementation touches WorldObject |
 | RTSPINE-008 | Define package/resource pressure gate | 008A pressure contract defines vocabulary, byte-range policy, hash coverage, mutation contract, and forbidden scope before Package/Resource implementation opens |
 
@@ -166,10 +166,11 @@ validation must not claim pressure coverage until those hashes are checked
 before Resource, Asset, RenderScene, RenderCore, RHI, Audio, or World outputs
 are published.
 
-Package/Resource write lanes remain blocked until a follow-up RTSPINE-008B or
-later task names the exact module surface and evidence rows. RuntimeAsset
-packaged-validation changes remain blocked until RTSPINE-004 implementation and
-QA evidence are stable.
+The only released Package write lane is RTSPINE-008B Package byte-range/index.
+Resource, File/VFS, and RuntimeAsset packaged-validation changes remain blocked
+until their lower Package/File/Resource gates name exact module surfaces and
+evidence rows; RTSPINE-004 implementation and QA stability alone is not enough
+to open RuntimeAsset packaged validation.
 
 ## 1.3 Continuous Multi-Agent Execution Governance
 
@@ -199,16 +200,18 @@ QA or full-test lanes that do not reduce calendar time.
 Current immediate parallel pattern:
 
 ```text
-RTSPINE-004 animation track target/property binding implementation
-+ package/resource index pressure audit (read-only)
-+ RTSPINE-005/006/007 file-surface scout (read-only, no contract mutation)
-+ parallelization and risk audit
+RTSPINE-004 docs/VQ closure
++ RTSPINE-008B Package byte-range/index implementation
++ RTSPINE-008B Package QA readiness scout
++ RTSPINE-008C hash/dependency readiness scout (read-only)
 ```
 
 RTSPINE-003 VQ accepted the target identity evidence gate by workspace task
-`fdd78da4-da12-4956-b6ac-63ff9e377121`. The next implementation write lane is
-RTSPINE-004 only. RTSPINE-005/006/007 and Package/Resource write lanes remain
-blocked until their own evidence gates are released.
+`fdd78da4-da12-4956-b6ac-63ff9e377121`. RTSPINE-004 implementation and focused
+QA are PASS at `ebe9ea35f531aa40133262b701e5e751f8ed9ccf`; docs/VQ must close
+before that evidence is treated as a final animation-spine gate. RTSPINE-005,
+RTSPINE-006, RTSPINE-007, Resource/File/VFS, and RuntimeAsset packaged
+validation remain blocked until their own evidence gates are released.
 
 
 ## 2. Current Progress Assessment
@@ -345,6 +348,17 @@ scene/runtime animation regression CTest discovery found `10` rows, exact
 execution reports `10/10` PASS, `git diff --check` passed, added-line hygiene
 passed, and production boundary scans passed without running broad full CTest
 for the docs lane.
+
+Current RuntimeAsset animation track target binding evidence at
+`ebe9ea35f531aa40133262b701e5e751f8ed9ccf` covers SceneNode `target_id` plus
+property binding through `RuntimeAssetAnimationTrackTargetBindingRecord`
+caller-owned output. Focused QA task `2e2d5a4e-0bb0-4cf4-bd1b-ab3a87987b7f`
+reports focused `YuRuntimeAssetDataClosedLoopTests` build PASS, exact discovery
+of `17` rows, execution `17/17` PASS, `git diff --check` PASS, added-line
+hygiene PASS, and boundary/non-goal scans PASS without running broad full CTest.
+The PASS does not open ModelNode/SkeletonJoint animation binding, RTSPINE-005
+interpolation expansion, RTSPINE-006 broader failure matrix, RTSPINE-007 runtime
+instance mapping, or any Package/Resource write lane.
 
 ## 3. Updated Layer Model
 

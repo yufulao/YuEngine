@@ -68,12 +68,23 @@ At the latest handoff:
   `d9dc3692-aa12-4f5c-872a-5b7293a92ceb`;
 - RTSPINE-003 VQ evidence consistency audit is PASS by workspace task
   `fdd78da4-da12-4956-b6ac-63ff9e377121`;
+- RTSPINE-004 animation track target/property binding implementation and focused
+  QA are PASS at `ebe9ea35f531aa40133262b701e5e751f8ed9ccf`;
+- RTSPINE-004 focused QA task `2e2d5a4e-0bb0-4cf4-bd1b-ab3a87987b7f`
+  reports focused `YuRuntimeAssetDataClosedLoopTests` build PASS, exact
+  discovery `17` rows, execution `17/17` PASS, `git diff --check` PASS,
+  added-line hygiene PASS, and boundary/non-goal scans PASS without running
+  broad full CTest;
+- RTSPINE-004 covers SceneNode `target_id` plus property binding only.
+  ModelNode/SkeletonJoint animation binding, RTSPINE-005/006/007, and
+  WorldObject-facing runtime instance mapping remain unopened;
 - the human lead has resumed execution and requires continuous multi-agent
   coordination until the L0/L1 stop condition is actually met;
-- RTSPINE-004 animation track target/property binding is the only released next
-  write lane. Package/Resource pressure work may run as read-only audit in
-  parallel, while RTSPINE-005/006/007 and Package/Resource write lanes remain
-  blocked until their own gates are released.
+- RTSPINE-008A docs/spec is PASS at
+  `ad1a7fb5b3dfa2e1f118103158b640a7111d767f`; the only current
+  Package/Resource write lane is RTSPINE-008B Package byte-range/index, while
+  Resource/File/VFS, RuntimeAsset packaged validation, and RTSPINE-005/006/007
+  remain blocked until their own gates are released.
 
 Live workspace state is still authoritative for task ownership and current
 status. This file records the handoff baseline, not a replacement for the task
