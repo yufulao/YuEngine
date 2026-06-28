@@ -49,3 +49,9 @@ This decision does not open:
 
 RTSPINE-008C and later gates may use this decision as an input, but they must
 name their own file surfaces and evidence thresholds before implementation.
+RTSPINE-008C subsequently did that in a clearly disjoint Package-only lane and
+is PASS at `origin/main@d18f1679ebd389ecec506055764602591f5b9ab6`: focused QA
+task `ba135e38-b73e-4294-b449-97a04b33b982` reports `YuPackageTests` build PASS,
+`^Package_` `35/35` PASS, exact new integrity rows `2/2` PASS, and no broad/full
+CTest. This 008B decision still does not authorize File/VFS, Resource, or
+RuntimeAsset packaged-validation work.

@@ -115,12 +115,18 @@ The follow-up split from this contract is:
 | Gate | Scope | Release condition |
 | --- | --- | --- |
 | RTSPINE-008B | Package archive byte-range and index metadata | Accepted by `docs/gates/RTSPINE_008B_PACKAGE_BYTE_RANGE_LEGACY_MIRROR_DECISION.md`; `byte_offset`/`byte_size` are legacy mirrors only |
-| RTSPINE-008C | Package artifact hash and dependency integrity | After RTSPINE-008B or in a clearly disjoint Package lane |
+| RTSPINE-008C | Package artifact hash and dependency integrity | PASS at `origin/main@d18f1679ebd389ecec506055764602591f5b9ab6`; Package-only payload, metadata, dependency table, and package table hash validation |
 | RTSPINE-008D | File/VFS ranged IO | After this spec, before RuntimeAsset packaged validation |
 | RTSPINE-008E | Resource payload window/reference budget | After this spec, independent from RuntimeAsset files |
 | RTSPINE-008F | Package dependency closure and budgeted load plan | After Package metadata/hash evidence |
 | RTSPINE-008G | RuntimeAsset packaged validation bridge | After RTSPINE-004 implementation and QA are stable, and after lower Package/File/Resource gates have evidence |
 | RTSPINE-008H | RuntimeAsset transaction rollback/proof | After RTSPINE-008G |
+
+RTSPINE-008C focused QA task `ba135e38-b73e-4294-b449-97a04b33b982` reports
+`YuPackageTests` build PASS, `^Package_` discovery/execution `35/35` PASS, exact
+new integrity rows `2/2` PASS, `git diff --check` PASS, added-line hygiene PASS,
+Package-only boundary scans PASS, and no broad/full CTest. This does not release
+RTSPINE-008D/E/F/G/H, File/VFS, Resource, or RuntimeAsset packaged validation.
 
 ## Forbidden Scope
 

@@ -75,8 +75,15 @@ At the latest handoff:
   discovery `17` rows, execution `17/17` PASS, `git diff --check` PASS,
   added-line hygiene PASS, and boundary/non-goal scans PASS without running
   broad full CTest;
-- RTSPINE-004 covers SceneNode `target_id` plus property binding only.
-  ModelNode/SkeletonJoint animation binding, RTSPINE-005/006/007, and
+- RTSPINE-004 covers SceneNode `target_id` plus property binding only;
+- RTSPINE-005 minimal Step/Linear interpolation implementation and focused QA are
+  PASS at `2bfe7e37d36ca711dd706728f21b1e4caecfd3db` /
+  `d18f1679ebd389ecec506055764602591f5b9ab6`; focused QA task
+  `951a3da8-6b13-4268-960e-407f65c40db7` reports focused
+  `YuRuntimeAssetDataClosedLoopTests` build PASS, exact interpolation discovery
+  `3`, execution `3/3` PASS, non-Package RuntimeAsset animation whitelist
+  `23/23` PASS, diff/hygiene/boundary PASS, and no broad/full CTest;
+- ModelNode/SkeletonJoint animation binding, RTSPINE-006/007, and
   WorldObject-facing runtime instance mapping remain unopened;
 - the human lead has resumed execution and requires continuous multi-agent
   coordination until the L0/L1 stop condition is actually met;
@@ -87,8 +94,13 @@ At the latest handoff:
   authoritative pressure byte range, with `byte_offset` and `byte_size` as
   legacy mirrors only, as recorded in
   `docs/gates/RTSPINE_008B_PACKAGE_BYTE_RANGE_LEGACY_MIRROR_DECISION.md`;
-- Resource/File/VFS, RuntimeAsset packaged validation, and RTSPINE-005/006/007
-  remain blocked until their own gates are released.
+- RTSPINE-008C Package artifact hash/dependency integrity implementation and
+  focused QA are PASS at `d18f1679ebd389ecec506055764602591f5b9ab6`; focused
+  QA task `ba135e38-b73e-4294-b449-97a04b33b982` reports `YuPackageTests`
+  build PASS, `^Package_` discovery/execution `35/35` PASS, exact new integrity
+  rows `2/2` PASS, diff/hygiene/boundary PASS, and no broad/full CTest;
+- Resource/File/VFS, RuntimeAsset packaged validation, RTSPINE-006/007, and
+  RTSPINE-008D/E/F/G/H remain blocked until their own gates are released.
 
 Live workspace state is still authoritative for task ownership and current
 status. This file records the handoff baseline, not a replacement for the task

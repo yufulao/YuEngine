@@ -221,6 +221,14 @@ Required test-tier direction:
   baseline. Architect and CodeReviewerQA both verified the `Package_` CTest
   filter at `23/23`. This does not authorize new package code, CMake targets,
   tests, scope expansion, File/VFS runtime reads, resource mutation, or P3 work.
+- RuntimeAsset RTSPINE-008C is a separate Package-focused follow-up outside the
+  P2-GATE-003 first-slice baseline. It is PASS at
+  `origin/main@d18f1679ebd389ecec506055764602591f5b9ab6` for Package artifact
+  payload, metadata, dependency table, and package table hash integrity only;
+  focused QA task `ba135e38-b73e-4294-b449-97a04b33b982` reports
+  `YuPackageTests` build PASS, `^Package_` `35/35` PASS, exact new integrity
+  rows `2/2` PASS, and no broad/full CTest. It does not authorize File/VFS,
+  Resource, RuntimeAsset packaged validation, or RTSPINE-008D/E/F/G/H.
 - P2-GATE-004 is approved for first slice after ENG-097A boundary/reference
   PASS, ENG-097B CMake implementability PASS, and ENG-097C test admission PASS.
   The approved scope is CMake/CTest execution infrastructure only: tier/module/

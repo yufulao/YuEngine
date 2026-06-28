@@ -401,7 +401,8 @@ This gate records these mainline implementation slices:
 | RAV1-P | Generic RenderScene CPU submission builder | PASS; RuntimeAsset builds frame records from loaded scene records, validates transform/mesh/material refs without mutation, and reports material variants until frame API support lands |
 | RAV1-Q | Asset target identity table | PASS; RuntimeAsset writes bounded scene node, model node, and skeleton joint target identity records to caller-owned output, and rejects duplicate ids, missing parents, and output capacity overflow without mutation |
 | RAV1-R | Animation track target/property binding | PASS; RuntimeAsset writes caller-owned SceneNode target binding records for animation tracks keyed by `target_id` plus property, and rejects missing target, unsupported property, and output capacity overflow without mutation; focused QA reports `17/17` PASS without broad/full CTest |
-| Next slice | Minimal interpolation and remaining failure model | keep RTSPINE-005/006/007 separate: Step/Linear interpolation expansion, unsupported interpolation and broader invalid target coverage, and runtime instance mapping must be gated before any WorldObject-facing mapping |
+| RAV1-S | Minimal interpolation | PASS; RuntimeAsset samples Step and Linear animation tracks at fixed times and rejects unsupported interpolation plus sample output capacity failures without mutation; focused QA reports exact interpolation `3/3` PASS and non-Package RuntimeAsset animation whitelist `23/23` PASS without broad/full CTest |
+| Next slice | Remaining failure model and runtime instance mapping | keep RTSPINE-006/007 separate: broader target-family mismatch, invalid selected clip/sample/apply failure coverage, and runtime instance mapping must be gated before any WorldObject-facing mapping |
 
 The slice may split implementation tasks later, but those tasks must stay
 parallelizable by file family or stage and must not authorize upper-layer

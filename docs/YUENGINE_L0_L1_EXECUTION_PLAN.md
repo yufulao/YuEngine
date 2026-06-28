@@ -3,7 +3,7 @@
 Status: handoff plan for landing team
 Owner: 八云紫, 总架构师
 Requested: 2026-06-19
-Current observed code checkpoint: `5ea838f6fd3428e7e67b77c1ca85c41e6e1c09e4`
+Current observed code checkpoint: `d18f1679ebd389ecec506055764602591f5b9ab6`
 Scope: progress adjustment, L0 closure plan, L1 runtime-core plan
 Canonical entry point: `docs/README.md`
 Parent plan: `docs/YUENGINE_LONG_PLAN_TEAM_EXECUTION.md`
@@ -132,10 +132,10 @@ target identity work.
 | RTSPINE-002 | Update production target planning docs | TouhouNewWorld-class native runtime, shipped-content-scale package pressure examples, and no-compatibility policy are written into the active plans |
 | RTSPINE-003 | Define asset-internal target identity | PASS at `origin/main@5ea838f6fd3428e7e67b77c1ca85c41e6e1c09e4`: scene node, model node, and skeleton joint ids are stable bounded output records independent from WorldObject; duplicate id, missing parent, and capacity overflow fail without mutation |
 | RTSPINE-004 | Define animation track target binding | PASS at `origin/main@ebe9ea35f531aa40133262b701e5e751f8ed9ccf`: SceneNode animation tracks bind to `target_id` plus property through caller-owned binding records; missing target, unsupported property, and capacity overflow fail without mutation; no world instance, editor object, raw pointer, display name, or file path |
-| RTSPINE-005 | Define minimal interpolation | Step and Linear sampling at fixed times are deterministic and caller-owned-output only; not opened by RTSPINE-004 completion |
-| RTSPINE-006 | Define invalid target failure model | remaining unsupported interpolation, broader target-family mismatch, and invalid selected clip failures must fail without output mutation; missing target, unsupported property, and binding capacity are covered by RTSPINE-004 |
+| RTSPINE-005 | Define minimal interpolation | PASS at `origin/main@2bfe7e37d36ca711dd706728f21b1e4caecfd3db` with focused QA at `origin/main@d18f1679ebd389ecec506055764602591f5b9ab6`: Step and Linear sampling at fixed times are deterministic, unsupported interpolation and sample output capacity fail without mutation, exact interpolation rows report `3/3` PASS, and no broad/full CTest was run |
+| RTSPINE-006 | Define invalid target failure model | remaining broader target-family mismatch, invalid selected clip/sample/apply failures, and any interpolation failures not covered by RTSPINE-005 must fail without output mutation; missing target, unsupported property, and binding capacity are covered by RTSPINE-004 |
 | RTSPINE-007 | Design instance mapping gate | asset target to runtime instance mapping is designed before implementation touches WorldObject |
-| RTSPINE-008 | Define package/resource pressure gate | 008A pressure contract defines vocabulary, byte-range policy, hash coverage, mutation contract, and forbidden scope before Package/Resource implementation opens |
+| RTSPINE-008 | Define package/resource pressure gate | 008A pressure contract defines vocabulary, byte-range policy, hash coverage, mutation contract, and forbidden scope; 008B byte-range/index and 008C Package artifact hash/dependency integrity are PASS, while File/VFS, Resource, RuntimeAsset packaged validation, and 008D/E/F/G/H remain future gates |
 
 ### 1.2.2 RTSPINE-008A Package/Resource Pressure Contract
 
@@ -166,14 +166,17 @@ validation must not claim pressure coverage until those hashes are checked
 before Resource, Asset, RenderScene, RenderCore, RHI, Audio, or World outputs
 are published.
 
-The only released Package write lane is RTSPINE-008B Package byte-range/index.
+The released Package write lanes are RTSPINE-008B Package byte-range/index and
+RTSPINE-008C Package artifact hash/dependency integrity.
 For RTSPINE-008B, `archive_byte_offset` and `archive_byte_size` are the
 authoritative shipped-content pressure byte range. The existing `byte_offset`
 and `byte_size` fields are legacy mirrors only and cannot be counted as
-pressure evidence. Resource, File/VFS, and RuntimeAsset packaged-validation
-changes remain blocked until their lower Package/File/Resource gates name exact
-module surfaces and evidence rows; RTSPINE-004 implementation and QA stability
-alone is not enough to open RuntimeAsset packaged validation.
+pressure evidence. RTSPINE-008C adds artifact payload, metadata, dependency
+table, and package table hash validation before publish/mutation. Resource,
+File/VFS, and RuntimeAsset packaged-validation changes remain blocked until
+their lower Package/File/Resource gates name exact module surfaces and evidence
+rows; RTSPINE-004/005 implementation and QA stability alone is not enough to
+open RuntimeAsset packaged validation.
 
 ## 1.3 Continuous Multi-Agent Execution Governance
 
@@ -203,17 +206,19 @@ QA or full-test lanes that do not reduce calendar time.
 Current immediate parallel pattern:
 
 ```text
-RTSPINE-004 docs/VQ closure
-+ RTSPINE-008B Package archive byte-range decision and focused QA re-audit
-+ RTSPINE-008C hash/dependency readiness scout (read-only)
+RTSPINE-005 + RTSPINE-008C evidence docs/VQ closure
++ RTSPINE-006 RuntimeAsset-only invalid-target failure model
++ RTSPINE-008D File/VFS ranged IO readiness scout (read-only)
++ RTSPINE-008E Resource payload window readiness scout (read-only)
 ```
 
 RTSPINE-003 VQ accepted the target identity evidence gate by workspace task
 `fdd78da4-da12-4956-b6ac-63ff9e377121`. RTSPINE-004 implementation and focused
-QA are PASS at `ebe9ea35f531aa40133262b701e5e751f8ed9ccf`; docs/VQ must close
-before that evidence is treated as a final animation-spine gate. RTSPINE-005,
-RTSPINE-006, RTSPINE-007, Resource/File/VFS, and RuntimeAsset packaged
-validation remain blocked until their own evidence gates are released.
+QA are PASS at `ebe9ea35f531aa40133262b701e5e751f8ed9ccf`. RTSPINE-005
+implementation and focused QA are PASS at `2bfe7e37d36ca711dd706728f21b1e4caecfd3db`
+/ `d18f1679ebd389ecec506055764602591f5b9ab6`. RTSPINE-006, RTSPINE-007,
+Resource/File/VFS, RuntimeAsset packaged validation, and RTSPINE-008D/E/F/G/H
+remain blocked until their own evidence gates are released.
 
 
 ## 2. Current Progress Assessment
@@ -358,9 +363,31 @@ caller-owned output. Focused QA task `2e2d5a4e-0bb0-4cf4-bd1b-ab3a87987b7f`
 reports focused `YuRuntimeAssetDataClosedLoopTests` build PASS, exact discovery
 of `17` rows, execution `17/17` PASS, `git diff --check` PASS, added-line
 hygiene PASS, and boundary/non-goal scans PASS without running broad full CTest.
-The PASS does not open ModelNode/SkeletonJoint animation binding, RTSPINE-005
-interpolation expansion, RTSPINE-006 broader failure matrix, RTSPINE-007 runtime
-instance mapping, or any Package/Resource write lane.
+The RTSPINE-004 PASS does not open ModelNode/SkeletonJoint animation binding,
+RTSPINE-006 broader failure matrix, RTSPINE-007 runtime instance mapping, or any
+Package/Resource write lane.
+
+Current RuntimeAsset minimal interpolation evidence at
+`2bfe7e37d36ca711dd706728f21b1e4caecfd3db` covers Step/Linear fixed-time
+sampling and no-mutation failures for unsupported interpolation and sample output
+capacity. Focused QA task `951a3da8-6b13-4268-960e-407f65c40db7` reports focused
+`YuRuntimeAssetDataClosedLoopTests` build PASS, exact RTSPINE-005 interpolation
+discovery `3`, execution `3/3` PASS, non-Package RuntimeAsset animation
+whitelist discovery/execution `23/23` PASS, `git diff --check` PASS, added-line
+hygiene PASS, and production boundary/non-goal scans PASS without running
+broad/full CTest. The PASS does not open ModelNode/SkeletonJoint animation
+binding, RTSPINE-006 broader failure matrix, or RTSPINE-007 runtime instance
+mapping.
+
+Current Package artifact hash/dependency evidence at
+`d18f1679ebd389ecec506055764602591f5b9ab6` covers RTSPINE-008C Package-only
+payload, metadata, dependency table, and package table hash validation.
+Focused QA task `ba135e38-b73e-4294-b449-97a04b33b982` reports
+`YuPackageTests` build PASS, `^Package_` discovery/execution `35/35` PASS,
+the two new integrity rows `2/2` PASS, `git diff --check` PASS, added-line
+hygiene PASS, and boundary scans PASS without running broad/full CTest. The
+PASS does not open Resource, File/VFS, RuntimeAsset packaged validation, or
+RTSPINE-008D/E/F/G/H.
 
 ## 3. Updated Layer Model
 
