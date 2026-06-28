@@ -135,7 +135,7 @@ target identity work.
 | RTSPINE-005 | Define minimal interpolation | PASS at `origin/main@2bfe7e37d36ca711dd706728f21b1e4caecfd3db` with focused QA at `origin/main@d18f1679ebd389ecec506055764602591f5b9ab6`: Step and Linear sampling at fixed times are deterministic, unsupported interpolation and sample output capacity fail without mutation, exact interpolation rows report `3/3` PASS, and no broad/full CTest was run |
 | RTSPINE-006 | Define invalid target failure model | remaining broader target-family mismatch, invalid selected clip/sample/apply failures, and any interpolation failures not covered by RTSPINE-005 must fail without output mutation; missing target, unsupported property, and binding capacity are covered by RTSPINE-004 |
 | RTSPINE-007 | Design instance mapping gate | asset target to runtime instance mapping is designed before implementation touches WorldObject |
-| RTSPINE-008 | Define package/resource pressure gate | 008A pressure contract defines vocabulary, byte-range policy, hash coverage, mutation contract, and forbidden scope; 008B byte-range/index and 008C Package artifact hash/dependency integrity are PASS, while File/VFS, Resource, RuntimeAsset packaged validation, and 008D/E/F/G/H remain future gates |
+| RTSPINE-008 | Define package/resource pressure gate | 008A pressure contract defines vocabulary, byte-range policy, hash coverage, mutation contract, and forbidden scope; 008B byte-range/index, 008C Package artifact hash/dependency integrity, and 008D File/VFS ranged IO are PASS; future gates are Resource, RuntimeAsset packaged validation, and 008E/F/G/H |
 
 ### 1.2.2 RTSPINE-008A Package/Resource Pressure Contract
 
@@ -166,17 +166,20 @@ validation must not claim pressure coverage until those hashes are checked
 before Resource, Asset, RenderScene, RenderCore, RHI, Audio, or World outputs
 are published.
 
-The released Package write lanes are RTSPINE-008B Package byte-range/index and
-RTSPINE-008C Package artifact hash/dependency integrity.
+The released Package/File write lanes are RTSPINE-008B Package
+byte-range/index, RTSPINE-008C Package artifact hash/dependency integrity, and
+RTSPINE-008D File/VFS ranged IO.
 For RTSPINE-008B, `archive_byte_offset` and `archive_byte_size` are the
 authoritative shipped-content pressure byte range. The existing `byte_offset`
 and `byte_size` fields are legacy mirrors only and cannot be counted as
 pressure evidence. RTSPINE-008C adds artifact payload, metadata, dependency
-table, and package table hash validation before publish/mutation. Resource,
-File/VFS, and RuntimeAsset packaged-validation changes remain blocked until
-their lower Package/File/Resource gates name exact module surfaces and evidence
-rows; RTSPINE-004/005 implementation and QA stability alone is not enough to
-open RuntimeAsset packaged validation.
+table, and package table hash validation before publish/mutation. RTSPINE-008D
+adds File/VFS ranged read request/status, output-window, snapshot no-mutation,
+and async small-output no-partial-copy evidence. Resource and RuntimeAsset
+packaged-validation changes remain blocked until their lower Package/File/
+Resource gates name exact module surfaces and evidence rows; RTSPINE-004/005
+implementation and QA stability alone is not enough to open RuntimeAsset
+packaged validation.
 
 ## 1.3 Continuous Multi-Agent Execution Governance
 
@@ -208,8 +211,8 @@ Current immediate parallel pattern:
 ```text
 RTSPINE-005 + RTSPINE-008C evidence docs/VQ closure
 + RTSPINE-006 RuntimeAsset-only invalid-target failure model
-+ RTSPINE-008D File/VFS ranged IO readiness scout (read-only)
-+ RTSPINE-008E Resource payload window readiness scout (read-only)
++ RTSPINE-008D File/VFS ranged IO evidence docs/VQ closure
++ RTSPINE-008E Resource payload window follow-up evidence lane
 ```
 
 RTSPINE-003 VQ accepted the target identity evidence gate by workspace task
@@ -217,8 +220,8 @@ RTSPINE-003 VQ accepted the target identity evidence gate by workspace task
 QA are PASS at `ebe9ea35f531aa40133262b701e5e751f8ed9ccf`. RTSPINE-005
 implementation and focused QA are PASS at `2bfe7e37d36ca711dd706728f21b1e4caecfd3db`
 / `d18f1679ebd389ecec506055764602591f5b9ab6`. RTSPINE-006, RTSPINE-007,
-Resource/File/VFS, RuntimeAsset packaged validation, and RTSPINE-008D/E/F/G/H
-remain blocked until their own evidence gates are released.
+Resource payload windows, RuntimeAsset packaged validation, and
+RTSPINE-008E/F/G/H remain blocked until their own evidence gates are released.
 
 
 ## 2. Current Progress Assessment
@@ -386,8 +389,20 @@ Focused QA task `ba135e38-b73e-4294-b449-97a04b33b982` reports
 `YuPackageTests` build PASS, `^Package_` discovery/execution `35/35` PASS,
 the two new integrity rows `2/2` PASS, `git diff --check` PASS, added-line
 hygiene PASS, and boundary scans PASS without running broad/full CTest. The
-PASS does not open Resource, File/VFS, RuntimeAsset packaged validation, or
-RTSPINE-008D/E/F/G/H.
+008C PASS did not itself open File/VFS ranged IO; the separate 008D gate below
+does. It still does not open Resource payload windows, RuntimeAsset packaged
+validation, or RTSPINE-008E/F/G/H.
+
+Current File/VFS ranged IO evidence at
+`c67e9710ab39f49ea01f0c194d2e5b44cbf3b97e` covers RTSPINE-008D ranged
+`FileReadRequest`, `InvalidRange` and `RangeOutOfBounds` status reporting,
+snapshot no-mutation on failed ranges, and async ranged output-too-small
+no-partial-copy behavior. Focused QA task
+`aebd28c5-f688-4ccc-abaf-1a3bd61879cb` reports `YuFileTests` build PASS,
+`^File_` discovery/execution `23/23` PASS, ranged subset `4/4` PASS,
+`git diff --check` PASS, added-line hygiene PASS, and boundary scans PASS
+without running broad/full CTest. The PASS does not open Resource payload
+windows, RuntimeAsset packaged validation, or RTSPINE-008E/F/G/H.
 
 ## 3. Updated Layer Model
 

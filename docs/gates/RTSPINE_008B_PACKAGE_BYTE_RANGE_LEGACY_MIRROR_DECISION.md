@@ -55,3 +55,8 @@ task `ba135e38-b73e-4294-b449-97a04b33b982` reports `YuPackageTests` build PASS,
 `^Package_` `35/35` PASS, exact new integrity rows `2/2` PASS, and no broad/full
 CTest. This 008B decision still does not authorize File/VFS, Resource, or
 RuntimeAsset packaged-validation work.
+RTSPINE-008D later opened File/VFS ranged IO through a separate File-only gate
+at `origin/main@c67e9710ab39f49ea01f0c194d2e5b44cbf3b97e`; focused QA task
+`aebd28c5-f688-4ccc-abaf-1a3bd61879cb` reports `YuFileTests` build PASS,
+`^File_` `23/23` PASS, ranged subset `4/4` PASS, and no broad/full CTest. That
+008D evidence does not expand this 008B Package byte-range decision.

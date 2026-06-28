@@ -86,7 +86,7 @@ through that spine.
 The corrected dependency order for RuntimeAsset-adjacent rows is:
 
 ```text
-Package/Resource bytes and indexes
+Package byte ranges, File/VFS ranged IO, Resource bytes, and indexes
 -> RuntimeAsset family identity and dependency tables
 -> asset-internal scene node / model node / skeleton joint targets
 -> clip/track/channel or material/shader records that reference those targets
@@ -97,6 +97,14 @@ Package/Resource bytes and indexes
 Animation selected-clip proof is a valid first slice, but it is not a complete
 animation asset contract. Deeper animation, curve, and transform application
 work requires asset-internal target identity first.
+
+RTSPINE-008D File/VFS ranged IO is now a lower-spine PASS at
+`c67e9710ab39f49ea01f0c194d2e5b44cbf3b97e`: focused QA task
+`aebd28c5-f688-4ccc-abaf-1a3bd61879cb` reports `YuFileTests` build PASS,
+`^File_` discovery/execution `23/23` PASS, ranged subset `4/4` PASS,
+diff/hygiene/boundary PASS, and no broad/full CTest. It validates the File/VFS
+ranged IO contract only; Resource payload windows, RuntimeAsset packaged
+validation, and RTSPINE-008E/F/G/H remain separate gates.
 
 ## 3. Runtime Core Matrix
 
