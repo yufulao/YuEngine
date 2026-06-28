@@ -21,7 +21,7 @@ reference bar is the shipped TouhouNewWorld class of engine:
 
 - small native runtime binaries;
 - no Unity/UE runtime shape as the target architecture;
-- shipped-content-scale packed resources as a pressure example, not a fixed GB
+- shipped-content-scale packed resources as a pressure example, not a hard byte
   target;
 - long-session stability around the 20 hour gameplay class;
 - package/resource indexes, runtime asset records, diagnostics, and toolchain

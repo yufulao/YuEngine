@@ -16,7 +16,8 @@ accepted reference bar is the shipped TouhouNewWorld class of native game:
 
 - small native runtime executable and support DLLs;
 - no Unity/UE runtime shape as the target architecture;
-- packed resources around the 6 GB to 8 GB class;
+- shipped-content-scale packed resources used as pressure examples, with
+  explicit byte-budget assumptions named per accepted gate;
 - package/index/config/shader surfaces that support long-session play;
 - 20 hour scale gameplay stability, high performance, and actionable
   diagnostics.
@@ -128,13 +129,47 @@ target identity work.
 | ID | Work item | Acceptance |
 | --- | --- | --- |
 | RTSPINE-001 | Close current scene-animation evidence gate | implementation, QA, docs, VQ, `origin/main`, and matrices agree before any next lane opens |
-| RTSPINE-002 | Update production target planning docs | TouhouNewWorld-class native runtime, multi-GB resource package, and no-compatibility policy are written into the active plans |
+| RTSPINE-002 | Update production target planning docs | TouhouNewWorld-class native runtime, shipped-content-scale package pressure examples, and no-compatibility policy are written into the active plans |
 | RTSPINE-003 | Define asset-internal target identity | PASS at `origin/main@5ea838f6fd3428e7e67b77c1ca85c41e6e1c09e4`: scene node, model node, and skeleton joint ids are stable bounded output records independent from WorldObject; duplicate id, missing parent, and capacity overflow fail without mutation |
 | RTSPINE-004 | Define animation track target binding | track binds to target id plus property; no world instance, editor object, raw pointer, display name, or file path |
 | RTSPINE-005 | Define minimal interpolation | Step and Linear sampling at fixed times are deterministic and caller-owned-output only |
 | RTSPINE-006 | Define invalid target failure model | missing target, unsupported property, unsupported interpolation, capacity overflow, and invalid selected clip fail without output mutation |
 | RTSPINE-007 | Design instance mapping gate | asset target to runtime instance mapping is designed before implementation touches WorldObject |
-| RTSPINE-008 | Define package/resource pressure gate | archive/index/hash/budget requirements are checked against shipped-content pressure examples and explicit budget assumptions |
+| RTSPINE-008 | Define package/resource pressure gate | 008A pressure contract defines vocabulary, byte-range policy, hash coverage, mutation contract, and forbidden scope before Package/Resource implementation opens |
+
+### 1.2.2 RTSPINE-008A Package/Resource Pressure Contract
+
+RTSPINE-008A is a docs/spec gate, not an implementation gate. It is recorded in
+`docs/gates/RTSPINE_008A_PACKAGE_RESOURCE_PRESSURE_CONTRACT.md` and must be
+treated as the source of truth for later RTSPINE-008 Package, File/VFS,
+Resource, and RuntimeAsset packaged-validation write lanes.
+
+The accepted pressure vocabulary is:
+
+- `fixture cap`: a deterministic test/storage limit used by current unit tests;
+- `budget assumption`: an explicit byte, table, dependency, or window budget
+  selected by a gate;
+- `pressure example`: a shipped-content-scale fact used to choose budgets, not
+  a pass/fail target by itself;
+- `runtime cap`: a hard runtime rejection boundary with an explicit status;
+- `evidence threshold`: the focused command or test row proving one contract.
+
+RTSPINE-008A chooses 64-bit archive byte ranges for future package/resource
+pressure contracts. Any narrower fixture value must either be named as a
+fixture-only cap or be validated before it reaches Package, File/VFS, Resource,
+or RuntimeAsset state mutation.
+
+The minimum hash coverage for follow-up gates is entry payload hash, entry
+metadata hash, dependency table hash, package table hash, and optional archive
+hash when a later gate names an archive container. RuntimeAsset packaged
+validation must not claim pressure coverage until those hashes are checked
+before Resource, Asset, RenderScene, RenderCore, RHI, Audio, or World outputs
+are published.
+
+Package/Resource write lanes remain blocked until a follow-up RTSPINE-008B or
+later task names the exact module surface and evidence rows. RuntimeAsset
+packaged-validation changes remain blocked until RTSPINE-004 implementation and
+QA evidence are stable.
 
 ## 1.3 Continuous Multi-Agent Execution Governance
 

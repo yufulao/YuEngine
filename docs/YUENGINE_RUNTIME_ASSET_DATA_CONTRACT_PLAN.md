@@ -9,6 +9,7 @@ Loader transaction plan: `docs/YUENGINE_RUNTIME_ASSET_V0_LOADER_TRANSACTION_PLAN
 Payload bridge RHI route: `docs/YUENGINE_RUNTIME_ASSET_V0_PAYLOAD_BRIDGE_RHI_ROUTE_PLAN.md`
 RAV1 evidence matrix: `docs/YUENGINE_RUNTIME_ASSET_V0_RAV1_EVIDENCE_MATRIX.md`
 Related gate: `docs/gates/L1_GATE_RUNTIME_ASSET_DATA_CLOSED_LOOP.md`
+Package/Resource pressure gate: `docs/gates/RTSPINE_008A_PACKAGE_RESOURCE_PRESSURE_CONTRACT.md`
 Resource Browser scope: `docs/YUENGINE_RESOURCE_BROWSER_IMPORT_COOK_DIAGNOSTICS_SCOPE.md`
 Canonical entry point: `docs/README.md`
 Parent plan: `docs/YUENGINE_LONG_PLAN_TEAM_EXECUTION.md`
@@ -50,7 +51,8 @@ RuntimeAsset is part of the production spine for a native commercial game with
 multi-GB packed content. The local TouhouNewWorld package is the current
 practical reference bar: a small native runtime, explicit resource archives, an
 asset index/database surface, shader/config files, and resource data in the
-6 GB to 8 GB class.
+shipped-content-scale class. That shipped-content size is a pressure example
+used to choose explicit budget assumptions; it is not a hard byte target.
 
 This plan therefore optimizes for:
 
@@ -79,6 +81,33 @@ Package/Resource bytes and index
 Animation, model, scene, and shader work are not independent islands. They are
 families in one RuntimeAsset graph and must share identity, dependency, budget,
 hash, and no-mutation rules.
+
+## RTSPINE-008A Package/Resource Pressure Contract
+
+`docs/gates/RTSPINE_008A_PACKAGE_RESOURCE_PRESSURE_CONTRACT.md` defines the
+pressure vocabulary and sequencing for Package/Resource work. Later
+RuntimeAsset packaged-validation work must consume that gate instead of
+inventing a separate package-size target.
+
+RTSPINE-008A makes these decisions:
+
+- pressure examples are not hard byte targets;
+- future archive byte ranges use unsigned 64-bit offset and size values, with
+  overflow and window-size rejection before state mutation;
+- required hash coverage is entry payload hash, entry metadata hash,
+  dependency table hash, package table hash, and optional archive hash when a
+  container is introduced;
+- validation failure must happen before Package, File/VFS, Resource,
+  RuntimeAsset, Asset, RenderScene, RenderCore, RHI, Audio, or World state
+  mutation;
+- Package/Resource implementation, File/VFS ranged IO, Resource payload window
+  records, RuntimeAsset packaged validation, and transaction rollback/proof are
+  separate follow-up gates.
+
+The current Package/File/Resource fixture limits remain useful as deterministic
+unit-test caps. They do not prove shipped-content pressure until a follow-up
+gate explicitly maps them to runtime caps, budget assumptions, or bounded
+windows.
 
 ## Current Gap
 
