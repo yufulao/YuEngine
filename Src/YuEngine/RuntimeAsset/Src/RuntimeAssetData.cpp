@@ -811,6 +811,8 @@ struct RuntimeAssetSceneLoaderStage final {
     std::array<RuntimeAssetSceneEntityRecord, RUNTIME_ASSET_MAX_SCENE_ENTITY_COUNT> entities{};
     std::array<RuntimeAssetSceneTransformOutputRecord, RUNTIME_ASSET_MAX_SCENE_ENTITY_COUNT> transforms{};
     std::array<RuntimeAssetTargetIdentityRecord, RUNTIME_ASSET_MAX_TARGET_IDENTITY_COUNT> target_identities{};
+    std::array<RuntimeAssetRuntimeInstanceMappingRecord, RUNTIME_ASSET_MAX_TARGET_IDENTITY_COUNT>
+        runtime_instance_mappings{};
     std::array<AnimationRuntimeClipRecord, RUNTIME_ASSET_MAX_ANIMATION_CLIP_COUNT> animation_clips{};
     std::array<AnimationRuntimeTrackRecord, RUNTIME_ASSET_MAX_ANIMATION_TRACK_COUNT> animation_tracks{};
     std::array<RuntimeAssetAnimationTrackTargetBindingRecord, RUNTIME_ASSET_MAX_ANIMATION_TRACK_COUNT>
@@ -820,6 +822,7 @@ struct RuntimeAssetSceneLoaderStage final {
     std::uint32_t entity_count = 0U;
     std::uint32_t transform_count = 0U;
     std::uint32_t target_identity_count = 0U;
+    std::uint32_t runtime_instance_mapping_count = 0U;
     std::uint32_t animation_clip_count = 0U;
     std::uint32_t animation_track_count = 0U;
     std::uint32_t animation_target_binding_count = 0U;
@@ -862,6 +865,14 @@ bool HasTargetIdentityOutputRequest(const RuntimeAssetGraphLoadRequest &request)
     return request.target_identity_capacity != 0U;
 }
 
+bool HasRuntimeInstanceMappingOutputRequest(const RuntimeAssetGraphLoadRequest &request) {
+    if (request.runtime_instance_mappings != nullptr) {
+        return true;
+    }
+
+    return request.runtime_instance_mapping_capacity != 0U;
+}
+
 RuntimeAssetDataStatus ValidateTargetIdentityOutputRequest(
     const RuntimeAssetGraphLoadRequest &request,
     std::uint32_t target_identity_count) {
@@ -874,6 +885,24 @@ RuntimeAssetDataStatus ValidateTargetIdentityOutputRequest(
     }
 
     if (request.target_identity_capacity < target_identity_count) {
+        return RuntimeAssetDataStatus::CapacityExceeded;
+    }
+
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ValidateRuntimeInstanceMappingOutputRequest(
+    const RuntimeAssetGraphLoadRequest &request,
+    std::uint32_t mapping_count) {
+    if (!HasRuntimeInstanceMappingOutputRequest(request)) {
+        return RuntimeAssetDataStatus::Success;
+    }
+
+    if (request.runtime_instance_mappings == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (request.runtime_instance_mapping_capacity < mapping_count) {
         return RuntimeAssetDataStatus::CapacityExceeded;
     }
 
@@ -963,6 +992,18 @@ void CommitTargetIdentityRecords(
 
     for (std::uint32_t index = 0U; index < stage.target_identity_count; ++index) {
         request.target_identities[index] = stage.target_identities[index];
+    }
+}
+
+void CommitRuntimeInstanceMappingRecords(
+    const RuntimeAssetGraphLoadRequest &request,
+    const RuntimeAssetSceneLoaderStage &stage) {
+    if (!HasRuntimeInstanceMappingOutputRequest(request)) {
+        return;
+    }
+
+    for (std::uint32_t index = 0U; index < stage.runtime_instance_mapping_count; ++index) {
+        request.runtime_instance_mappings[index] = stage.runtime_instance_mappings[index];
     }
 }
 
@@ -2130,16 +2171,22 @@ bool SceneStageHasEntityId(
     return false;
 }
 
-const RuntimeAssetSceneEntityRecord *FindSceneStageEntityById(
+bool FindSceneStageEntityIndexById(
     const RuntimeAssetSceneLoaderStage &stage,
-    std::uint32_t scene_entity_id) {
+    std::uint32_t scene_entity_id,
+    std::uint32_t *out_index) {
+    if (out_index == nullptr) {
+        return false;
+    }
+
     for (std::uint32_t index = 0U; index < stage.entity_count; ++index) {
         if (stage.entities[index].entity_id == scene_entity_id) {
-            return &stage.entities[index];
+            *out_index = index;
+            return true;
         }
     }
 
-    return nullptr;
+    return false;
 }
 
 const RuntimeAssetTargetIdentityRecord *FindTargetIdentityRecord(
@@ -2154,6 +2201,48 @@ const RuntimeAssetTargetIdentityRecord *FindTargetIdentityRecord(
     return nullptr;
 }
 
+const RuntimeAssetRuntimeInstanceMappingRecord *FindRuntimeInstanceMappingRecord(
+    std::span<const RuntimeAssetRuntimeInstanceMappingRecord> mappings,
+    std::uint64_t target_id) {
+    for (const RuntimeAssetRuntimeInstanceMappingRecord &mapping : mappings) {
+        if (mapping.target_id == target_id) {
+            return &mapping;
+        }
+    }
+
+    return nullptr;
+}
+
+RuntimeAssetDataStatus BuildRuntimeInstanceMappings(RuntimeAssetSceneLoaderStage *stage) {
+    if (stage == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    for (std::uint32_t index = 0U; index < stage->target_identity_count; ++index) {
+        const RuntimeAssetTargetIdentityRecord &identity = stage->target_identities[index];
+        RuntimeAssetRuntimeInstanceMappingRecord mapping{};
+        mapping.target_kind = identity.kind;
+        mapping.target_id = identity.target_id;
+        mapping.scene_entity_id = identity.scene_entity_id;
+
+        if (identity.kind == RuntimeAssetTargetIdentityKind::SceneNode) {
+            std::uint32_t scene_entity_index = 0U;
+            if (!FindSceneStageEntityIndexById(*stage, identity.scene_entity_id, &scene_entity_index)) {
+                return RuntimeAssetDataStatus::MissingDependency;
+            }
+
+            mapping.scene_entity_index = scene_entity_index;
+            mapping.scene_transform_index = scene_entity_index;
+            mapping.is_valid = true;
+        }
+
+        stage->runtime_instance_mappings[index] = mapping;
+    }
+
+    stage->runtime_instance_mapping_count = stage->target_identity_count;
+    return RuntimeAssetDataStatus::Success;
+}
+
 RuntimeAssetDataStatus ResolveAnimationTrackTargetBinding(
     const RuntimeAssetSceneLoaderStage &stage,
     std::uint64_t target_id,
@@ -2164,24 +2253,24 @@ RuntimeAssetDataStatus ResolveAnimationTrackTargetBinding(
         return RuntimeAssetDataStatus::InvalidArgument;
     }
 
-    const RuntimeAssetTargetIdentityRecord *identity = FindTargetIdentityRecord(
-        std::span<const RuntimeAssetTargetIdentityRecord>(
-            stage.target_identities.data(),
-            stage.target_identity_count),
+    const RuntimeAssetRuntimeInstanceMappingRecord *mapping = FindRuntimeInstanceMappingRecord(
+        std::span<const RuntimeAssetRuntimeInstanceMappingRecord>(
+            stage.runtime_instance_mappings.data(),
+            stage.runtime_instance_mapping_count),
         target_id);
-    if (identity == nullptr) {
+    if (mapping == nullptr) {
         return RuntimeAssetDataStatus::MissingDependency;
     }
 
-    if (identity->kind != RuntimeAssetTargetIdentityKind::SceneNode) {
+    if (mapping->target_kind != RuntimeAssetTargetIdentityKind::SceneNode || !mapping->is_valid) {
         return RuntimeAssetDataStatus::TypeMismatch;
     }
 
-    const RuntimeAssetSceneEntityRecord *entity = FindSceneStageEntityById(stage, identity->scene_entity_id);
-    if (entity == nullptr) {
-        return RuntimeAssetDataStatus::MissingDependency;
+    if (mapping->scene_entity_index >= stage.entity_count) {
+        return RuntimeAssetDataStatus::InvalidDependency;
     }
 
+    const RuntimeAssetSceneEntityRecord *entity = &stage.entities[mapping->scene_entity_index];
     AnimationRuntimeChannel channel = AnimationRuntimeChannel::TranslationX;
     if (!RuntimeAssetAnimationTargetPropertyToChannel(property, &channel)) {
         return RuntimeAssetDataStatus::UnsupportedFieldValue;
@@ -5448,7 +5537,19 @@ RuntimeAssetDataStatus BuildSceneLoaderStage(
         return status;
     }
 
+    status = BuildRuntimeInstanceMappings(&stage);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
     status = ValidateTargetIdentityOutputRequest(request, stage.target_identity_count);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    status = ValidateRuntimeInstanceMappingOutputRequest(
+        request,
+        stage.runtime_instance_mapping_count);
     if (status != RuntimeAssetDataStatus::Success) {
         return status;
     }
@@ -5559,6 +5660,7 @@ RuntimeAssetDataStatus CommitSceneLoaderOutput(
     output.resource_ref_count = request.file_count;
     output.camera_count = stage.camera_count;
     output.target_identity_count = stage.target_identity_count;
+    output.runtime_instance_mapping_count = stage.runtime_instance_mapping_count;
     output.animation_clip_count = stage.animation_clip_count;
     output.animation_track_count = stage.animation_track_count;
     output.animation_target_binding_count = stage.animation_target_binding_count;
@@ -5570,6 +5672,7 @@ RuntimeAssetDataStatus CommitSceneLoaderOutput(
     output.resource_ref_capacity = request.scene_resource_ref_capacity;
     output.camera_capacity = request.scene_camera_capacity;
     output.target_identity_capacity = request.target_identity_capacity;
+    output.runtime_instance_mapping_capacity = request.runtime_instance_mapping_capacity;
     output.animation_clip_capacity = request.animation_clip_capacity;
     output.animation_track_capacity = request.animation_track_capacity;
     output.animation_target_binding_capacity = request.animation_target_binding_capacity;
@@ -5610,6 +5713,7 @@ RuntimeAssetDataStatus CommitSceneLoaderOutput(
     }
 
     CommitTargetIdentityRecords(request, stage);
+    CommitRuntimeInstanceMappingRecords(request, stage);
     CommitAnimationRuntimeTables(request, stage);
     CommitAnimationTargetBindingRecords(request, stage);
 
@@ -9531,6 +9635,8 @@ RuntimeAssetGraphLoadRequest BuildRuntimeAssetPackagedGraphLoadRequest(
     load_request.scene_transform_capacity = request.scene_transform_capacity;
     load_request.target_identities = request.target_identities;
     load_request.target_identity_capacity = request.target_identity_capacity;
+    load_request.runtime_instance_mappings = request.runtime_instance_mappings;
+    load_request.runtime_instance_mapping_capacity = request.runtime_instance_mapping_capacity;
     load_request.animation_clips = request.animation_clips;
     load_request.animation_clip_capacity = request.animation_clip_capacity;
     load_request.animation_tracks = request.animation_tracks;
