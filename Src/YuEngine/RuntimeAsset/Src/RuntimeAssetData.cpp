@@ -603,6 +603,26 @@ bool ParseAnimationChannel(std::string_view value, AnimationRuntimeChannel *out_
     return false;
 }
 
+bool ParseAnimationInterpolation(
+    std::string_view value,
+    AnimationRuntimeInterpolation *out_interpolation) {
+    if (out_interpolation == nullptr) {
+        return false;
+    }
+
+    if (value.empty() || value == "linear") {
+        *out_interpolation = AnimationRuntimeInterpolation::Linear;
+        return true;
+    }
+
+    if (value == "step") {
+        *out_interpolation = AnimationRuntimeInterpolation::Step;
+        return true;
+    }
+
+    return false;
+}
+
 bool ParseRuntimeAssetAnimationTargetProperty(
     std::string_view value,
     RuntimeAssetAnimationTargetProperty *out_property) {
@@ -5039,8 +5059,8 @@ RuntimeAssetDataStatus ParseAnimationTrackRecord(
         }
     }
 
-    const std::string_view interpolation = FieldValue(value, "interp=");
-    if (!interpolation.empty() && interpolation != "linear") {
+    AnimationRuntimeInterpolation interpolation = AnimationRuntimeInterpolation::Linear;
+    if (!ParseAnimationInterpolation(FieldValue(value, "interp="), &interpolation)) {
         return RuntimeAssetDataStatus::UnsupportedFieldValue;
     }
 
@@ -5048,7 +5068,7 @@ RuntimeAssetDataStatus ParseAnimationTrackRecord(
     track.track_id = track_id;
     track.target = target;
     track.channel = channel;
-    track.interpolation = AnimationRuntimeInterpolation::Linear;
+    track.interpolation = interpolation;
     track.first_keyframe_index = first_key;
     track.keyframe_count = track_key_count;
     track.is_valid = true;

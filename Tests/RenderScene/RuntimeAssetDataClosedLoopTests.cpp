@@ -89,6 +89,7 @@
 namespace {
 using yuengine::animation::AnimationRuntimeClipRecord;
 using yuengine::animation::AnimationRuntimeChannel;
+using yuengine::animation::AnimationRuntimeInterpolation;
 using yuengine::animation::AnimationRuntimeKeyframeRecord;
 using yuengine::animation::AnimationRuntimeSampledValue;
 using yuengine::animation::AnimationRuntimeSampler;
@@ -506,6 +507,12 @@ constexpr const char *TEST_ANIMATION_TARGET_BINDING_UNSUPPORTED_PROPERTY =
     "RuntimeAssetData_AnimationTrackTargetBindingRejectsUnsupportedPropertyWithoutMutation";
 constexpr const char *TEST_ANIMATION_TARGET_BINDING_CAPACITY =
     "RuntimeAssetData_AnimationTrackTargetBindingRejectsCapacityOverflowWithoutMutation";
+constexpr const char *TEST_ANIMATION_INTERPOLATION_STEP_LINEAR =
+    "RuntimeAssetData_AnimationInterpolationSamplesStepAndLinearAtFixedTime";
+constexpr const char *TEST_ANIMATION_INTERPOLATION_UNSUPPORTED =
+    "RuntimeAssetData_AnimationInterpolationRejectsUnsupportedModeWithoutMutation";
+constexpr const char *TEST_ANIMATION_INTERPOLATION_OUTPUT_CAPACITY =
+    "RuntimeAssetData_AnimationInterpolationRejectsSampleOutputCapacityWithoutMutation";
 constexpr const char *TEST_SCENE_ANIMATION_SELECTED_CLIP =
     "RuntimeAssetData_SceneAnimationLoaderSamplesExplicitSelectedClip";
 constexpr const char *TEST_SCENE_ANIMATION_MISSING_SELECTED_CLIP_NO_MUTATION =
@@ -1499,6 +1506,25 @@ std::string BoundedTargetBindingAnimationBytes() {
         "track1=id=2|target_id=1001|property=transform:translation_y|first_key=2|key_count=2|interp=linear\n"
         "key0=0:0\n"
         "key1=1:1\n"
+        "key2=0:1\n"
+        "key3=1:3\n");
+}
+
+std::string BoundedStepLinearAnimationBytes() {
+    return std::string(
+        "YUASSET ANIMATION 1\n"
+        "schema=rav0-source\n"
+        "id=bounded_step_linear\n"
+        "target=scene_entity:101\n"
+        "track=transform:rotation_y\n"
+        "clips=1\n"
+        "tracks=2\n"
+        "keyframes=4\n"
+        "clip0=id=1|duration=1|first_track_index=0|track_count=2|sample_rate=30\n"
+        "track0=id=1|target_id=1001|property=transform:rotation_y|first_key=0|key_count=2|interp=step\n"
+        "track1=id=2|target_id=1001|property=transform:translation_y|first_key=2|key_count=2|interp=linear\n"
+        "key0=0:0.25\n"
+        "key1=1:1.25\n"
         "key2=0:1\n"
         "key3=1:3\n");
 }
@@ -10443,6 +10469,129 @@ int RuntimeAssetDataAnimationTrackTargetBindingRejectsCapacityOverflowWithoutMut
     return 0;
 }
 
+int RuntimeAssetDataAnimationInterpolationSamplesStepAndLinearAtFixedTime() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("BoundedAnimationStepLinear"), &table)) {
+        return Fail("mount setup failed");
+    }
+
+    if (!WriteBoundedFixture(table)) {
+        return Fail("bounded fixture write failed");
+    }
+
+    if (!WriteBytes(table, "Animation/Spin.yuanim", BytesFromString(BoundedStepLinearAnimationBytes()))) {
+        return Fail("bounded step linear animation write failed");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    BoundedLoadedGraph graph{};
+    if (!LoadBoundedRuntimeAssetRecords(table, registry, manager, &graph)) {
+        return Fail("bounded step linear runtime asset records failed");
+    }
+
+    if (graph.scene_output.animation_sample_status != AnimationRuntimeStatus::Success ||
+        graph.scene_output.animation_apply_status != AnimationRuntimeStatus::Success ||
+        graph.scene_output.animation_sampled_value_count != 2U) {
+        return Fail("bounded step linear scene output changed");
+    }
+
+    if (graph.animation_tracks[0U].interpolation != AnimationRuntimeInterpolation::Step ||
+        graph.animation_tracks[1U].interpolation != AnimationRuntimeInterpolation::Linear) {
+        return Fail("bounded animation interpolation modes changed");
+    }
+
+    if (!Approx(graph.scene_entities[2U].transform.rotation_y, 0.25F) ||
+        !Approx(graph.scene_entities[2U].transform.translation_y, 2.0F)) {
+        return Fail("bounded step linear interpolation sampled wrong values");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataAnimationInterpolationRejectsUnsupportedModeWithoutMutation() {
+    const std::string animation =
+        ReplaceFirst(BoundedStepLinearAnimationBytes(), "interp=step", "interp=cubic");
+    if (!ProbeBoundedFailureCase(
+            "BoundedAnimationInterpolationUnsupportedNoMutation",
+            BoundedSceneBytes(),
+            animation,
+            RuntimeAssetDataStatus::UnsupportedFieldValue,
+            3U,
+            3U)) {
+        return Fail("bounded unsupported animation interpolation failure mutated outputs");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataAnimationInterpolationRejectsSampleOutputCapacityWithoutMutation() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("BoundedAnimationInterpolationOutputCapacity"), &table)) {
+        return Fail("mount setup failed");
+    }
+
+    if (!WriteBoundedFixture(table)) {
+        return Fail("bounded fixture write failed");
+    }
+
+    if (!WriteBytes(table, "Animation/Spin.yuanim", BytesFromString(BoundedStepLinearAnimationBytes()))) {
+        return Fail("bounded step linear animation write failed");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    BoundedLoadedGraph graph{};
+    if (!LoadBoundedRuntimeAssetRecords(table, registry, manager, &graph)) {
+        return Fail("bounded step linear runtime asset records failed");
+    }
+
+    RuntimeFrameContext frame_context{};
+    frame_context.frame_index = 2U;
+    frame_context.delta_time_nanoseconds = HALF_SECOND_NANOSECONDS;
+    frame_context.fixed_time_nanoseconds = HALF_SECOND_NANOSECONDS;
+    frame_context.phase = RuntimeFramePhase::UpdateWorld;
+
+    AnimationRuntimeSampleRequest sample_request{};
+    sample_request.clip_id = graph.animation_clips[0U].clip_id;
+    sample_request.clips = std::span<const AnimationRuntimeClipRecord>(
+        graph.animation_clips.data(),
+        graph.scene_output.animation_clip_count);
+    sample_request.tracks = std::span<const AnimationRuntimeTrackRecord>(
+        graph.animation_tracks.data(),
+        graph.scene_output.animation_track_count);
+    sample_request.keyframes = std::span<const AnimationRuntimeKeyframeRecord>(
+        graph.animation_keyframes.data(),
+        graph.scene_output.animation_keyframe_count);
+    sample_request.frame_context = frame_context;
+
+    std::array<AnimationRuntimeSampledValue, 1U> sampled_values{};
+    sampled_values[0U].target = WorldObjectId{9901U};
+    sampled_values[0U].channel = AnimationRuntimeChannel::ScaleZ;
+    sampled_values[0U].value = 42.0F;
+
+    AnimationRuntimeSampleResult sample_result{};
+    AnimationRuntimeSampler sampler;
+    const AnimationRuntimeStatus sample_status =
+        sampler.Sample(
+            sample_request,
+            std::span<AnimationRuntimeSampledValue>(sampled_values.data(), sampled_values.size()),
+            &sample_result);
+    if (sample_status != AnimationRuntimeStatus::OutputCapacityExceeded ||
+        sample_result.status != AnimationRuntimeStatus::OutputCapacityExceeded ||
+        sample_result.sampled_value_count != 0U) {
+        return Fail("bounded interpolation sample capacity status changed");
+    }
+
+    if (sampled_values[0U].target.value != 9901U ||
+        sampled_values[0U].channel != AnimationRuntimeChannel::ScaleZ ||
+        !Approx(sampled_values[0U].value, 42.0F)) {
+        return Fail("bounded interpolation capacity failure mutated caller output");
+    }
+
+    return 0;
+}
+
 int RuntimeAssetDataSceneAnimationLoaderSamplesExplicitSelectedClip() {
     MountTable table;
     if (!CreateMountedTable(TestRoot("BoundedSelectedAnimationClip"), &table)) {
@@ -13489,6 +13638,12 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
      RuntimeAssetDataAnimationTrackTargetBindingRejectsUnsupportedPropertyWithoutMutation},
     {TEST_ANIMATION_TARGET_BINDING_CAPACITY,
      RuntimeAssetDataAnimationTrackTargetBindingRejectsCapacityOverflowWithoutMutation},
+    {TEST_ANIMATION_INTERPOLATION_STEP_LINEAR,
+     RuntimeAssetDataAnimationInterpolationSamplesStepAndLinearAtFixedTime},
+    {TEST_ANIMATION_INTERPOLATION_UNSUPPORTED,
+     RuntimeAssetDataAnimationInterpolationRejectsUnsupportedModeWithoutMutation},
+    {TEST_ANIMATION_INTERPOLATION_OUTPUT_CAPACITY,
+     RuntimeAssetDataAnimationInterpolationRejectsSampleOutputCapacityWithoutMutation},
     {TEST_SCENE_ANIMATION_SELECTED_CLIP,
      RuntimeAssetDataSceneAnimationLoaderSamplesExplicitSelectedClip},
     {TEST_SCENE_ANIMATION_OUTPUT_TABLE_RESAMPLE,
