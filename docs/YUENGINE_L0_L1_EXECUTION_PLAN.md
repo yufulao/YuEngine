@@ -219,6 +219,7 @@ RTSPINE-005 + RTSPINE-008C evidence docs/VQ closure
 + RTSPINE-007 RuntimeAsset runtime instance mapping evidence docs sync
 + RTSPINE-008G RuntimeAsset packaged validation bridge evidence docs sync
 + RTSPINE-008H RuntimeAsset transaction rollback/proof evidence docs sync
++ L0-RES-001 File/VFS loose read/write policy evidence docs sync
 ```
 
 RTSPINE-003 VQ accepted the target identity evidence gate by workspace task
@@ -234,6 +235,12 @@ mapping remains blocked until its own evidence gate is released. RTSPINE-008H
 RuntimeAsset transaction rollback/proof implementation and focused QA are PASS
 at `1120c3659bf0375f8eb9ef87e042f24c6e5d3ca1`; broader Resource/File/VFS
 follow-through remains blocked until its own evidence gate is released.
+L0-RES-001 File/VFS loose read/write policy closure implementation and focused
+QA are PASS at `43cfc18fec4c4c5a5135e4ed15da64c8308247ff`. This closes
+fixture-bound loose read/write policy only; Package load-plan/staging,
+Resource cache/decode, Resource residency/upload, Package/Resource public API
+expansion, RuntimeAsset/CMake cross-proof, RenderScene/RHI, WorldObject/editor/
+importer, unrelated animation mapping, and broad/full CTest remain unopened.
 
 
 ## 2. Current Progress Assessment
@@ -925,6 +932,10 @@ Tasks:
    - path normalization
    - mount ordering
    - small fixture bounds
+   - L0-RES-001 PASS at
+     `43cfc18fec4c4c5a5135e4ed15da64c8308247ff`: oversized loose read returns
+     `ReadTooLarge`, source/cooked loose mounts write and read back exact bytes,
+     and File snapshots record ownership/status counters.
 2. Package:
    - manifest/load-plan values
    - staging queue
@@ -1887,13 +1898,19 @@ backlog or from phase-sized batches, not only from the first few rows.
 
 | ID | Work item | Depends on | Acceptance |
 | --- | --- | --- | --- |
-| L0-RES-001 | Close File/VFS loose read/write policy | current File first slices | path normalization, mount priority, fixture bounds, and write/read statuses are explicit |
-| L0-RES-002 | Close Package load-plan/staging baseline | L0-RES-001 | manifest/load-plan and staging records remain value contracts, not old-package compatibility |
+| L0-RES-001 | Close File/VFS loose read/write policy | current File first slices | PASS at `origin/main@43cfc18fec4c4c5a5135e4ed15da64c8308247ff`: path normalization, mount priority, fixture bounds, loose read/write statuses, source/cooked mount round-trips, oversized loose read `ReadTooLarge`, and snapshot ownership/status counters are explicit; focused QA task `5020f3d6-a492-4138-b81f-c5e80cdd92e2` reports `YuFileTests` build PASS, affected rows `2/2` PASS, `^File_` suite `23/23` PASS, diff-check/hygiene PASS, and no broad/full CTest |
+| L0-RES-002 | Close Package load-plan/staging baseline | L0-RES-001 | manifest/load-plan and staging records stay value contracts, not old-package compatibility |
 | L0-RES-003 | Close Resource cache/decode chain | current Resource first slices | cache payload, decode plan, decode result, decoded payload ownership, and release behavior pass |
 | L0-RES-004 | Close Resource residency/upload chain | L0-RES-003, L0-RHI-003 | upload queue, upload completion commit, residency budget, and stale handle failures pass |
 | L0-RES-005 | Close texture bridge to RHI | L0-RES-004, L0-RHI-003 | decoded texture payload maps to upload request without Resource owning RHI lifecycle |
 | L0-RES-006 | Close PCM bridge to Audio | L0-RES-003, L0-AUD-002 | decoded audio metadata maps to PCM request without Audio parsing Resource payloads |
 | L0-RES-007 | Add sample texture/mesh asset path | L0-RES-001, L0-RES-003, L0-RES-005 | sample asset reaches RenderCore/RHI through YuEngine modules |
+
+L0-RES-001 evidence is intentionally limited to `Tests/File/FileTests.cpp`.
+It does not open L0-RES-002 Package load-plan/staging, L0-RES-003 Resource
+cache/decode chain, Resource residency/upload, Package/Resource public API
+expansion, RuntimeAsset/CMake cross-proof, RenderScene/RHI, WorldObject/editor/
+importer, unrelated animation mapping, or broad/full CTest.
 
 ### 12.6 L0 Audio Backlog
 

@@ -13,6 +13,15 @@ evidence-boundary review, performance/cost review, public vocabulary review,
 and implementation-review baseline for task #21. Code/semantic review closure
 remains tracked separately in the Phase 1 queue.
 
+L0-RES-001 evidence closure is PASS at
+`origin/main@43cfc18fec4c4c5a5135e4ed15da64c8308247ff` with focused QA task
+`5020f3d6-a492-4138-b81f-c5e80cdd92e2`. The closure is test-only in
+`Tests/File/FileTests.cpp`: oversized loose read returns `ReadTooLarge`,
+source/cooked loose mounts write and read exact bytes, and File snapshots record
+read/write byte counts plus last status. QA reports `YuFileTests` build PASS,
+affected File rows `2/2` PASS, `^File_` suite `23/23` PASS, diff-check/hygiene
+PASS, and no broad/full CTest.
+
 ## Public Vocabulary Closure
 
 The P1 first-slice public File/VFS vocabulary is frozen for upper-gate
@@ -204,6 +213,13 @@ Fast gate tests required before the slice can be considered complete:
 - `File_ReadSnapshot_RecordsCountsAndBytes`
 - `File_DiagnosticsDisabled_DoesNotChangeBehavior`
 
+L0-RES-001 closure also records:
+
+- `File_LooseFixtureWrite_RejectsForgedPathAndOversizedBuffer`, including
+  oversized loose read `ReadTooLarge`;
+- `File_MountTableWrite_RecordsSnapshotAndMissingMount`, including source and
+  cooked loose mount write/read round-trips and snapshot ownership/status.
+
 Expected command family:
 
 ```text
@@ -240,6 +256,11 @@ It may not create placeholder directories or targets for resource, script, RHI, 
 - No file watcher.
 - No compression/decompression.
 - No import/export tool.
+- No L0-RES-002 Package load-plan/staging closure.
+- No L0-RES-003 Resource cache/decode closure.
+- No Package/Resource public API expansion.
+- No RuntimeAsset/CMake cross-proof, RenderScene/RHI expansion, WorldObject/
+  editor/importer route, unrelated animation mapping, or broad/full CTest claim.
 - No report/oracle/capture behavior.
 
 ## Evidence Inputs

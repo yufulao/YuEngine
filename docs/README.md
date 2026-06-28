@@ -144,6 +144,12 @@ At the latest handoff:
   `19/19` PASS, committed scope limited to `CMakeLists.txt`,
   `RuntimeAssetData.h/.cpp`, and `RuntimeAssetDataClosedLoopTests.cpp`,
   `git diff --check` PASS, and no broad/full CTest;
+- L0-RES-001 File/VFS loose read/write policy closure is PASS at
+  `43cfc18fec4c4c5a5135e4ed15da64c8308247ff`; focused QA task
+  `5020f3d6-a492-4138-b81f-c5e80cdd92e2` reports test-only
+  `Tests/File/FileTests.cpp` scope, `YuFileTests` build PASS, affected File rows
+  `2/2` PASS, `^File_` suite `23/23` PASS, `git diff --check` PASS,
+  hygiene PASS, and no broad/full CTest;
 - WorldObject-facing runtime instance mapping and broader Resource/File/VFS
   follow-through remain blocked until their own gates are released.
 

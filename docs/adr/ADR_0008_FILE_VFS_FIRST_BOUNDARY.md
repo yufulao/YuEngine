@@ -201,6 +201,13 @@ P1-GATE-005 may implement:
 - tests under `tests/file`;
 - test fixture files under `tests/fixtures/file`.
 
+L0-RES-001 evidence closure is PASS at
+`origin/main@43cfc18fec4c4c5a5135e4ed15da64c8308247ff` with focused QA task
+`5020f3d6-a492-4138-b81f-c5e80cdd92e2`. The closure remains inside the ADR-0008
+boundary: `Tests/File/FileTests.cpp` proves oversized loose read `ReadTooLarge`,
+source/cooked loose mount write/read round-trips, and File snapshot read/write
+ownership/status without production File/VFS API expansion.
+
 P1-GATE-005 must not implement:
 
 - package parser for `.pak`, `.dat`, or any original resource format;
@@ -213,6 +220,12 @@ P1-GATE-005 must not implement:
 - editor import/export;
 - report/oracle/capture behavior;
 - original-game adapter behavior.
+- L0-RES-002 Package load-plan/staging closure.
+- L0-RES-003 Resource cache/decode closure.
+- Resource residency/upload closure.
+- Package/Resource public API expansion, RuntimeAsset/CMake cross-proof,
+  RenderScene/RHI production expansion, WorldObject/editor/importer routing, or
+  unrelated animation mapping.
 
 ## Non-Goals
 
