@@ -507,12 +507,16 @@ constexpr const char *TEST_ANIMATION_TARGET_BINDING_UNSUPPORTED_PROPERTY =
     "RuntimeAssetData_AnimationTrackTargetBindingRejectsUnsupportedPropertyWithoutMutation";
 constexpr const char *TEST_ANIMATION_TARGET_BINDING_CAPACITY =
     "RuntimeAssetData_AnimationTrackTargetBindingRejectsCapacityOverflowWithoutMutation";
+constexpr const char *TEST_ANIMATION_TARGET_BINDING_TARGET_FAMILY =
+    "RuntimeAssetData_AnimationTrackTargetBindingRejectsTargetFamilyMismatchWithoutMutation";
 constexpr const char *TEST_ANIMATION_INTERPOLATION_STEP_LINEAR =
     "RuntimeAssetData_AnimationInterpolationSamplesStepAndLinearAtFixedTime";
 constexpr const char *TEST_ANIMATION_INTERPOLATION_UNSUPPORTED =
     "RuntimeAssetData_AnimationInterpolationRejectsUnsupportedModeWithoutMutation";
 constexpr const char *TEST_ANIMATION_INTERPOLATION_OUTPUT_CAPACITY =
     "RuntimeAssetData_AnimationInterpolationRejectsSampleOutputCapacityWithoutMutation";
+constexpr const char *TEST_ANIMATION_FAILURE_MODEL_SAMPLE_STATUS =
+    "RuntimeAssetData_AnimationFailureModelReportsSampleFailuresWithoutMutation";
 constexpr const char *TEST_SCENE_ANIMATION_SELECTED_CLIP =
     "RuntimeAssetData_SceneAnimationLoaderSamplesExplicitSelectedClip";
 constexpr const char *TEST_SCENE_ANIMATION_MISSING_SELECTED_CLIP_NO_MUTATION =
@@ -4258,7 +4262,10 @@ bool ProbeBoundedSceneLoaderFailureWithoutOutputMutation(
     std::uint32_t animation_keyframe_capacity = 0U,
     std::uint32_t selected_animation_clip_id = 0U,
     std::uint32_t target_identity_capacity = 0U,
-    std::uint32_t animation_target_binding_capacity = 0U) {
+    std::uint32_t animation_target_binding_capacity = 0U,
+    RuntimeAssetGraphLoadResult *out_load_result = nullptr,
+    std::uint64_t fixed_time_nanoseconds = HALF_SECOND_NANOSECONDS,
+    std::uint64_t clip_start_time_nanoseconds = 0U) {
     const std::array<FixtureFile, FIXTURE_FILE_COUNT> files = CanonicalFiles();
     std::array<RuntimeAssetFileDesc, FIXTURE_FILE_COUNT> file_descs{};
     for (std::size_t index = 0U; index < files.size(); ++index) {
@@ -4346,11 +4353,16 @@ bool ProbeBoundedSceneLoaderFailureWithoutOutputMutation(
     load_request.scene_output = &scene_output;
     load_request.animation_frame_context.frame_index = 1U;
     load_request.animation_frame_context.delta_time_nanoseconds = HALF_SECOND_NANOSECONDS;
-    load_request.animation_frame_context.fixed_time_nanoseconds = HALF_SECOND_NANOSECONDS;
+    load_request.animation_frame_context.fixed_time_nanoseconds = fixed_time_nanoseconds;
     load_request.selected_animation_clip_id = selected_animation_clip_id;
+    load_request.animation_clip_start_time_nanoseconds = clip_start_time_nanoseconds;
 
     RuntimeAssetGraphLoadResult load_result{};
     const RuntimeAssetDataStatus load_status = LoadRuntimeAssetDataGraph(load_request, &load_result);
+    if (out_load_result != nullptr) {
+        *out_load_result = load_result;
+    }
+
     if (load_status != expected_status || load_result.status != expected_status) {
         return FailStep("bounded scene loader failure did not return expected status");
     }
@@ -10469,6 +10481,34 @@ int RuntimeAssetDataAnimationTrackTargetBindingRejectsCapacityOverflowWithoutMut
     return 0;
 }
 
+int RuntimeAssetDataAnimationTrackTargetBindingRejectsTargetFamilyMismatchWithoutMutation() {
+    const std::string model_animation =
+        ReplaceFirst(BoundedTargetBindingAnimationBytes(), "target_id=1001", "target_id=2001");
+    if (!ProbeBoundedFailureCase(
+            "BoundedAnimationTargetBindingModelFamilyNoMutation",
+            BoundedSceneBytes(),
+            model_animation,
+            RuntimeAssetDataStatus::TypeMismatch,
+            3U,
+            3U)) {
+        return Fail("bounded model node animation target binding failure mutated outputs");
+    }
+
+    const std::string skeleton_animation =
+        ReplaceFirst(BoundedTargetBindingAnimationBytes(), "target_id=1001", "target_id=3001");
+    if (!ProbeBoundedFailureCase(
+            "BoundedAnimationTargetBindingSkeletonFamilyNoMutation",
+            BoundedSceneBytes(),
+            skeleton_animation,
+            RuntimeAssetDataStatus::TypeMismatch,
+            3U,
+            3U)) {
+        return Fail("bounded skeleton joint animation target binding failure mutated outputs");
+    }
+
+    return 0;
+}
+
 int RuntimeAssetDataAnimationInterpolationSamplesStepAndLinearAtFixedTime() {
     MountTable table;
     if (!CreateMountedTable(TestRoot("BoundedAnimationStepLinear"), &table)) {
@@ -10587,6 +10627,83 @@ int RuntimeAssetDataAnimationInterpolationRejectsSampleOutputCapacityWithoutMuta
         sampled_values[0U].channel != AnimationRuntimeChannel::ScaleZ ||
         !Approx(sampled_values[0U].value, 42.0F)) {
         return Fail("bounded interpolation capacity failure mutated caller output");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataAnimationFailureModelReportsSampleFailuresWithoutMutation() {
+    MountTable selected_clip_table;
+    if (!CreateMountedTable(TestRoot("BoundedAnimationFailureMissingClip"), &selected_clip_table)) {
+        return Fail("missing clip mount setup failed");
+    }
+
+    if (!WriteBoundedFixture(selected_clip_table)) {
+        return Fail("missing clip bounded fixture write failed");
+    }
+
+    const std::vector<std::uint8_t> animation_bytes = BytesFromString(BoundedMultiClipAnimationBytes());
+    if (!WriteBytes(selected_clip_table, "Animation/Spin.yuanim", animation_bytes)) {
+        return Fail("missing clip animation override failed");
+    }
+
+    RuntimeAssetGraphLoadResult missing_clip_result{};
+    if (!ProbeBoundedSceneLoaderFailureWithoutOutputMutation(
+            selected_clip_table,
+            RuntimeAssetDataStatus::InvalidDependency,
+            4U,
+            2U,
+            4U,
+            2U,
+            3U,
+            6U,
+            99U,
+            0U,
+            0U,
+            &missing_clip_result)) {
+        return Fail("missing selected clip failure mutated outputs");
+    }
+
+    if (missing_clip_result.selected_animation_clip_id != 99U ||
+        missing_clip_result.animation_sample_status != AnimationRuntimeStatus::MissingClip ||
+        missing_clip_result.animation_apply_status != AnimationRuntimeStatus::MissingSample ||
+        missing_clip_result.animation_sampled_value_count != 0U) {
+        return Fail("missing selected clip failure diagnostics changed");
+    }
+
+    MountTable time_table;
+    if (!CreateMountedTable(TestRoot("BoundedAnimationFailureTimeOutOfRange"), &time_table)) {
+        return Fail("time failure mount setup failed");
+    }
+
+    if (!WriteBoundedFixture(time_table)) {
+        return Fail("time failure bounded fixture write failed");
+    }
+
+    constexpr std::uint64_t OUT_OF_RANGE_TIME_NANOSECONDS = 1500000000ULL;
+    RuntimeAssetGraphLoadResult time_result{};
+    if (!ProbeBoundedSceneLoaderFailureWithoutOutputMutation(
+            time_table,
+            RuntimeAssetDataStatus::InvalidDependency,
+            4U,
+            2U,
+            4U,
+            2U,
+            3U,
+            6U,
+            0U,
+            0U,
+            0U,
+            &time_result,
+            OUT_OF_RANGE_TIME_NANOSECONDS)) {
+        return Fail("time out of range sample failure mutated outputs");
+    }
+
+    if (time_result.selected_animation_clip_id != 1U ||
+        time_result.animation_sample_status != AnimationRuntimeStatus::TimeOutOfRange ||
+        time_result.animation_apply_status != AnimationRuntimeStatus::MissingSample ||
+        time_result.animation_sampled_value_count != 0U) {
+        return Fail("time out of range sample failure diagnostics changed");
     }
 
     return 0;
@@ -13638,12 +13755,16 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
      RuntimeAssetDataAnimationTrackTargetBindingRejectsUnsupportedPropertyWithoutMutation},
     {TEST_ANIMATION_TARGET_BINDING_CAPACITY,
      RuntimeAssetDataAnimationTrackTargetBindingRejectsCapacityOverflowWithoutMutation},
+    {TEST_ANIMATION_TARGET_BINDING_TARGET_FAMILY,
+     RuntimeAssetDataAnimationTrackTargetBindingRejectsTargetFamilyMismatchWithoutMutation},
     {TEST_ANIMATION_INTERPOLATION_STEP_LINEAR,
      RuntimeAssetDataAnimationInterpolationSamplesStepAndLinearAtFixedTime},
     {TEST_ANIMATION_INTERPOLATION_UNSUPPORTED,
      RuntimeAssetDataAnimationInterpolationRejectsUnsupportedModeWithoutMutation},
     {TEST_ANIMATION_INTERPOLATION_OUTPUT_CAPACITY,
      RuntimeAssetDataAnimationInterpolationRejectsSampleOutputCapacityWithoutMutation},
+    {TEST_ANIMATION_FAILURE_MODEL_SAMPLE_STATUS,
+     RuntimeAssetDataAnimationFailureModelReportsSampleFailuresWithoutMutation},
     {TEST_SCENE_ANIMATION_SELECTED_CLIP,
      RuntimeAssetDataSceneAnimationLoaderSamplesExplicitSelectedClip},
     {TEST_SCENE_ANIMATION_OUTPUT_TABLE_RESAMPLE,

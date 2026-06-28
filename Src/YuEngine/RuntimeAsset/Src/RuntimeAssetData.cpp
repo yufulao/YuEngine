@@ -5303,6 +5303,37 @@ std::uint32_t ResolveAnimationSampleClipId(
     return clips[0U].clip_id;
 }
 
+RuntimeAssetDataStatus MapAnimationRuntimeStatusToRuntimeAssetDataStatus(AnimationRuntimeStatus status) {
+    switch (status) {
+        case AnimationRuntimeStatus::Success:
+            return RuntimeAssetDataStatus::Success;
+        case AnimationRuntimeStatus::NullPointer:
+            return RuntimeAssetDataStatus::InvalidArgument;
+        case AnimationRuntimeStatus::UnsupportedInterpolation:
+        case AnimationRuntimeStatus::UnsupportedChannel:
+            return RuntimeAssetDataStatus::UnsupportedFieldValue;
+        case AnimationRuntimeStatus::OutputCapacityExceeded:
+        case AnimationRuntimeStatus::LayerCapacityExceeded:
+            return RuntimeAssetDataStatus::CapacityExceeded;
+        case AnimationRuntimeStatus::MissingClip:
+        case AnimationRuntimeStatus::InvalidClip:
+        case AnimationRuntimeStatus::MissingTrack:
+        case AnimationRuntimeStatus::InvalidTrack:
+        case AnimationRuntimeStatus::MissingKeyframe:
+        case AnimationRuntimeStatus::InvalidKeyframe:
+        case AnimationRuntimeStatus::InvalidTime:
+        case AnimationRuntimeStatus::TimeOutOfRange:
+        case AnimationRuntimeStatus::MissingSample:
+        case AnimationRuntimeStatus::InvalidTarget:
+        case AnimationRuntimeStatus::TargetNotFound:
+        case AnimationRuntimeStatus::TransformApplyFailed:
+        default:
+            break;
+    }
+
+    return RuntimeAssetDataStatus::InvalidDependency;
+}
+
 RuntimeAssetDataStatus SampleAndApplyAnimationStage(
     const RuntimeAssetGraphLoadRequest &request,
     RuntimeAssetSceneLoaderStage *stage,
@@ -5339,7 +5370,7 @@ RuntimeAssetDataStatus SampleAndApplyAnimationStage(
         &sample_result);
     stage->animation_sampled_value_count = static_cast<std::uint32_t>(sample_result.sampled_value_count);
     if (stage->animation_sample_status != AnimationRuntimeStatus::Success) {
-        return RuntimeAssetDataStatus::InvalidDependency;
+        return MapAnimationRuntimeStatusToRuntimeAssetDataStatus(stage->animation_sample_status);
     }
 
     AnimationRuntimeTransformApplyResult apply_result{};
@@ -5349,7 +5380,7 @@ RuntimeAssetDataStatus SampleAndApplyAnimationStage(
             sample_result.sampled_value_count)},
         &apply_result);
     if (stage->animation_apply_status != AnimationRuntimeStatus::Success) {
-        return RuntimeAssetDataStatus::InvalidDependency;
+        return MapAnimationRuntimeStatusToRuntimeAssetDataStatus(stage->animation_apply_status);
     }
 
     return RuntimeAssetDataStatus::Success;
@@ -5491,6 +5522,7 @@ RuntimeAssetDataStatus BuildSceneLoaderStage(
             stage.animation_keyframes.data(),
             stage.animation_keyframe_count));
     if (status != RuntimeAssetDataStatus::Success) {
+        *out_stage = stage;
         return status;
     }
 
@@ -5610,6 +5642,19 @@ void SetTransactionFailure(
     transaction->result.transaction_result.phase = phase;
     transaction->result.transaction_result.first_failed_record_index = first_failed_record_index;
     transaction->result.transaction_result.first_failed_dependency_index = first_failed_dependency_index;
+}
+
+void RecordSceneLoaderAnimationDiagnostics(
+    const RuntimeAssetSceneLoaderStage &stage,
+    RuntimeAssetGraphLoadResult *result) {
+    if (result == nullptr) {
+        return;
+    }
+
+    result->selected_animation_clip_id = stage.selected_animation_clip_id;
+    result->animation_sampled_value_count = stage.animation_sampled_value_count;
+    result->animation_sample_status = stage.animation_sample_status;
+    result->animation_apply_status = stage.animation_apply_status;
 }
 
 void SetTransactionPhase(
@@ -5899,6 +5944,7 @@ RuntimeAssetDataStatus BuildRuntimeAssetGraphTransactionPlan(
             transaction->scene_text,
             transaction->animation_text,
             &transaction->scene_stage);
+        RecordSceneLoaderAnimationDiagnostics(transaction->scene_stage, &transaction->result);
         if (status != RuntimeAssetDataStatus::Success) {
             SetTransactionFailure(transaction, status, RuntimeAssetLoadTransactionPhase::StageSceneOutput);
             return status;

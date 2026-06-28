@@ -593,6 +593,12 @@ struct RuntimeAssetGraphLoadResult final {
     std::uint32_t resource_dependency_count = 0U;
     std::uint32_t asset_dependency_count = 0U;
     std::size_t scene_dependency_count = 0U;
+    std::uint32_t selected_animation_clip_id = 0U;
+    std::uint32_t animation_sampled_value_count = 0U;
+    yuengine::animation::AnimationRuntimeStatus animation_sample_status =
+        yuengine::animation::AnimationRuntimeStatus::MissingClip;
+    yuengine::animation::AnimationRuntimeStatus animation_apply_status =
+        yuengine::animation::AnimationRuntimeStatus::MissingSample;
     bool scene_registered = false;
     bool scene_references_runtime_asset_families = false;
 };
