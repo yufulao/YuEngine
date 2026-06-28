@@ -592,6 +592,16 @@ constexpr const char *TEST_PRODUCT_RUN_COMMAND =
     "RuntimeAssetData_ProductRunCommandConsumesPackageArtifactPath";
 constexpr const char *TEST_PRODUCT_RUN_COMMAND_MISSING_ARTIFACT =
     "RuntimeAssetData_ProductRunCommandReportsMissingPackageArtifactPath";
+constexpr const char *TEST_PACKAGED_VALIDATION_BRIDGE =
+    "RuntimeAssetData_PackagedValidationBridgeConsumesArchiveByteRangesAndHashes";
+constexpr const char *TEST_PACKAGED_VALIDATION_ARCHIVE_COUNT =
+    "RuntimeAssetData_PackagedValidationBridgeRejectsArchiveByteCountMismatchWithoutMutation";
+constexpr const char *TEST_PACKAGED_VALIDATION_PAYLOAD_HASH =
+    "RuntimeAssetData_PackagedValidationBridgeRejectsPayloadHashMismatchWithoutMutation";
+constexpr const char *TEST_PACKAGED_VALIDATION_DUPLICATE =
+    "RuntimeAssetData_PackagedValidationBridgeRejectsDuplicateLoadPlanRecordWithoutMutation";
+constexpr const char *TEST_PRODUCT_RUN_PACKAGED_VALIDATION_FAILURE =
+    "RuntimeAssetData_ProductRunCommandReportsPackagedValidationFailureWithoutGraphMutation";
 constexpr const char *TEST_RUNTIME_DEPENDENCIES =
     "RuntimeAssetData_LoadRegistersResourceAndAssetDependencyEdges";
 constexpr const char *TEST_LOAD_RENDER =
@@ -6400,6 +6410,323 @@ int RuntimeAssetDataProductRunCommandReportsMissingPackageArtifactPath() {
             result.package_load_plan_resolved ? 1U : 0U,
             result.packaged_run_executed ? 1U : 0U);
         return Fail("missing package artifact did not stop product command at File/VFS");
+    }
+
+    return 0;
+}
+
+bool SetupPackagedValidationContext(
+    const char *fixture_name,
+    CookedVisualProofContext *context,
+    PackageCookRunSmokeLedger *ledger) {
+    if (context == nullptr || ledger == nullptr) {
+        return FailStep("packaged validation setup received null output");
+    }
+
+    if (!ExecuteGeneratedFixtureCommand(fixture_name, &context->fixture)) {
+        return FailStep("packaged validation fixture setup failed");
+    }
+
+    if (!BuildRuntimeAssetCookedPackagePlan(*context, ledger)) {
+        return FailStep("packaged validation package plan setup failed");
+    }
+
+    return true;
+}
+
+void SeedPackagedValidationFailureSentinels(CookedVisualProofContext &context) {
+    for (std::size_t index = 0U; index < context.loaded_files.size(); ++index) {
+        context.loaded_files[index].kind = RuntimeAssetFileKind::Camera;
+        context.loaded_files[index].stable_id = 41000U + static_cast<std::uint64_t>(index);
+        context.loaded_files[index].payload_hash = 42000U + static_cast<std::uint64_t>(index);
+    }
+
+    SeedSceneLoaderFailureSentinels(
+        context.scene_refs,
+        context.scene_cameras,
+        context.scene_entities,
+        context.scene_transforms,
+        &context.scene_output);
+    SeedAnimationTableFailureSentinels(
+        std::span<AnimationRuntimeClipRecord>(context.animation_clips.data(), context.animation_clips.size()),
+        std::span<AnimationRuntimeTrackRecord>(context.animation_tracks.data(), context.animation_tracks.size()),
+        std::span<AnimationRuntimeKeyframeRecord>(context.animation_keyframes.data(), context.animation_keyframes.size()));
+    SeedGenericRenderSceneSubmissionSentinels(
+        std::span<RenderSceneRuntimeFrameEntityRequest>(
+            context.generic_frame_entities.data(),
+            context.generic_frame_entities.size()),
+        std::span<RenderSceneRuntimeFrameDrawRecord>(
+            context.generic_draws.data(),
+            context.generic_draws.size()));
+    SeedGenericRenderSceneSubmissionMaterialSentinels(
+        std::span<RenderSceneRuntimeMaterialRecord>(
+            context.generic_frame_materials.data(),
+            context.generic_frame_materials.size()));
+}
+
+bool PackagedValidationFailureSentinelsUnchanged(const CookedVisualProofContext &context) {
+    for (std::size_t index = 0U; index < context.loaded_files.size(); ++index) {
+        if (context.loaded_files[index].kind != RuntimeAssetFileKind::Camera ||
+            context.loaded_files[index].stable_id != 41000U + index ||
+            context.loaded_files[index].payload_hash != 42000U + index) {
+            return FailStep("packaged validation failure mutated loaded files");
+        }
+    }
+
+    if (!SceneLoaderFailureSentinelsUnchanged(
+            context.scene_refs,
+            context.scene_cameras,
+            context.scene_entities,
+            context.scene_transforms,
+            context.scene_output)) {
+        return false;
+    }
+
+    if (!AnimationTableFailureSentinelsUnchanged(
+            std::span<const AnimationRuntimeClipRecord>(
+                context.animation_clips.data(),
+                context.animation_clips.size()),
+            std::span<const AnimationRuntimeTrackRecord>(
+                context.animation_tracks.data(),
+                context.animation_tracks.size()),
+            std::span<const AnimationRuntimeKeyframeRecord>(
+                context.animation_keyframes.data(),
+                context.animation_keyframes.size()))) {
+        return false;
+    }
+
+    if (!GenericRenderSceneSubmissionSentinelsUnchanged(
+            std::span<const RenderSceneRuntimeFrameEntityRequest>(
+                context.generic_frame_entities.data(),
+                context.generic_frame_entities.size()),
+            std::span<const RenderSceneRuntimeFrameDrawRecord>(
+                context.generic_draws.data(),
+                context.generic_draws.size()))) {
+        return false;
+    }
+
+    return GenericRenderSceneSubmissionMaterialSentinelsUnchanged(
+        std::span<const RenderSceneRuntimeMaterialRecord>(
+            context.generic_frame_materials.data(),
+            context.generic_frame_materials.size()));
+}
+
+bool ExpectPackagedValidationFailure(
+    CookedVisualProofContext &context,
+    PackageCookRunSmokeLedger &ledger,
+    RuntimeAssetDataStatus expected_status,
+    PackageStatus expected_package_status,
+    RuntimeAssetPackagedRunResult *out_run) {
+    SeedPackagedValidationFailureSentinels(context);
+
+    RuntimeAssetPackagedRunRequest request = BuildPackagedRunRequest(context, ledger);
+    RuntimeAssetPackagedRunResult run{};
+    const RuntimeAssetDataStatus status = RunRuntimeAssetPackagedEntryPoint(request, &run);
+    if (status != expected_status ||
+        run.status != expected_status ||
+        run.blocked_layer != RuntimeAssetPackagedRunBlockedLayer::PackageLoadPlan ||
+        run.package_status != expected_package_status ||
+        run.packaged_validation.status != expected_status ||
+        run.packaged_validation.package_status != expected_package_status) {
+        std::fprintf(
+            stderr,
+            "status=%s run=%s layer=%s package=%u validation=%s validationPackage=%u\n",
+            StatusName(status),
+            StatusName(run.status),
+            PackagedRunBlockedLayerName(run.blocked_layer),
+            static_cast<unsigned>(run.package_status),
+            StatusName(run.packaged_validation.status),
+            static_cast<unsigned>(run.packaged_validation.package_status));
+        return FailStep("packaged validation failure status mismatch");
+    }
+
+    if (run.package_load_plan_consumed ||
+        run.runtime_asset_validation_load_success ||
+        run.resource_asset_registration_success ||
+        run.shader_program_decoded ||
+        run.render_scene_render_core_rhi_success ||
+        run.generic_render_scene_submission_success ||
+        run.runtime_app_frame_loop_success ||
+        run.packaged_runtime_entrypoint_available ||
+        run.graph_load_result.transaction_result.mutated_state) {
+        return FailStep("packaged validation failure advanced past preflight");
+    }
+
+    if (!PackagedValidationFailureSentinelsUnchanged(context)) {
+        return false;
+    }
+
+    if (out_run != nullptr) {
+        *out_run = run;
+    }
+
+    return true;
+}
+
+int RuntimeAssetDataPackagedValidationBridgeConsumesArchiveByteRangesAndHashes() {
+    const PackageCookRunSmokeLedger ledger = ExecutePackagedPackageCookRunSmoke();
+    const RuntimeAssetPackagedRunResult &run = ledger.packaged_run;
+    const std::uint32_t expected_record_count =
+        RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT + 1U;
+    if (run.status != RuntimeAssetDataStatus::Success ||
+        run.blocked_layer != RuntimeAssetPackagedRunBlockedLayer::None ||
+        run.packaged_validation.status != RuntimeAssetDataStatus::Success ||
+        run.packaged_validation.package_status != PackageStatus::Success ||
+        run.packaged_validation.record_count != expected_record_count ||
+        run.packaged_validation.validated_record_count != expected_record_count ||
+        run.packaged_validation.archive_byte_count != ledger.package_load_plan.archive_byte_count ||
+        run.packaged_validation.validated_archive_byte_count != ledger.package_load_plan.archive_byte_count ||
+        !run.packaged_validation.dependency_records_validated ||
+        !run.packaged_validation.archive_ranges_validated ||
+        !run.packaged_validation.payload_hashes_validated ||
+        !run.packaged_validation.runtime_asset_payloads_validated ||
+        !run.packaged_validation.no_graph_mutation_required) {
+        std::fprintf(
+            stderr,
+            "status=%s layer=%s validation=%s records=%u/%u bytes=%llu/%llu flags=%u%u%u%u\n",
+            StatusName(run.status),
+            PackagedRunBlockedLayerName(run.blocked_layer),
+            StatusName(run.packaged_validation.status),
+            run.packaged_validation.validated_record_count,
+            run.packaged_validation.record_count,
+            static_cast<unsigned long long>(run.packaged_validation.validated_archive_byte_count),
+            static_cast<unsigned long long>(run.packaged_validation.archive_byte_count),
+            run.packaged_validation.dependency_records_validated ? 1U : 0U,
+            run.packaged_validation.archive_ranges_validated ? 1U : 0U,
+            run.packaged_validation.payload_hashes_validated ? 1U : 0U,
+            run.packaged_validation.runtime_asset_payloads_validated ? 1U : 0U);
+        return Fail("packaged validation bridge did not consume pressure ledger");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataPackagedValidationBridgeRejectsArchiveByteCountMismatchWithoutMutation() {
+    PackageCookRunSmokeLedger ledger{};
+    CookedVisualProofContext context{};
+    if (!SetupPackagedValidationContext("PackagedValidationArchiveCount", &context, &ledger)) {
+        return Fail("packaged validation archive count setup failed");
+    }
+
+    ledger.package_load_plan.archive_byte_count += 1ULL;
+    RuntimeAssetPackagedRunResult run{};
+    if (!ExpectPackagedValidationFailure(
+            context,
+            ledger,
+            RuntimeAssetDataStatus::BudgetExceeded,
+            PackageStatus::LoadPlanByteBudgetExceeded,
+            &run)) {
+        return Fail("packaged validation archive byte count failure did not stay preflight");
+    }
+
+    if (run.packaged_validation.validated_record_count != ledger.package_load_plan.record_count ||
+        run.packaged_validation.validated_archive_byte_count + 1ULL !=
+            ledger.package_load_plan.archive_byte_count) {
+        return Fail("packaged validation archive byte count ledger mismatch");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataPackagedValidationBridgeRejectsPayloadHashMismatchWithoutMutation() {
+    PackageCookRunSmokeLedger ledger{};
+    CookedVisualProofContext context{};
+    if (!SetupPackagedValidationContext("PackagedValidationPayloadHash", &context, &ledger)) {
+        return Fail("packaged validation payload hash setup failed");
+    }
+
+    const std::uint32_t scene_record_index = ledger.package_load_plan.record_count - 1U;
+    ledger.package_load_plan.records[scene_record_index].payload_hash ^= 1ULL;
+    RuntimeAssetPackagedRunResult run{};
+    if (!ExpectPackagedValidationFailure(
+            context,
+            ledger,
+            RuntimeAssetDataStatus::HashMismatch,
+            PackageStatus::ArtifactHashMismatch,
+            &run)) {
+        return Fail("packaged validation payload hash failure did not stay preflight");
+    }
+
+    if (run.packaged_validation.first_failed_record_index != scene_record_index ||
+        run.packaged_validation.validated_record_count != 0U ||
+        run.packaged_validation.validated_archive_byte_count != 0ULL) {
+        return Fail("packaged validation payload hash failure advanced record ledger");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataPackagedValidationBridgeRejectsDuplicateLoadPlanRecordWithoutMutation() {
+    PackageCookRunSmokeLedger ledger{};
+    CookedVisualProofContext context{};
+    if (!SetupPackagedValidationContext("PackagedValidationDuplicate", &context, &ledger)) {
+        return Fail("packaged validation duplicate setup failed");
+    }
+
+    ledger.package_load_plan.records[1U] = ledger.package_load_plan.records[0U];
+    RuntimeAssetPackagedRunResult run{};
+    if (!ExpectPackagedValidationFailure(
+            context,
+            ledger,
+            RuntimeAssetDataStatus::DuplicateDependency,
+            PackageStatus::DuplicateResourceKey,
+            &run)) {
+        return Fail("packaged validation duplicate failure did not stay preflight");
+    }
+
+    if (run.packaged_validation.first_failed_record_index != 1U ||
+        run.packaged_validation.validated_record_count != 0U) {
+        return Fail("packaged validation duplicate failure reported wrong record");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataProductRunCommandReportsPackagedValidationFailureWithoutGraphMutation() {
+    PackageCookRunSmokeLedger ledger{};
+    CookedVisualProofContext context{};
+    if (!SetupPackagedValidationContext("ProductRunPackagedValidationFailure", &context, &ledger)) {
+        return Fail("product packaged validation setup failed");
+    }
+
+    SeedPackagedValidationFailureSentinels(context);
+    std::array<RuntimeAssetFileDesc, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT> mismatched_files =
+        context.fixture.cooked_files;
+    mismatched_files[0U].stable_id += 1000000ULL;
+
+    RuntimeAssetPackageArtifactProductRunRequest request =
+        BuildProductRunCommandRequest(context, ledger);
+    request.packaged_run.files = mismatched_files.data();
+    RuntimeAssetPackageArtifactProductRunResult result{};
+    const RuntimeAssetDataStatus status =
+        RunRuntimeAssetPackageArtifactProductCommand(request, &result);
+    if (status != RuntimeAssetDataStatus::MissingDependency ||
+        result.status != RuntimeAssetDataStatus::MissingDependency ||
+        result.missing_layer != RuntimeAssetPackageArtifactProductRunMissingLayer::PackageLoadPlan ||
+        !result.package_artifact_read ||
+        !result.package_registry_rebuilt ||
+        !result.package_load_plan_resolved ||
+        !result.packaged_run_executed ||
+        result.packaged_run.blocked_layer != RuntimeAssetPackagedRunBlockedLayer::PackageLoadPlan ||
+        result.packaged_run.packaged_validation.status != RuntimeAssetDataStatus::MissingDependency) {
+        std::fprintf(
+            stderr,
+            "status=%s result=%s layer=%u artifact=%u rebuilt=%u plan=%u executed=%u validation=%s\n",
+            StatusName(status),
+            StatusName(result.status),
+            static_cast<unsigned>(result.missing_layer),
+            result.package_artifact_read ? 1U : 0U,
+            result.package_registry_rebuilt ? 1U : 0U,
+            result.package_load_plan_resolved ? 1U : 0U,
+            result.packaged_run_executed ? 1U : 0U,
+            StatusName(result.packaged_run.packaged_validation.status));
+        return Fail("product command did not report packaged validation failure");
+    }
+
+    if (result.packaged_run.package_load_plan_consumed ||
+        result.packaged_run.graph_load_result.transaction_result.mutated_state ||
+        !PackagedValidationFailureSentinelsUnchanged(context)) {
+        return Fail("product command packaged validation failure mutated graph outputs");
     }
 
     return 0;
@@ -14071,6 +14398,16 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_PRODUCT_RUN_COMMAND, RuntimeAssetDataProductRunCommandConsumesPackageArtifactPath},
     {TEST_PRODUCT_RUN_COMMAND_MISSING_ARTIFACT,
      RuntimeAssetDataProductRunCommandReportsMissingPackageArtifactPath},
+    {TEST_PACKAGED_VALIDATION_BRIDGE,
+     RuntimeAssetDataPackagedValidationBridgeConsumesArchiveByteRangesAndHashes},
+    {TEST_PACKAGED_VALIDATION_ARCHIVE_COUNT,
+     RuntimeAssetDataPackagedValidationBridgeRejectsArchiveByteCountMismatchWithoutMutation},
+    {TEST_PACKAGED_VALIDATION_PAYLOAD_HASH,
+     RuntimeAssetDataPackagedValidationBridgeRejectsPayloadHashMismatchWithoutMutation},
+    {TEST_PACKAGED_VALIDATION_DUPLICATE,
+     RuntimeAssetDataPackagedValidationBridgeRejectsDuplicateLoadPlanRecordWithoutMutation},
+    {TEST_PRODUCT_RUN_PACKAGED_VALIDATION_FAILURE,
+     RuntimeAssetDataProductRunCommandReportsPackagedValidationFailureWithoutGraphMutation},
     {TEST_RUNTIME_DEPENDENCIES, RuntimeAssetDataLoadRegistersResourceAndAssetDependencyEdges},
     {TEST_LOAD_RENDER, RuntimeAssetDataRenderClosedLoopCapturesCubeCylinderConeThroughRhi},
     {TEST_CPU_ORACLE, RuntimeAssetDataCpuPpmOracleDoesNotBypassRhiRenderCore},

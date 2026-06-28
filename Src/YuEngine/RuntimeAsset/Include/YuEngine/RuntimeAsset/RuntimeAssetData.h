@@ -1011,6 +1011,25 @@ enum class RuntimeAssetPackagedRunBlockedLayer {
 };
 
 /**
+ * @brief Reports packaged RuntimeAsset validation before graph-load mutation begins.
+ */
+struct RuntimeAssetPackagedValidationResult final {
+    RuntimeAssetDataStatus status = RuntimeAssetDataStatus::InvalidArgument;
+    yuengine::package::PackageStatus package_status =
+        yuengine::package::PackageStatus::NotFound;
+    std::uint32_t record_count = 0U;
+    std::uint32_t validated_record_count = 0U;
+    std::uint32_t first_failed_record_index = 0U;
+    std::uint64_t archive_byte_count = 0ULL;
+    std::uint64_t validated_archive_byte_count = 0ULL;
+    bool dependency_records_validated = false;
+    bool archive_ranges_validated = false;
+    bool payload_hashes_validated = false;
+    bool runtime_asset_payloads_validated = false;
+    bool no_graph_mutation_required = true;
+};
+
+/**
  * @brief Request for the first engine-owned packaged RuntimeAsset run entrypoint.
  */
 struct RuntimeAssetPackagedRunRequest final {
@@ -1074,6 +1093,7 @@ struct RuntimeAssetPackagedRunResult final {
         RuntimeAssetPackagedRunBlockedLayer::PackageLoadPlan;
     yuengine::package::PackageStatus package_status =
         yuengine::package::PackageStatus::NotFound;
+    RuntimeAssetPackagedValidationResult packaged_validation{};
     RuntimeAssetGraphLoadResult graph_load_result{};
     RuntimeAssetVisualProofResult visual_proof_result{};
     RuntimeAssetRenderSceneSubmissionResult generic_submission_result{};

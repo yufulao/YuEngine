@@ -9459,6 +9459,73 @@ std::string RuntimeAssetPackageSourceKeyForStableId(std::uint64_t stable_id) {
     return std::string(RUNTIME_ASSET_PACKAGE_SOURCE_KEY_PREFIX) + std::to_string(stable_id);
 }
 
+std::uint64_t MixRuntimeAssetPackagePayloadHash(std::uint64_t hash, std::uint64_t value) {
+    hash ^= value;
+    return hash * FNV_PRIME;
+}
+
+std::uint64_t HashRuntimeAssetPackagePayloadText(std::uint64_t hash, std::string_view text) {
+    for (const char character : text) {
+        hash = MixRuntimeAssetPackagePayloadHash(
+            hash,
+            static_cast<std::uint64_t>(static_cast<unsigned char>(character)));
+    }
+
+    return hash;
+}
+
+std::uint64_t MakeRuntimeAssetPackagePayloadHash(const PackageLoadPlanRecord &record) {
+    std::uint64_t hash = FNV_OFFSET;
+    hash = HashRuntimeAssetPackagePayloadText(hash, record.source_key.Value());
+    hash = MixRuntimeAssetPackagePayloadHash(hash, record.archive_byte_offset);
+    hash = MixRuntimeAssetPackagePayloadHash(hash, record.archive_byte_size);
+    if (hash == 0ULL) {
+        return FNV_OFFSET;
+    }
+
+    return hash;
+}
+
+bool RuntimeAssetPackageRecordRangeIsValid(const PackageLoadPlanRecord &record) {
+    if (record.archive_byte_size == 0ULL) {
+        return false;
+    }
+
+    const std::uint64_t max_value = std::numeric_limits<std::uint64_t>::max();
+    return record.archive_byte_offset <= max_value - record.archive_byte_size;
+}
+
+bool RuntimeAssetPackageRecordsHaveSameIdentity(
+    const PackageLoadPlanRecord &left,
+    const PackageLoadPlanRecord &right) {
+    if (left.package.value == right.package.value &&
+        left.entry.value == right.entry.value) {
+        return true;
+    }
+
+    if (left.type.value != right.type.value) {
+        return false;
+    }
+
+    if (left.logical_key.Value() != right.logical_key.Value()) {
+        return false;
+    }
+
+    return left.source_key.Value() == right.source_key.Value();
+}
+
+RuntimeAssetDataStatus FailRuntimeAssetPackagedValidation(
+    RuntimeAssetPackagedRunResult *result,
+    PackageStatus package_status,
+    RuntimeAssetDataStatus status,
+    std::uint32_t first_failed_record_index) {
+    result->package_status = package_status;
+    result->packaged_validation.status = status;
+    result->packaged_validation.package_status = package_status;
+    result->packaged_validation.first_failed_record_index = first_failed_record_index;
+    return status;
+}
+
 bool RuntimeAssetPackageRecordMatchesDesc(
     const PackageLoadPlanRecord &record,
     const RuntimeAssetFileDesc &desc) {
@@ -9466,7 +9533,7 @@ bool RuntimeAssetPackageRecordMatchesDesc(
         return false;
     }
 
-    if (record.byte_size == 0U) {
+    if (record.archive_byte_size == 0ULL) {
         return false;
     }
 
@@ -9479,16 +9546,114 @@ bool RuntimeAssetPackageRecordMatchesDesc(
     return record.source_key.Value() == std::string_view(source_key);
 }
 
-const PackageLoadPlanRecord *FindRuntimeAssetPackageRecordForDesc(
+bool FindRuntimeAssetPackageRecordIndexForDesc(
     const yuengine::package::PackageLoadPlan &plan,
-    const RuntimeAssetFileDesc &desc) {
+    const RuntimeAssetFileDesc &desc,
+    std::uint32_t *out_index) {
+    if (out_index == nullptr) {
+        return false;
+    }
+
     for (std::uint32_t index = 0U; index < plan.record_count; ++index) {
         if (RuntimeAssetPackageRecordMatchesDesc(plan.records[index], desc)) {
-            return &plan.records[index];
+            *out_index = index;
+            return true;
         }
     }
 
-    return nullptr;
+    return false;
+}
+
+RuntimeAssetDataStatus ValidateRuntimeAssetPackageRecordUniqueness(
+    const yuengine::package::PackageLoadPlan &plan,
+    RuntimeAssetPackagedRunResult *result) {
+    for (std::uint32_t left_index = 0U; left_index < plan.record_count; ++left_index) {
+        for (std::uint32_t right_index = left_index + 1U; right_index < plan.record_count; ++right_index) {
+            if (RuntimeAssetPackageRecordsHaveSameIdentity(plan.records[left_index], plan.records[right_index])) {
+                return FailRuntimeAssetPackagedValidation(
+                    result,
+                    PackageStatus::DuplicateResourceKey,
+                    RuntimeAssetDataStatus::DuplicateDependency,
+                    right_index);
+            }
+        }
+    }
+
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ValidateRuntimeAssetPackageRecordPayload(
+    const RuntimeAssetPackagedRunRequest &request,
+    const PackageLoadPlanRecord &record,
+    const RuntimeAssetFileDesc &desc,
+    std::uint32_t record_index,
+    RuntimeAssetPackagedRunResult *result) {
+    if (request.mount_table == nullptr || desc.path == nullptr) {
+        return FailRuntimeAssetPackagedValidation(
+            result,
+            PackageStatus::NotFound,
+            RuntimeAssetDataStatus::InvalidArgument,
+            record_index);
+    }
+
+    if (!RuntimeAssetPackageRecordRangeIsValid(record)) {
+        const RuntimeAssetDataStatus status =
+            record.archive_byte_size == 0ULL
+                ? RuntimeAssetDataStatus::InvalidSize
+                : RuntimeAssetDataStatus::InvalidBounds;
+        return FailRuntimeAssetPackagedValidation(
+            result,
+            PackageStatus::ByteRangeOutOfBounds,
+            status,
+            record_index);
+    }
+
+    const std::uint64_t expected_payload_hash = MakeRuntimeAssetPackagePayloadHash(record);
+    if (record.payload_hash == 0ULL || record.payload_hash != expected_payload_hash) {
+        return FailRuntimeAssetPackagedValidation(
+            result,
+            PackageStatus::ArtifactHashMismatch,
+            RuntimeAssetDataStatus::HashMismatch,
+            record_index);
+    }
+
+    FileReadRequest read_request{};
+    read_request.mount = request.mount;
+    read_request.path = yuengine::file::VirtualPath(desc.path);
+    read_request.use_range = true;
+    read_request.range_byte_offset = record.archive_byte_offset;
+    read_request.range_byte_size = record.archive_byte_size;
+    const FileReadResult read_result = request.mount_table->Read(read_request);
+    if (!read_result.Succeeded()) {
+        return FailRuntimeAssetPackagedValidation(
+            result,
+            PackageStatus::FileReadFailed,
+            RuntimeAssetDataStatus::FileReadFailed,
+            record_index);
+    }
+
+    const std::uint64_t read_byte_count = static_cast<std::uint64_t>(read_result.bytes.size());
+    if (read_byte_count != record.archive_byte_size) {
+        return FailRuntimeAssetPackagedValidation(
+            result,
+            PackageStatus::ByteRangeOutOfBounds,
+            RuntimeAssetDataStatus::InvalidSize,
+            record_index);
+    }
+
+    RuntimeAssetValidationResult validation{};
+    RuntimeAssetDataStatus status = ValidateRuntimeAssetDataBytes(read_result.bytes, desc.kind, &validation);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return FailRuntimeAssetPackagedValidation(
+            result,
+            PackageStatus::InvalidArtifact,
+            status,
+            record_index);
+    }
+
+    result->packaged_validation.validated_archive_byte_count += record.archive_byte_size;
+    ++result->packaged_validation.validated_record_count;
+    return RuntimeAssetDataStatus::Success;
 }
 
 RuntimeAssetDataStatus ValidateRuntimeAssetPackageLoadPlan(
@@ -9500,37 +9665,92 @@ RuntimeAssetDataStatus ValidateRuntimeAssetPackageLoadPlan(
 
     const yuengine::package::PackageLoadPlan &plan = *request.package_load_plan;
     result->package_load_plan_record_count = plan.record_count;
+    result->packaged_validation.record_count = plan.record_count;
+    result->packaged_validation.archive_byte_count = plan.archive_byte_count;
     if (plan.record_count == 0U) {
-        result->package_status = PackageStatus::NotFound;
-        return RuntimeAssetDataStatus::InvalidCount;
+        return FailRuntimeAssetPackagedValidation(
+            result,
+            PackageStatus::NotFound,
+            RuntimeAssetDataStatus::InvalidCount,
+            0U);
     }
 
     if (request.files == nullptr || request.file_count == 0U) {
-        result->package_status = PackageStatus::NotFound;
-        return RuntimeAssetDataStatus::InvalidArgument;
+        return FailRuntimeAssetPackagedValidation(
+            result,
+            PackageStatus::NotFound,
+            RuntimeAssetDataStatus::InvalidArgument,
+            0U);
     }
 
     if (plan.record_count != request.file_count + 1U) {
-        result->package_status = PackageStatus::LoadPlanCapacityExceeded;
-        return RuntimeAssetDataStatus::InvalidCount;
+        return FailRuntimeAssetPackagedValidation(
+            result,
+            PackageStatus::LoadPlanCapacityExceeded,
+            RuntimeAssetDataStatus::InvalidCount,
+            plan.record_count);
+    }
+
+    RuntimeAssetDataStatus status = ValidateRuntimeAssetPackageRecordUniqueness(plan, result);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
     }
 
     const PackageLoadPlanRecord &scene_record = plan.records[plan.record_count - 1U];
     if (!RuntimeAssetPackageRecordMatchesDesc(scene_record, request.scene)) {
-        result->package_status = PackageStatus::TypeMismatch;
-        return RuntimeAssetDataStatus::TypeMismatch;
+        return FailRuntimeAssetPackagedValidation(
+            result,
+            PackageStatus::TypeMismatch,
+            RuntimeAssetDataStatus::TypeMismatch,
+            plan.record_count - 1U);
+    }
+
+    status = ValidateRuntimeAssetPackageRecordPayload(
+        request,
+        scene_record,
+        request.scene,
+        plan.record_count - 1U,
+        result);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
     }
 
     for (std::uint32_t index = 0U; index < request.file_count; ++index) {
-        const PackageLoadPlanRecord *record =
-            FindRuntimeAssetPackageRecordForDesc(plan, request.files[index]);
-        if (record == nullptr) {
-            result->package_status = PackageStatus::NotFound;
-            return RuntimeAssetDataStatus::MissingDependency;
+        std::uint32_t record_index = 0U;
+        if (!FindRuntimeAssetPackageRecordIndexForDesc(plan, request.files[index], &record_index)) {
+            return FailRuntimeAssetPackagedValidation(
+                result,
+                PackageStatus::NotFound,
+                RuntimeAssetDataStatus::MissingDependency,
+                index);
+        }
+
+        status = ValidateRuntimeAssetPackageRecordPayload(
+            request,
+            plan.records[record_index],
+            request.files[index],
+            record_index,
+            result);
+        if (status != RuntimeAssetDataStatus::Success) {
+            return status;
         }
     }
 
+    if (result->packaged_validation.validated_archive_byte_count != plan.archive_byte_count) {
+        return FailRuntimeAssetPackagedValidation(
+            result,
+            PackageStatus::LoadPlanByteBudgetExceeded,
+            RuntimeAssetDataStatus::BudgetExceeded,
+            plan.record_count);
+    }
+
     result->package_status = PackageStatus::Success;
+    result->packaged_validation.status = RuntimeAssetDataStatus::Success;
+    result->packaged_validation.package_status = PackageStatus::Success;
+    result->packaged_validation.dependency_records_validated = true;
+    result->packaged_validation.archive_ranges_validated = true;
+    result->packaged_validation.payload_hashes_validated = true;
+    result->packaged_validation.runtime_asset_payloads_validated = true;
     result->package_load_plan_consumed = true;
     return RuntimeAssetDataStatus::Success;
 }
