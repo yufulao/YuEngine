@@ -160,6 +160,17 @@ At the latest handoff:
   and execution `39/39` PASS, `^Streaming_PackageResourceStaging_` discovery
   and execution `10/10` PASS, a clean read-only QA workspace, and no broad/full
   CTest;
+- L0-RES-003 Resource cache/decode chain closure is PASS at
+  `8c3a200d813173efe1607e594777afd6f029cc7c`; readiness task `ba6025e8`
+  records that existing `YuResource` cache payload, decode plan, decode result,
+  decoded payload ownership, release/dependent clear, budget/capacity, and
+  no-mutation value/status records cover the baseline; the initial focused QA
+  task `085247f3` isolated one decoded-payload capacity status-order issue, fix
+  task `abfdb2d1` landed `ResourceRegistry.cpp` only, and focused QA task
+  `ca5c3c1b-e61a-4095-8e3c-2e0dfccc2b40` reports `YuResourceTests` build
+  PASS, exact `Resource_DecodedPayload_RejectsCapacityOverflow` `1/1` PASS,
+  focused cache/decode discovery/execution `65/65` PASS, clean read-only QA,
+  and no adjacent/full Resource or broad/full CTest;
 - WorldObject-facing runtime instance mapping and broader Resource/File/VFS
   follow-through remain blocked until their own gates are released.
 

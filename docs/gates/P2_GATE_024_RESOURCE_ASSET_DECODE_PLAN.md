@@ -257,6 +257,29 @@ Rejected proof:
   streaming, UI, World, Script, or Game Adapter behavior as evidence for this
   gate.
 
+## L0-RES-003 Evidence Sync
+
+L0-RES-003 records the Resource cache/decode chain as PASS at
+`origin/main@8c3a200d813173efe1607e594777afd6f029cc7c`. Readiness task
+`ba6025e8` accepted the existing Resource cache payload, decode plan, decode
+result, decoded payload ownership, release/dependent clear, budget/capacity,
+and no-mutation value/status records as the baseline.
+
+The initial focused QA task `085247f3` isolated one decoded-payload capacity
+status-order issue in `StoreDecodedPayload`. Implementation task `abfdb2d1`
+landed the narrow `ResourceRegistry.cpp` fix at `8c3a200d` so physical decoded
+payload record capacity is checked before reference budget. Focused QA task
+`ca5c3c1b-e61a-4095-8e3c-2e0dfccc2b40` then reported `YuResourceTests` build
+PASS, exact `Resource_DecodedPayload_RejectsCapacityOverflow` `1/1` PASS,
+focused cache/decode discovery and execution `65/65` PASS, clean read-only QA,
+and no adjacent/full Resource or broad/full CTest.
+
+This evidence keeps decode planning as Resource metadata over cached bytes. It
+does not complete Resource residency/upload, RuntimeAsset bridge or CMake
+cross-proof, RenderScene/RHI, World/editor/importer, old-package compatibility,
+real codec/parser behavior, unrelated animation mapping, Package/Resource
+public API expansion, adjacent/full Resource rows, or broad/full CTest.
+
 ## Non Goals
 
 - No package parser or original package reader.
