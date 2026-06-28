@@ -1,231 +1,314 @@
 # YuEngine Long Plan And Team Execution
 
-Status: active execution plan
+Status: active commercial-engine execution plan
 Owner: Architect, lead engineer
 Started: 2026-06-11
-Historical original repository baseline: `fe586d2`
-Current coordination checkpoint: `962c1cc`
-P2-GATE-003 closed first-slice checkpoint: `354f8e2`
+Current planning checkpoint: `origin/main@0a9144b0e30cbede56a5dbf04b232f3e5b763802`
+Reference product target: `C:\Steam\steamapps\common\TouhouNewWorld`
 
-## 1. Final Goal
+## 1. Final Product Target
 
-Complete the YuEngine restart as a commercial-grade C++20 engine, using
-TouhouNewWorld only as the first validation workload.
+YuEngine is the production engine for a small independent team. It is not a
+toy engine, a technology demo, a public UE/Unity competitor, or an editor-first
+research project. The final target is a stable native commercial game engine
+that can ship and maintain the team's own games.
 
-The execution goal is not to make an early visual demo. The execution goal is to
-turn the accepted architecture gates into reviewed, testable engine modules in a
-sequence that preserves ownership, performance bounds, and lower-layer
-dependency rules.
+The closest local reference target is the shipped TouhouNewWorld package:
 
-## 2. Current State
+- small native runtime binaries under `bin`;
+- no observed Unity runtime markers such as `UnityPlayer.dll` or
+  `GameAssembly.dll`;
+- resource package directory around 7.84 GB;
+- `.dat` archives around 7.23 GB and `.pak` archives around 0.60 GB;
+- explicit config, shader/filter, database, and resource archive surfaces.
 
-For historical traceability, the original execution baseline was clean on
-`main` at `fe586d2`. The active coordination checkpoint is `962c1cc`, with
-P2-GATE-003 first slice closed and QA cleared at `354f8e2`.
+YuEngine must eventually support the same class of product pressure:
 
-Phase 1 has one implemented gate and several implementation reviews still open:
+- 20 hours or more of stable play;
+- 6 GB or more of shipped content;
+- deterministic startup, load, update, render, audio, save, and shutdown;
+- high-performance runtime loading from packed assets;
+- explicit diagnostics for missing layers and production failures;
+- repeatable build, package, validation, and release evidence.
 
-- P1-GATE-001 is implemented.
-- P1-GATE-002 memory accounting is in implementation review.
-- P1-GATE-003 thread/task is in implementation review.
-- P1-GATE-004 diagnostics channel is in implementation review.
-- P1-GATE-005 file primitive/path normalization is in implementation review.
-- P1-GATE-006 resource identity/lifetime is in implementation review.
-- P1-GATE-007 input replay/action snapshot is in implementation review.
+The goal is not broad feature parity with UE or Unity. The goal is a narrower
+native engine with commercial discipline strong enough for the team's game
+line.
 
-Phase 2 is active but must not expand before review pressure is reduced:
+## 2. Non-Negotiable Architecture Principles
 
-- P2-GATE-001 null RHI is in implementation review.
-- P2-GATE-002 audio test backend and mixer is in implementation review.
-- P2-GATE-003 package manifest/load plan first slice is closed and QA cleared;
-  package expansion remains held without a new Architect decision.
+1. Runtime first, editor later.
+2. Package, Resource, and RuntimeAsset are the product spine.
+3. Assets never bind directly to world instances or editor objects.
+4. Runtime assets bind to stable asset-internal targets first.
+5. World and scene instances map asset targets to runtime objects later.
+6. Reports, screenshots, logs, and viewers are evidence tools, not behavior.
+7. Every failure path must name the failing layer and avoid partial mutation.
+8. Every direct-main implementation slice must have focused evidence.
+9. Compatibility with old game packages is not a design constraint unless a
+   separate accepted gate says so.
+10. No public plugin ecosystem, marketplace, or generic editor extension work
+    belongs in the current L0/L1 execution window.
 
-Phase 3 is architecture-first:
+## 3. Long-Horizon Roadmap
 
-- ADR-0014 object identity is accepted.
-- P3-GATE-001 object identity/lifetime registry is approved for first slice;
-  implementation remains bounded to `YuObject` / `YuObjectTests`.
-- ADR-0015 serialization value stream is accepted after technical review lanes
-  cleared.
-- P3-GATE-002 serialization value stream is approved for first slice;
-  implementation remains bounded to `YuSerialize` / `YuSerializeTests`.
+### Stage A: L0 Production Foundation
 
-## 3. Architecture Principles
+Purpose: make the lower engine reliable enough to run and diagnose real native
+runtime work.
 
-YuEngine follows the layer rule from the restart plan:
+Required closure:
 
-```text
-L0-L1 platform services
-L2 engine kernel
-L3 low-level runtime interfaces
-L4 core asset and script framework
-L5 runtime world systems
-L6 game adapter
-L7 verification and tools
-```
+- Platform window, event pump, native surface, and shutdown.
+- RHI and D3D11 device, swapchain, present, capture, resize, and stale-handle
+  failures.
+- RenderCore frame packet, draw packet, material values, and graph skeleton.
+- File/VFS, package load-plan, resource cache, decode, upload, residency, and
+  streaming commit.
+- Audio mixer, PCM packet/queue, XAudio2 availability, and callback cost
+  discipline.
+- Input replay, Win32 input, XInput availability, and command snapshots.
+- Diagnostics, memory, and thread cost surfaces.
+- One engine-owned lower sample that proves window -> input -> resource ->
+  render -> audio -> resize -> shutdown or reports exact blockers.
 
-The core rule is downward dependency only. Diagnostics may observe runtime
-behavior, but diagnostics, reports, captures, and oracle output must not own
-runtime behavior.
-
-UE and Unity are references for responsibility boundaries, not APIs to copy:
-
-- UE Core/CoreUObject informs the separation between object identity, reflection,
-  and world ownership.
-- UE RHI/RenderCore informs the split between command submission and scene
-  rendering.
-- UE AudioMixer informs the split between backend, mixer, voice, and resource
-  decoding.
-- Unity GameObject/scene concepts inform validation questions around instance
-  identity and world ownership, without copying Unity API shape.
-- Unity SRP informs the separation between low-level graphics commands and
-  render pipeline ownership.
-
-## 4. Execution Strategy
-
-The next work is review closure before new implementation.
-
-Order:
-
-1. Close P1 implementation reviews that define vocabulary needed by upper
-   gates, especially `YuMemory`, `YuFile`, `YuResource`, diagnostics, and input.
-2. Close P2 null RHI and audio mixer implementation reviews without expanding
-   into real backends, render scenes, business audio IDs, resources, UI, reports,
-   or game adapter behavior.
-3. Keep P2-GATE-003 first-slice closure as the package baseline. Do not expand
-   package scope unless a new Architect decision approves a later slice.
-4. Create a scoped `YuObject` first-slice implementation handoff only from
-   P3-GATE-001's approved boundary, and keep it isolated from package/resource,
-   serialization, scene/world, UI, gameplay, reports, and original evidence.
-5. Create a scoped `YuSerialize` first-slice implementation handoff only from
-   P3-GATE-002's approved boundary, and keep it isolated from File/package,
-   Resource, object construction, reflection, script, scene/save, tools,
-   reports, Game Adapter, and original evidence.
-6. Create implementation slices only from approved gates, preferably in clean
-   isolated worktrees when shared CMake or target registration would conflict.
-
-## 5. Workstreams
-
-### PM And Gate Control
-
-AssistantPM owns execution rhythm under Architect direction:
-
-- produce one live gate board with P1, P2, and P3 states;
-- identify which reviews block P3 object and serialization work;
-- prevent new implementation tasks without explicit gate approval;
-- assign sequencing windows so CMake and module-boundary churn is isolated;
-- report exact blockers as `NEEDS_ARCHITECTURE`, `NEEDS_PERFORMANCE`,
-  `NEEDS_EVIDENCE`, or `BLOCKED`.
-
-### SeniorEngineerA
-
-SeniorEngineerA owns lower-layer review closure:
-
-- audit P1-GATE-002, P1-GATE-003, P1-GATE-004, P1-GATE-005, P1-GATE-006, and
-  P1-GATE-007 for scope creep and dependency violations;
-- confirm whether Memory/File/Resource vocabulary is stable enough for
-  P2-GATE-003 and P3-GATE-001;
-- propose gate amendments instead of allowing unclear implementation.
-
-### SeniorEngineerB
-
-SeniorEngineerB owns engine-reference and next-gate architecture support:
-
-- compare P3-GATE-001 against UE CoreUObject responsibility boundaries and Unity
-  instance/scene separation;
-- compare P3-GATE-002 against UE archive/serialization responsibility and Unity
-  serialization persistence boundaries where useful;
-- produce only boundary conclusions that affect YuEngine decisions.
-
-### CodeReviewerQA
-
-CodeReviewerQA owns review and verification pressure:
-
-- review active implementation slices for forbidden dependencies, hidden
-  allocation, diagnostics-owned behavior, and insufficient tests;
-- keep fast-gate verification commands explicit;
-- block implementation changes that validate behavior by logs, reports, old
-  runtime files, or original-game evidence;
-- require review findings to cite file and line references.
-
-### Architect
-
-Architect owns final architecture direction and integration:
-
-- decide gate order and stop conditions;
-- merge PM sequencing, engine-reference review, performance review, and code
-  review into one execution plan;
-- amend ADRs/gates when lower-layer vocabulary changes;
-- approve or reject first-slice handoffs;
-- keep the project aligned with commercial engine architecture rather than demo
-  progress.
-
-## 6. Immediate 72-Hour Plan
-
-Day 1:
-
-- PM builds the gate board and marks all review blockers.
-- SeniorEngineerA audits P1 review closures and names blockers that affect
-  Memory/File/Resource vocabulary.
-- CodeReviewerQA starts review of P2 null RHI and audio mixer implementation
-  boundaries.
-- SeniorEngineerB prepares object and serialization reference notes from UE and
-  Unity responsibility boundaries.
-
-Day 2:
-
-- Architect keeps P2-GATE-003 closed for the approved first slice and decides
-  only on any separately proposed package expansion.
-- Architect decides whether P3-GATE-001 can move toward
-  `APPROVED_FOR_FIRST_SLICE` or must remain `NEEDS_PERFORMANCE` /
-  `NEEDS_ARCHITECTURE`.
-- CodeReviewerQA reports whether P1/P2 implementation reviews are stable enough
-  for new isolated work.
-
-Day 3:
-
-- If gates are approved, assign one clean first-slice implementation task at a
-  time.
-- If gates are not approved, amend the owning ADR/gate and keep implementation
-  blocked.
-- Run the strongest available non-interactive verification command after every
-  code change:
+Exit standard:
 
 ```text
-cmake --preset windows-fast-gate
-cmake --build --preset windows-fast-gate
-ctest --preset windows-fast-gate
+Debug/Release/fast/hardware/sample evidence is reproducible, or every missing
+hardware path is explicitly graded as an environment blocker.
 ```
+
+### Stage B: L1 Runtime Core
+
+Purpose: make project-independent runtime systems compose into a real scene.
+
+Required closure:
+
+- RuntimeApp and FrameContext phases.
+- Object, component, transform, and scene assembly records.
+- Runtime Asset Manager over Resource/Package/File.
+- RenderScene over RenderCore/RHI.
+- AudioScene over Audio/Resource.
+- Input mapping over L0 input devices/actions.
+- Serialize/config/save value boundaries.
+- Runtime diagnostics counters.
+- Pure runtime visual sample with cube, cylinder, cone, shared material,
+  multiple texture inputs, camera tween, animation-driven transform, and bounded
+  capture output.
+
+Exit standard:
+
+```text
+A project-independent scene can load, instantiate, render, play audio, respond
+to input, serialize core state, and shut down without project-specific shortcuts.
+```
+
+### Stage C: Runtime Asset Production Spine
+
+Purpose: turn source/cooked assets into runtime records that can sustain a
+multi-GB shipped product.
+
+Required closure:
+
+- Source artifact schema and cooked binary artifact schema.
+- Archive/package table directory, offsets, hashes, dependency tables, and
+  budget limits.
+- Resource index equivalent to a production asset database.
+- Runtime asset family contracts for mesh, texture, material, shader, scene,
+  camera, model, skeleton, animation, audio, and UI when needed.
+- Validator/cook/load stages with no-mutation failures.
+- Incremental asset validation and packaging commands.
+
+Exit standard:
+
+```text
+The engine can mount, validate, load, and diagnose packed content without loose
+test-only construction or editor-owned runtime behavior.
+```
+
+### Stage D: Product Runtime Feature Set
+
+Purpose: support the first real team game.
+
+Required closure:
+
+- Scene/world object lifecycle and instance mapping.
+- Model, skeleton, animation clips, tracks, curves, and transform application.
+- Shader reflection, material binding, texture streaming, and render pipeline
+  value contracts.
+- Audio source/bus routing and streaming.
+- Input maps and replayable command snapshots.
+- Save/profile/config persistence policy outside Serialize core.
+- Crash-safe shutdown and resource release.
+
+Exit standard:
+
+```text
+A representative vertical game slice can run for long sessions with bounded
+memory, stable frame pacing, reproducible loads, and actionable diagnostics.
+```
+
+### Stage E: Production Tools
+
+Purpose: make content creation efficient only after runtime contracts are firm.
+
+Required closure:
+
+- Importer and cooker.
+- Resource browser and validator diagnostics.
+- Scene/model/material/animation preview tools.
+- Package builder and release validator.
+- Performance capture, asset budget reports, and crash triage.
+
+Exit standard:
+
+```text
+Artists and designers can produce content through tools that emit the same
+runtime contracts proven by the engine.
+```
+
+### Stage F: Shipping And Maintenance
+
+Purpose: make the engine and game survive commercial release.
+
+Required closure:
+
+- Release packaging.
+- Patch/update compatibility policy for YuEngine packages.
+- Long-session soak tests.
+- Save compatibility and migration gates.
+- Hardware matrix and graded environment failures.
+- Versioned crash diagnostics.
+
+Exit standard:
+
+```text
+The team can ship, patch, diagnose, and maintain a commercial game without
+depending on one-off manual knowledge.
+```
+
+## 4. Current State
+
+The old P1/P2/P3 first-slice language is historical. It should no longer drive
+new task selection by itself.
+
+Current mainline has meaningful lower-engine and RuntimeAsset evidence:
+
+- Object, Serialize, Resource, Package, RHI, RenderCore, Audio, Input, World,
+  and diagnostics have useful value-contract slices.
+- RuntimeAsset has disk-backed closed-loop evidence through File/VFS/Resource,
+  validators, RenderScene, RenderCore, RHI, package/product run ledgers, shader
+  reflection hardening, and scene-animation selected-clip proof.
+- Scene-animation implementation and QA are complete at
+  `f211f7f95299388987ccef00b4d1e8ee6f7bf0c1`.
+- Docs evidence sync is complete at
+  `0a9144b0e30cbede56a5dbf04b232f3e5b763802`.
+
+The project is not blocked by lack of proof. It is at risk if proof slices keep
+expanding without a production spine.
+
+## 5. Nearest Detailed Stage
+
+The nearest stage is not another broad feature. It is the RuntimeAsset product
+spine correction.
+
+### 5.1 Close Current Evidence Gate
+
+Current scene-animation evidence gate state:
+
+- implementation: done;
+- QA: done;
+- docs: done;
+- VQ consistency audit: pending, held until human resumes coordination.
+
+This gate must close before opening a new implementation lane.
+
+### 5.2 Correct RuntimeAsset Dependency Order
+
+The next planning and implementation queue must use this order:
+
+```text
+RuntimeAsset container and family identity
+-> package/resource index and dependency tables
+-> asset-internal node/model/skeleton target contract
+-> animation clip/track/channel binding to those targets
+-> Step/Linear interpolation sampler
+-> transform application to runtime instance records
+-> world object mapping only after instance contracts exist
+-> editor/importer authoring surfaces after runtime contracts pass
+```
+
+This order is mandatory. Animation must not bind directly to WorldObject,
+editor object, scene instance, raw pointer, display name, or file path.
+
+### 5.3 Immediate Backlog
+
+| ID | Work item | Acceptance |
+| --- | --- | --- |
+| RTSPINE-001 | Final VQ for scene-animation evidence gate | Implementation, QA, docs, `origin/main`, and evidence matrices agree; no next lane opens before PASS |
+| RTSPINE-002 | RuntimeAsset production target addendum | Long-term target, TouhouNewWorld package reference, and no-compatibility policy are written into planning docs |
+| RTSPINE-003 | Asset-internal target identity contract | Scene node, model node, and skeleton joint target IDs are stable, bounded, versioned, and independent from WorldObject |
+| RTSPINE-004 | Animation track target binding contract | Tracks bind to target ID plus property, not world instance or editor object |
+| RTSPINE-005 | Minimal interpolation contract | Step and Linear scalar/vector/transform sampling pass fixed-time tests with no hidden global time |
+| RTSPINE-006 | Invalid target failure contract | Missing target, unsupported property, unsupported interpolation, capacity overflow, and invalid selected clip fail without output mutation |
+| RTSPINE-007 | Instance mapping design gate | Asset target to runtime instance mapping is designed before any WorldObject-binding implementation |
+| RTSPINE-008 | Package/resource index pressure gate | Archive/index/hash/budget requirements are defined against the 6 GB plus shipped-content target |
+
+### 5.4 Forbidden Work In This Stage
+
+- no editor-first animation timeline;
+- no gameplay animation state machine;
+- no blend tree, montage, skeletal skinning, or physics coupling;
+- no WorldObject direct binding inside asset files;
+- no old TouhouNewWorld package parser as L0/L1 proof;
+- no broad shader/material work as a substitute for target identity;
+- no next implementation lane before VQ accepts the current evidence gate.
+
+## 6. Team Execution Model
+
+The lead architect owns order, dependency, and stop conditions.
+
+Specialist agents execute only when a task has:
+
+- exact scope;
+- exact files or module surface;
+- exact non-goals;
+- expected evidence;
+- failure/blocker policy.
+
+QA and evidence tasks may run in parallel only when they are read-only or when
+their write surfaces are disjoint. Implementation lanes do not overlap if they
+touch shared contracts.
 
 ## 7. Stop Conditions
 
-Stop and route back to architecture when any of these happen:
+Stop and return to architecture when any of these happen:
 
-- a module depends upward or sideways across the layer boundary;
-- original-game evidence shapes lower-layer API design;
-- reports, logs, captures, or oracle output become behavior transport;
-- implementation starts without `APPROVED_FOR_FIRST_SLICE`;
+- a lower module depends upward on World, UI, Script, Project, GameAdapter, or
+  editor types;
+- a runtime asset references world instance IDs or editor object IDs;
+- a feature bypasses Package/Resource/RuntimeAsset and claims production asset
+  proof;
+- a report, viewer, screenshot, or log becomes required for runtime behavior;
+- old game package compatibility shapes the first production contract;
+- a bridge owns both sides' lifecycle;
 - hot paths allocate, grow containers, format strings, or perform file IO
   without an accepted gate exception;
-- object identity is represented by raw pointers, resource handles, strings, or
-  file paths;
-- serialization tries to own File, Resource, object construction, reflection,
-  scene persistence, tools, saves, or Game Adapter behavior in the first slice;
-- a visual demo or UI/title business task is proposed before lower systems pass
-  their gates.
+- a new implementation lane opens before the active evidence gate closes;
+- stage evidence cannot name exact commands, commits, and failure statuses.
 
-## 8. Next Implementation Candidates
+## 8. Summary
 
-P3-GATE-001 is authorized by its gate state, not by this plan alone.
+YuEngine must become a compact native production engine for the team, with the
+same kind of reliability and asset pressure as the TouhouNewWorld shipped
+package. The spine is:
 
-Candidates after review closure:
+```text
+Package -> Resource -> RuntimeAsset -> Runtime records -> World/Scene instance
+mapping -> Render/Audio/Input/Save -> Tools -> Shipping
+```
 
-- `YuObject` first slice from P3-GATE-001 is approved for handoff, limited to
-  the bounded synthetic object identity/lifetime registry.
-- `YuSerialize` first slice from P3-GATE-002 is approved for handoff, limited to
-  the bounded caller-provided-buffer primitive value stream.
-- P2 package manifest/load plan expansion, only after a new explicit Architect
-  decision; the first slice is already closed and QA cleared.
-
-Each candidate must include exact files allowed, exact tests required, exact
-verification commands, and explicit non-goals before code begins.
+The next correct move is not feature breadth. The next correct move is to close
+the current evidence gate and then harden the RuntimeAsset production spine,
+starting with asset-internal target identity before deeper animation work.

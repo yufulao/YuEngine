@@ -42,6 +42,42 @@ also not a package compatibility contract for the original game. Original-game
 resource facts may later become validation inputs only after a separate
 evidence-approved package/parser gate.
 
+## Production Target Alignment
+
+RuntimeAsset is part of the production spine for a native commercial game with
+multi-GB packed content. The local TouhouNewWorld package is the current
+practical reference bar: a small native runtime, explicit resource archives, an
+asset index/database surface, shader/config files, and resource data in the
+6 GB to 8 GB class.
+
+This plan therefore optimizes for:
+
+- source and cooked asset records that can be packed, hashed, indexed, and
+  validated;
+- deterministic failure and no-mutation behavior before Resource, Asset,
+  RenderScene, RenderCore, RHI, Audio, or World outputs are published;
+- stable asset-internal identity that survives cook, pack, load, and runtime
+  instancing;
+- runtime records that editor/importer tools may produce later, but cannot
+  redefine;
+- no old-game package compatibility requirement unless a separate gate accepts
+  it.
+
+The first production dependency chain is:
+
+```text
+Package/Resource bytes and index
+-> RuntimeAsset family identity and dependency table
+-> asset-internal targets such as scene nodes, model nodes, and skeleton joints
+-> animation/material/shader/scene records that reference those targets
+-> runtime instance mapping
+-> WorldObject or editor object surfaces only after mapping exists
+```
+
+Animation, model, scene, and shader work are not independent islands. They are
+families in one RuntimeAsset graph and must share identity, dependency, budget,
+hash, and no-mutation rules.
+
 ## Current Gap
 
 The runtime visual foundation plan already requires camera, geometry, material,
@@ -100,7 +136,8 @@ because the final visual scene references them as one graph.
 | Shader / program descriptor | program id, stage references, entry semantics, input layout, constant ranges, texture slots | RenderCore/RHI shader, pipeline, and input-layout values |
 | Camera data | camera id, projection, FOV, near/far planes, tween keyframes, look target | Runtime camera records and RenderScene frame camera binding |
 | Scene data | scene id, entity ids, transforms, mesh refs, material refs, camera refs, dependency list | World/Transform values, RenderScene runtime frame records |
-| Animation data | clip ids, track ids, keyframe ranges, sample rate, target entity/transform refs | Animation runtime sampler and transform-apply records |
+| Asset target identity | scene node ids, model node ids, skeleton joint ids, target names/hashes where approved, parent/index data, property vocabulary | Animation, scene, model, and instance mapping records |
+| Animation data | clip ids, track ids, channel ids, keyframe ranges, sample rate, selected clip id, target id plus property refs | Animation runtime sampler and transform-apply records |
 
 The texture/material/shader rows are refined by
 `docs/YUENGINE_RUNTIME_ASSET_V0_PAYLOAD_BRIDGE_RHI_ROUTE_PLAN.md`: cooked texture
@@ -111,7 +148,11 @@ counts before any RHI texture, shader module, or pipeline handle is published.
 
 Animation may be carried as a same-gate dependency or named blocker for the
 first review. The final cube/cylinder/cone route must not silently replace a
-missing animation contract with per-frame sample math.
+missing animation contract with per-frame sample math. Deeper animation work
+must not proceed past selected clip and bounded table proof until
+asset-internal target identity exists. Animation files must bind tracks to
+asset targets and properties, not to WorldObject handles, editor object ids,
+raw pointers, display names, or file paths.
 
 ## RAV1 Production RuntimeAsset v0 Contract
 
@@ -173,7 +214,8 @@ Asset, RenderScene, RenderCore, RHI, or scene loader output mutation.
 | Texture | texture id, format, extent, mip count, color space, sampler ref, payload ref/hash | descriptor plus decoded payload bytes or Resource decoded payload id | format/extent/mip bounds, alignment, byte count, hash, decoded payload budget, material slot compatibility |
 | Shader/program | program id, stage refs, bytecode refs/hashes, entry semantics, input layout, constants, texture slots | shader bytecode payloads and pipeline/input-layout descriptor | stage presence, bytecode size/hash, unsupported semantics, input-layout validity, RHI module/pipeline no-mutation failures |
 | Scene/camera | scene id, entity ids, transforms, mesh/material/texture/shader refs, camera refs, dependency order | staged scene loader output records and camera records | typed refs, entity/camera bounds, transform bounds, missing decoded payload/program/camera, output capacity |
-| Animation | clip ids, selected clip id, track id, target entity/transform refs, sample rate, interpolation, keyframe ranges | sampled transform inputs or approved clip payload records consumed by Animation sampler | selected clip validity, time/keyframe bounds, unsupported interpolation, target mismatch, sample budget, no partial scene transform output |
+| Asset target identity | scene/model/skeleton target ids, optional stable names/hashes, parent/index records, approved property vocabulary | target tables consumed by scene, model, animation, and instance mapping records | duplicate target ids, missing parent, invalid property, capacity overflow, hash mismatch, world/editor id leakage |
+| Animation | clip ids, selected clip id, track id, channel id, asset target id, property id, sample rate, interpolation, keyframe ranges | sampled transform inputs or approved clip payload records consumed by Animation sampler | selected clip validity, target validity, time/keyframe bounds, unsupported interpolation, target/property mismatch, sample budget, no partial scene transform output |
 
 ### Status Vocabulary
 
@@ -363,6 +405,32 @@ contract: it may display source/import/cook state and route commands, but it
 must not redefine RuntimeAssetData file families, validator semantics, Resource
 or Asset ownership, or runtime output records.
 
+## Next Slice Decision
+
+The next RuntimeAsset-adjacent implementation must not deepen animation binding
+before target identity exists. Selected clip sampling is accepted as the current
+closed slice because it only selects among bounded clip records and proves
+no-mutation failure for a missing selected clip.
+
+The next accepted RuntimeAsset spine work is:
+
+1. define source and cooked asset target tables for scene nodes, model nodes,
+   and skeleton joints;
+2. validate target ids, parent/index records, optional stable names/hashes, and
+   property vocabulary;
+3. reject duplicate targets, missing parents, invalid properties, world/editor
+   ids, and capacity overflow without mutation;
+4. bind animation tracks to target id plus property only after the target table
+   contract exists;
+5. implement only Step and Linear interpolation before any cubic, blend tree,
+   montage, timeline, skeletal skinning, or editor authoring surface;
+6. design runtime instance mapping before any WorldObject-facing application
+   path.
+
+Shader/reflection hardening remains a separate RuntimeAsset family and may
+continue only when the active evidence gate is closed and the work does not
+pretend to solve scene/model/animation target identity.
+
 ## Next Slice Questions
 
 Reviewers should answer these before the next implementation slice starts:
@@ -371,14 +439,16 @@ Reviewers should answer these before the next implementation slice starts:
 2. Which RVF layers must be reworked because they are test-side struct
    construction, CPU helper image generation, GDI/software viewer output, or
    non-File/VFS/Resource bypasses?
-3. Which broader animation production variants must follow the bounded
-   selected-clip contract without reintroducing editor or gameplay ownership?
+3. Which asset-internal target identity table is required before broader
+   animation production variants?
 4. Which tiny source fixture files, if any, are allowed in the repo, and which
    generated outputs must stay under ignored artifact directories?
 5. Which File/VFS/Resource/Package path owns source bytes, cooked bytes, and
    runtime records in the first slice?
 6. What status names and no-mutation tests are mandatory before the next slice
    can keep `RUNTIME_ASSET_DATA_CLOSED_LOOP_CURRENT_SLICE_PASS`?
+7. Which package/index/hash/budget constraints must be checked against the
+   6 GB plus shipped-content target?
 
 ## Hard Blocks
 
@@ -386,6 +456,8 @@ The following are blocking violations:
 
 - using editor, rejected editor route, UI, input, or Game Adapter behavior as part of the closed
   runtime data proof;
+- binding animation or scene data directly to WorldObject handles, editor
+  object ids, raw pointers, display names, or file paths;
 - using `YuRuntimeVisualCameraTweenViewer`, GDI, software rasterization, CPU
   semantic PPM, image artifact output, screenshots, reports, logs, or manual
   inspection as the final acceptance path;

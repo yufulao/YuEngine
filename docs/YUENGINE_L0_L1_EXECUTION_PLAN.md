@@ -3,8 +3,34 @@
 Status: handoff plan for landing team
 Owner: 八云紫, 总架构师
 Requested: 2026-06-19
-Current observed code checkpoint: `f211f7f95299388987ccef00b4d1e8ee6f7bf0c1`
+Current observed code checkpoint: `0a9144b0e30cbede56a5dbf04b232f3e5b763802`
 Scope: progress adjustment, L0 closure plan, L1 runtime-core plan
+
+## 0. Production Target And Reference Bar
+
+YuEngine is the production engine for a small independent team. It must not be
+managed as a toy engine, a technology demo, or a public UE/Unity clone. The
+accepted reference bar is the shipped TouhouNewWorld class of native game:
+
+- small native runtime executable and support DLLs;
+- no Unity/UE runtime shape as the target architecture;
+- packed resources around the 6 GB to 8 GB class;
+- package/index/config/shader surfaces that support long-session play;
+- 20 hour scale gameplay stability, high performance, and actionable
+  diagnostics.
+
+This changes the L0/L1 plan from "prove many feature slices" to "build the
+production spine":
+
+```text
+Package -> Resource -> RuntimeAsset -> runtime records -> instance mapping
+-> Render/Audio/Input/Serialize -> tools -> shipping
+```
+
+All new work must prove how it moves this spine toward a shippable native game.
+If a feature does not reduce production risk for packed assets, long-session
+runtime stability, or deterministic diagnostics, it is not a near-term L0/L1
+priority.
 
 ## 1. Executive Decision
 
@@ -23,6 +49,10 @@ Start closing: L0 matrix, one real engine sample, then L1 runtime vertical slice
 
 Stop optimizing for: UE/Unity ecosystem breadth
 Optimize for: a clean internal commercial engine for one known game team
+
+Stop treating: animation, model, scene, and shader work as independent islands
+Start enforcing: asset family work flows through Package/Resource/RuntimeAsset
+               and stable asset-internal identity before World/editor binding
 ```
 
 Focused-first verification is the default for direct-main slices. Use
@@ -35,6 +65,75 @@ UE and Unity remain reference engines for responsibility boundaries, failure
 models, production tooling, and performance discipline. YuEngine should not
 copy their public ecosystem, universal plugin surface, editor extension market,
 multi-industry platform scope, or generic API breadth.
+
+The local TouhouNewWorld shipped package is the practical production reference:
+small native runtime, multi-GB packed content, explicit resource indexes, and
+stable long-session play. YuEngine should be narrower than that game's engine
+where the team does not need a feature, but not weaker in runtime discipline,
+asset packaging, failure semantics, or performance evidence.
+
+## 1.1 Long-Horizon Global Roadmap
+
+The longest execution line is:
+
+1. **L0 production foundation**: platform, RHI, audio, input, File/VFS,
+   Package, Resource, RenderCore, diagnostics, memory, and thread proof.
+2. **L1 runtime core**: RuntimeApp, FrameContext, Object, Component, Transform,
+   World/Scene records, Asset Manager, RenderScene, AudioScene, Input mapping,
+   Serialize, Script bridge, and Diagnostics.
+3. **Runtime asset production spine**: source/cooked schemas, package indexes,
+   hashes, dependency tables, archive budgets, validators, cook/load stages,
+   and runtime asset family records.
+4. **Product runtime feature set**: model, skeleton, scene, animation,
+   material, shader, texture, audio, input, save/config, and long-session
+   resource lifecycle.
+5. **Production tools**: importer, cooker, validator, package builder, resource
+   browser, preview surfaces, performance capture, and crash triage.
+6. **Shipping and maintenance**: release packages, patch/migration policy,
+   soak tests, hardware matrix, save compatibility, and versioned diagnostics.
+
+Editor work belongs after runtime contracts. Old TouhouNewWorld compatibility
+belongs only behind a separate accepted gate. Neither is allowed to shape L0/L1
+runtime contracts by default.
+
+## 1.2 Nearest Stage Decision
+
+The nearest stage is RuntimeAsset spine correction, not broad feature growth.
+Current scene-animation selected-clip evidence is useful and should close
+through VQ, but it does not authorize deeper animation work until the missing
+asset-internal target contract is explicit.
+
+The required order for the next RuntimeAsset-adjacent work is:
+
+```text
+RuntimeAsset container/family identity
+-> package/resource index and dependency table
+-> asset-internal scene node / model node / skeleton joint identity
+-> animation track/channel binding to target + property
+-> Step/Linear interpolation
+-> sampled transform application to runtime instance records
+-> WorldObject mapping only after instance contracts exist
+-> editor/importer authoring surfaces after runtime contracts pass
+```
+
+Animation assets must not bind directly to WorldObject, editor object, raw
+pointer, display name, or file path. Shader/reflection hardening can continue as
+a separate asset-family lane only when it does not replace the missing node and
+target identity work.
+
+### 1.2.1 Immediate Detailed Backlog
+
+| ID | Work item | Acceptance |
+| --- | --- | --- |
+| RTSPINE-001 | Close current scene-animation evidence gate | implementation, QA, docs, VQ, `origin/main`, and matrices agree before any next lane opens |
+| RTSPINE-002 | Update production target planning docs | TouhouNewWorld-class native runtime, multi-GB resource package, and no-compatibility policy are written into the active plans |
+| RTSPINE-003 | Define asset-internal target identity | scene node, model node, and skeleton joint ids are stable, bounded, versioned, and independent from WorldObject |
+| RTSPINE-004 | Define animation track target binding | track binds to target id plus property; no world instance, editor object, raw pointer, display name, or file path |
+| RTSPINE-005 | Define minimal interpolation | Step and Linear sampling at fixed times are deterministic and caller-owned-output only |
+| RTSPINE-006 | Define invalid target failure model | missing target, unsupported property, unsupported interpolation, capacity overflow, and invalid selected clip fail without output mutation |
+| RTSPINE-007 | Design instance mapping gate | asset target to runtime instance mapping is designed before implementation touches WorldObject |
+| RTSPINE-008 | Define package/resource pressure gate | archive/index/hash/budget requirements are checked against the 6 GB plus product content target |
+
 
 ## 2. Current Progress Assessment
 

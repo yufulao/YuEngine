@@ -1,11 +1,13 @@
 # YuEngine L1 Runtime Core Matrix
 
 Status: ENG-178A governance document
-Baseline: `origin/main@31ebbb2ac77cc422acbecd3209fecf51567c48a0`
+Baseline: `origin/main@0a9144b0e30cbede56a5dbf04b232f3e5b763802`
 Aligned documents:
 
 - `docs/YUENGINE_L0_COMPLETION_MATRIX.md`
 - `docs/YUENGINE_BRIDGE_AUDIT.md`
+- `docs/YUENGINE_LONG_PLAN_TEAM_EXECUTION.md`
+- `docs/YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md`
 
 Source plan: `docs/YUENGINE_L0_L1_EXECUTION_PLAN.md` sections 6, 10, 11, and 12
 Scope: L1 runtime subsystem ownership, dependencies, forbidden scope, required
@@ -67,6 +69,33 @@ HardwareFrameHost paths. L1 value-contract tests may consume explicit
 unavailable statuses, but they must not count missing hardware as a runtime
 success.
 
+## 2A. Commercial Target And Asset Spine Correction
+
+The L1 matrix targets a small-team native commercial engine, not a public
+UE/Unity clone. The local TouhouNewWorld package is the current practical
+reference bar: small native runtime binaries, multi-GB packed resources,
+resource index/config/shader surfaces, and long-session gameplay stability.
+
+For L1, this means Package, Resource, and RuntimeAsset are not support modules;
+they are the production spine. Runtime visual, animation, model, scene,
+material, shader, audio, and save rows must prove how their records move
+through that spine.
+
+The corrected dependency order for RuntimeAsset-adjacent rows is:
+
+```text
+Package/Resource bytes and indexes
+-> RuntimeAsset family identity and dependency tables
+-> asset-internal scene node / model node / skeleton joint targets
+-> clip/track/channel or material/shader records that reference those targets
+-> runtime instance mapping
+-> WorldObject/editor surfaces only after explicit mapping gates
+```
+
+Animation selected-clip proof is a valid first slice, but it is not a complete
+animation asset contract. Deeper animation, curve, and transform application
+work requires asset-internal target identity first.
+
 ## 3. Runtime Core Matrix
 
 | Subsystem | Backlog IDs | Owner / responsibility | Dependencies | Allowed L1 dependencies | State | Required tests / evidence | Vertical sample linkage | Deferred / env blockers | Forbidden scope | Next action |
@@ -86,7 +115,7 @@ success.
 | Serialization / save boundary | `L1-SER-001`, `L1-SER-002`, `L1-SER-004` | Serialize owner owns value streams, scene assembly record roundtrip, version/status handling, and save/profile boundary | `YuSerialize`, World scene record value streams | Runtime config, sample reload, external File/tool persistence later | Done | `Serialize_*`, `WorldSceneRecordValueStreamBridge_*`, `WorldSerializeSnapshotBridge_*`, sample roundtrip test | `L1-SAMPLE-008` serializes and reloads sample state | File persistence/profile UX is deferred outside Serialize core | Save-game business policy, original save compatibility, object construction in Serialize, File/Package dependency in Serialize core | Keep persistence policy outside Serialize and document sample acceptance separately |
 | Config / profile boundary | `L1-SER-003`, `L1-SER-004` | Runtime/config owner owns caller-owned runtime config records and unsupported-version behavior | RuntimeApp value records, Serialize core | Diagnostics and sample validation route may read values | Done | `Serialize_RuntimeConfigStream_RoundTripsCallerOwnedConfigBoundary`, `Serialize_RuntimeConfigStream_RejectsUnsupportedVersionWithoutMutation`, `Serialize_RuntimeConfigStream_KeepsPersistencePolicyOutsideCore` | Supports `L1-SAMPLE-010` validation route documentation | Actual user profile persistence remains deferred | File/Package dependency inside Serialize, product settings UI, old save/profile compatibility | Keep config as value stream until a separate persistence gate |
 | Script native bridge runtime adapter | `L1-SCRIPT-001..003` | Script owner owns native call registry, caller-owned value slots, runtime phase dispatch adapter, and explicit failure states | `YuScript`, World phase trace values | World phase dispatch adapter, RuntimeApp phases | Done | `Script_RuntimePhaseDispatch_*`, `WorldScriptDispatchBridge_*` | Not required by the current project-independent vertical sample; available for future script-driven sample rows | VM/bytecode evidence is deferred | Reflection, original-game service state, script-owned World/Resource/File access, gameplay script semantics | Keep adapter narrow and do not make World core depend on Script core |
-| Animation runtime foundation | `L1-ANIM-001..005` | Animation owner owns bounded runtime clip/track/keyframe records, selected clip ids, interpolation sampler, FrameContext time sampling, transform application, and failure states | FrameContext time, Object/Transform records | RenderScene consumes sampled transform values; vertical visual sample may use animation output | Done | RuntimeAssetData camera/animation descriptor tests pass: scene `cameras=`/`cameraN=` records, animation `clips=`/`tracks=`/`keyframes=` tables, dependency validators, disk sampling, reusable runtime animation tables, explicit `selected_animation_clip_id`, selected-clip sampling, and missing selected clip `InvalidDependency` without mutation are covered by the focused RuntimeAssetData command set at `f211f7f95299388987ccef00b4d1e8ee6f7bf0c1` | `L1-SAMPLE-011` and RuntimeAsset visual routes can drive transforms through runtime animation records and explicit selected clips; failures report exact animation/data layers | None as environment blocker; future richer animation authoring remains out of scope | Editor timeline, gameplay state machine, skeletal skinning, blend tree, montage graph, physics, UI animation authoring | Keep descriptor/validator/sampler selected-clip tests in stage-close VQ |
+| Animation runtime foundation | `L1-ANIM-001..005`, `RTSPINE-003..007` | Animation owner owns bounded runtime clip/track/keyframe records, selected clip ids, interpolation sampler, FrameContext time sampling, transform application, and failure states after target identity exists | FrameContext time, Object/Transform records, RuntimeAsset target identity tables | RenderScene consumes sampled transform values; vertical visual sample may use animation output after asset target mapping is explicit | FirstSlice | RuntimeAssetData camera/animation descriptor tests pass: scene `cameras=`/`cameraN=` records, animation `clips=`/`tracks=`/`keyframes=` tables, dependency validators, disk sampling, reusable runtime animation tables, explicit `selected_animation_clip_id`, selected-clip sampling, and missing selected clip `InvalidDependency` without mutation are covered by the focused RuntimeAssetData command set at `f211f7f95299388987ccef00b4d1e8ee6f7bf0c1`; docs evidence is synchronized at `0a9144b0e30cbede56a5dbf04b232f3e5b763802` | `L1-SAMPLE-011` and RuntimeAsset visual routes may consume selected-clip proof, but deeper animation cannot be counted complete until scene node/model node/skeleton joint target identity and instance mapping gates exist | Asset target identity and instance mapping are architecture blockers, not environment blockers | Editor timeline, gameplay state machine, skeletal skinning, blend tree, montage graph, physics, UI animation authoring, direct WorldObject/editor object binding, raw pointer/display-name/file-path binding | Close scene-animation VQ, then define RuntimeAsset target identity before any deeper curve, track binding, transform application, or WorldObject-facing animation work |
 | Runtime diagnostics | `L1-DIAG-001..003` | Diagnostics owner owns bounded runtime counters, disabled equivalence, and optional overlay hook proposal | FrameContext, runtime subsystem counters, Diagnostics channel | Sample validation route, tooling plane only | Done | `Diagnostics_RuntimeCounters_*`, `Diagnostics_OverlayHookProposalStaysOptionalToolingPlane`, `Diagnostics_OverlayHookRejectsRuntimeDependency`, `Diagnostics_OverlayHookDisabledDoesNotChangeRuntimeValues` | `L1-SAMPLE-010` validation route and sample diagnostics counters | Visual overlay implementation is deferred tooling, not runtime dependency | Report JSON as core API, unbounded logging, overlay required for correctness | Keep diagnostics optional and behavior-equivalent when disabled |
 | L1 vertical sample prep | `L1-SAMPLE-001..012`, `L1-VIS-001..006` | Sample owner aggregates L1 value-contract proof for manifest, runtime boot, object graph, asset/render/audio routes, input, serialize, cleanup, validation, and pure runtime visual scene closure | All L1 subsystem rows above plus L0 explicit hardware statuses and the runtime visual foundation ladder from camera/geometry/material/animation through RenderScene/RenderCore/RHI/capture | RuntimeApp, World, Asset, Input, RenderScene, AudioScene, Serialize, Diagnostics, runtime camera/material/resource/animation records | StageClose | Existing value rows pass, runtime visual foundation rows pass through RVF-016/018/019, RuntimeAssetData device-backed visual/product-run rows prove disk-loaded data through RenderScene/RenderCore/RHI, the post-6718b74 focused blocker/blend/package group reports `13/13` PASS, and scene-animation selected-clip focused evidence reports `11/11` PASS; remaining stage-close evidence is strict XInput target hardware proof | This is the vertical sample linkage row; visual closure now has checked-in focused tests, product/package generic submission ledgers, exact missing-layer diagnostics, selected-clip animation proof, and D3D11 RuntimeAsset hardware smoke evidence | `docs/YUENGINE_L1_VERTICAL_SAMPLE_ACCEPTANCE.md` and `docs/YUENGINE_RUNTIME_VISUAL_FOUNDATION_PLAN.md` exist; real XInput remains L0 `BlockedByEnv` on machines without a connected target controller | TouhouNewWorld business logic, old package runtime parsing, UI/GameAdapter/gameplay, editor/rejected editor route/UI/input dependency, manual-only screenshot proof, committed generated output | Continue strict XInput grading without reopening runtime visual foundations |
 
@@ -98,6 +127,8 @@ The current L1 dependency direction is:
 RuntimeApp / FrameContext
     -> World/Object/Component/Transform value records
     -> Asset Manager over L0 Resource/Streaming/AudioResource
+    -> Package/Resource/RuntimeAsset family identity and dependency tables
+    -> RuntimeAsset scene/model/skeleton target identity
     -> Input command snapshots
     -> RenderScene and AudioScene contract queues
     -> Camera, geometry, material, animation, and capture foundation floors
