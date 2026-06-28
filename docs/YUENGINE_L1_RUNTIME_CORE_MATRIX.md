@@ -103,8 +103,16 @@ RTSPINE-008D File/VFS ranged IO is now a lower-spine PASS at
 `aebd28c5-f688-4ccc-abaf-1a3bd61879cb` reports `YuFileTests` build PASS,
 `^File_` discovery/execution `23/23` PASS, ranged subset `4/4` PASS,
 diff/hygiene/boundary PASS, and no broad/full CTest. It validates the File/VFS
-ranged IO contract only; Resource payload windows, RuntimeAsset packaged
-validation, and RTSPINE-008E/F/G/H remain separate gates.
+ranged IO contract only; RuntimeAsset packaged validation and RTSPINE-008F/G/H
+remain separate gates.
+
+RTSPINE-008E Resource payload window/reference budget is now a lower-spine PASS
+at `8bb8eff9c98d2a0aa5050c5da6ad94049fa894be`: focused QA task
+`b4fa51c3-aefc-4714-b5d8-062f8a933ac9` reports `YuResourceTests` build PASS,
+Resource window/reference discovery exactly `7` rows, execution `7/7` PASS,
+commit-level diff/hygiene/boundary PASS, and no broad/full CTest. It validates
+the Resource payload window/reference budget contract only; RuntimeAsset
+packaged validation and RTSPINE-008F/G/H remain separate gates.
 
 ## 3. Runtime Core Matrix
 

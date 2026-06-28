@@ -119,6 +119,15 @@ async ranged output-too-small no-partial-copy behavior. Focused QA task
 diff/hygiene/boundary PASS, and no broad/full CTest. It opens only the File/VFS
 ranged IO contract; Resource payload windows and RuntimeAsset packaged
 validation remain separate gates.
+RTSPINE-008E Resource payload window/reference budget is PASS at
+`origin/main@8bb8eff9c98d2a0aa5050c5da6ad94049fa894be`, covering cache and
+decoded payload window metadata, reference-budget rejection, window
+overflow/mismatch no-mutation failures, and payload-window reference/residency
+stability. Focused QA task `b4fa51c3-aefc-4714-b5d8-062f8a933ac9` reports
+`YuResourceTests` build PASS, Resource window/reference discovery exactly `7`
+rows, execution `7/7` PASS, commit-level diff/hygiene/boundary PASS, and no
+broad/full CTest. It opens only the Resource payload window/reference budget
+contract; RuntimeAsset packaged validation remains a separate gate.
 `archive_byte_offset` and `archive_byte_size` are the only authoritative
 shipped-content pressure byte range. `byte_offset` and `byte_size` may remain
 as legacy mirrors while Streaming, RuntimeAsset, and existing tests still
@@ -349,6 +358,7 @@ C++ in-memory construction alone.
 | Invalid bounds no-output validation | PASS | `RuntimeAssetData_ValidatorRejectsInvalidBoundsWithoutOutputs` |
 | Missing/duplicate dependency validation | PASS | `RuntimeAssetData_DependencyGraphRejectsMissingAndDuplicateRefs` |
 | File/VFS read path | PASS | fixture bytes are read through `MountTable` loose mount by `YuRuntimeAsset`; RTSPINE-008D adds ranged `FileReadRequest` and no-mutation File/VFS evidence at `c67e9710ab39f49ea01f0c194d2e5b44cbf3b97e` |
+| Resource payload window/reference budget | PASS | RTSPINE-008E adds cache and decoded payload window metadata, reference-budget rejection, window overflow/mismatch no-mutation failures, and payload-window reference/residency stability evidence at `8bb8eff9c98d2a0aa5050c5da6ad94049fa894be` |
 | Resource/Asset registration | PASS | scene and all generated asset families register synthetic Resource descriptors and runtime Asset handles |
 | Resource/Asset dependency edges | PASS | `RuntimeAssetData_LoadRegistersResourceAndAssetDependencyEdges` records scene dependencies in both registries |
 | Camera/tween descriptor file | PASS | `RuntimeAssetData_CameraTweenDescriptorLoadsFromDiskSceneReference` validates and loads `Camera/Main.yucamera` and cooked camera records through the runtime graph; ResourceBrowser surface/depth workflows consume the same 10-file graph |

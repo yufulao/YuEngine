@@ -60,3 +60,10 @@ at `origin/main@c67e9710ab39f49ea01f0c194d2e5b44cbf3b97e`; focused QA task
 `aebd28c5-f688-4ccc-abaf-1a3bd61879cb` reports `YuFileTests` build PASS,
 `^File_` `23/23` PASS, ranged subset `4/4` PASS, and no broad/full CTest. That
 008D evidence does not expand this 008B Package byte-range decision.
+RTSPINE-008E later opened Resource payload window/reference budget through a
+separate Resource-only gate at
+`origin/main@8bb8eff9c98d2a0aa5050c5da6ad94049fa894be`; focused QA task
+`b4fa51c3-aefc-4714-b5d8-062f8a933ac9` reports `YuResourceTests` build PASS,
+Resource window/reference discovery exactly `7` rows, execution `7/7` PASS, and
+no broad/full CTest. That 008E evidence does not expand this 008B Package
+byte-range decision.

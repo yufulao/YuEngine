@@ -104,8 +104,13 @@ At the latest handoff:
   `aebd28c5-f688-4ccc-abaf-1a3bd61879cb` reports `YuFileTests` build PASS,
   `^File_` discovery/execution `23/23` PASS, ranged subset `4/4` PASS,
   diff/hygiene/boundary PASS, and no broad/full CTest;
-- Resource payload windows, RuntimeAsset packaged validation, RTSPINE-006/007,
-  and RTSPINE-008E/F/G/H remain blocked until their own gates are released.
+- RTSPINE-008E Resource payload window/reference budget implementation is PASS
+  at `8bb8eff9c98d2a0aa5050c5da6ad94049fa894be`; focused QA task
+  `b4fa51c3-aefc-4714-b5d8-062f8a933ac9` reports `YuResourceTests` build
+  PASS, Resource window/reference discovery exactly `7` rows, execution `7/7`
+  PASS, commit-level diff/hygiene/boundary PASS, and no broad/full CTest;
+- RuntimeAsset packaged validation, RTSPINE-006/007, and RTSPINE-008F/G/H
+  remain blocked until their own gates are released.
 
 Live workspace state is still authoritative for task ownership and current
 status. This file records the handoff baseline, not a replacement for the task

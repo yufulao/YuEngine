@@ -117,7 +117,7 @@ The follow-up split from this contract is:
 | RTSPINE-008B | Package archive byte-range and index metadata | Accepted by `docs/gates/RTSPINE_008B_PACKAGE_BYTE_RANGE_LEGACY_MIRROR_DECISION.md`; `byte_offset`/`byte_size` are legacy mirrors only |
 | RTSPINE-008C | Package artifact hash and dependency integrity | PASS at `origin/main@d18f1679ebd389ecec506055764602591f5b9ab6`; Package-only payload, metadata, dependency table, and package table hash validation |
 | RTSPINE-008D | File/VFS ranged IO | PASS at `origin/main@c67e9710ab39f49ea01f0c194d2e5b44cbf3b97e`; File/VFS ranged request/status, no-mutation, and async small-output contract |
-| RTSPINE-008E | Resource payload window/reference budget | After this spec, independent from RuntimeAsset files |
+| RTSPINE-008E | Resource payload window/reference budget | PASS at `origin/main@8bb8eff9c98d2a0aa5050c5da6ad94049fa894be`; Resource cache/decoded payload window and reference-budget contract |
 | RTSPINE-008F | Package dependency closure and budgeted load plan | After Package metadata/hash evidence |
 | RTSPINE-008G | RuntimeAsset packaged validation bridge | After RTSPINE-004 implementation and QA are stable, and after lower Package/File/Resource gates have evidence |
 | RTSPINE-008H | RuntimeAsset transaction rollback/proof | After RTSPINE-008G |
@@ -126,16 +126,24 @@ RTSPINE-008C focused QA task `ba135e38-b73e-4294-b449-97a04b33b982` reports
 `YuPackageTests` build PASS, `^Package_` discovery/execution `35/35` PASS, exact
 new integrity rows `2/2` PASS, `git diff --check` PASS, added-line hygiene PASS,
 Package-only boundary scans PASS, and no broad/full CTest. This 008C evidence
-did not itself release File/VFS; the separate 008D gate below does. It still
-does not release RTSPINE-008E/F/G/H, Resource payload windows, or RuntimeAsset
-packaged validation.
+did not itself release File/VFS or Resource payload windows; the separate 008D
+and 008E gates below do. It still does not release RTSPINE-008F/G/H or
+RuntimeAsset packaged validation.
 
 RTSPINE-008D focused QA task `aebd28c5-f688-4ccc-abaf-1a3bd61879cb` reports
 `YuFileTests` build PASS, `^File_` discovery/execution `23/23` PASS, ranged
 subset `4/4` PASS, `git diff --check` PASS, added-line hygiene PASS, File-only
 boundary scans PASS, and no broad/full CTest. This releases only the File/VFS
-ranged IO contract and does not release RTSPINE-008E/F/G/H, Resource payload
-windows, or RuntimeAsset packaged validation.
+ranged IO contract. It did not itself release Resource payload windows; the
+separate 008E gate below does. It still does not release RTSPINE-008F/G/H or
+RuntimeAsset packaged validation.
+
+RTSPINE-008E focused QA task `b4fa51c3-aefc-4714-b5d8-062f8a933ac9` reports
+`YuResourceTests` build PASS, Resource window/reference discovery exactly `7`
+rows, execution `7/7` PASS, commit-level `git diff --check` PASS, added-line
+hygiene PASS, non-goal boundary scans PASS, and no broad/full CTest. This
+releases only the Resource payload window/reference budget contract and does not
+release RTSPINE-008F/G/H or RuntimeAsset packaged validation.
 
 ## Forbidden Scope
 
