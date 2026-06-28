@@ -104,6 +104,13 @@ RTSPINE-008A makes these decisions:
   records, RuntimeAsset packaged validation, and transaction rollback/proof are
   separate follow-up gates.
 
+RTSPINE-008B records the first Package follow-up decision in
+`docs/gates/RTSPINE_008B_PACKAGE_BYTE_RANGE_LEGACY_MIRROR_DECISION.md`.
+`archive_byte_offset` and `archive_byte_size` are the only authoritative
+shipped-content pressure byte range. `byte_offset` and `byte_size` may remain
+as legacy mirrors while Streaming, RuntimeAsset, and existing tests still
+consume them, but they cannot be counted as pressure evidence.
+
 The current Package/File/Resource fixture limits remain useful as deterministic
 unit-test caps. They do not prove shipped-content pressure until a follow-up
 gate explicitly maps them to runtime caps, budget assumptions, or bounded

@@ -1,0 +1,51 @@
+# RTSPINE-008B: Package Byte-Range Legacy Mirror Decision
+
+Status: Contract decision accepted
+Related implementation: `ea4dc0f78fc12dc1366f999e218dd50f529e92d0`
+Related focused QA blocker: `4b2ac3ca COMPLETE-FAIL`
+Related docs task: `9d04a256-80d7-4675-9c8e-4a10a98d7d96`
+Source baseline: `dd9f10e89b9540816e64d7213e9d5a410c8667f0`
+
+## Decision
+
+RTSPINE-008B accepts `archive_byte_offset` and `archive_byte_size` as the only
+authoritative Package shipped-content pressure byte range.
+
+`PackageEntryDescriptor::byte_offset`, `PackageEntryDescriptor::byte_size`,
+`PackageLoadPlanRecord::byte_offset`, and `PackageLoadPlanRecord::byte_size`
+may remain as legacy mirror fields while Streaming, RuntimeAsset, and existing
+tests still consume them. They are compatibility mirrors only. They must not be
+counted as shipped-content pressure evidence, pressure budget proof, or archive
+range authority.
+
+Physical deprecation or removal of the legacy mirror fields is deferred to a
+later Streaming/RuntimeAsset bridge gate if that gate names the exact migration
+surface and evidence rows.
+
+## Evidence Rule
+
+RTSPINE-008B focused QA must evaluate pressure evidence through:
+
+- `archive_byte_offset`;
+- `archive_byte_size`;
+- Package registry validation before mutation;
+- Package load-plan propagation of the archive range;
+- Package artifact round-trip of the archive range.
+
+Rows that only inspect `byte_offset` or `byte_size` can prove legacy mirror
+compatibility, but they cannot prove RTSPINE-008B pressure coverage.
+
+## Scope Boundary
+
+This decision does not open:
+
+- Streaming implementation changes;
+- RuntimeAsset packaged-validation changes;
+- Resource external payload or payload-window records;
+- File/VFS ranged IO;
+- Package hash or dependency integrity work;
+- CMake, broad CTest, editor, Web, UI, external authoring, original-game
+  adapters, or runtime visual evidence matrix edits.
+
+RTSPINE-008C and later gates may use this decision as an input, but they must
+name their own file surfaces and evidence thresholds before implementation.

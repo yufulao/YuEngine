@@ -82,8 +82,12 @@ At the latest handoff:
   coordination until the L0/L1 stop condition is actually met;
 - RTSPINE-008A docs/spec is PASS at
   `ad1a7fb5b3dfa2e1f118103158b640a7111d767f`; the only current
-  Package/Resource write lane is RTSPINE-008B Package byte-range/index, while
-  Resource/File/VFS, RuntimeAsset packaged validation, and RTSPINE-005/006/007
+  Package/Resource write lane is RTSPINE-008B Package byte-range/index;
+- RTSPINE-008B keeps `archive_byte_offset` and `archive_byte_size` as the
+  authoritative pressure byte range, with `byte_offset` and `byte_size` as
+  legacy mirrors only, as recorded in
+  `docs/gates/RTSPINE_008B_PACKAGE_BYTE_RANGE_LEGACY_MIRROR_DECISION.md`;
+- Resource/File/VFS, RuntimeAsset packaged validation, and RTSPINE-005/006/007
   remain blocked until their own gates are released.
 
 Live workspace state is still authoritative for task ownership and current

@@ -33,7 +33,9 @@ The current mainline already has deterministic first-slice Package, File/VFS,
 Resource, and RuntimeAsset evidence. Those slices use small fixture limits:
 
 - Package entries, dependencies, and load plans are bounded value tables;
-- Package entry byte offsets and byte sizes are currently 32-bit values;
+- Package entry byte offsets and byte sizes still expose legacy 32-bit mirror
+  fields, but RTSPINE-008B uses 64-bit archive byte ranges as the pressure
+  authority;
 - File/VFS fixture reads and writes are bounded whole-file operations;
 - Resource cache and decoded payload paths copy bounded byte arrays into fixed
   test-sized storage;
@@ -112,7 +114,7 @@ The follow-up split from this contract is:
 
 | Gate | Scope | Release condition |
 | --- | --- | --- |
-| RTSPINE-008B | Package byte-range and index metadata | Separate Package write lane after this spec is accepted |
+| RTSPINE-008B | Package archive byte-range and index metadata | Accepted by `docs/gates/RTSPINE_008B_PACKAGE_BYTE_RANGE_LEGACY_MIRROR_DECISION.md`; `byte_offset`/`byte_size` are legacy mirrors only |
 | RTSPINE-008C | Package artifact hash and dependency integrity | After RTSPINE-008B or in a clearly disjoint Package lane |
 | RTSPINE-008D | File/VFS ranged IO | After this spec, before RuntimeAsset packaged validation |
 | RTSPINE-008E | Resource payload window/reference budget | After this spec, independent from RuntimeAsset files |

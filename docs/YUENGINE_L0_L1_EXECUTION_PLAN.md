@@ -167,10 +167,13 @@ before Resource, Asset, RenderScene, RenderCore, RHI, Audio, or World outputs
 are published.
 
 The only released Package write lane is RTSPINE-008B Package byte-range/index.
-Resource, File/VFS, and RuntimeAsset packaged-validation changes remain blocked
-until their lower Package/File/Resource gates name exact module surfaces and
-evidence rows; RTSPINE-004 implementation and QA stability alone is not enough
-to open RuntimeAsset packaged validation.
+For RTSPINE-008B, `archive_byte_offset` and `archive_byte_size` are the
+authoritative shipped-content pressure byte range. The existing `byte_offset`
+and `byte_size` fields are legacy mirrors only and cannot be counted as
+pressure evidence. Resource, File/VFS, and RuntimeAsset packaged-validation
+changes remain blocked until their lower Package/File/Resource gates name exact
+module surfaces and evidence rows; RTSPINE-004 implementation and QA stability
+alone is not enough to open RuntimeAsset packaged validation.
 
 ## 1.3 Continuous Multi-Agent Execution Governance
 
@@ -201,8 +204,7 @@ Current immediate parallel pattern:
 
 ```text
 RTSPINE-004 docs/VQ closure
-+ RTSPINE-008B Package byte-range/index implementation
-+ RTSPINE-008B Package QA readiness scout
++ RTSPINE-008B Package archive byte-range decision and focused QA re-audit
 + RTSPINE-008C hash/dependency readiness scout (read-only)
 ```
 
