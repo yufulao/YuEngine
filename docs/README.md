@@ -197,6 +197,19 @@ At the latest handoff:
   discovery count `10`; the RHI dependency set was not executed, RHI closure is
   unchanged, and no adjacent/full Resource/Streaming or broad/full CTest was
   run;
+- L0-RES-006 PCM bridge to Audio closure is PASS at
+  `804206712988733f38990af6975c67854b16de6a`; readiness task `69ddc757`
+  records that existing `AudioResourcePcmPacketImportBridge` maps Resource
+  decoded audio metadata into `AudioPcmSamplePacketRequest` values and
+  bridge-owned import records while Audio does not parse Resource payloads and
+  Resource does not own Audio lifecycle; focused QA task
+  `1dbfdaf6-61ff-4ac4-9e47-a2703f2e5a1e` reports a read-only clean workspace,
+  `YuAudioResourceTests` focused build PASS,
+  `AudioResource_PcmPacketImportBridge_` discovery/execution `8/8` PASS, and
+  dependency discovery counts `Audio_PcmSamplePacket_` `13` plus
+  `Audio_PcmStreamQueue_` `15`; Audio dependency rows were not executed by this
+  lane, `L0-AUD-002` is not table-closed here, and no adjacent/full
+  Audio/AudioResource/Resource or broad/full CTest was run;
 - WorldObject-facing runtime instance mapping and broader Resource/File/VFS
   follow-through remain blocked until their own gates are released.
 

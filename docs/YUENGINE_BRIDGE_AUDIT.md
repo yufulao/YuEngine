@@ -38,7 +38,7 @@ The audit is aligned to `YUENGINE_L0_COMPLETION_MATRIX.md`:
 | `HardwareFrameHost` | Platform/Input/Audio/RenderCore/RHI adapters into one hardware tick | Platform/Input/Audio/RenderCore/RHI modules keep their own internals | Hardware consumes module public contracts | Hardware owns host initialize/tick/shutdown only | `HardwareFrameHostStatus`, `HardwareFrameHostTickResult`, plus mapped module statuses | Tick requests, event output, gamepad polling, audio chunks, render frame storage | `HardwareFrameHost_*`, `HardwareFrameHost_D3D11IntegratedFrameRuns` | `BlockedByEnv` | `Medium` | Keep as orchestrating adapter only; target hardware smoke remains required before product-done claim |
 | `InputBridge` and `InputBridgeWindows` | Platform messages and XInput snapshots to Input events | Platform/Win32/XInput source values | Input owns event queue and snapshots | Input owns bridge init/shutdown and event storage | `InputStatus` including `UnsupportedBackend`, `SourceUnavailable`, `FocusLost`, `OutputBufferFull`, `BackendError` | `InputBridgeDesc::MAX_EVENT_CAPACITY`, gamepad user index, drain output capacity | `Input_Bridge*`, `Input_BridgeXInput*`, `HardwareFrameHost_GamepadPollRejectsInvalidIndex` | `Done` and XInput `BlockedByEnv` | `Medium` | Keep platform-native details private; real gamepad smoke may only skip through explicit unavailable status |
 | `AudioPcmStreamQueueCallbackBridge` | Audio PCM stream queue to `AudioCallbackDevice` or test submitter | Audio stream queue owns chunks and handles | Audio callback device consumes submitted chunks | Audio owns queue, callback device owns hardware callback | `AudioStatus` including `DeviceUnavailable`, `BufferSubmitFailed`, `CallbackFailed`, `CallbackTimeout` | Scratch chunk storage, stream queue capacity, callback drain count | `Audio_*`, `AudioScene_*`, hardware `Audio`/`XAudio2` smoke | XAudio2 `BlockedByEnv` | `Medium` | Keep callback bridge free of file/resource parsing and unbounded callback work; target XAudio2 proof is still required |
-| `AudioResourcePcmPacketImportBridge` | Resource decoded audio result to AudioResource PCM packet record | Resource owns decoded result record | AudioResource owns PCM packet import records | AudioResource owns import handle lifetime; Resource handle remains external | `AudioResourcePcmPacketImportStatus` plus Resource decode status evidence | Import slots, packet IDs, format/sample/frame/byte validation | `AudioResource*`, `Asset_AudioReadyRecordUsesImportRecordWithoutOwningDevice`, `AudioScene_*` | `Done` | `Medium` | Keep codec expansion outside this bridge; Audio must not parse Resource payloads |
+| `AudioResourcePcmPacketImportBridge` | Resource decoded audio result to AudioResource PCM packet record | Resource owns decoded result record | AudioResource owns PCM packet import records | AudioResource owns import handle lifetime; Resource handle remains external | `AudioResourcePcmPacketImportStatus` plus Resource decode status evidence | Import slots, packet IDs, format/sample/frame/byte validation | `AudioResource_PcmPacketImportBridge_*`, `Audio_PcmSamplePacket_*`, `Audio_PcmStreamQueue_*` | `Done` | `Medium` | Keep codec expansion outside this bridge; Audio must not parse Resource payloads |
 | `PackageResourceStagingQueue` | Package load-plan record to File async read completion for Streaming | Package owns load-plan record; File owns async read result | Streaming owns staging queue records | Streaming owns pending/completion slots | `PackageResourceStagingStatus`, `ResourceStatus`, `AsyncFileReadStatus` | `MAX_PACKAGE_RESOURCE_STAGING_REQUEST_COUNT`, completion output capacity | `Streaming_PackageResourceStaging_*` | `Done` | `Medium` | Keep package as value plan provider; do not reintroduce old package runtime behavior |
 | `ResourceUploadQueue` | Staging completion to RHI upload request/completion | Streaming owns staging completion | RHI owns backend resource creation; Resource receives completion later | Streaming owns upload pending/completion slots | `ResourceUploadStatus`, `ResourceStatus`, `RhiStatus` | `MAX_RESOURCE_UPLOAD_REQUEST_COUNT`, byte range, completion output capacity | `Streaming_ResourceUpload_*` | `Done` | `Medium` | Keep Resource from owning RHI device lifecycle; hardware backend proof stays separate |
 | `ResourceUploadCommitQueue` | RHI upload completion to Resource load/residency commit | Streaming owns upload completion | Resource owns registry state transition | Streaming owns commit pending/completion slots | `ResourceUploadCommitStatus`, `ResourceStatus`, load/residency statuses | `MAX_RESOURCE_UPLOAD_COMMIT_REQUEST_COUNT`, completion output capacity | `Streaming_ResourceUploadCommit_*` | `Done` | `Medium` | Keep commit as explicit value transition, not implicit Resource cache mutation |
@@ -67,6 +67,26 @@ World/editor/importer, old-package compatibility, real codec/parser,
 Package/Resource public API expansion, L0-RES-006 PCM bridge, L0-RES-007 sample
 texture/mesh path, adjacent/full Resource/Streaming, screenshots/reports/manual
 proof, or broad/full CTest completion.
+
+## 3.2 L0-RES-006 Evidence Sync
+
+L0-RES-006 PCM bridge to Audio closure is PASS at
+`804206712988733f38990af6975c67854b16de6a`. Readiness task `69ddc757`
+records that existing `AudioResourcePcmPacketImportBridge` maps Resource
+decoded audio metadata into `AudioPcmSamplePacketRequest` values and
+bridge-owned import records while Audio does not parse Resource payloads and
+Resource does not own Audio lifecycle.
+
+Focused QA task `1dbfdaf6-61ff-4ac4-9e47-a2703f2e5a1e` reports a read-only
+clean workspace, `YuAudioResourceTests` focused build PASS,
+`AudioResource_PcmPacketImportBridge_` discovery/execution `8/8` PASS, and
+dependency discovery counts `Audio_PcmSamplePacket_` `13` plus
+`Audio_PcmStreamQueue_` `15`. Audio dependency rows were not executed by this
+lane, `L0-AUD-002` is not table-closed here, and this sync does not claim
+L0-RES-007 sample path, L0-AUD-003 callback proof, L0-AUD-005 sample PCM path,
+RuntimeAsset or Asset Manager expansion, RenderScene/RHI, World/editor/importer,
+codec/parser, Package/Resource public API expansion, screenshots/reports/manual
+listening proof, adjacent/full suites, or broad/full CTest completion.
 
 ## 4. L1 Runtime Bridge Audit
 

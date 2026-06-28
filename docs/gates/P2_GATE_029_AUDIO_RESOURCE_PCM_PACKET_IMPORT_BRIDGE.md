@@ -333,6 +333,24 @@ Rejected proof:
   streaming, BGM/SE service, UI, World, Script, Game Adapter, RenderCore
   scheduling, RHI upload, or hardware-only behavior as evidence for this gate.
 
+## L0-RES-006 Evidence Sync
+
+L0-RES-006 PCM bridge to Audio closure is PASS at
+`804206712988733f38990af6975c67854b16de6a` for this gate's
+AudioResource-to-Audio packet import surface. Readiness task `69ddc757`
+records that existing `AudioResourcePcmPacketImportBridge` maps Resource
+decoded audio metadata into `AudioPcmSamplePacketRequest` values and
+bridge-owned import records while Audio does not parse Resource payloads and
+Resource does not own Audio lifecycle.
+
+Focused QA task `1dbfdaf6-61ff-4ac4-9e47-a2703f2e5a1e` reports a read-only
+clean workspace, `YuAudioResourceTests` focused build PASS,
+`AudioResource_PcmPacketImportBridge_` discovery/execution `8/8` PASS, and
+dependency discovery counts `Audio_PcmSamplePacket_` `13` plus
+`Audio_PcmStreamQueue_` `15`. Audio dependency rows were not executed by this
+lane, `L0-AUD-002` is not table-closed here, and there is no adjacent/full
+Audio, AudioResource, Resource, or broad/full CTest claim.
+
 ## Non Goals
 
 - No audio file decoder, codec parser, decoded byte storage, byte copying,
