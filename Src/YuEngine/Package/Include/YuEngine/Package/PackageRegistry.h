@@ -84,7 +84,17 @@ private:
         std::size_t& out_index) const;
     bool HasDependencyEdge(PackageId package, PackageEntryId dependent, PackageEntryId dependency) const;
     bool HasDependencyPath(PackageId package, PackageEntryId start, PackageEntryId target) const;
-    std::uint32_t CountDirectDependencies(PackageId package, PackageEntryId entry) const;
+    PackageStatus BuildDependencyClosurePlan(
+        PackageId package,
+        std::size_t root_index,
+        PackageLoadPlan& out_plan) const;
+    PackageStatus AppendDependencyClosure(
+        PackageId package,
+        std::size_t entry_index,
+        std::array<PackageEntryId, MAX_PACKAGE_ENTRY_COUNT>& visiting_entries,
+        std::uint32_t& visiting_count,
+        PackageLoadPlan& out_plan) const;
+    PackageStatus TryAppendRecord(PackageLoadPlan& plan, const PackageEntryDescriptor& descriptor) const;
     void AppendRecord(PackageLoadPlan& plan, const PackageEntryDescriptor& descriptor) const;
     bool TryFindEntryIndex(PackageId package, PackageEntryId entry, std::size_t& out_index) const;
     bool TryFindResourceIndex(

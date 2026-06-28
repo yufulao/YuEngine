@@ -20,6 +20,7 @@ enum class PackageStatus {
     EntryCapacityExceeded,
     DependencyCapacityExceeded,
     LoadPlanCapacityExceeded,
+    LoadPlanByteBudgetExceeded,
     ByteRangeOutOfBounds,
     NotFound,
     TypeMismatch,

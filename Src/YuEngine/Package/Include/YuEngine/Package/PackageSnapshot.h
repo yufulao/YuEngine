@@ -16,12 +16,14 @@ struct PackageSnapshot final {
     std::uint32_t entry_capacity;
     std::uint32_t dependency_edge_capacity;
     std::uint32_t load_plan_record_capacity;
+    std::uint64_t load_plan_archive_byte_budget;
     std::uint32_t manifest_count;
     std::uint32_t entry_count;
     std::uint32_t dependency_edge_count;
     std::uint32_t dependency_validation_count;
     std::uint32_t load_plan_resolve_count;
     std::uint32_t last_load_plan_record_count;
+    std::uint64_t last_load_plan_archive_byte_count;
     std::uint32_t rejected_operation_count;
     MemoryAccountingStatus allocation_accounting_status;
     PackageStatus last_status;

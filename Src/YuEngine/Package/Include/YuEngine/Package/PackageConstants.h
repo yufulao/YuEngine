@@ -13,4 +13,6 @@ constexpr std::uint32_t MAX_PACKAGE_DEPENDENCY_EDGE_COUNT = 64U;
 constexpr std::uint32_t MAX_LOAD_PLAN_RECORD_COUNT = 32U;
 constexpr std::size_t MAX_PACKAGE_SOURCE_KEY_BYTES = 128U;
 constexpr std::uint64_t MAX_DECLARED_ENTRY_SIZE = 4096ULL;
+constexpr std::uint64_t MAX_LOAD_PLAN_ARCHIVE_BYTE_BUDGET =
+    MAX_DECLARED_ENTRY_SIZE * static_cast<std::uint64_t>(MAX_LOAD_PLAN_RECORD_COUNT);
 }

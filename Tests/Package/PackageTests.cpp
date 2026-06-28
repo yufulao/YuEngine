@@ -71,8 +71,15 @@ constexpr const char* TEST_MISSING_DEPENDENCY = "Package_DependencyValidationRej
 constexpr const char* TEST_DEPENDENCY_CYCLE = "Package_DependencyValidationRejectsCycle";
 constexpr const char* TEST_DEPENDENCY_CYCLE_HIGH_FANOUT = "Package_DependencyValidationRejectsCycleAfterHighFanout";
 constexpr const char* TEST_DEPENDENCY_ORDER = "Package_DependencyPlanPreservesDeclarationOrder";
+constexpr const char* TEST_DEPENDENCY_TRANSITIVE_CLOSURE =
+    "Package_DependencyClosurePlanIncludesTransitiveDependenciesBeforeRoot";
+constexpr const char* TEST_DEPENDENCY_CLOSURE_DEDUP =
+    "Package_DependencyClosureDeduplicatesSharedDependenciesAndPreservesDeclarationOrder";
+constexpr const char* TEST_DEPENDENCY_CLOSURE_RECORD_BUDGET =
+    "Package_DependencyClosureRejectsRecordBudgetWithoutMutation";
 constexpr const char* TEST_DEPENDENCY_CAPACITY = "Package_DependencyCapacityOverflow_DoesNotMutate";
 constexpr const char* TEST_LOAD_PLAN_CAPACITY = "Package_LoadPlanCapacityOverflow_DoesNotMutate";
+constexpr const char* TEST_LOAD_PLAN_BYTE_BUDGET = "Package_LoadPlanRejectsArchiveByteBudgetWithoutMutation";
 constexpr const char* TEST_DISABLED_DIAGNOSTICS = "Package_DisabledDiagnosticsDoesNotChangeResults";
 constexpr const char* TEST_NO_FILE_ORIGINAL = "Package_NoFileReadOriginalPackageOrGameAdapterDependency";
 constexpr const char* TEST_NO_HIDDEN_ALLOCATION = "Package_NoHiddenAllocation_UsesYuMemorySignal";
@@ -301,7 +308,11 @@ bool CoreCountsMatch(const PackageSnapshot& left, const PackageSnapshot& right) 
         return false;
     }
 
-    return left.last_load_plan_record_count == right.last_load_plan_record_count;
+    if (left.last_load_plan_record_count != right.last_load_plan_record_count) {
+        return false;
+    }
+
+    return left.last_load_plan_archive_byte_count == right.last_load_plan_archive_byte_count;
 }
 
 bool SnapshotsMatch(const PackageSnapshot& left, const PackageSnapshot& right) {
@@ -652,6 +663,17 @@ PackageRegistry CreateResolvedRegistry() {
     return registry;
 }
 
+PackageRegistry CreateTransitiveClosureRegistry() {
+    PackageRegistry registry;
+    RegisterManifest(registry);
+    RegisterEntry(registry, ENTRY_TEXTURE, TYPE_TEXTURE, "texture_a", "textures/texture_a.bin", 64U, 32U);
+    RegisterEntry(registry, ENTRY_MATERIAL, TYPE_MATERIAL, "material_a", "materials/material_a.bin", 8U, 16U);
+    RegisterEntry(registry, ENTRY_AUDIO, TYPE_AUDIO, "audio_a", "audio/audio_a.bin", 24U, 8U);
+    registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_MATERIAL);
+    registry.AddDependency(PACKAGE_A, ENTRY_MATERIAL, ENTRY_AUDIO);
+    return registry;
+}
+
 int PackageResolveEntryByResourceKeyReturnsDeterministicLoadPlan() {
     PackageRegistry registry = CreateResolvedRegistry();
     const PackageLoadPlanResult result =
@@ -678,6 +700,10 @@ int PackageResolveEntryByResourceKeyReturnsDeterministicLoadPlan() {
 
     if (registry.Snapshot().last_load_plan_record_count != 3U) {
         return Fail("load plan record count was not recorded");
+    }
+
+    if (registry.Snapshot().last_load_plan_archive_byte_count != 64ULL) {
+        return Fail("load plan archive byte count was not recorded");
     }
 
     return 0;
@@ -972,6 +998,133 @@ int PackageDependencyPlanPreservesDeclarationOrder() {
     return 0;
 }
 
+int PackageDependencyClosurePlanIncludesTransitiveDependenciesBeforeRoot() {
+    constexpr std::uint64_t EXPECTED_ARCHIVE_BYTE_COUNT = 56ULL;
+
+    PackageRegistry registry = CreateTransitiveClosureRegistry();
+    const PackageLoadPlanResult result =
+        registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_TEXTURE, ResourceLogicalKey("texture_a"));
+    if (!result.Succeeded()) {
+        return Fail("transitive closure resolve failed");
+    }
+
+    if (result.plan.record_count != 3U) {
+        return Fail("transitive closure record count was not dependency chain plus root");
+    }
+
+    if (result.plan.records[0U].entry.value != ENTRY_AUDIO.value) {
+        return Fail("transitive dependency was not emitted before direct dependency");
+    }
+
+    if (result.plan.records[1U].entry.value != ENTRY_MATERIAL.value) {
+        return Fail("direct dependency was not emitted before root");
+    }
+
+    if (result.plan.records[2U].entry.value != ENTRY_TEXTURE.value) {
+        return Fail("root was not emitted last after transitive closure");
+    }
+
+    if (result.plan.archive_byte_count != EXPECTED_ARCHIVE_BYTE_COUNT) {
+        return Fail("transitive closure archive byte count was not accumulated");
+    }
+
+    const PackageSnapshot snapshot = registry.Snapshot();
+    if (snapshot.last_load_plan_archive_byte_count != EXPECTED_ARCHIVE_BYTE_COUNT) {
+        return Fail("transitive closure archive byte count was not recorded");
+    }
+
+    return 0;
+}
+
+int PackageDependencyClosureDeduplicatesSharedDependenciesAndPreservesDeclarationOrder() {
+    constexpr std::uint64_t EXPECTED_ARCHIVE_BYTE_COUNT = 60ULL;
+
+    PackageRegistry registry;
+    RegisterManifest(registry);
+    RegisterEntry(registry, ENTRY_TEXTURE, TYPE_TEXTURE, "texture_a", "textures/texture_a.bin", 64U, 32U);
+    RegisterEntry(registry, ENTRY_MATERIAL, TYPE_MATERIAL, "material_a", "materials/material_a.bin", 8U, 16U);
+    RegisterEntry(registry, ENTRY_AUDIO, TYPE_AUDIO, "audio_a", "audio/audio_a.bin", 24U, 8U);
+    RegisterEntry(registry, ENTRY_EFFECT, TYPE_EFFECT, "effect_a", "effects/effect_a.bin", 96U, 4U);
+    registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_MATERIAL);
+    registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_EFFECT);
+    registry.AddDependency(PACKAGE_A, ENTRY_MATERIAL, ENTRY_AUDIO);
+    registry.AddDependency(PACKAGE_A, ENTRY_EFFECT, ENTRY_AUDIO);
+
+    const PackageLoadPlanResult result =
+        registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_TEXTURE, ResourceLogicalKey("texture_a"));
+    if (!result.Succeeded()) {
+        return Fail("shared dependency closure resolve failed");
+    }
+
+    if (result.plan.record_count != 4U) {
+        return Fail("shared dependency closure did not deduplicate records");
+    }
+
+    if (result.plan.records[0U].entry.value != ENTRY_AUDIO.value) {
+        return Fail("shared dependency was not emitted before first dependent");
+    }
+
+    if (result.plan.records[1U].entry.value != ENTRY_MATERIAL.value) {
+        return Fail("first direct dependency did not preserve declaration order");
+    }
+
+    if (result.plan.records[2U].entry.value != ENTRY_EFFECT.value) {
+        return Fail("second direct dependency did not preserve declaration order");
+    }
+
+    if (result.plan.records[3U].entry.value != ENTRY_TEXTURE.value) {
+        return Fail("shared dependency closure root was not last");
+    }
+
+    if (result.plan.archive_byte_count != EXPECTED_ARCHIVE_BYTE_COUNT) {
+        return Fail("shared dependency closure archive byte count was not deduplicated");
+    }
+
+    return 0;
+}
+
+int PackageDependencyClosureRejectsRecordBudgetWithoutMutation() {
+    PackageRegistryDesc desc{};
+    desc.manifest_capacity = 1U;
+    desc.entry_capacity = 4U;
+    desc.dependency_edge_capacity = 4U;
+    desc.load_plan_record_capacity = 2U;
+
+    PackageRegistry registry(desc);
+    RegisterManifest(registry);
+    RegisterEntry(registry, ENTRY_TEXTURE, TYPE_TEXTURE, "texture_a", "textures/texture_a.bin", 64U, 32U);
+    RegisterEntry(registry, ENTRY_MATERIAL, TYPE_MATERIAL, "material_a", "materials/material_a.bin", 8U, 16U);
+    RegisterEntry(registry, ENTRY_AUDIO, TYPE_AUDIO, "audio_a", "audio/audio_a.bin", 24U, 8U);
+    registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_MATERIAL);
+    registry.AddDependency(PACKAGE_A, ENTRY_MATERIAL, ENTRY_AUDIO);
+
+    const PackageSnapshot before_snapshot = registry.Snapshot();
+    const PackageLoadPlanResult result =
+        registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_TEXTURE, ResourceLogicalKey("texture_a"));
+    if (result.status != PackageStatus::LoadPlanCapacityExceeded) {
+        return Fail("dependency closure record budget did not return explicit status");
+    }
+
+    const PackageSnapshot after_snapshot = registry.Snapshot();
+    if (after_snapshot.load_plan_resolve_count != before_snapshot.load_plan_resolve_count) {
+        return Fail("dependency closure record budget changed resolve count");
+    }
+
+    if (after_snapshot.last_load_plan_record_count != before_snapshot.last_load_plan_record_count) {
+        return Fail("dependency closure record budget changed last record count");
+    }
+
+    if (after_snapshot.last_load_plan_archive_byte_count != before_snapshot.last_load_plan_archive_byte_count) {
+        return Fail("dependency closure record budget changed last archive byte count");
+    }
+
+    if (result.plan.record_count != 0U) {
+        return Fail("dependency closure record budget published partial plan");
+    }
+
+    return 0;
+}
+
 int PackageDependencyCapacityOverflowDoesNotMutate() {
     PackageRegistry registry(PackageRegistryDesc{1U, 4U, 1U, 4U});
     RegisterManifest(registry);
@@ -1013,6 +1166,53 @@ int PackageLoadPlanCapacityOverflowDoesNotMutate() {
 
     if (registry.Snapshot().last_load_plan_record_count != before_snapshot.last_load_plan_record_count) {
         return Fail("load-plan capacity overflow changed plan record count");
+    }
+
+    if (registry.Snapshot().last_load_plan_archive_byte_count != before_snapshot.last_load_plan_archive_byte_count) {
+        return Fail("load-plan capacity overflow changed plan archive byte count");
+    }
+
+    return 0;
+}
+
+int PackageLoadPlanRejectsArchiveByteBudgetWithoutMutation() {
+    PackageRegistryDesc desc{};
+    desc.manifest_capacity = 1U;
+    desc.entry_capacity = 4U;
+    desc.dependency_edge_capacity = 4U;
+    desc.load_plan_record_capacity = 4U;
+    desc.load_plan_archive_byte_budget = 40ULL;
+
+    PackageRegistry registry(desc);
+    RegisterManifest(registry);
+    RegisterEntry(registry, ENTRY_TEXTURE, TYPE_TEXTURE, "texture_a", "textures/texture_a.bin", 64U, 32U);
+    RegisterEntry(registry, ENTRY_MATERIAL, TYPE_MATERIAL, "material_a", "materials/material_a.bin", 8U, 16U);
+    RegisterEntry(registry, ENTRY_AUDIO, TYPE_AUDIO, "audio_a", "audio/audio_a.bin", 24U, 8U);
+    registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_MATERIAL);
+    registry.AddDependency(PACKAGE_A, ENTRY_MATERIAL, ENTRY_AUDIO);
+
+    const PackageSnapshot before_snapshot = registry.Snapshot();
+    const PackageLoadPlanResult result =
+        registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_TEXTURE, ResourceLogicalKey("texture_a"));
+    if (result.status != PackageStatus::LoadPlanByteBudgetExceeded) {
+        return Fail("load-plan archive byte budget did not return explicit status");
+    }
+
+    const PackageSnapshot after_snapshot = registry.Snapshot();
+    if (after_snapshot.load_plan_resolve_count != before_snapshot.load_plan_resolve_count) {
+        return Fail("load-plan archive byte budget changed resolve count");
+    }
+
+    if (after_snapshot.last_load_plan_record_count != before_snapshot.last_load_plan_record_count) {
+        return Fail("load-plan archive byte budget changed last record count");
+    }
+
+    if (after_snapshot.last_load_plan_archive_byte_count != before_snapshot.last_load_plan_archive_byte_count) {
+        return Fail("load-plan archive byte budget changed last archive byte count");
+    }
+
+    if (result.plan.record_count != 0U) {
+        return Fail("load-plan archive byte budget published partial plan");
     }
 
     return 0;
@@ -1732,8 +1932,13 @@ int main(int argc, char** argv) {
         {TEST_DEPENDENCY_CYCLE, PackageDependencyValidationRejectsCycle},
         {TEST_DEPENDENCY_CYCLE_HIGH_FANOUT, PackageDependencyValidationRejectsCycleAfterHighFanout},
         {TEST_DEPENDENCY_ORDER, PackageDependencyPlanPreservesDeclarationOrder},
+        {TEST_DEPENDENCY_TRANSITIVE_CLOSURE, PackageDependencyClosurePlanIncludesTransitiveDependenciesBeforeRoot},
+        {TEST_DEPENDENCY_CLOSURE_DEDUP,
+         PackageDependencyClosureDeduplicatesSharedDependenciesAndPreservesDeclarationOrder},
+        {TEST_DEPENDENCY_CLOSURE_RECORD_BUDGET, PackageDependencyClosureRejectsRecordBudgetWithoutMutation},
         {TEST_DEPENDENCY_CAPACITY, PackageDependencyCapacityOverflowDoesNotMutate},
         {TEST_LOAD_PLAN_CAPACITY, PackageLoadPlanCapacityOverflowDoesNotMutate},
+        {TEST_LOAD_PLAN_BYTE_BUDGET, PackageLoadPlanRejectsArchiveByteBudgetWithoutMutation},
         {TEST_DISABLED_DIAGNOSTICS, PackageDisabledDiagnosticsDoesNotChangeResults},
         {TEST_NO_FILE_ORIGINAL, PackageNoFileReadOriginalPackageOrGameAdapterDependency},
         {TEST_NO_HIDDEN_ALLOCATION, PackageNoHiddenAllocationUsesYuMemorySignal},

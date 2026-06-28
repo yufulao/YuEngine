@@ -28,6 +28,14 @@ std::uint32_t ClampCapacity(std::uint32_t requested_capacity, std::uint32_t maxi
     return requested_capacity;
 }
 
+std::uint64_t ClampArchiveByteBudget(std::uint64_t requested_budget) {
+    if (requested_budget > MAX_LOAD_PLAN_ARCHIVE_BYTE_BUDGET) {
+        return MAX_LOAD_PLAN_ARCHIVE_BYTE_BUDGET;
+    }
+
+    return requested_budget;
+}
+
 bool ByteRangeIsWithinBounds(std::uint64_t byte_offset, std::uint64_t byte_size) {
     if (byte_size == 0ULL) {
         return false;
@@ -162,6 +170,29 @@ std::uint32_t NextProbeIndex(std::uint32_t index, std::uint32_t capacity) {
 
     return index;
 }
+
+bool ContainsEntry(
+    const std::array<PackageEntryId, MAX_PACKAGE_ENTRY_COUNT>& entries,
+    std::uint32_t count,
+    PackageEntryId entry) {
+    for (std::uint32_t index = 0U; index < count; ++index) {
+        if (entries[index].value == entry.value) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool PlanContainsEntry(const PackageLoadPlan& plan, PackageEntryId entry) {
+    for (std::uint32_t index = 0U; index < plan.record_count; ++index) {
+        if (plan.records[index].entry.value == entry.value) {
+            return true;
+        }
+    }
+
+    return false;
+}
 }
 
 PackageRegistry::PackageRegistry()
@@ -198,12 +229,14 @@ PackageRegistry::PackageRegistry(PackageRegistryDesc desc)
           ClampCapacity(desc.entry_capacity, MAX_PACKAGE_ENTRY_COUNT),
           ClampCapacity(desc.dependency_edge_capacity, MAX_PACKAGE_DEPENDENCY_EDGE_COUNT),
           ClampCapacity(desc.load_plan_record_capacity, MAX_LOAD_PLAN_RECORD_COUNT),
+          ClampArchiveByteBudget(desc.load_plan_archive_byte_budget),
           0U,
           0U,
           0U,
           0U,
           0U,
           0U,
+          0ULL,
           0U,
           MemoryAccountingStatus::ExplicitlyTrackedOnly,
           PackageStatus::Success} {
@@ -389,30 +422,15 @@ PackageLoadPlanResult PackageRegistry::ResolveEntryByResourceKey(
         return PackageLoadPlanResult::Failure(RecordFailure(PackageStatus::TypeMismatch));
     }
 
-    const std::uint32_t direct_dependency_count = CountDirectDependencies(package, root_descriptor.entry);
-    const std::uint32_t required_record_count = direct_dependency_count + 1U;
-    if (required_record_count > snapshot_.load_plan_record_capacity) {
-        return PackageLoadPlanResult::Failure(RecordFailure(PackageStatus::LoadPlanCapacityExceeded));
-    }
-
     PackageLoadPlan plan{};
-    std::uint32_t edge_index = first_dependency_edge_for_entry_[root_index];
-    while (edge_index != INVALID_INDEX) {
-        const DependencyEdge& edge = dependency_edges_[edge_index];
-        const std::uint32_t next_edge_index = next_dependency_edge_[edge_index];
-
-        std::size_t dependency_index = 0U;
-        if (FindEntryIndex(package, edge.dependency, dependency_index) != PackageStatus::Success) {
-            return PackageLoadPlanResult::Failure(RecordFailure(PackageStatus::DependencyMissing));
-        }
-
-        AppendRecord(plan, entries_[dependency_index].descriptor);
-        edge_index = next_edge_index;
+    const PackageStatus plan_status = BuildDependencyClosurePlan(package, root_index, plan);
+    if (plan_status != PackageStatus::Success) {
+        return PackageLoadPlanResult::Failure(RecordFailure(plan_status));
     }
 
-    AppendRecord(plan, root_descriptor);
     ++snapshot_.load_plan_resolve_count;
     snapshot_.last_load_plan_record_count = plan.record_count;
+    snapshot_.last_load_plan_archive_byte_count = plan.archive_byte_count;
     RecordSuccess();
     return PackageLoadPlanResult::Success(plan);
 }
@@ -606,20 +624,89 @@ bool PackageRegistry::HasDependencyPath(PackageId package, PackageEntryId start,
     return false;
 }
 
-std::uint32_t PackageRegistry::CountDirectDependencies(PackageId package, PackageEntryId entry) const {
-    std::size_t entry_index = 0U;
-    if (FindEntryIndex(package, entry, entry_index) != PackageStatus::Success) {
-        return 0U;
+PackageStatus PackageRegistry::BuildDependencyClosurePlan(
+    PackageId package,
+    std::size_t root_index,
+    PackageLoadPlan& out_plan) const {
+    if (root_index >= snapshot_.entry_capacity) {
+        return PackageStatus::DependencyMissing;
     }
 
-    std::uint32_t count = 0U;
+    std::array<PackageEntryId, MAX_PACKAGE_ENTRY_COUNT> visiting_entries{};
+    std::uint32_t visiting_count = 0U;
+    return AppendDependencyClosure(package, root_index, visiting_entries, visiting_count, out_plan);
+}
+
+PackageStatus PackageRegistry::AppendDependencyClosure(
+    PackageId package,
+    std::size_t entry_index,
+    std::array<PackageEntryId, MAX_PACKAGE_ENTRY_COUNT>& visiting_entries,
+    std::uint32_t& visiting_count,
+    PackageLoadPlan& out_plan) const {
+    if (entry_index >= snapshot_.entry_capacity) {
+        return PackageStatus::DependencyMissing;
+    }
+
+    const PackageEntryDescriptor& descriptor = entries_[entry_index].descriptor;
+    if (PlanContainsEntry(out_plan, descriptor.entry)) {
+        return PackageStatus::Success;
+    }
+
+    if (ContainsEntry(visiting_entries, visiting_count, descriptor.entry)) {
+        return PackageStatus::DependencyCycle;
+    }
+
+    if (visiting_count >= MAX_PACKAGE_ENTRY_COUNT) {
+        return PackageStatus::LoadPlanCapacityExceeded;
+    }
+
+    visiting_entries[visiting_count] = descriptor.entry;
+    ++visiting_count;
+
     std::uint32_t edge_index = first_dependency_edge_for_entry_[entry_index];
     while (edge_index != INVALID_INDEX) {
-        ++count;
-        edge_index = next_dependency_edge_[edge_index];
+        const DependencyEdge& edge = dependency_edges_[edge_index];
+        const std::uint32_t next_edge_index = next_dependency_edge_[edge_index];
+
+        std::size_t dependency_index = 0U;
+        const PackageStatus dependency_find_status = FindEntryIndex(package, edge.dependency, dependency_index);
+        if (dependency_find_status != PackageStatus::Success) {
+            --visiting_count;
+            return PackageStatus::DependencyMissing;
+        }
+
+        const PackageStatus dependency_status =
+            AppendDependencyClosure(package, dependency_index, visiting_entries, visiting_count, out_plan);
+        if (dependency_status != PackageStatus::Success) {
+            --visiting_count;
+            return dependency_status;
+        }
+
+        edge_index = next_edge_index;
     }
 
-    return count;
+    --visiting_count;
+    return TryAppendRecord(out_plan, descriptor);
+}
+
+PackageStatus PackageRegistry::TryAppendRecord(PackageLoadPlan& plan, const PackageEntryDescriptor& descriptor) const {
+    if (plan.record_count >= snapshot_.load_plan_record_capacity) {
+        return PackageStatus::LoadPlanCapacityExceeded;
+    }
+
+    if (plan.archive_byte_count > snapshot_.load_plan_archive_byte_budget) {
+        return PackageStatus::LoadPlanByteBudgetExceeded;
+    }
+
+    const std::uint64_t archive_byte_size = GetArchiveByteSize(descriptor);
+    const std::uint64_t remaining_budget = snapshot_.load_plan_archive_byte_budget - plan.archive_byte_count;
+    if (archive_byte_size > remaining_budget) {
+        return PackageStatus::LoadPlanByteBudgetExceeded;
+    }
+
+    AppendRecord(plan, descriptor);
+    plan.archive_byte_count += archive_byte_size;
+    return PackageStatus::Success;
 }
 
 void PackageRegistry::AppendRecord(PackageLoadPlan& plan, const PackageEntryDescriptor& descriptor) const {
