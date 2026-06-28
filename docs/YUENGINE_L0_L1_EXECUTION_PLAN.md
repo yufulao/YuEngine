@@ -134,7 +134,7 @@ target identity work.
 | RTSPINE-004 | Define animation track target binding | PASS at `origin/main@ebe9ea35f531aa40133262b701e5e751f8ed9ccf`: SceneNode animation tracks bind to `target_id` plus property through caller-owned binding records; missing target, unsupported property, and capacity overflow fail without mutation; no world instance, editor object, raw pointer, display name, or file path |
 | RTSPINE-005 | Define minimal interpolation | PASS at `origin/main@2bfe7e37d36ca711dd706728f21b1e4caecfd3db` with focused QA at `origin/main@d18f1679ebd389ecec506055764602591f5b9ab6`: Step and Linear sampling at fixed times are deterministic, unsupported interpolation and sample output capacity fail without mutation, exact interpolation rows report `3/3` PASS, and no broad/full CTest was run |
 | RTSPINE-006 | Define invalid target failure model | PASS at `origin/main@96e0c024435f670c39ced019ff825b819a6830a3`: target-family mismatch and sample failure diagnostics fail without output mutation; focused QA task `6d02c260-936a-456b-917b-5c2802bbb666` reports isolated clean worktree, focused RuntimeAsset regex `8/8` PASS, exact new rows `2/2` PASS, diff/hygiene/boundary PASS, and no broad/full CTest |
-| RTSPINE-007 | Design instance mapping gate | asset target to runtime instance mapping is designed before implementation touches WorldObject |
+| RTSPINE-007 | Define runtime instance mapping gate | PASS at `origin/main@37a112549190ac2123abcd72b5c688cdfa5b01e5`: asset target records map to caller-owned runtime instance rows for scene entities before any WorldObject/editor binding; focused QA task `6b6baf5f-2381-4b9c-89b1-4411fba53d23` reports exact RuntimeInstanceMapping rows `5/5` PASS and no broad/full CTest |
 | RTSPINE-008 | Define package/resource pressure gate | 008A pressure contract defines vocabulary, byte-range policy, hash coverage, mutation contract, and forbidden scope; 008B byte-range/index, 008C Package artifact hash/dependency integrity, 008D File/VFS ranged IO, 008E Resource payload window/reference budget, and 008F Package dependency closure/budgeted load plan are PASS; future gates are RuntimeAsset packaged validation and 008G/H |
 
 ### 1.2.2 RTSPINE-008A Package/Resource Pressure Contract
@@ -216,6 +216,7 @@ RTSPINE-005 + RTSPINE-008C evidence docs/VQ closure
 + RTSPINE-006 RuntimeAsset invalid-target failure model evidence docs/VQ closure
 + RTSPINE-008D File/VFS ranged IO evidence docs/VQ closure
 + RTSPINE-008E Resource payload window evidence docs/VQ closure
++ RTSPINE-007 RuntimeAsset runtime instance mapping evidence docs sync
 ```
 
 RTSPINE-003 VQ accepted the target identity evidence gate by workspace task
@@ -223,9 +224,10 @@ RTSPINE-003 VQ accepted the target identity evidence gate by workspace task
 QA are PASS at `ebe9ea35f531aa40133262b701e5e751f8ed9ccf`. RTSPINE-005
 implementation and focused QA are PASS at `2bfe7e37d36ca711dd706728f21b1e4caecfd3db`
 / `d18f1679ebd389ecec506055764602591f5b9ab6`. RTSPINE-006 implementation and
-focused QA are PASS at `96e0c024435f670c39ced019ff825b819a6830a3`. RTSPINE-007,
-RuntimeAsset packaged validation, and RTSPINE-008G/H remain blocked until
-their own evidence gates are released.
+focused QA are PASS at `96e0c024435f670c39ced019ff825b819a6830a3`. RTSPINE-007
+implementation and focused QA are PASS at `37a112549190ac2123abcd72b5c688cdfa5b01e5`.
+RuntimeAsset packaged validation, WorldObject-facing mapping, and RTSPINE-008G/H
+remain blocked until their own evidence gates are released.
 
 
 ## 2. Current Progress Assessment
@@ -393,6 +395,21 @@ RuntimeAsset regex discovery/execution `8/8` PASS, exact new RTSPINE-006 rows
 `2/2` PASS, `git diff --check` PASS, added-line hygiene PASS, non-goal boundary
 scan PASS, and no broad/full CTest. The PASS does not open RTSPINE-007 runtime
 instance mapping, RuntimeAsset packaged validation, or RTSPINE-008G/H.
+
+Current RuntimeAsset runtime instance mapping evidence at
+`37a112549190ac2123abcd72b5c688cdfa5b01e5` covers caller-owned runtime
+instance mapping rows for SceneNode targets, animation target binding through
+the mapping, missing scene entity failure without mutation, output capacity
+failure without mutation, and unsupported ModelNode/SkeletonJoint target-family
+mapping failures without mutation. Focused QA task
+`6b6baf5f-2381-4b9c-89b1-4411fba53d23` reports focused
+`YuRuntimeAssetDataClosedLoopTests` build PASS,
+`RuntimeAssetData_(RuntimeInstanceMapping|AnimationTrackTargetBinding|AnimationFailureModel|RuntimeAnimationTables)`
+discovery/execution `12/12` PASS, exact RuntimeInstanceMapping rows `5/5`
+PASS, commit-level `git diff --check` PASS, added-line hygiene PASS, boundary
+scan PASS, read-only QA with a clean final repo, and no broad/full CTest. The
+PASS does not open direct WorldObject/editor mapping, RuntimeAsset packaged
+validation, or RTSPINE-008G/H.
 
 Current Package artifact hash/dependency evidence at
 `d18f1679ebd389ecec506055764602591f5b9ab6` covers RTSPINE-008C Package-only

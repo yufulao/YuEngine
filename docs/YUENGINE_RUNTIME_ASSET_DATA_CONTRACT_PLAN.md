@@ -421,12 +421,12 @@ runtime animation output tables, explicit selected animation clip sampling,
 asset-internal scene node/model node/skeleton joint target identity tables,
 SceneNode animation track `target_id` plus property binding records,
 invalid-target failure model diagnostics, generic RenderScene CPU submission
-records, per-entity material tables, package/cook/run ledgers, and product-run
+records, runtime instance mapping rows, per-entity material tables, package/cook/run ledgers, and product-run
 smoke as the current mainline closed loop. The
 remaining work is production hardening for broader material and scene variants,
 native/non-fixture shader compiler integration, ModelNode/SkeletonJoint
-animation binding beyond explicit unsupported-target rejection, RTSPINE-007 runtime
-instance mapping, blending and clip-family variants, and scene/animation/camera
+animation binding beyond explicit unsupported-target rejection, WorldObject-facing
+instance application, blending and clip-family variants, and scene/animation/camera
 production variants beyond the canonical cube/cylinder/cone graph.
 
 ## Validator, Cook, Load, Render
@@ -493,8 +493,13 @@ or Asset ownership, or runtime output records.
 RTSPINE-003 target identity docs and VQ gates are closed, RTSPINE-004
 implementation plus focused QA are PASS, RTSPINE-005 minimal interpolation
 implementation plus focused QA are PASS, and RTSPINE-006 invalid-target failure
-model implementation plus focused QA are PASS. Do not open RTSPINE-007 or
-RuntimeAsset packaged-validation write lanes until their own gates are released.
+model implementation plus focused QA are PASS. RTSPINE-007 runtime instance
+mapping implementation plus focused QA are PASS at
+`37a112549190ac2123abcd72b5c688cdfa5b01e5`, covering caller-owned runtime
+instance rows for SceneNode targets and no-mutation failures for missing scene
+entities, capacity overflow, and unsupported ModelNode/SkeletonJoint mappings.
+Do not open WorldObject-facing mapping or RuntimeAsset packaged-validation write
+lanes until their own gates are released.
 Selected clip sampling remains the earlier closed slice because it only selects
 among bounded clip records and proves no-mutation failure for a missing selected
 clip.
@@ -521,8 +526,9 @@ RuntimeAsset spine constraints are:
    montage, timeline, skeletal skinning, or editor authoring proof;
 5. keep RTSPINE-006 scoped to target-family mismatch and sample failure
    diagnostics; broader animation production variants still need separate gates;
-6. design RTSPINE-007 runtime instance mapping before any WorldObject-facing
-   application path.
+6. keep RTSPINE-007 scoped to caller-owned runtime instance mapping records for
+   asset targets and scene entities; do not treat it as direct WorldObject or
+   editor-object binding.
 
 Shader/reflection hardening remains a separate RuntimeAsset family and may
 continue only when the active evidence gate is closed and the work does not
@@ -536,8 +542,8 @@ Reviewers should answer these before the next implementation slice starts:
 2. Which RVF layers must be reworked because they are test-side struct
    construction, CPU helper image generation, GDI/software viewer output, or
    non-File/VFS/Resource bypasses?
-3. Which remaining runtime instance mapping rows belong in RTSPINE-007 before
-   broader animation production variants?
+3. Which WorldObject-facing application gate can consume RTSPINE-007 records
+   without moving object identity into asset files?
 4. Which tiny source fixture files, if any, are allowed in the repo, and which
    generated outputs must stay under ignored artifact directories?
 5. Which File/VFS/Resource/Package path owns source bytes, cooked bytes, and

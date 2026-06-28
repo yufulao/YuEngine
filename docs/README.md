@@ -89,7 +89,15 @@ At the latest handoff:
   `96e0c024`, focused `YuRuntimeAssetDataClosedLoopTests` build PASS, focused
   RuntimeAsset regex discovery/execution `8/8` PASS, exact new rows `2/2`
   PASS, diff/hygiene/boundary PASS, and no broad/full CTest;
-- RTSPINE-007 and WorldObject-facing runtime instance mapping remain unopened;
+- RTSPINE-007 runtime instance mapping implementation is PASS at
+  `37a112549190ac2123abcd72b5c688cdfa5b01e5`; focused QA task
+  `6b6baf5f-2381-4b9c-89b1-4411fba53d23` reports focused
+  `YuRuntimeAssetDataClosedLoopTests` build PASS,
+  `RuntimeAssetData_(RuntimeInstanceMapping|AnimationTrackTargetBinding|AnimationFailureModel|RuntimeAnimationTables)`
+  discovery/execution `12/12` PASS, exact RuntimeInstanceMapping rows `5/5`
+  PASS, commit-level diff/hygiene/boundary PASS, read-only QA with clean final
+  repo, and no broad/full CTest;
+- WorldObject-facing runtime instance mapping remains unopened;
 - the human lead has resumed execution and requires continuous multi-agent
   coordination until the L0/L1 stop condition is actually met;
 - RTSPINE-008A docs/spec is PASS at
@@ -120,8 +128,9 @@ At the latest handoff:
   `YuPackageTests` build PASS, exact 008F rows `4/4` PASS, `^Package_`
   focused suite `39/39` PASS, diff/hygiene/scope scan PASS, no broad/full
   CTest, and no QA edits/staging/commits;
-- RuntimeAsset packaged validation, RTSPINE-007, and RTSPINE-008G/H
-  remain blocked until their own gates are released.
+- RuntimeAsset packaged validation, WorldObject-facing runtime instance
+  mapping, and RTSPINE-008G/H remain blocked until their own gates are
+  released.
 
 Live workspace state is still authoritative for task ownership and current
 status. This file records the handoff baseline, not a replacement for the task
