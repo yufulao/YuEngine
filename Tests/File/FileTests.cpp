@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <cstdio>
 #include <cstdint>
+#include <fstream>
 #include <limits>
 #include <string>
 #include <string_view>
@@ -67,6 +68,8 @@ constexpr const char* MISSING_MOUNT = "missing";
 constexpr const char* NORMALIZED_PATH = "Nested/FixtureFile.txt";
 constexpr const char* FIXTURE_TEXT = "yuengine file fixture\n";
 constexpr const char* MISSING_PATH = "missing.txt";
+constexpr const char* SOURCE_FIXTURE_PATH = "RuntimeAsset/SourceScene.yuscene";
+constexpr const char* COOKED_FIXTURE_PATH = "RuntimeAsset/CookedScene.yurtd";
 constexpr std::uint64_t RANGE_BYTE_OFFSET = 9ULL;
 constexpr std::uint64_t RANGE_BYTE_SIZE = 4ULL;
 constexpr const char* RANGE_TEXT = "file";
@@ -473,6 +476,27 @@ int FileLooseFixtureWriteRejectsForgedPathAndOversizedBuffer() {
         return Fail("loose file write accepted oversized buffer");
     }
 
+    const std::filesystem::path oversized_read_path = write_root / "Nested" / "OversizedRead.bin";
+    std::filesystem::create_directories(oversized_read_path.parent_path());
+    std::ofstream oversized_read_file(oversized_read_path, std::ios::binary | std::ios::trunc);
+    if (!oversized_read_file) {
+        return Fail("oversized read fixture setup failed");
+    }
+
+    std::vector<std::uint8_t> oversized_read_bytes(yuengine::file::MAX_FIXTURE_READ_SIZE + 1U, 2U);
+    oversized_read_file.write(
+        reinterpret_cast<const char *>(oversized_read_bytes.data()),
+        static_cast<std::streamsize>(oversized_read_bytes.size()));
+    oversized_read_file.close();
+    if (!oversized_read_file) {
+        return Fail("oversized read fixture write failed");
+    }
+
+    const auto oversized_read_result = source.Read(NormalizedPath("Nested/OversizedRead.bin"));
+    if (oversized_read_result.status != FileStatus::ReadTooLarge) {
+        return Fail("loose file read accepted oversized fixture");
+    }
+
     std::filesystem::remove_all(write_root);
     return 0;
 }
@@ -481,25 +505,77 @@ int FileMountTableWriteRecordsSnapshotAndMissingMount() {
     const std::filesystem::path write_root = WritableFixtureRoot() / "MountWrite";
     std::filesystem::remove_all(write_root);
     MountTable table;
-    const FileStatus mount_status = table.RegisterLooseMount(MountId(PRIMARY_MOUNT), write_root);
-    if (mount_status != FileStatus::Success) {
-        return Fail("mount write setup failed");
+    const FileStatus primary_mount_status =
+        table.RegisterLooseMount(MountId(PRIMARY_MOUNT), write_root / "SourceMount");
+    if (primary_mount_status != FileStatus::Success) {
+        return Fail("primary mount write setup failed");
     }
 
-    const std::array<std::uint8_t, 4U> bytes{1U, 2U, 3U, 4U};
-    const auto write_result = table.Write({MountId(PRIMARY_MOUNT), VirtualPath("Save/State.bin"), bytes.data(), bytes.size()});
-    if (!write_result.Succeeded()) {
-        return Fail("mount table write failed");
+    const FileStatus secondary_mount_status =
+        table.RegisterLooseMount(MountId(SECONDARY_MOUNT), write_root / "CookedMount");
+    if (secondary_mount_status != FileStatus::Success) {
+        return Fail("secondary mount write setup failed");
     }
 
-    const auto missing_mount_result = table.Write({MountId(MISSING_MOUNT), VirtualPath("Save/Other.bin"), bytes.data(), bytes.size()});
+    const std::array<std::uint8_t, 4U> source_bytes{1U, 2U, 3U, 4U};
+    const std::array<std::uint8_t, 5U> cooked_bytes{5U, 6U, 7U, 8U, 9U};
+    const auto source_write_result = table.Write(
+        {MountId(PRIMARY_MOUNT), VirtualPath(SOURCE_FIXTURE_PATH), source_bytes.data(), source_bytes.size()});
+    if (!source_write_result.Succeeded()) {
+        return Fail("source fixture write failed");
+    }
+
+    const auto cooked_write_result = table.Write(
+        {MountId(SECONDARY_MOUNT), VirtualPath(COOKED_FIXTURE_PATH), cooked_bytes.data(), cooked_bytes.size()});
+    if (!cooked_write_result.Succeeded()) {
+        return Fail("cooked fixture write failed");
+    }
+
+    const auto source_read_result = table.Read({MountId(PRIMARY_MOUNT), VirtualPath(SOURCE_FIXTURE_PATH)});
+    if (!source_read_result.Succeeded()) {
+        return Fail("source fixture read failed");
+    }
+
+    if (source_read_result.bytes != std::vector<std::uint8_t>(source_bytes.begin(), source_bytes.end())) {
+        return Fail("source fixture bytes changed");
+    }
+
+    const auto cooked_read_result = table.Read({MountId(SECONDARY_MOUNT), VirtualPath(COOKED_FIXTURE_PATH)});
+    if (!cooked_read_result.Succeeded()) {
+        return Fail("cooked fixture read failed");
+    }
+
+    if (cooked_read_result.bytes != std::vector<std::uint8_t>(cooked_bytes.begin(), cooked_bytes.end())) {
+        return Fail("cooked fixture bytes changed");
+    }
+
+    const auto missing_mount_result = table.Write(
+        {MountId(MISSING_MOUNT), VirtualPath("Save/Other.bin"), source_bytes.data(), source_bytes.size()});
     if (missing_mount_result.status != FileStatus::MountNotFound) {
         return Fail("mount table write missing mount status changed");
     }
 
     const auto snapshot = table.Snapshot();
-    if (snapshot.write_byte_count != bytes.size()) {
+    const std::uint64_t expected_file_byte_count =
+        static_cast<std::uint64_t>(source_bytes.size() + cooked_bytes.size());
+    if (snapshot.write_byte_count != expected_file_byte_count) {
         return Fail("mount table write byte count changed");
+    }
+
+    if (snapshot.read_byte_count != expected_file_byte_count) {
+        return Fail("mount table read byte count changed");
+    }
+
+    if (snapshot.path_normalization_count != 5U) {
+        return Fail("mount table path normalization count changed");
+    }
+
+    if (snapshot.lookup_count != 5U) {
+        return Fail("mount table lookup count changed");
+    }
+
+    if (snapshot.last_read_status != FileStatus::Success) {
+        return Fail("mount table read status changed");
     }
 
     if (snapshot.last_write_status != FileStatus::MountNotFound) {
