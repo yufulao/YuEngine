@@ -284,7 +284,7 @@ editor object, scene instance, raw pointer, display name, or file path.
 | RTSPINE-003 | Asset-internal target identity contract | PASS at `origin/main@5ea838f6fd3428e7e67b77c1ca85c41e6e1c09e4`: scene node, model node, and skeleton joint target IDs are bounded output records independent from WorldObject; duplicate id, missing parent, and capacity overflow fail without mutation |
 | RTSPINE-004 | Animation track target binding contract | Tracks bind to target ID plus property, not world instance or editor object |
 | RTSPINE-005 | Minimal interpolation contract | PASS at `origin/main@2bfe7e37d36ca711dd706728f21b1e4caecfd3db` with focused QA at `origin/main@d18f1679ebd389ecec506055764602591f5b9ab6`: Step and Linear scalar/vector/transform sampling pass fixed-time tests with no hidden global time; unsupported interpolation and sample output capacity fail without mutation |
-| RTSPINE-006 | Invalid target failure contract | Remaining broader target-family mismatch, invalid selected clip/sample/apply failures, and any interpolation failures not covered by RTSPINE-005 fail without output mutation |
+| RTSPINE-006 | Invalid target failure contract | PASS at `origin/main@96e0c024435f670c39ced019ff825b819a6830a3`; target-family mismatch and sample failure diagnostics fail without output mutation, and focused QA task `6d02c260-936a-456b-917b-5c2802bbb666` reports focused RuntimeAsset regex `8/8` PASS plus exact new rows `2/2` PASS without broad/full CTest |
 | RTSPINE-007 | Instance mapping design gate | Asset target to runtime instance mapping is designed before any WorldObject-binding implementation |
 | RTSPINE-008 | Package/resource index pressure gate | 008A spec, 008B byte-range/index, 008C Package hash/dependency integrity, 008D File/VFS ranged IO, and 008E Resource payload window/reference budget are PASS; separate future gates cover RuntimeAsset packaged validation and 008F/G/H |
 
@@ -296,7 +296,7 @@ editor object, scene instance, raw pointer, display name, or file path.
 - no WorldObject direct binding inside asset files;
 - no old TouhouNewWorld package parser as L0/L1 proof;
 - no broad shader/material work as a substitute for target identity;
-- no RTSPINE-006/007, RuntimeAsset packaged validation, or remaining
+- no RTSPINE-007, RuntimeAsset packaged validation, or remaining
   RTSPINE-008F/G/H write lane before its own evidence
   gate is released.
 

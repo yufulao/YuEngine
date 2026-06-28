@@ -360,6 +360,8 @@ supersede with approved equivalents:
 - `RuntimeAssetData_AnimationTrackTargetBindingRejectsMissingTargetWithoutMutation`
 - `RuntimeAssetData_AnimationTrackTargetBindingRejectsUnsupportedPropertyWithoutMutation`
 - `RuntimeAssetData_AnimationTrackTargetBindingRejectsCapacityOverflowWithoutMutation`
+- `RuntimeAssetData_AnimationTrackTargetBindingRejectsTargetFamilyMismatchWithoutMutation`
+- `RuntimeAssetData_AnimationFailureModelReportsSampleFailuresWithoutMutation`
 - `RuntimeAssetData_ShaderProgramBridgeCreatesRhiPipelineFromLoadedBytecode`
 - `RuntimeAssetData_ShaderProgramBridgeRejectsInvalidProgramDataWithoutRhiMutation`
 - `RuntimeAssetData_ProductionSceneLoaderOutputsDeterministicRecords`
@@ -402,7 +404,8 @@ This gate records these mainline implementation slices:
 | RAV1-Q | Asset target identity table | PASS; RuntimeAsset writes bounded scene node, model node, and skeleton joint target identity records to caller-owned output, and rejects duplicate ids, missing parents, and output capacity overflow without mutation |
 | RAV1-R | Animation track target/property binding | PASS; RuntimeAsset writes caller-owned SceneNode target binding records for animation tracks keyed by `target_id` plus property, and rejects missing target, unsupported property, and output capacity overflow without mutation; focused QA reports `17/17` PASS without broad/full CTest |
 | RAV1-S | Minimal interpolation | PASS; RuntimeAsset samples Step and Linear animation tracks at fixed times and rejects unsupported interpolation plus sample output capacity failures without mutation; focused QA reports exact interpolation `3/3` PASS and non-Package RuntimeAsset animation whitelist `23/23` PASS without broad/full CTest |
-| Next slice | Remaining failure model and runtime instance mapping | keep RTSPINE-006/007 separate: broader target-family mismatch, invalid selected clip/sample/apply failure coverage, and runtime instance mapping must be gated before any WorldObject-facing mapping |
+| RAV1-T | Animation invalid-target failure model | PASS; RuntimeAsset rejects target-family mismatch and reports sample failure diagnostics without output mutation; focused QA task `6d02c260-936a-456b-917b-5c2802bbb666` reports focused RuntimeAsset regex `8/8` PASS and exact new rows `2/2` PASS without broad/full CTest |
+| Next slice | Runtime instance mapping | keep RTSPINE-007 separate: runtime instance mapping must be gated before any WorldObject-facing mapping; RuntimeAsset packaged validation and RTSPINE-008F/G/H remain separate future gates |
 
 The slice may split implementation tasks later, but those tasks must stay
 parallelizable by file family or stage and must not authorize upper-layer

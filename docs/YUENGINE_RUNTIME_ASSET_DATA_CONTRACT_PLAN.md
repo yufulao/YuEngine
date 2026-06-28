@@ -389,6 +389,8 @@ C++ in-memory construction alone.
 | Animation track target binding focused QA | PASS | workspace task `2e2d5a4e-0bb0-4cf4-bd1b-ab3a87987b7f` reports focused `YuRuntimeAssetDataClosedLoopTests` build PASS, focused discovery `17` rows, execution `17/17` PASS, `git diff --check` PASS, added-line hygiene PASS, dependency boundary PASS, and non-goal scans PASS; broad full CTest was not run, and ModelNode/SkeletonJoint animation binding was not opened |
 | Animation minimal interpolation | PASS | `origin/main@2bfe7e37d36ca711dd706728f21b1e4caecfd3db` adds Step/Linear fixed-time sampling plus no-mutation unsupported-interpolation and sample-output-capacity failures through `RuntimeAssetData_AnimationInterpolationSamplesStepAndLinearAtFixedTime`, `RuntimeAssetData_AnimationInterpolationRejectsUnsupportedModeWithoutMutation`, and `RuntimeAssetData_AnimationInterpolationRejectsSampleOutputCapacityWithoutMutation` |
 | Animation minimal interpolation focused QA | PASS | workspace task `951a3da8-6b13-4268-960e-407f65c40db7` reports focused `YuRuntimeAssetDataClosedLoopTests` build PASS, exact RTSPINE-005 interpolation discovery `3`, execution `3/3` PASS, non-Package RuntimeAsset animation whitelist `23/23` PASS, `git diff --check` PASS, added-line hygiene PASS, production boundary/non-goal scans PASS, and no broad/full CTest run |
+| Animation invalid-target failure model | PASS | `origin/main@96e0c024435f670c39ced019ff825b819a6830a3` adds `RuntimeAssetData_AnimationTrackTargetBindingRejectsTargetFamilyMismatchWithoutMutation` and `RuntimeAssetData_AnimationFailureModelReportsSampleFailuresWithoutMutation` for target-family mismatch and sample failure diagnostics without output mutation |
+| Animation invalid-target failure model focused QA | PASS | workspace task `6d02c260-936a-456b-917b-5c2802bbb666` reports isolated clean worktree at `96e0c024`, focused `YuRuntimeAssetDataClosedLoopTests` build PASS, focused RuntimeAsset regex discovery/execution `8/8` PASS, exact new RTSPINE-006 rows `2/2` PASS, `git diff --check` PASS, added-line hygiene PASS, non-goal boundary scan PASS, and no broad/full CTest run |
 | Mesh/material/texture cook payloads | PASS | `RuntimeAssetData_CookStoresDecodedPayloadsForMeshMaterialTexture` stores decoded payload records for seven decodable runtime records |
 | RenderScene records | PASS | loaded handles feed cube/cylinder/cone geometry, shared material, camera, and frame records |
 | Generic RenderScene CPU submission | PASS | `RuntimeAssetData_GenericRenderSceneSubmissionBuildsFrameFromLoadedSceneRecords`, `RuntimeAssetData_GenericRenderSceneSubmissionBindsActiveCameraIntoFrame`, `RuntimeAssetData_GenericRenderSceneSubmissionRejectsMissingCameraWithoutMutation`, `RuntimeAssetData_GenericRenderSceneSubmissionUsesMeshRefsNotEntityOrder`, `RuntimeAssetData_GenericRenderSceneSubmissionRejectsMissingTransformWithoutMutation`, `RuntimeAssetData_GenericRenderSceneSubmissionRejectsMissingMeshRefWithoutMutation`, `RuntimeAssetData_GenericRenderSceneSubmissionRejectsMissingMaterialRefWithoutMutation`, `RuntimeAssetData_GenericRenderSceneSubmissionReportsMaterialVariantsUntilFrameApiSupportsThem`, `RuntimeAssetData_GenericRenderSceneSubmissionBuildsPerEntityMaterialTableFromRefs`, `RuntimeAssetData_GenericRenderSceneSubmissionPreservesPerEntityMaterialBlendState`, `RuntimeAssetData_GenericRenderSceneSubmissionUsesMaterialRefOrderNotEntityOrder`, `RuntimeAssetData_GenericRenderSceneSubmissionRejectsSmallMaterialTableWithoutMutation`, and `RuntimeAssetData_GenericRenderSceneSubmissionRejectsDuplicateMaterialIdWithoutMutation` prove loaded scene records can build RenderScene frame records, active camera bindings, and per-entity material tables with bounded no-mutation failures |
@@ -407,12 +409,13 @@ reflection hardening for variable input/texture-slot counts, cooked shader
 no-mutation failures, disk animation sampling, staged scene loader output,
 runtime animation output tables, explicit selected animation clip sampling,
 asset-internal scene node/model node/skeleton joint target identity tables,
-SceneNode animation track `target_id` plus property binding records, generic
-RenderScene CPU submission records, per-entity material tables, package/cook/run
-ledgers, and product-run smoke as the current mainline closed loop. The
+SceneNode animation track `target_id` plus property binding records,
+invalid-target failure model diagnostics, generic RenderScene CPU submission
+records, per-entity material tables, package/cook/run ledgers, and product-run
+smoke as the current mainline closed loop. The
 remaining work is production hardening for broader material and scene variants,
 native/non-fixture shader compiler integration, ModelNode/SkeletonJoint
-animation binding, RTSPINE-006 broader failure matrix, RTSPINE-007 runtime
+animation binding beyond explicit unsupported-target rejection, RTSPINE-007 runtime
 instance mapping, blending and clip-family variants, and scene/animation/camera
 production variants beyond the canonical cube/cylinder/cone graph.
 
@@ -478,8 +481,9 @@ or Asset ownership, or runtime output records.
 ## Next Slice Decision
 
 RTSPINE-003 target identity docs and VQ gates are closed, RTSPINE-004
-implementation plus focused QA are PASS, and RTSPINE-005 minimal interpolation
-implementation plus focused QA are PASS. Do not open RTSPINE-006/007 or
+implementation plus focused QA are PASS, RTSPINE-005 minimal interpolation
+implementation plus focused QA are PASS, and RTSPINE-006 invalid-target failure
+model implementation plus focused QA are PASS. Do not open RTSPINE-007 or
 RuntimeAsset packaged-validation write lanes until their own gates are released.
 Selected clip sampling remains the earlier closed slice because it only selects
 among bounded clip records and proves no-mutation failure for a missing selected
@@ -505,8 +509,8 @@ RuntimeAsset spine constraints are:
 4. keep RTSPINE-005 limited to Step/Linear interpolation and the covered
    no-mutation interpolation failures; do not treat it as cubic, blend tree,
    montage, timeline, skeletal skinning, or editor authoring proof;
-5. define RTSPINE-006 broader invalid target and remaining failure coverage
-   before runtime mutation;
+5. keep RTSPINE-006 scoped to target-family mismatch and sample failure
+   diagnostics; broader animation production variants still need separate gates;
 6. design RTSPINE-007 runtime instance mapping before any WorldObject-facing
    application path.
 
@@ -522,8 +526,8 @@ Reviewers should answer these before the next implementation slice starts:
 2. Which RVF layers must be reworked because they are test-side struct
    construction, CPU helper image generation, GDI/software viewer output, or
    non-File/VFS/Resource bypasses?
-3. Which remaining failure rows belong in RTSPINE-006 before broader animation
-   production variants?
+3. Which remaining runtime instance mapping rows belong in RTSPINE-007 before
+   broader animation production variants?
 4. Which tiny source fixture files, if any, are allowed in the repo, and which
    generated outputs must stay under ignored artifact directories?
 5. Which File/VFS/Resource/Package path owns source bytes, cooked bytes, and

@@ -83,8 +83,13 @@ At the latest handoff:
   `YuRuntimeAssetDataClosedLoopTests` build PASS, exact interpolation discovery
   `3`, execution `3/3` PASS, non-Package RuntimeAsset animation whitelist
   `23/23` PASS, diff/hygiene/boundary PASS, and no broad/full CTest;
-- ModelNode/SkeletonJoint animation binding, RTSPINE-006/007, and
-  WorldObject-facing runtime instance mapping remain unopened;
+- RTSPINE-006 invalid-target failure model implementation is PASS at
+  `96e0c024435f670c39ced019ff825b819a6830a3`; focused QA task
+  `6d02c260-936a-456b-917b-5c2802bbb666` reports isolated clean worktree at
+  `96e0c024`, focused `YuRuntimeAssetDataClosedLoopTests` build PASS, focused
+  RuntimeAsset regex discovery/execution `8/8` PASS, exact new rows `2/2`
+  PASS, diff/hygiene/boundary PASS, and no broad/full CTest;
+- RTSPINE-007 and WorldObject-facing runtime instance mapping remain unopened;
 - the human lead has resumed execution and requires continuous multi-agent
   coordination until the L0/L1 stop condition is actually met;
 - RTSPINE-008A docs/spec is PASS at
@@ -109,7 +114,7 @@ At the latest handoff:
   `b4fa51c3-aefc-4714-b5d8-062f8a933ac9` reports `YuResourceTests` build
   PASS, Resource window/reference discovery exactly `7` rows, execution `7/7`
   PASS, commit-level diff/hygiene/boundary PASS, and no broad/full CTest;
-- RuntimeAsset packaged validation, RTSPINE-006/007, and RTSPINE-008F/G/H
+- RuntimeAsset packaged validation, RTSPINE-007, and RTSPINE-008F/G/H
   remain blocked until their own gates are released.
 
 Live workspace state is still authoritative for task ownership and current

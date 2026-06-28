@@ -133,7 +133,7 @@ target identity work.
 | RTSPINE-003 | Define asset-internal target identity | PASS at `origin/main@5ea838f6fd3428e7e67b77c1ca85c41e6e1c09e4`: scene node, model node, and skeleton joint ids are stable bounded output records independent from WorldObject; duplicate id, missing parent, and capacity overflow fail without mutation |
 | RTSPINE-004 | Define animation track target binding | PASS at `origin/main@ebe9ea35f531aa40133262b701e5e751f8ed9ccf`: SceneNode animation tracks bind to `target_id` plus property through caller-owned binding records; missing target, unsupported property, and capacity overflow fail without mutation; no world instance, editor object, raw pointer, display name, or file path |
 | RTSPINE-005 | Define minimal interpolation | PASS at `origin/main@2bfe7e37d36ca711dd706728f21b1e4caecfd3db` with focused QA at `origin/main@d18f1679ebd389ecec506055764602591f5b9ab6`: Step and Linear sampling at fixed times are deterministic, unsupported interpolation and sample output capacity fail without mutation, exact interpolation rows report `3/3` PASS, and no broad/full CTest was run |
-| RTSPINE-006 | Define invalid target failure model | remaining broader target-family mismatch, invalid selected clip/sample/apply failures, and any interpolation failures not covered by RTSPINE-005 must fail without output mutation; missing target, unsupported property, and binding capacity are covered by RTSPINE-004 |
+| RTSPINE-006 | Define invalid target failure model | PASS at `origin/main@96e0c024435f670c39ced019ff825b819a6830a3`: target-family mismatch and sample failure diagnostics fail without output mutation; focused QA task `6d02c260-936a-456b-917b-5c2802bbb666` reports isolated clean worktree, focused RuntimeAsset regex `8/8` PASS, exact new rows `2/2` PASS, diff/hygiene/boundary PASS, and no broad/full CTest |
 | RTSPINE-007 | Design instance mapping gate | asset target to runtime instance mapping is designed before implementation touches WorldObject |
 | RTSPINE-008 | Define package/resource pressure gate | 008A pressure contract defines vocabulary, byte-range policy, hash coverage, mutation contract, and forbidden scope; 008B byte-range/index, 008C Package artifact hash/dependency integrity, 008D File/VFS ranged IO, and 008E Resource payload window/reference budget are PASS; future gates are RuntimeAsset packaged validation and 008F/G/H |
 
@@ -213,7 +213,7 @@ Current immediate parallel pattern:
 
 ```text
 RTSPINE-005 + RTSPINE-008C evidence docs/VQ closure
-+ RTSPINE-006 RuntimeAsset-only invalid-target failure model
++ RTSPINE-006 RuntimeAsset invalid-target failure model evidence docs/VQ closure
 + RTSPINE-008D File/VFS ranged IO evidence docs/VQ closure
 + RTSPINE-008E Resource payload window evidence docs/VQ closure
 ```
@@ -222,7 +222,8 @@ RTSPINE-003 VQ accepted the target identity evidence gate by workspace task
 `fdd78da4-da12-4956-b6ac-63ff9e377121`. RTSPINE-004 implementation and focused
 QA are PASS at `ebe9ea35f531aa40133262b701e5e751f8ed9ccf`. RTSPINE-005
 implementation and focused QA are PASS at `2bfe7e37d36ca711dd706728f21b1e4caecfd3db`
-/ `d18f1679ebd389ecec506055764602591f5b9ab6`. RTSPINE-006, RTSPINE-007,
+/ `d18f1679ebd389ecec506055764602591f5b9ab6`. RTSPINE-006 implementation and
+focused QA are PASS at `96e0c024435f670c39ced019ff825b819a6830a3`. RTSPINE-007,
 RuntimeAsset packaged validation, and RTSPINE-008F/G/H remain blocked until
 their own evidence gates are released.
 
@@ -370,8 +371,7 @@ reports focused `YuRuntimeAssetDataClosedLoopTests` build PASS, exact discovery
 of `17` rows, execution `17/17` PASS, `git diff --check` PASS, added-line
 hygiene PASS, and boundary/non-goal scans PASS without running broad full CTest.
 The RTSPINE-004 PASS does not open ModelNode/SkeletonJoint animation binding,
-RTSPINE-006 broader failure matrix, RTSPINE-007 runtime instance mapping, or any
-Package/Resource write lane.
+RTSPINE-007 runtime instance mapping, or any Package/Resource write lane.
 
 Current RuntimeAsset minimal interpolation evidence at
 `2bfe7e37d36ca711dd706728f21b1e4caecfd3db` covers Step/Linear fixed-time
@@ -382,8 +382,17 @@ discovery `3`, execution `3/3` PASS, non-Package RuntimeAsset animation
 whitelist discovery/execution `23/23` PASS, `git diff --check` PASS, added-line
 hygiene PASS, and production boundary/non-goal scans PASS without running
 broad/full CTest. The PASS does not open ModelNode/SkeletonJoint animation
-binding, RTSPINE-006 broader failure matrix, or RTSPINE-007 runtime instance
-mapping.
+binding or RTSPINE-007 runtime instance mapping.
+
+Current RuntimeAsset invalid-target failure model evidence at
+`96e0c024435f670c39ced019ff825b819a6830a3` covers target-family mismatch
+rejection and sample failure diagnostics without output mutation. Focused QA
+task `6d02c260-936a-456b-917b-5c2802bbb666` reports an isolated clean worktree
+at `96e0c024`, focused `YuRuntimeAssetDataClosedLoopTests` build PASS, focused
+RuntimeAsset regex discovery/execution `8/8` PASS, exact new RTSPINE-006 rows
+`2/2` PASS, `git diff --check` PASS, added-line hygiene PASS, non-goal boundary
+scan PASS, and no broad/full CTest. The PASS does not open RTSPINE-007 runtime
+instance mapping, RuntimeAsset packaged validation, or RTSPINE-008F/G/H.
 
 Current Package artifact hash/dependency evidence at
 `d18f1679ebd389ecec506055764602591f5b9ab6` covers RTSPINE-008C Package-only
