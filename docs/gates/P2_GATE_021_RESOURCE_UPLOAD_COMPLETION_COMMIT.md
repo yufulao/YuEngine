@@ -256,6 +256,26 @@ Rejected proof:
 - RenderCore draw, material graph, render graph, frame graph, scene streaming,
   UI, World, Script, or Game Adapter behavior as evidence for this gate.
 
+## L0-RES-004 Evidence Sync
+
+L0-RES-004 Resource residency/upload chain closure is PASS at
+`45f91f6cda02e42f0dce7eae7ff3df6db3616467` for this gate's upload completion
+commit surface. Focused QA task `2917323c-9869-4a1c-a9fb-67a90b513a23`
+reports `YuStreamingTests` and `YuResourceTests` build PASS,
+`Streaming_ResourceUpload_` discovery/execution `17/17` PASS,
+`Streaming_ResourceUploadCommit_` discovery/execution `9/9` PASS,
+`Resource_LoadCommit_`/`Resource_Residency_` discovery/execution `18/18` PASS,
+combined focused execution `44/44` PASS, and a clean read-only QA workspace.
+Readiness task `d88846fd` records existing Resource/Streaming/RHI value/status
+records for upload queue, upload commit, Resource load commit, residency
+budget/state, pin/unpin/eviction, and stale/invalid handle no-mutation.
+
+This sync keeps upload completion commit evidence as Resource/Streaming
+value/status transitions. QA did not build or execute `YuRHITests`, RHI 38-row
+dependency execution, adjacent/full Resource, full `^Resource_`, or broad/full
+CTest. RHI primitive evidence remains a dependency note, and `L0-RHI-003` is
+not table-closed by this gate update.
+
 ## Non Goals
 
 - No package parser or original package reader.

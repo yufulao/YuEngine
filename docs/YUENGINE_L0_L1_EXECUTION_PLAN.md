@@ -256,10 +256,24 @@ issue, implementation task `abfdb2d1` fixed `StoreDecodedPayload` in
 `ca5c3c1b-e61a-4095-8e3c-2e0dfccc2b40` reports `YuResourceTests` build PASS,
 exact `Resource_DecodedPayload_RejectsCapacityOverflow` `1/1` PASS, focused
 cache/decode discovery/execution `65/65` PASS, clean read-only QA, and no
-adjacent/full Resource or broad/full CTest. Resource residency/upload,
-Package/Resource public API expansion, RuntimeAsset/CMake cross-proof,
-RenderScene/RHI, WorldObject/editor/importer, unrelated animation mapping, and
-broad/full CTest stay outside this closure.
+adjacent/full Resource or broad/full CTest. L0-RES-004 Resource
+residency/upload chain closure is PASS at
+`45f91f6cda02e42f0dce7eae7ff3df6db3616467`: focused QA task
+`2917323c-9869-4a1c-a9fb-67a90b513a23` reports `YuStreamingTests` and
+`YuResourceTests` build PASS, `Streaming_ResourceUpload_` `17/17` PASS,
+`Streaming_ResourceUploadCommit_` `9/9` PASS,
+`Resource_LoadCommit_`/`Resource_Residency_` `18/18` PASS, combined focused
+execution `44/44` PASS, and a clean read-only QA workspace; readiness task
+`d88846fd` records existing Resource/Streaming/RHI value/status records for
+upload queue, upload commit, Resource load commit, residency budget/state,
+pin/unpin/eviction, and stale/invalid handle no-mutation. QA did not build or
+execute `YuRHITests`, RHI 38-row dependency execution, adjacent/full Resource,
+full `^Resource_`, or broad/full CTest. RHI primitive evidence remains a
+dependency note because `L0-RHI-003` is not separately table-closed here.
+L0-RES-005 texture bridge, Package/Resource public API expansion,
+RuntimeAsset/CMake cross-proof, RenderScene/RHI implementation,
+WorldObject/editor/importer, old-package compatibility, real codec/parser,
+unrelated animation mapping, and broad/full CTest stay outside this closure.
 
 
 ## 2. Current Progress Assessment
@@ -1920,7 +1934,7 @@ backlog or from phase-sized batches, not only from the first few rows.
 | L0-RES-001 | Close File/VFS loose read/write policy | current File first slices | PASS at `origin/main@43cfc18fec4c4c5a5135e4ed15da64c8308247ff`: path normalization, mount priority, fixture bounds, loose read/write statuses, source/cooked mount round-trips, oversized loose read `ReadTooLarge`, and snapshot ownership/status counters are explicit; focused QA task `5020f3d6-a492-4138-b81f-c5e80cdd92e2` reports `YuFileTests` build PASS, affected rows `2/2` PASS, `^File_` suite `23/23` PASS, diff-check/hygiene PASS, and no broad/full CTest |
 | L0-RES-002 | Close Package load-plan/staging baseline | L0-RES-001 | PASS at `origin/main@4714199579469a9b1b5e1307b6370fe8f39ce994`: existing `YuPackage` manifest/load-plan value contracts and `YuStreaming` `PackageResourceStaging*` value/status records cover the baseline without a new implementation commit; readiness task `da4f455c` and focused QA task `6aea6396-7af5-43ed-be9a-901e888914d2` report `YuPackageTests` and `YuStreamingTests` build PASS, `^Package_` discovery/execution `39/39` PASS, `^Streaming_PackageResourceStaging_` discovery/execution `10/10` PASS, clean read-only QA, no broad/full CTest, and no old-package compatibility claim |
 | L0-RES-003 | Close Resource cache/decode chain | current Resource first slices | PASS at `origin/main@8c3a200d813173efe1607e594777afd6f029cc7c`: existing `YuResource` cache payload, decode plan, decode result, decoded payload ownership, release/dependent clear, budget/capacity, and no-mutation records cover the baseline; readiness task `ba6025e8`, implementation fix task `abfdb2d1`, and focused QA task `ca5c3c1b-e61a-4095-8e3c-2e0dfccc2b40` report `ResourceRegistry.cpp`-only status-priority fix, `YuResourceTests` build PASS, exact decoded-payload capacity row `1/1` PASS, focused cache/decode discovery/execution `65/65` PASS, clean read-only QA, and no adjacent/full Resource or broad/full CTest |
-| L0-RES-004 | Close Resource residency/upload chain | L0-RES-003, L0-RHI-003 | upload queue, upload completion commit, residency budget, and stale handle failures pass |
+| L0-RES-004 | Close Resource residency/upload chain | L0-RES-003, L0-RHI-003 | Closed at `origin/main@45f91f6cda02e42f0dce7eae7ff3df6db3616467`: focused QA task `2917323c-9869-4a1c-a9fb-67a90b513a23` reports successful `YuStreamingTests` and `YuResourceTests` builds, `Streaming_ResourceUpload_` `17/17`, `Streaming_ResourceUploadCommit_` `9/9`, `Resource_LoadCommit_`/`Resource_Residency_` `18/18`, combined focused execution `44/44`, and a clean read-only QA workspace; readiness task `d88846fd` records existing Resource/Streaming/RHI value/status records for upload queue, upload commit, Resource load commit, residency budget/state, pin/unpin/eviction, and stale/invalid handle no-mutation; QA did not build or execute `YuRHITests`, RHI 38-row dependency execution, adjacent/full Resource, full `^Resource_`, or broad/full CTest; `L0-RHI-003` stays a dependency row, not a completion claim from this evidence sync |
 | L0-RES-005 | Close texture bridge to RHI | L0-RES-004, L0-RHI-003 | decoded texture payload maps to upload request without Resource owning RHI lifecycle |
 | L0-RES-006 | Close PCM bridge to Audio | L0-RES-003, L0-AUD-002 | decoded audio metadata maps to PCM request without Audio parsing Resource payloads |
 | L0-RES-007 | Add sample texture/mesh asset path | L0-RES-001, L0-RES-003, L0-RES-005 | sample asset reaches RenderCore/RHI through YuEngine modules |
@@ -1929,10 +1943,14 @@ L0-RES-001 evidence is intentionally limited to `Tests/File/FileTests.cpp`.
 L0-RES-002 evidence is based on existing Package and Streaming value/status
 records, not new implementation code. L0-RES-003 evidence is based on Resource
 cache/decode value/status records plus the narrow `StoreDecodedPayload`
-status-priority fix in `ResourceRegistry.cpp`. Resource residency/upload,
-Package/Resource public API expansion, RuntimeAsset/CMake cross-proof,
-RenderScene/RHI, WorldObject/editor/importer, unrelated animation mapping, and
-broad/full CTest stay outside these closures.
+status-priority fix in `ResourceRegistry.cpp`. L0-RES-004 evidence is based on
+existing Resource/Streaming/RHI value/status records plus focused
+Resource/Streaming execution, and it leaves `L0-RHI-003` as a dependency row.
+L0-RES-005 texture bridge, Package/Resource public API expansion,
+RuntimeAsset/CMake cross-proof, RenderScene/RHI implementation,
+WorldObject/editor/importer, old-package compatibility, real codec/parser,
+unrelated animation mapping, adjacent/full Resource, RHI dependency execution,
+full `^Resource_`, and broad/full CTest stay outside these closures.
 
 ### 12.6 L0 Audio Backlog
 
