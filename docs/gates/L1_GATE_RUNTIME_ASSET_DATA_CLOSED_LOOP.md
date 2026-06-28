@@ -6,6 +6,9 @@ Current decision: `RUNTIME_ASSET_DATA_CLOSED_LOOP_CURRENT_SLICE_PASS`
 Owner: Architecture
 Task: #73 baseline; #50 RAV1 production contract amendment
 Related plan: `docs/YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md`
+Latest RuntimeAsset spine evidence: RTSPINE-003 VQ COMPLETE-PASS by workspace
+task `fdd78da4-da12-4956-b6ac-63ff9e377121`; RTSPINE-004 is the next released
+implementation lane.
 Production-gap closure: `docs/YUENGINE_RUNTIME_ASSET_V0_PRODUCTION_GAP_CLOSURE_PLAN.md`
 Format policy and validator vocabulary: `docs/YUENGINE_RUNTIME_ASSET_V0_FORMAT_POLICY_AND_VALIDATOR_VOCABULARY.md`
 Loader transaction plan: `docs/YUENGINE_RUNTIME_ASSET_V0_LOADER_TRANSACTION_PLAN.md`

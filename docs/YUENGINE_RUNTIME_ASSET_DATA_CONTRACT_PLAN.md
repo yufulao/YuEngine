@@ -413,14 +413,18 @@ or Asset ownership, or runtime output records.
 
 ## Next Slice Decision
 
-The next RuntimeAsset-adjacent implementation must not deepen animation binding
-until the RTSPINE-003 target identity docs and VQ gates are closed. Selected clip
-sampling is accepted as the earlier closed slice because it only selects among
-bounded clip records and proves no-mutation failure for a missing selected clip.
+RTSPINE-003 target identity docs and VQ gates are closed, so the next
+RuntimeAsset-adjacent implementation may deepen animation binding only through
+RTSPINE-004 target id plus property references. Do not open RTSPINE-005/006/007
+or Package/Resource write lanes until their own gates are released. Selected
+clip sampling is accepted as the earlier closed slice because it only selects
+among bounded clip records and proves no-mutation failure for a missing selected
+clip.
 
 RTSPINE-003 now has implementation and focused QA evidence at
-`origin/main@5ea838f6fd3428e7e67b77c1ca85c41e6e1c09e4`. After VQ accepts
-RTSPINE-003, the next accepted RuntimeAsset spine work is:
+`origin/main@5ea838f6fd3428e7e67b77c1ca85c41e6e1c09e4`, plus VQ PASS evidence
+from workspace task `fdd78da4-da12-4956-b6ac-63ff9e377121`. The next accepted
+RuntimeAsset spine work is:
 
 1. preserve source and cooked asset target tables for scene nodes, model nodes,
    and skeleton joints as the binding root;
@@ -446,16 +450,16 @@ Reviewers should answer these before the next implementation slice starts:
 2. Which RVF layers must be reworked because they are test-side struct
    construction, CPU helper image generation, GDI/software viewer output, or
    non-File/VFS/Resource bypasses?
-3. Which RTSPINE-003 VQ risks remain before broader animation production
-   variants?
+3. Which target id and property refs belong in the RTSPINE-004 track binding
+   contract before broader animation production variants?
 4. Which tiny source fixture files, if any, are allowed in the repo, and which
    generated outputs must stay under ignored artifact directories?
 5. Which File/VFS/Resource/Package path owns source bytes, cooked bytes, and
    runtime records in the first slice?
 6. What status names and no-mutation tests are mandatory before the next slice
    can keep `RUNTIME_ASSET_DATA_CLOSED_LOOP_CURRENT_SLICE_PASS`?
-7. Which package/index/hash/budget constraints must be checked against the
-   6 GB plus shipped-content target?
+7. Which package/index/hash/budget constraints must be checked against
+   shipped-content pressure examples and explicit budget assumptions?
 
 ## Hard Blocks
 

@@ -65,11 +65,14 @@ At the latest handoff:
   PASS without running broad full CTest;
 - RTSPINE-003 docs evidence is synchronized by workspace task
   `d9dc3692-aa12-4f5c-872a-5b7293a92ceb`;
+- RTSPINE-003 VQ evidence consistency audit is PASS by workspace task
+  `fdd78da4-da12-4956-b6ac-63ff9e377121`;
 - the human lead has resumed execution and requires continuous multi-agent
   coordination until the L0/L1 stop condition is actually met;
-- RTSPINE-003 VQ evidence consistency audit is the next evidence gate and must
-  close before RTSPINE-004/005/006, VQ-result-dependent writes, or
-  Package/Resource pressure write lanes open.
+- RTSPINE-004 animation track target/property binding is the only released next
+  write lane. Package/Resource pressure work may run as read-only audit in
+  parallel, while RTSPINE-005/006/007 and Package/Resource write lanes remain
+  blocked until their own gates are released.
 
 Live workspace state is still authoritative for task ownership and current
 status. This file records the handoff baseline, not a replacement for the task
@@ -148,6 +151,6 @@ Required execution discipline:
   explicit shared-contract, release, or high-risk decisions;
 - never open a write lane that can invalidate an active evidence gate.
 
-The current safe pattern is: keep VQ read-only, open independent read-only
-architecture/prep lanes in parallel, then release the next implementation lane
-only after the evidence gate closes.
+The current safe pattern is: keep VQ read-only, immediately release the next
+non-conflicting lane once its dependency closes, and keep unrelated read-only
+architecture, prep, and pressure-audit lanes moving in parallel.

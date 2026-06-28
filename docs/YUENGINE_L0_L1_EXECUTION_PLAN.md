@@ -164,14 +164,16 @@ QA or full-test lanes that do not reduce calendar time.
 Current immediate parallel pattern:
 
 ```text
-RTSPINE-003 VQ read-only evidence consistency audit
-+ package/resource index pressure audit
-+ next-implementation file-surface scout for RTSPINE-004/005/006
+RTSPINE-004 animation track target/property binding implementation
++ package/resource index pressure audit (read-only)
++ RTSPINE-005/006/007 file-surface scout (read-only, no contract mutation)
 + parallelization and risk audit
 ```
 
-The next implementation write lane remains blocked until VQ accepts the
-RTSPINE-003 target identity evidence gate.
+RTSPINE-003 VQ accepted the target identity evidence gate by workspace task
+`fdd78da4-da12-4956-b6ac-63ff9e377121`. The next implementation write lane is
+RTSPINE-004 only. RTSPINE-005/006/007 and Package/Resource write lanes remain
+blocked until their own evidence gates are released.
 
 
 ## 2. Current Progress Assessment

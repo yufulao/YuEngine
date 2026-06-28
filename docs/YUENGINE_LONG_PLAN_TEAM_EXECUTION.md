@@ -250,12 +250,12 @@ Current RTSPINE evidence gate state:
   scene/runtime animation regression rows PASS;
 - RTSPINE-003 docs: synchronized by workspace task
   `d9dc3692-aa12-4f5c-872a-5b7293a92ceb`;
-- RTSPINE-003 VQ consistency audit: pending and should run now as a read-only
-  gate.
+- RTSPINE-003 VQ consistency audit: done / COMPLETE-PASS by workspace task
+  `fdd78da4-da12-4956-b6ac-63ff9e377121`.
 
-This gate must close before opening a new implementation write lane. Independent
-read-only architecture, code-surface scouting, and pressure-audit lanes may run
-in parallel when they cannot mutate the same evidence gate.
+This gate is closed. RTSPINE-004 may open as the only implementation write lane.
+Independent read-only architecture, code-surface scouting, and pressure-audit
+lanes may run in parallel when they cannot mutate the same evidence gate.
 
 ### 5.2 Correct RuntimeAsset Dependency Order
 
@@ -286,7 +286,7 @@ editor object, scene instance, raw pointer, display name, or file path.
 | RTSPINE-005 | Minimal interpolation contract | Step and Linear scalar/vector/transform sampling pass fixed-time tests with no hidden global time |
 | RTSPINE-006 | Invalid target failure contract | Missing target, unsupported property, unsupported interpolation, capacity overflow, and invalid selected clip fail without output mutation |
 | RTSPINE-007 | Instance mapping design gate | Asset target to runtime instance mapping is designed before any WorldObject-binding implementation |
-| RTSPINE-008 | Package/resource index pressure gate | Archive/index/hash/budget requirements are defined against the 6 GB plus shipped-content target |
+| RTSPINE-008 | Package/resource index pressure gate | Archive/index/hash/budget requirements are defined against shipped-content pressure examples and explicit budget assumptions, not a fixed 6 GB target |
 
 ### 5.4 Forbidden Work In This Stage
 
@@ -296,7 +296,8 @@ editor object, scene instance, raw pointer, display name, or file path.
 - no WorldObject direct binding inside asset files;
 - no old TouhouNewWorld package parser as L0/L1 proof;
 - no broad shader/material work as a substitute for target identity;
-- no next implementation lane before VQ accepts the current evidence gate.
+- no RTSPINE-005/006/007 or Package/Resource write lane before its own evidence
+  gate is released.
 
 ## 6. Team Execution Model
 
