@@ -293,6 +293,27 @@ It may not create placeholder directories or targets for package parsers,
 File/VFS runtime reads, resource cache, async loading, streaming, decoders,
 upload queues, tools, report, profiler, capture, oracle, or Game Adapter work.
 
+## L0-RES-002 Evidence Sync
+
+L0-RES-002 records the existing Package manifest/load-plan baseline as PASS, not
+a new implementation lane. Readiness task `da4f455c` accepted that current
+`YuPackage` manifest/load-plan value contracts and `YuStreaming`
+`PackageResourceStaging*` value/status records already cover the Package
+load-plan/staging baseline.
+
+Focused QA task `6aea6396-7af5-43ed-be9a-901e888914d2` ran read-only at
+`origin/main@4714199579469a9b1b5e1307b6370fe8f39ce994` with a clean
+worktree/index. It reports `YuPackageTests` and `YuStreamingTests` build PASS,
+`^Package_` discovery and execution `39/39` PASS,
+`^Streaming_PackageResourceStaging_` discovery and execution `10/10` PASS, and
+no broad/full CTest.
+
+This evidence keeps Package as a value-plan provider. It does not complete
+old-package compatibility, Package/Resource public API expansion, File/VFS
+runtime reads inside Package, Resource cache/decode, Resource residency/upload,
+RuntimeAsset bridge work, RenderScene/RHI, World/editor/importer, or unrelated
+animation mapping.
+
 ## Non-Goals
 
 - No original `.pak`, `.dat`, `.rpack`, or loose resource parser.

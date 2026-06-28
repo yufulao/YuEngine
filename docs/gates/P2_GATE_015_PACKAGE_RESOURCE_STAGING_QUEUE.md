@@ -82,6 +82,27 @@ Review evidence:
 - `windows-hardware-smoke` discovers `7`; package/resource/file/async/staging
   and upload labels remain `0` for this proposal baseline.
 
+## L0-RES-002 Evidence Sync
+
+L0-RES-002 records the existing PackageResourceStaging baseline as PASS without
+a new implementation lane. Readiness task `da4f455c` accepted that current
+`YuPackage` manifest/load-plan value contracts and `YuStreaming`
+`PackageResourceStaging*` value/status records already cover the staging
+baseline.
+
+Focused QA task `6aea6396-7af5-43ed-be9a-901e888914d2` ran read-only at
+`origin/main@4714199579469a9b1b5e1307b6370fe8f39ce994` with a clean
+worktree/index. It reports `YuPackageTests` and `YuStreamingTests` build PASS,
+`^Package_` discovery and execution `39/39` PASS,
+`^Streaming_PackageResourceStaging_` discovery and execution `10/10` PASS, and
+no broad/full CTest.
+
+This evidence keeps staging as value/status queue records over Package
+load-plan, Resource handle/type, and File async values. It does not complete
+Resource cache/decode, Resource residency/upload, Package/Resource public API
+expansion, RuntimeAsset bridge work, RenderScene/RHI, World/editor/importer,
+old-package compatibility, or unrelated animation mapping.
+
 Approval conditions:
 
 - implementation must remain a narrow staging bridge over existing `YuPackage`

@@ -220,6 +220,7 @@ RTSPINE-005 + RTSPINE-008C evidence docs/VQ closure
 + RTSPINE-008G RuntimeAsset packaged validation bridge evidence docs sync
 + RTSPINE-008H RuntimeAsset transaction rollback/proof evidence docs sync
 + L0-RES-001 File/VFS loose read/write policy evidence docs sync
++ L0-RES-002 Package load-plan/staging evidence docs sync
 ```
 
 RTSPINE-003 VQ accepted the target identity evidence gate by workspace task
@@ -237,10 +238,18 @@ at `1120c3659bf0375f8eb9ef87e042f24c6e5d3ca1`; broader Resource/File/VFS
 follow-through remains blocked until its own evidence gate is released.
 L0-RES-001 File/VFS loose read/write policy closure implementation and focused
 QA are PASS at `43cfc18fec4c4c5a5135e4ed15da64c8308247ff`. This closes
-fixture-bound loose read/write policy only; Package load-plan/staging,
-Resource cache/decode, Resource residency/upload, Package/Resource public API
-expansion, RuntimeAsset/CMake cross-proof, RenderScene/RHI, WorldObject/editor/
-importer, unrelated animation mapping, and broad/full CTest remain unopened.
+fixture-bound loose read/write policy only. L0-RES-002 Package load-plan/staging
+baseline closure is PASS at `4714199579469a9b1b5e1307b6370fe8f39ce994`
+without a new implementation commit; readiness task `da4f455c` and focused QA
+task `6aea6396-7af5-43ed-be9a-901e888914d2` record existing `YuPackage`
+manifest/load-plan value contracts plus `YuStreaming`
+`PackageResourceStaging*` value/status records, `YuPackageTests` and
+`YuStreamingTests` build PASS, `^Package_` `39/39` PASS,
+`^Streaming_PackageResourceStaging_` `10/10` PASS, clean read-only QA, and no
+broad/full CTest. Resource cache/decode, Resource residency/upload,
+Package/Resource public API expansion, RuntimeAsset/CMake cross-proof,
+RenderScene/RHI, WorldObject/editor/importer, unrelated animation mapping, and
+broad/full CTest stay outside this closure.
 
 
 ## 2. Current Progress Assessment
@@ -1899,7 +1908,7 @@ backlog or from phase-sized batches, not only from the first few rows.
 | ID | Work item | Depends on | Acceptance |
 | --- | --- | --- | --- |
 | L0-RES-001 | Close File/VFS loose read/write policy | current File first slices | PASS at `origin/main@43cfc18fec4c4c5a5135e4ed15da64c8308247ff`: path normalization, mount priority, fixture bounds, loose read/write statuses, source/cooked mount round-trips, oversized loose read `ReadTooLarge`, and snapshot ownership/status counters are explicit; focused QA task `5020f3d6-a492-4138-b81f-c5e80cdd92e2` reports `YuFileTests` build PASS, affected rows `2/2` PASS, `^File_` suite `23/23` PASS, diff-check/hygiene PASS, and no broad/full CTest |
-| L0-RES-002 | Close Package load-plan/staging baseline | L0-RES-001 | manifest/load-plan and staging records stay value contracts, not old-package compatibility |
+| L0-RES-002 | Close Package load-plan/staging baseline | L0-RES-001 | PASS at `origin/main@4714199579469a9b1b5e1307b6370fe8f39ce994`: existing `YuPackage` manifest/load-plan value contracts and `YuStreaming` `PackageResourceStaging*` value/status records cover the baseline without a new implementation commit; readiness task `da4f455c` and focused QA task `6aea6396-7af5-43ed-be9a-901e888914d2` report `YuPackageTests` and `YuStreamingTests` build PASS, `^Package_` discovery/execution `39/39` PASS, `^Streaming_PackageResourceStaging_` discovery/execution `10/10` PASS, clean read-only QA, no broad/full CTest, and no old-package compatibility claim |
 | L0-RES-003 | Close Resource cache/decode chain | current Resource first slices | cache payload, decode plan, decode result, decoded payload ownership, and release behavior pass |
 | L0-RES-004 | Close Resource residency/upload chain | L0-RES-003, L0-RHI-003 | upload queue, upload completion commit, residency budget, and stale handle failures pass |
 | L0-RES-005 | Close texture bridge to RHI | L0-RES-004, L0-RHI-003 | decoded texture payload maps to upload request without Resource owning RHI lifecycle |
@@ -1907,10 +1916,11 @@ backlog or from phase-sized batches, not only from the first few rows.
 | L0-RES-007 | Add sample texture/mesh asset path | L0-RES-001, L0-RES-003, L0-RES-005 | sample asset reaches RenderCore/RHI through YuEngine modules |
 
 L0-RES-001 evidence is intentionally limited to `Tests/File/FileTests.cpp`.
-It does not open L0-RES-002 Package load-plan/staging, L0-RES-003 Resource
-cache/decode chain, Resource residency/upload, Package/Resource public API
-expansion, RuntimeAsset/CMake cross-proof, RenderScene/RHI, WorldObject/editor/
-importer, unrelated animation mapping, or broad/full CTest.
+L0-RES-002 evidence is based on existing Package and Streaming value/status
+records, not new implementation code. Resource cache/decode chain, Resource
+residency/upload, Package/Resource public API expansion, RuntimeAsset/CMake
+cross-proof, RenderScene/RHI, WorldObject/editor/importer, unrelated animation
+mapping, and broad/full CTest stay outside these closures.
 
 ### 12.6 L0 Audio Backlog
 
