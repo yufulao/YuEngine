@@ -286,7 +286,7 @@ editor object, scene instance, raw pointer, display name, or file path.
 | RTSPINE-005 | Minimal interpolation contract | PASS at `origin/main@2bfe7e37d36ca711dd706728f21b1e4caecfd3db` with focused QA at `origin/main@d18f1679ebd389ecec506055764602591f5b9ab6`: Step and Linear scalar/vector/transform sampling pass fixed-time tests with no hidden global time; unsupported interpolation and sample output capacity fail without mutation |
 | RTSPINE-006 | Invalid target failure contract | PASS at `origin/main@96e0c024435f670c39ced019ff825b819a6830a3`; target-family mismatch and sample failure diagnostics fail without output mutation, and focused QA task `6d02c260-936a-456b-917b-5c2802bbb666` reports focused RuntimeAsset regex `8/8` PASS plus exact new rows `2/2` PASS without broad/full CTest |
 | RTSPINE-007 | Instance mapping design gate | Asset target to runtime instance mapping is designed before any WorldObject-binding implementation |
-| RTSPINE-008 | Package/resource index pressure gate | 008A spec, 008B byte-range/index, 008C Package hash/dependency integrity, 008D File/VFS ranged IO, and 008E Resource payload window/reference budget are PASS; separate future gates cover RuntimeAsset packaged validation and 008F/G/H |
+| RTSPINE-008 | Package/resource index pressure gate | 008A spec, 008B byte-range/index, 008C Package hash/dependency integrity, 008D File/VFS ranged IO, 008E Resource payload window/reference budget, and 008F Package dependency closure/budgeted load plan are PASS; separate future gates cover RuntimeAsset packaged validation and 008G/H |
 
 ### 5.4 Forbidden Work In This Stage
 
@@ -297,7 +297,7 @@ editor object, scene instance, raw pointer, display name, or file path.
 - no old TouhouNewWorld package parser as L0/L1 proof;
 - no broad shader/material work as a substitute for target identity;
 - no RTSPINE-007, RuntimeAsset packaged validation, or remaining
-  RTSPINE-008F/G/H write lane before its own evidence
+  RTSPINE-008G/H write lane before its own evidence
   gate is released.
 
 ## 6. Team Execution Model

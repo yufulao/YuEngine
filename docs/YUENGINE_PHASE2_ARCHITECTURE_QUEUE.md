@@ -229,7 +229,8 @@ Required test-tier direction:
   `YuPackageTests` build PASS, `^Package_` `35/35` PASS, exact new integrity
   rows `2/2` PASS, and no broad/full CTest. It did not itself authorize
   File/VFS or Resource payload windows; the separate 008D and 008E gates below
-  do. It does not authorize RuntimeAsset packaged validation or RTSPINE-008F/G/H.
+  do, and the separate 008F gate below covers Package dependency closure. It
+  does not authorize RuntimeAsset packaged validation or RTSPINE-008G/H.
 - RuntimeAsset RTSPINE-008D is a separate File/VFS-focused follow-up outside
   the P2-GATE-003 first-slice baseline. It is PASS at
   `origin/main@c67e9710ab39f49ea01f0c194d2e5b44cbf3b97e` for ranged
@@ -239,7 +240,7 @@ Required test-tier direction:
   `^File_` `23/23` PASS, ranged subset `4/4` PASS, and no broad/full CTest.
   It did not itself authorize Resource payload windows; the separate 008E gate
   below does. It does not authorize RuntimeAsset packaged validation or
-  RTSPINE-008F/G/H.
+  RTSPINE-008G/H.
 - RuntimeAsset RTSPINE-008E is a separate Resource-focused follow-up outside
   the P2-GATE-003 first-slice baseline. It is PASS at
   `origin/main@8bb8eff9c98d2a0aa5050c5da6ad94049fa894be` for Resource payload
@@ -247,7 +248,15 @@ Required test-tier direction:
   `b4fa51c3-aefc-4714-b5d8-062f8a933ac9` reports `YuResourceTests` build PASS,
   Resource window/reference discovery exactly `7` rows, execution `7/7` PASS,
   commit-level diff/hygiene/boundary PASS, and no broad/full CTest. It does not
-  authorize RuntimeAsset packaged validation or RTSPINE-008F/G/H.
+  authorize RuntimeAsset packaged validation or RTSPINE-008G/H.
+- RuntimeAsset RTSPINE-008F is a separate Package-focused follow-up outside
+  the P2-GATE-003 first-slice baseline. It is PASS at
+  `origin/main@8509f7e1b6ba15e79c574357a465ddfff4d80e10` for Package dependency
+  closure and budgeted load-plan evidence only; focused QA task
+  `4f199c8e-99a4-43b4-a776-8960285ffdaf` reports `YuPackageTests` build PASS,
+  exact 008F rows `4/4` PASS, `^Package_` focused suite `39/39` PASS,
+  diff/hygiene/scope scan PASS, and no broad/full CTest. It does not authorize
+  RuntimeAsset packaged validation or RTSPINE-008G/H.
 - P2-GATE-004 is approved for first slice after ENG-097A boundary/reference
   PASS, ENG-097B CMake implementability PASS, and ENG-097C test admission PASS.
   The approved scope is CMake/CTest execution infrastructure only: tier/module/

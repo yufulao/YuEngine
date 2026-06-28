@@ -135,7 +135,7 @@ target identity work.
 | RTSPINE-005 | Define minimal interpolation | PASS at `origin/main@2bfe7e37d36ca711dd706728f21b1e4caecfd3db` with focused QA at `origin/main@d18f1679ebd389ecec506055764602591f5b9ab6`: Step and Linear sampling at fixed times are deterministic, unsupported interpolation and sample output capacity fail without mutation, exact interpolation rows report `3/3` PASS, and no broad/full CTest was run |
 | RTSPINE-006 | Define invalid target failure model | PASS at `origin/main@96e0c024435f670c39ced019ff825b819a6830a3`: target-family mismatch and sample failure diagnostics fail without output mutation; focused QA task `6d02c260-936a-456b-917b-5c2802bbb666` reports isolated clean worktree, focused RuntimeAsset regex `8/8` PASS, exact new rows `2/2` PASS, diff/hygiene/boundary PASS, and no broad/full CTest |
 | RTSPINE-007 | Design instance mapping gate | asset target to runtime instance mapping is designed before implementation touches WorldObject |
-| RTSPINE-008 | Define package/resource pressure gate | 008A pressure contract defines vocabulary, byte-range policy, hash coverage, mutation contract, and forbidden scope; 008B byte-range/index, 008C Package artifact hash/dependency integrity, 008D File/VFS ranged IO, and 008E Resource payload window/reference budget are PASS; future gates are RuntimeAsset packaged validation and 008F/G/H |
+| RTSPINE-008 | Define package/resource pressure gate | 008A pressure contract defines vocabulary, byte-range policy, hash coverage, mutation contract, and forbidden scope; 008B byte-range/index, 008C Package artifact hash/dependency integrity, 008D File/VFS ranged IO, 008E Resource payload window/reference budget, and 008F Package dependency closure/budgeted load plan are PASS; future gates are RuntimeAsset packaged validation and 008G/H |
 
 ### 1.2.2 RTSPINE-008A Package/Resource Pressure Contract
 
@@ -224,7 +224,7 @@ QA are PASS at `ebe9ea35f531aa40133262b701e5e751f8ed9ccf`. RTSPINE-005
 implementation and focused QA are PASS at `2bfe7e37d36ca711dd706728f21b1e4caecfd3db`
 / `d18f1679ebd389ecec506055764602591f5b9ab6`. RTSPINE-006 implementation and
 focused QA are PASS at `96e0c024435f670c39ced019ff825b819a6830a3`. RTSPINE-007,
-RuntimeAsset packaged validation, and RTSPINE-008F/G/H remain blocked until
+RuntimeAsset packaged validation, and RTSPINE-008G/H remain blocked until
 their own evidence gates are released.
 
 
@@ -392,7 +392,7 @@ at `96e0c024`, focused `YuRuntimeAssetDataClosedLoopTests` build PASS, focused
 RuntimeAsset regex discovery/execution `8/8` PASS, exact new RTSPINE-006 rows
 `2/2` PASS, `git diff --check` PASS, added-line hygiene PASS, non-goal boundary
 scan PASS, and no broad/full CTest. The PASS does not open RTSPINE-007 runtime
-instance mapping, RuntimeAsset packaged validation, or RTSPINE-008F/G/H.
+instance mapping, RuntimeAsset packaged validation, or RTSPINE-008G/H.
 
 Current Package artifact hash/dependency evidence at
 `d18f1679ebd389ecec506055764602591f5b9ab6` covers RTSPINE-008C Package-only
@@ -404,7 +404,7 @@ hygiene PASS, and boundary scans PASS without running broad/full CTest. The
 008C PASS did not itself open File/VFS ranged IO; the separate 008D gate below
 does. It did not itself open Resource payload windows; the separate 008E gate
 below does. It still does not open RuntimeAsset packaged validation or
-RTSPINE-008F/G/H.
+RTSPINE-008G/H.
 
 Current File/VFS ranged IO evidence at
 `c67e9710ab39f49ea01f0c194d2e5b44cbf3b97e` covers RTSPINE-008D ranged
@@ -416,7 +416,7 @@ no-partial-copy behavior. Focused QA task
 `git diff --check` PASS, added-line hygiene PASS, and boundary scans PASS
 without running broad/full CTest. The PASS does not open Resource payload
 windows by itself; the separate 008E gate below does. It does not open
-RuntimeAsset packaged validation or RTSPINE-008F/G/H.
+RuntimeAsset packaged validation or RTSPINE-008G/H.
 
 Current Resource payload window/reference budget evidence at
 `8bb8eff9c98d2a0aa5050c5da6ad94049fa894be` covers RTSPINE-008E cache payload
@@ -427,7 +427,18 @@ reads do not change Resource reference count or residency. Focused QA task
 Resource window/reference discovery exactly `7` rows, execution `7/7` PASS,
 commit-level `git diff --check` PASS, added-line hygiene PASS, non-goal boundary
 scan PASS, and no broad/full CTest. The PASS does not open RuntimeAsset packaged
-validation or RTSPINE-008F/G/H.
+validation or RTSPINE-008G/H.
+
+Current Package dependency closure and budgeted load plan evidence at
+`8509f7e1b6ba15e79c574357a465ddfff4d80e10` covers transitive dependency
+closure before the root record, shared dependency de-duplication with declaration
+order, load-plan record budget failure without mutation, and archive byte budget
+failure without mutation. Focused QA task
+`4f199c8e-99a4-43b4-a776-8960285ffdaf` reports allowed Package/CMake scope,
+`YuPackageTests` build PASS, exact 008F rows `4/4` PASS, `^Package_` focused
+suite `39/39` PASS, `git diff --check` PASS, added-line hygiene/scope scan
+PASS, no broad/full CTest, and no QA edits/staging/commits. The PASS does not
+open RuntimeAsset packaged validation or RTSPINE-008G/H.
 
 ## 3. Updated Layer Model
 

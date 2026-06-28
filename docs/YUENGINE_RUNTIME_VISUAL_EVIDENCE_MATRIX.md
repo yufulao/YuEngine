@@ -59,6 +59,7 @@ This document records what the existing runtime visual work proves today and wha
 | Focused RuntimeAsset invalid-target failure model tests | PASS | RTSPINE-006 implementation `96e0c024435f670c39ced019ff825b819a6830a3` plus focused QA task `6d02c260-936a-456b-917b-5c2802bbb666` reports isolated clean worktree, focused `YuRuntimeAssetDataClosedLoopTests` build PASS, focused RuntimeAsset regex discovery/execution `8/8` PASS, exact new rows `2/2` PASS, diff/hygiene/boundary PASS, and no broad/full CTest run or claim |
 | Focused File/VFS ranged IO tests | PASS | RTSPINE-008D implementation `c67e9710ab39f49ea01f0c194d2e5b44cbf3b97e` plus focused QA task `aebd28c5-f688-4ccc-abaf-1a3bd61879cb` reports `YuFileTests` build PASS, `^File_` discovery/execution `23/23` PASS, ranged subset `4/4` PASS, diff/hygiene/boundary PASS, and no broad/full CTest run or claim |
 | Focused Resource payload window/reference tests | PASS | RTSPINE-008E implementation `8bb8eff9c98d2a0aa5050c5da6ad94049fa894be` plus focused QA task `b4fa51c3-aefc-4714-b5d8-062f8a933ac9` reports `YuResourceTests` build PASS, Resource window/reference discovery exactly `7` rows, execution `7/7` PASS, commit-level diff/hygiene/boundary PASS, and no broad/full CTest run or claim |
+| Focused Package dependency closure/load-plan tests | PASS | RTSPINE-008F implementation `8509f7e1b6ba15e79c574357a465ddfff4d80e10` plus focused QA task `4f199c8e-99a4-43b4-a776-8960285ffdaf` reports allowed Package/CMake scope, `YuPackageTests` build PASS, exact 008F rows `4/4` PASS, `^Package_` focused suite `39/39` PASS, diff/hygiene/scope scan PASS, no broad/full CTest run or claim, and no QA edits/staging/commits |
 
 ## Matrix
 
@@ -82,6 +83,6 @@ Current runtime visual evidence proves that the engine has useful lower-level ru
 
 It still does not prove the full production runtime asset/data system. The remaining path is:
 
-`RTSPINE-007 runtime instance mapping and future ModelNode/SkeletonJoint animation binding expansion -> broader Resource/File/VFS integration and RuntimeAsset packaged validation -> broader production material/scene variants -> native/non-fixture shader compiler integration and broader production shader variants -> broader animation blending and scene/animation production variants -> strict target hardware proof`.
+`RTSPINE-007 runtime instance mapping and future ModelNode/SkeletonJoint animation binding expansion -> RuntimeAsset packaged validation and RTSPINE-008G/H follow-through -> broader production material/scene variants -> native/non-fixture shader compiler integration and broader production shader variants -> broader animation blending and scene/animation production variants -> strict target hardware proof`.
 
 CPU semantic pixels, PPM artifacts, and the GDI viewer remain useful development or oracle tools, but they are not acceptable substitutes for the disk asset load and RenderCore/RHI render path.

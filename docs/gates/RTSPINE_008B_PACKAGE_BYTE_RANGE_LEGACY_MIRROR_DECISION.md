@@ -67,3 +67,11 @@ separate Resource-only gate at
 Resource window/reference discovery exactly `7` rows, execution `7/7` PASS, and
 no broad/full CTest. That 008E evidence does not expand this 008B Package
 byte-range decision.
+RTSPINE-008F later opened Package dependency closure and budgeted load plans
+through a separate Package-only gate at
+`origin/main@8509f7e1b6ba15e79c574357a465ddfff4d80e10`; focused QA task
+`4f199c8e-99a4-43b4-a776-8960285ffdaf` reports `YuPackageTests` build PASS,
+exact 008F rows `4/4` PASS, `^Package_` focused suite `39/39` PASS,
+diff/hygiene/scope scan PASS, and no broad/full CTest. That 008F evidence keeps
+`archive_byte_offset` and `archive_byte_size` as the authoritative pressure
+range and does not authorize RuntimeAsset packaged validation or RTSPINE-008G/H.

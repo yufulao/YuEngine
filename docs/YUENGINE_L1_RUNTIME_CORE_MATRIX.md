@@ -103,7 +103,7 @@ RTSPINE-008D File/VFS ranged IO is now a lower-spine PASS at
 `aebd28c5-f688-4ccc-abaf-1a3bd61879cb` reports `YuFileTests` build PASS,
 `^File_` discovery/execution `23/23` PASS, ranged subset `4/4` PASS,
 diff/hygiene/boundary PASS, and no broad/full CTest. It validates the File/VFS
-ranged IO contract only; RuntimeAsset packaged validation and RTSPINE-008F/G/H
+ranged IO contract only; RuntimeAsset packaged validation and RTSPINE-008G/H
 remain separate gates.
 
 RTSPINE-008E Resource payload window/reference budget is now a lower-spine PASS
@@ -112,7 +112,16 @@ at `8bb8eff9c98d2a0aa5050c5da6ad94049fa894be`: focused QA task
 Resource window/reference discovery exactly `7` rows, execution `7/7` PASS,
 commit-level diff/hygiene/boundary PASS, and no broad/full CTest. It validates
 the Resource payload window/reference budget contract only; RuntimeAsset
-packaged validation and RTSPINE-008F/G/H remain separate gates.
+packaged validation and RTSPINE-008G/H remain separate gates.
+
+RTSPINE-008F Package dependency closure and budgeted load plan is now a
+lower-spine PASS at `8509f7e1b6ba15e79c574357a465ddfff4d80e10`: focused QA
+task `4f199c8e-99a4-43b4-a776-8960285ffdaf` reports allowed Package/CMake
+scope, `YuPackageTests` build PASS, exact 008F rows `4/4` PASS, `^Package_`
+focused suite `39/39` PASS, diff/hygiene/scope scan PASS, no broad/full CTest,
+and no QA edits/staging/commits. It validates the Package dependency closure and
+budgeted load-plan contract only; RuntimeAsset packaged validation and
+RTSPINE-008G/H remain separate gates.
 
 ## 3. Runtime Core Matrix
 

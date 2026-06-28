@@ -128,6 +128,16 @@ stability. Focused QA task `b4fa51c3-aefc-4714-b5d8-062f8a933ac9` reports
 rows, execution `7/7` PASS, commit-level diff/hygiene/boundary PASS, and no
 broad/full CTest. It opens only the Resource payload window/reference budget
 contract; RuntimeAsset packaged validation remains a separate gate.
+RTSPINE-008F Package dependency closure and budgeted load plan is PASS at
+`origin/main@8509f7e1b6ba15e79c574357a465ddfff4d80e10`, covering transitive
+dependency closure, shared dependency de-duplication/order, record budget
+no-mutation failure, and archive byte budget no-mutation failure. Focused QA
+task `4f199c8e-99a4-43b4-a776-8960285ffdaf` reports `YuPackageTests` build
+PASS, exact 008F rows `4/4` PASS, `^Package_` focused suite `39/39` PASS,
+diff/hygiene/scope scan PASS, no broad/full CTest, and no QA edits/staging/
+commits. It opens only the Package dependency closure and budgeted load-plan
+contract; RuntimeAsset packaged validation and RTSPINE-008G/H remain separate
+gates.
 `archive_byte_offset` and `archive_byte_size` are the only authoritative
 shipped-content pressure byte range. `byte_offset` and `byte_size` may remain
 as legacy mirrors while Streaming, RuntimeAsset, and existing tests still

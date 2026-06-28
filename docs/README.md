@@ -114,7 +114,13 @@ At the latest handoff:
   `b4fa51c3-aefc-4714-b5d8-062f8a933ac9` reports `YuResourceTests` build
   PASS, Resource window/reference discovery exactly `7` rows, execution `7/7`
   PASS, commit-level diff/hygiene/boundary PASS, and no broad/full CTest;
-- RuntimeAsset packaged validation, RTSPINE-007, and RTSPINE-008F/G/H
+- RTSPINE-008F Package dependency closure and budgeted load plan implementation
+  is PASS at `8509f7e1b6ba15e79c574357a465ddfff4d80e10`; focused QA task
+  `4f199c8e-99a4-43b4-a776-8960285ffdaf` reports allowed Package/CMake scope,
+  `YuPackageTests` build PASS, exact 008F rows `4/4` PASS, `^Package_`
+  focused suite `39/39` PASS, diff/hygiene/scope scan PASS, no broad/full
+  CTest, and no QA edits/staging/commits;
+- RuntimeAsset packaged validation, RTSPINE-007, and RTSPINE-008G/H
   remain blocked until their own gates are released.
 
 Live workspace state is still authoritative for task ownership and current
