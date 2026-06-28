@@ -272,9 +272,21 @@ Required test-tier direction:
   `CMakeLists.txt`, `RuntimeAssetData.h/.cpp`, and
   `RuntimeAssetDataClosedLoopTests.cpp`, `git diff --check` PASS, and no
   broad/full CTest. It authorizes only the RuntimeAsset packaged validation
-  bridge and does not authorize RTSPINE-008H transaction rollback/proof, broader
-  Resource/File/VFS follow-through, WorldObject/editor/importer/RHI/RenderScene
-  expansion, or unrelated animation mapping.
+  bridge; the separate RTSPINE-008H gate below covers transaction rollback/proof.
+- RuntimeAsset RTSPINE-008H is a separate RuntimeAsset-focused follow-up outside
+  the P2-GATE-003 first-slice baseline. It is PASS at
+  `origin/main@1120c3659bf0375f8eb9ef87e042f24c6e5d3ca1` for graph-load
+  commit-failure rollback, rollback status/proof fields, Resource/Asset
+  snapshot restore, and no output mutation; focused QA task
+  `1ec65e79-70f2-4fe5-8f08-6fb0ba2371fd` reports focused
+  `YuRuntimeAssetDataClosedLoopTests` build PASS, exact transaction rollback row
+  `1/1` PASS, focused rollback/commit/adjacent packaged/product set `19/19`
+  PASS, committed scope limited to `CMakeLists.txt`, `RuntimeAssetData.h/.cpp`,
+  and `RuntimeAssetDataClosedLoopTests.cpp`, `git diff --check` PASS, added-line
+  hygiene PASS, no Package/File/Resource lower-module changes, and no broad/full
+  CTest. It authorizes only RuntimeAsset transaction rollback/proof and does not
+  authorize broader Resource/File/VFS follow-through, WorldObject/editor/importer/
+  RHI/RenderScene expansion, or unrelated animation mapping.
 - P2-GATE-004 is approved for first slice after ENG-097A boundary/reference
   PASS, ENG-097B CMake implementability PASS, and ENG-097C test admission PASS.
   The approved scope is CMake/CTest execution infrastructure only: tier/module/

@@ -136,9 +136,16 @@ At the latest handoff:
   limited to `CMakeLists.txt`, `RuntimeAssetData.h/.cpp`, and
   `RuntimeAssetDataClosedLoopTests.cpp`, `git diff --check` PASS, and no
   broad/full CTest;
-- WorldObject-facing runtime instance mapping, RTSPINE-008H transaction
-  rollback/proof, and broader Resource/File/VFS follow-through remain blocked
-  until their own gates are released.
+- RTSPINE-008H RuntimeAsset transaction rollback/proof implementation is PASS
+  at `1120c3659bf0375f8eb9ef87e042f24c6e5d3ca1`; focused QA task
+  `1ec65e79-70f2-4fe5-8f08-6fb0ba2371fd` reports focused
+  `YuRuntimeAssetDataClosedLoopTests` build PASS, exact transaction rollback
+  row `1/1` PASS, focused rollback/commit/adjacent packaged/product set
+  `19/19` PASS, committed scope limited to `CMakeLists.txt`,
+  `RuntimeAssetData.h/.cpp`, and `RuntimeAssetDataClosedLoopTests.cpp`,
+  `git diff --check` PASS, and no broad/full CTest;
+- WorldObject-facing runtime instance mapping and broader Resource/File/VFS
+  follow-through remain blocked until their own gates are released.
 
 Live workspace state is still authoritative for task ownership and current
 status. This file records the handoff baseline, not a replacement for the task

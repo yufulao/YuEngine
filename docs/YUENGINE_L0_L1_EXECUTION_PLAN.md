@@ -135,7 +135,7 @@ target identity work.
 | RTSPINE-005 | Define minimal interpolation | PASS at `origin/main@2bfe7e37d36ca711dd706728f21b1e4caecfd3db` with focused QA at `origin/main@d18f1679ebd389ecec506055764602591f5b9ab6`: Step and Linear sampling at fixed times are deterministic, unsupported interpolation and sample output capacity fail without mutation, exact interpolation rows report `3/3` PASS, and no broad/full CTest was run |
 | RTSPINE-006 | Define invalid target failure model | PASS at `origin/main@96e0c024435f670c39ced019ff825b819a6830a3`: target-family mismatch and sample failure diagnostics fail without output mutation; focused QA task `6d02c260-936a-456b-917b-5c2802bbb666` reports isolated clean worktree, focused RuntimeAsset regex `8/8` PASS, exact new rows `2/2` PASS, diff/hygiene/boundary PASS, and no broad/full CTest |
 | RTSPINE-007 | Define runtime instance mapping gate | PASS at `origin/main@37a112549190ac2123abcd72b5c688cdfa5b01e5`: asset target records map to caller-owned runtime instance rows for scene entities before any WorldObject/editor binding; focused QA task `6b6baf5f-2381-4b9c-89b1-4411fba53d23` reports exact RuntimeInstanceMapping rows `5/5` PASS and no broad/full CTest |
-| RTSPINE-008 | Define package/resource pressure gate | 008A pressure contract defines vocabulary, byte-range policy, hash coverage, mutation contract, and forbidden scope; 008B byte-range/index, 008C Package artifact hash/dependency integrity, 008D File/VFS ranged IO, 008E Resource payload window/reference budget, 008F Package dependency closure/budgeted load plan, and 008G RuntimeAsset packaged validation bridge are PASS; future gates are 008H transaction rollback/proof and broader Resource/File/VFS follow-through |
+| RTSPINE-008 | Define package/resource pressure gate | 008A pressure contract defines vocabulary, byte-range policy, hash coverage, mutation contract, and forbidden scope; 008B byte-range/index, 008C Package artifact hash/dependency integrity, 008D File/VFS ranged IO, 008E Resource payload window/reference budget, 008F Package dependency closure/budgeted load plan, 008G RuntimeAsset packaged validation bridge, and 008H RuntimeAsset transaction rollback/proof are PASS; next work covers broader Resource/File/VFS follow-through |
 
 ### 1.2.2 RTSPINE-008A Package/Resource Pressure Contract
 
@@ -180,8 +180,9 @@ and async small-output no-partial-copy evidence. RTSPINE-008E adds Resource
 cache/decoded payload window metadata, reference-budget rejection, failed-window
 no-mutation, and no Resource reference/residency mutation evidence. RTSPINE-008G
 now consumes those lower Package/File/Resource gates for the RuntimeAsset
-packaged validation bridge only; RTSPINE-008H transaction rollback/proof and
-broader Resource/File/VFS follow-through still require their own gates.
+packaged validation bridge only. RTSPINE-008H adds RuntimeAsset transaction
+rollback/proof for graph-load commit failures; broader Resource/File/VFS
+follow-through still requires its own gate.
 
 ## 1.3 Continuous Multi-Agent Execution Governance
 
@@ -217,6 +218,7 @@ RTSPINE-005 + RTSPINE-008C evidence docs/VQ closure
 + RTSPINE-008E Resource payload window evidence docs/VQ closure
 + RTSPINE-007 RuntimeAsset runtime instance mapping evidence docs sync
 + RTSPINE-008G RuntimeAsset packaged validation bridge evidence docs sync
++ RTSPINE-008H RuntimeAsset transaction rollback/proof evidence docs sync
 ```
 
 RTSPINE-003 VQ accepted the target identity evidence gate by workspace task
@@ -228,8 +230,10 @@ focused QA are PASS at `96e0c024435f670c39ced019ff825b819a6830a3`. RTSPINE-007
 implementation and focused QA are PASS at `37a112549190ac2123abcd72b5c688cdfa5b01e5`.
 RTSPINE-008G RuntimeAsset packaged validation bridge implementation and focused
 QA are PASS at `175b6542cf8460b279d1de8a5499e2cbd508c80a`. WorldObject-facing
-mapping, RTSPINE-008H transaction rollback/proof, and broader Resource/File/VFS
-follow-through remain blocked until their own evidence gates are released.
+mapping remains blocked until its own evidence gate is released. RTSPINE-008H
+RuntimeAsset transaction rollback/proof implementation and focused QA are PASS
+at `1120c3659bf0375f8eb9ef87e042f24c6e5d3ca1`; broader Resource/File/VFS
+follow-through remains blocked until its own evidence gate is released.
 
 
 ## 2. Current Progress Assessment
@@ -474,10 +478,25 @@ focused `YuRuntimeAssetDataClosedLoopTests` build PASS, exact RTSPINE-008G rows
 `5/5` PASS, adjacent packaged/product rows `8/8` PASS, committed scope exactly
 `CMakeLists.txt`, `RuntimeAssetData.h/.cpp`, and
 `RuntimeAssetDataClosedLoopTests.cpp`, `git diff --check` PASS, read-only QA with
-a clean repo, and no broad/full CTest. The PASS does not open RTSPINE-008H
-transaction rollback/proof, WorldObject/editor mapping, broader Resource/File/VFS
-follow-through, RenderScene/RHI production expansion, or unrelated animation
-mapping.
+a clean repo, and no broad/full CTest. The 008G PASS opens only the RuntimeAsset
+packaged validation bridge; the separate 008H gate below covers transaction
+rollback/proof.
+
+RTSPINE-008H RuntimeAsset transaction rollback/proof is PASS at
+`1120c3659bf0375f8eb9ef87e042f24c6e5d3ca1`. It adds a graph-load rollback
+journal, rollback status/proof fields, and `SetCommitFailureAndRollback` so
+commit failures roll back previously committed RuntimeAsset records and restore
+Resource/Asset snapshots without output mutation. Focused QA task
+`1ec65e79-70f2-4fe5-8f08-6fb0ba2371fd` reports focused
+`YuRuntimeAssetDataClosedLoopTests` build PASS, exact
+`RuntimeAssetData_LoaderCommitFailureRollsBackCommittedRecords` row `1/1` PASS,
+focused rollback/commit/adjacent packaged/product set `19/19` PASS, committed
+scope exactly `CMakeLists.txt`, `RuntimeAssetData.h/.cpp`, and
+`RuntimeAssetDataClosedLoopTests.cpp`, `git diff --check` PASS, added-line
+hygiene PASS, no Package/File/Resource lower-module changes, no docs/VQ changes,
+and no broad/full CTest. The PASS does not open WorldObject/editor mapping,
+broader Resource/File/VFS follow-through, RenderScene/RHI production expansion,
+or unrelated animation mapping.
 
 ## 3. Updated Layer Model
 

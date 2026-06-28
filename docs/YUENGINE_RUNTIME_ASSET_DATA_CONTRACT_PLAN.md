@@ -102,9 +102,10 @@ RTSPINE-008A makes these decisions:
   mutation;
 - Package/Resource implementation, File/VFS ranged IO, Resource payload window
   records, RuntimeAsset packaged validation bridge, and transaction
-  rollback/proof are separately gated follow-up contracts. RTSPINE-008G records
-  the packaged validation bridge below; transaction rollback/proof remains a
-  future gate.
+  rollback/proof are tracked as separately gated follow-up contracts.
+  RTSPINE-008G records the packaged validation bridge below; RTSPINE-008H
+  records transaction rollback/proof below. Broader Resource/File/VFS
+  follow-through remains a future gate.
 
 RTSPINE-008B records the first Package follow-up decision in
 `docs/gates/RTSPINE_008B_PACKAGE_BYTE_RANGE_LEGACY_MIRROR_DECISION.md`.
@@ -152,8 +153,19 @@ focused `YuRuntimeAssetDataClosedLoopTests` build PASS, exact RTSPINE-008G rows
 `CMakeLists.txt`, `RuntimeAssetData.h/.cpp`, and
 `RuntimeAssetDataClosedLoopTests.cpp`, `git diff --check` PASS, and no
 broad/full CTest. It opens only the RuntimeAsset packaged validation bridge;
-RTSPINE-008H transaction rollback/proof, WorldObject/editor mapping, and broader
-Resource/File/VFS follow-through remain separate gates.
+the separate RTSPINE-008H gate below covers transaction rollback/proof.
+RTSPINE-008H RuntimeAsset transaction rollback/proof is PASS at
+`origin/main@1120c3659bf0375f8eb9ef87e042f24c6e5d3ca1`, covering graph-load
+rollback journals, rollback status/proof fields, and commit-failure rollback of
+previously committed RuntimeAsset records plus Resource/Asset snapshots without
+output mutation. Focused QA task `1ec65e79-70f2-4fe5-8f08-6fb0ba2371fd`
+reports focused `YuRuntimeAssetDataClosedLoopTests` build PASS, exact
+`RuntimeAssetData_LoaderCommitFailureRollsBackCommittedRecords` row `1/1` PASS,
+focused rollback/commit/adjacent packaged/product set `19/19` PASS,
+`git diff --check` PASS, added-line hygiene PASS, exact committed scope, no
+Package/File/Resource lower-module changes, and no broad/full CTest. It opens
+only the RuntimeAsset transaction rollback/proof gate; WorldObject/editor
+mapping and broader Resource/File/VFS follow-through remain separate gates.
 `archive_byte_offset` and `archive_byte_size` are the only authoritative
 shipped-content pressure byte range. `byte_offset` and `byte_size` may remain
 as legacy mirrors while Streaming, RuntimeAsset, and existing tests still
@@ -422,6 +434,7 @@ C++ in-memory construction alone.
 | Generic RenderScene CPU submission | PASS | `RuntimeAssetData_GenericRenderSceneSubmissionBuildsFrameFromLoadedSceneRecords`, `RuntimeAssetData_GenericRenderSceneSubmissionBindsActiveCameraIntoFrame`, `RuntimeAssetData_GenericRenderSceneSubmissionRejectsMissingCameraWithoutMutation`, `RuntimeAssetData_GenericRenderSceneSubmissionUsesMeshRefsNotEntityOrder`, `RuntimeAssetData_GenericRenderSceneSubmissionRejectsMissingTransformWithoutMutation`, `RuntimeAssetData_GenericRenderSceneSubmissionRejectsMissingMeshRefWithoutMutation`, `RuntimeAssetData_GenericRenderSceneSubmissionRejectsMissingMaterialRefWithoutMutation`, `RuntimeAssetData_GenericRenderSceneSubmissionReportsMaterialVariantsUntilFrameApiSupportsThem`, `RuntimeAssetData_GenericRenderSceneSubmissionBuildsPerEntityMaterialTableFromRefs`, `RuntimeAssetData_GenericRenderSceneSubmissionPreservesPerEntityMaterialBlendState`, `RuntimeAssetData_GenericRenderSceneSubmissionUsesMaterialRefOrderNotEntityOrder`, `RuntimeAssetData_GenericRenderSceneSubmissionRejectsSmallMaterialTableWithoutMutation`, and `RuntimeAssetData_GenericRenderSceneSubmissionRejectsDuplicateMaterialIdWithoutMutation` prove loaded scene records can build RenderScene frame records, active camera bindings, and per-entity material tables with bounded no-mutation failures |
 | Package/product generic submission ledger | PASS | `RuntimeAssetData_PackageRunEmitsGenericRenderSceneSubmissionLedger`, `RuntimeAssetData_ProductRunCommandReportsGenericRenderSceneSubmissionLedger`, and `RuntimeAssetData_PackageRunRejectsGenericSubmissionCapacityWithoutMutation` prove packaged and product-run entrypoints expose generic RenderScene submission ledgers and reject undersized output capacity without mutating frame/material outputs |
 | RuntimeAsset packaged validation bridge | PASS | `origin/main@175b6542cf8460b279d1de8a5499e2cbd508c80a` adds archive byte-range/hash and payload hash validation before graph-load mutation; `RuntimeAssetData_PackagedValidationBridgeConsumesArchiveByteRangesAndHashes`, archive byte-count mismatch, payload hash mismatch, duplicate load-plan record, and ProductRun packaged validation failure rows are covered by focused QA task `35fdc7a2-c09d-416a-95aa-b4aabdb05d0f`, which reports focused build PASS, exact RTSPINE-008G rows `5/5` PASS, adjacent packaged/product rows `8/8` PASS, `git diff --check` PASS, exact committed scope, and no broad/full CTest |
+| RuntimeAsset transaction rollback/proof | PASS | `origin/main@1120c3659bf0375f8eb9ef87e042f24c6e5d3ca1` adds rollback journals, rollback status/proof fields, and commit-failure rollback of previously committed RuntimeAsset records plus Resource/Asset snapshots; `RuntimeAssetData_LoaderCommitFailureRollsBackCommittedRecords` is covered by focused QA task `1ec65e79-70f2-4fe5-8f08-6fb0ba2371fd`, which reports focused build PASS, exact row `1/1` PASS, rollback/commit/adjacent packaged/product set `19/19` PASS, `git diff --check` PASS, exact committed scope, and no broad/full CTest |
 | RenderCore/RHI capture | PASS | `RuntimeAssetData_RenderClosedLoop_CapturesCubeCylinderConeThroughRhi` |
 | CPU oracle guard | PASS | `RuntimeAssetData_CpuPpmOracleDoesNotBypassRhiRenderCore` |
 | Upper-layer dependency guard | PASS | `RuntimeAssetData_DoesNotDependOnEditorUiInputOrGdiViewer` |
@@ -517,8 +530,10 @@ instance rows for SceneNode targets and no-mutation failures for missing scene
 entities, capacity overflow, and unsupported ModelNode/SkeletonJoint mappings.
 RTSPINE-008G RuntimeAsset packaged validation bridge implementation plus focused
 QA are PASS at `175b6542cf8460b279d1de8a5499e2cbd508c80a`, covering packaged
-validation preflight before graph mutation and ProductRun failure reporting. Do
-not open WorldObject-facing mapping, RTSPINE-008H transaction rollback/proof, or
+validation preflight before graph mutation and ProductRun failure reporting.
+RTSPINE-008H transaction rollback/proof implementation plus focused QA are PASS
+at `1120c3659bf0375f8eb9ef87e042f24c6e5d3ca1`, covering commit-failure
+rollback without output mutation. Do not open WorldObject-facing mapping or
 broader Resource/File/VFS follow-through until their own gates are released.
 Selected clip sampling remains the earlier closed slice because it only selects
 among bounded clip records and proves no-mutation failure for a missing selected

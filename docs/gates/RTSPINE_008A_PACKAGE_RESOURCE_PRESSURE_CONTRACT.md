@@ -121,7 +121,7 @@ The follow-up split from this contract is:
 | RTSPINE-008E | Resource payload window/reference budget | PASS at `origin/main@8bb8eff9c98d2a0aa5050c5da6ad94049fa894be`; Resource cache/decoded payload window and reference-budget contract |
 | RTSPINE-008F | Package dependency closure and budgeted load plan | PASS at `origin/main@8509f7e1b6ba15e79c574357a465ddfff4d80e10`; Package dependency closure, de-dup/order, record budget, and archive byte budget no-mutation evidence |
 | RTSPINE-008G | RuntimeAsset packaged validation bridge | PASS at `origin/main@175b6542cf8460b279d1de8a5499e2cbd508c80a`; RuntimeAsset packaged archive byte-range/hash preflight, payload hash validation, duplicate load-plan rejection, and ProductRun validation failure reporting without graph mutation |
-| RTSPINE-008H | RuntimeAsset transaction rollback/proof | After RTSPINE-008G docs/VQ closure |
+| RTSPINE-008H | RuntimeAsset transaction rollback/proof | PASS at `origin/main@1120c3659bf0375f8eb9ef87e042f24c6e5d3ca1`; graph-load commit-failure rollback, Resource/Asset snapshot restore, rollback proof fields, and no-output-mutation evidence |
 
 RTSPINE-008C focused QA task `ba135e38-b73e-4294-b449-97a04b33b982` reports
 `YuPackageTests` build PASS, `^Package_` discovery/execution `35/35` PASS, exact
@@ -163,9 +163,20 @@ exact RTSPINE-008G rows `5/5` PASS, adjacent packaged/product rows `8/8` PASS,
 committed scope limited to `CMakeLists.txt`, `RuntimeAssetData.h/.cpp`, and
 `RuntimeAssetDataClosedLoopTests.cpp`, `git diff --check` PASS, no broad/full
 CTest, and clean read-only QA. This releases only the RuntimeAsset packaged
-validation bridge and does not release RTSPINE-008H transaction rollback/proof,
-broader Resource/File/VFS follow-through, WorldObject/editor/importer/RHI/
-RenderScene expansion, or unrelated animation mapping.
+validation bridge; the separate RTSPINE-008H gate below covers transaction
+rollback/proof.
+
+RTSPINE-008H focused QA task `1ec65e79-70f2-4fe5-8f08-6fb0ba2371fd` reports
+`origin/main@1120c3659bf0375f8eb9ef87e042f24c6e5d3ca1` RuntimeAsset transaction
+rollback/proof PASS: focused `YuRuntimeAssetDataClosedLoopTests` build PASS,
+exact `RuntimeAssetData_LoaderCommitFailureRollsBackCommittedRecords` row `1/1`
+PASS, focused rollback/commit/adjacent packaged/product set `19/19` PASS,
+committed scope limited to `CMakeLists.txt`, `RuntimeAssetData.h/.cpp`, and
+`RuntimeAssetDataClosedLoopTests.cpp`, `git diff --check` PASS, added-line
+hygiene PASS, no Package/File/Resource lower-module changes, and no broad/full
+CTest. This releases only RuntimeAsset transaction rollback/proof and does not
+release broader Resource/File/VFS follow-through, WorldObject/editor/importer/
+RHI/RenderScene expansion, or unrelated animation mapping.
 
 ## Forbidden Scope
 
