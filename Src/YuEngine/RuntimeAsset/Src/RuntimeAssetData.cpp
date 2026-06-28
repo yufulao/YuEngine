@@ -250,6 +250,7 @@ constexpr std::uint32_t MAX_RUNTIME_ASSET_RECORD_BYTES = 4096U;
 constexpr std::uint32_t MAX_RUNTIME_ASSET_PAYLOAD_BYTES = 4096U;
 constexpr std::uint32_t RUNTIME_ASSET_MAX_SCENE_ENTITY_COUNT = 64U;
 constexpr std::uint32_t RUNTIME_ASSET_MAX_SCENE_CAMERA_COUNT = 4U;
+constexpr std::uint32_t RUNTIME_ASSET_MAX_TARGET_IDENTITY_COUNT = 256U;
 constexpr std::uint32_t RUNTIME_ASSET_MAX_ANIMATION_CLIP_COUNT = 8U;
 constexpr std::uint32_t RUNTIME_ASSET_MAX_ANIMATION_TRACK_COUNT = 128U;
 constexpr std::uint32_t RUNTIME_ASSET_MAX_ANIMATION_KEYFRAME_COUNT = 512U;
@@ -683,12 +684,14 @@ struct RuntimeAssetSceneLoaderStage final {
     std::array<RuntimeAssetSceneCameraRecord, RUNTIME_ASSET_MAX_SCENE_CAMERA_COUNT> cameras{};
     std::array<RuntimeAssetSceneEntityRecord, RUNTIME_ASSET_MAX_SCENE_ENTITY_COUNT> entities{};
     std::array<RuntimeAssetSceneTransformOutputRecord, RUNTIME_ASSET_MAX_SCENE_ENTITY_COUNT> transforms{};
+    std::array<RuntimeAssetTargetIdentityRecord, RUNTIME_ASSET_MAX_TARGET_IDENTITY_COUNT> target_identities{};
     std::array<AnimationRuntimeClipRecord, RUNTIME_ASSET_MAX_ANIMATION_CLIP_COUNT> animation_clips{};
     std::array<AnimationRuntimeTrackRecord, RUNTIME_ASSET_MAX_ANIMATION_TRACK_COUNT> animation_tracks{};
     std::array<AnimationRuntimeKeyframeRecord, RUNTIME_ASSET_MAX_ANIMATION_KEYFRAME_COUNT> animation_keyframes{};
     std::uint32_t camera_count = 0U;
     std::uint32_t entity_count = 0U;
     std::uint32_t transform_count = 0U;
+    std::uint32_t target_identity_count = 0U;
     std::uint32_t animation_clip_count = 0U;
     std::uint32_t animation_track_count = 0U;
     std::uint32_t animation_keyframe_count = 0U;
@@ -708,6 +711,32 @@ bool SceneStageHasWorldObject(
     }
 
     return false;
+}
+
+bool HasTargetIdentityOutputRequest(const RuntimeAssetGraphLoadRequest &request) {
+    if (request.target_identities != nullptr) {
+        return true;
+    }
+
+    return request.target_identity_capacity != 0U;
+}
+
+RuntimeAssetDataStatus ValidateTargetIdentityOutputRequest(
+    const RuntimeAssetGraphLoadRequest &request,
+    std::uint32_t target_identity_count) {
+    if (!HasTargetIdentityOutputRequest(request)) {
+        return RuntimeAssetDataStatus::Success;
+    }
+
+    if (request.target_identities == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (request.target_identity_capacity < target_identity_count) {
+        return RuntimeAssetDataStatus::CapacityExceeded;
+    }
+
+    return RuntimeAssetDataStatus::Success;
 }
 
 bool HasAnimationRuntimeOutputRequest(const RuntimeAssetGraphLoadRequest &request) {
@@ -756,6 +785,18 @@ RuntimeAssetDataStatus ValidateAnimationRuntimeOutputRequest(
     }
 
     return RuntimeAssetDataStatus::Success;
+}
+
+void CommitTargetIdentityRecords(
+    const RuntimeAssetGraphLoadRequest &request,
+    const RuntimeAssetSceneLoaderStage &stage) {
+    if (!HasTargetIdentityOutputRequest(request)) {
+        return;
+    }
+
+    for (std::uint32_t index = 0U; index < stage.target_identity_count; ++index) {
+        request.target_identities[index] = stage.target_identities[index];
+    }
 }
 
 void CommitAnimationRuntimeTables(
@@ -1870,6 +1911,213 @@ RuntimeAssetDataStatus ValidateOptionalDeclaredHash(std::string_view text) {
         return RuntimeAssetDataStatus::HashMismatch;
     }
 
+    return RuntimeAssetDataStatus::Success;
+}
+
+bool ParseRuntimeAssetTargetIdentityKind(
+    std::string_view value,
+    RuntimeAssetTargetIdentityKind *out_kind) {
+    if (out_kind == nullptr) {
+        return false;
+    }
+
+    if (value == "scene_node") {
+        *out_kind = RuntimeAssetTargetIdentityKind::SceneNode;
+        return true;
+    }
+
+    if (value == "model_node") {
+        *out_kind = RuntimeAssetTargetIdentityKind::ModelNode;
+        return true;
+    }
+
+    if (value == "skeleton_joint") {
+        *out_kind = RuntimeAssetTargetIdentityKind::SkeletonJoint;
+        return true;
+    }
+
+    return false;
+}
+
+bool SceneStageHasEntityId(
+    const RuntimeAssetSceneLoaderStage &stage,
+    std::uint32_t scene_entity_id) {
+    for (std::uint32_t index = 0U; index < stage.entity_count; ++index) {
+        if (stage.entities[index].entity_id == scene_entity_id) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+const RuntimeAssetTargetIdentityRecord *FindTargetIdentityRecord(
+    std::span<const RuntimeAssetTargetIdentityRecord> identities,
+    std::uint64_t target_id) {
+    for (const RuntimeAssetTargetIdentityRecord &identity : identities) {
+        if (identity.target_id == target_id) {
+            return &identity;
+        }
+    }
+
+    return nullptr;
+}
+
+bool TargetIdentityParentKindMatches(
+    RuntimeAssetTargetIdentityKind kind,
+    RuntimeAssetTargetIdentityKind parent_kind) {
+    switch (kind) {
+        case RuntimeAssetTargetIdentityKind::SceneNode:
+            return parent_kind == RuntimeAssetTargetIdentityKind::SceneNode;
+        case RuntimeAssetTargetIdentityKind::ModelNode:
+            return parent_kind == RuntimeAssetTargetIdentityKind::SceneNode ||
+                parent_kind == RuntimeAssetTargetIdentityKind::ModelNode;
+        case RuntimeAssetTargetIdentityKind::SkeletonJoint:
+            return parent_kind == RuntimeAssetTargetIdentityKind::ModelNode ||
+                parent_kind == RuntimeAssetTargetIdentityKind::SkeletonJoint;
+        case RuntimeAssetTargetIdentityKind::Unknown:
+        default:
+            break;
+    }
+
+    return false;
+}
+
+RuntimeAssetDataStatus ParseTargetIdentityRecord(
+    std::string_view value,
+    std::uint32_t target_index,
+    RuntimeAssetTargetIdentityRecord *out_record) {
+    if (out_record == nullptr || value.empty()) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    RuntimeAssetTargetIdentityKind kind = RuntimeAssetTargetIdentityKind::Unknown;
+    std::uint64_t target_id = 0U;
+    std::uint64_t parent_target_id = 0U;
+    std::uint32_t scene_entity_id = 0U;
+    std::uint32_t ordinal = target_index;
+    if (!ParseRuntimeAssetTargetIdentityKind(FieldValue(value, "kind="), &kind) ||
+        !ParseU64(FieldValue(value, "id="), &target_id) ||
+        !ParseOptionalU32Field(value, "scene_entity=", 0U, &scene_entity_id) ||
+        !ParseOptionalU32Field(value, "ordinal=", target_index, &ordinal)) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    const std::string_view parent_value = FieldValue(value, "parent=");
+    if (!parent_value.empty() && !ParseU64(parent_value, &parent_target_id)) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    if (target_id == 0U) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    RuntimeAssetTargetIdentityRecord record{};
+    record.kind = kind;
+    record.target_id = target_id;
+    record.parent_target_id = parent_target_id;
+    record.scene_entity_id = scene_entity_id;
+    record.ordinal = ordinal;
+    record.is_valid = true;
+    *out_record = record;
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ValidateTargetIdentityRecords(
+    const RuntimeAssetSceneLoaderStage &stage,
+    std::span<const RuntimeAssetTargetIdentityRecord> identities) {
+    for (std::size_t index = 0U; index < identities.size(); ++index) {
+        const RuntimeAssetTargetIdentityRecord &identity = identities[index];
+        if (!identity.is_valid || identity.kind == RuntimeAssetTargetIdentityKind::Unknown) {
+            return RuntimeAssetDataStatus::InvalidBounds;
+        }
+
+        for (std::size_t other = index + 1U; other < identities.size(); ++other) {
+            if (identity.target_id == identities[other].target_id) {
+                return RuntimeAssetDataStatus::DuplicateDependency;
+            }
+        }
+
+        if (identity.scene_entity_id != 0U && !SceneStageHasEntityId(stage, identity.scene_entity_id)) {
+            return RuntimeAssetDataStatus::MissingDependency;
+        }
+
+        if (identity.kind == RuntimeAssetTargetIdentityKind::SceneNode && identity.scene_entity_id == 0U) {
+            return RuntimeAssetDataStatus::MissingDependency;
+        }
+
+        if (identity.parent_target_id == 0U) {
+            if (identity.kind == RuntimeAssetTargetIdentityKind::SceneNode) {
+                continue;
+            }
+
+            return RuntimeAssetDataStatus::MissingDependency;
+        }
+
+        if (identity.parent_target_id == identity.target_id) {
+            return RuntimeAssetDataStatus::InvalidDependency;
+        }
+
+        const RuntimeAssetTargetIdentityRecord *parent =
+            FindTargetIdentityRecord(identities, identity.parent_target_id);
+        if (parent == nullptr) {
+            return RuntimeAssetDataStatus::MissingDependency;
+        }
+
+        if (!TargetIdentityParentKindMatches(identity.kind, parent->kind)) {
+            return RuntimeAssetDataStatus::TypeMismatch;
+        }
+    }
+
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ParseTargetIdentities(
+    std::string_view scene_text,
+    RuntimeAssetSceneLoaderStage *stage) {
+    if (stage == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    bool target_count_declared = false;
+    std::uint32_t target_count = 0U;
+    RuntimeAssetDataStatus status = ParseDeclaredCount(
+        scene_text,
+        "targets=",
+        0U,
+        RUNTIME_ASSET_MAX_TARGET_IDENTITY_COUNT,
+        &target_count,
+        &target_count_declared);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    if (!target_count_declared) {
+        stage->target_identity_count = 0U;
+        return RuntimeAssetDataStatus::Success;
+    }
+
+    for (std::uint32_t index = 0U; index < target_count; ++index) {
+        const std::string token = "target_identity" + std::to_string(index) + "=";
+        status = ParseTargetIdentityRecord(
+            ValueForToken(scene_text, token),
+            index,
+            &stage->target_identities[index]);
+        if (status != RuntimeAssetDataStatus::Success) {
+            return status;
+        }
+    }
+
+    status = ValidateTargetIdentityRecords(
+        *stage,
+        std::span<const RuntimeAssetTargetIdentityRecord>(
+            stage->target_identities.data(),
+            target_count));
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    stage->target_identity_count = target_count;
     return RuntimeAssetDataStatus::Success;
 }
 
@@ -4849,6 +5097,16 @@ RuntimeAssetDataStatus BuildSceneLoaderStage(
         return status;
     }
 
+    status = ParseTargetIdentities(scene_text, &stage);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    status = ValidateTargetIdentityOutputRequest(request, stage.target_identity_count);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
     if (animation_text.empty()) {
         return RuntimeAssetDataStatus::MissingDependency;
     }
@@ -4944,6 +5202,7 @@ RuntimeAssetDataStatus CommitSceneLoaderOutput(
     output.transform_count = stage.transform_count;
     output.resource_ref_count = request.file_count;
     output.camera_count = stage.camera_count;
+    output.target_identity_count = stage.target_identity_count;
     output.animation_clip_count = stage.animation_clip_count;
     output.animation_track_count = stage.animation_track_count;
     output.animation_keyframe_count = stage.animation_keyframe_count;
@@ -4953,6 +5212,7 @@ RuntimeAssetDataStatus CommitSceneLoaderOutput(
     output.transform_capacity = request.scene_transform_capacity;
     output.resource_ref_capacity = request.scene_resource_ref_capacity;
     output.camera_capacity = request.scene_camera_capacity;
+    output.target_identity_capacity = request.target_identity_capacity;
     output.animation_clip_capacity = request.animation_clip_capacity;
     output.animation_track_capacity = request.animation_track_capacity;
     output.animation_keyframe_capacity = request.animation_keyframe_capacity;
@@ -4991,6 +5251,7 @@ RuntimeAssetDataStatus CommitSceneLoaderOutput(
         request.scene_transforms[index] = stage.transforms[index];
     }
 
+    CommitTargetIdentityRecords(request, stage);
     CommitAnimationRuntimeTables(request, stage);
 
     output.status = RuntimeAssetDataStatus::Success;
@@ -8895,6 +9156,8 @@ RuntimeAssetGraphLoadRequest BuildRuntimeAssetPackagedGraphLoadRequest(
     load_request.scene_entity_capacity = request.scene_entity_capacity;
     load_request.scene_transforms = request.scene_transforms;
     load_request.scene_transform_capacity = request.scene_transform_capacity;
+    load_request.target_identities = request.target_identities;
+    load_request.target_identity_capacity = request.target_identity_capacity;
     load_request.animation_clips = request.animation_clips;
     load_request.animation_clip_capacity = request.animation_clip_capacity;
     load_request.animation_tracks = request.animation_tracks;
