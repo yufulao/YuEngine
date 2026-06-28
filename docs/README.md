@@ -2,7 +2,7 @@
 
 Status: canonical documentation handoff
 Owner: Architect
-Last major planning sync: `origin/main@705f8ba94fee8ccbb9330d2c37f14bb47114e0d1`
+Last major planning sync: `origin/main@5ea838f6fd3428e7e67b77c1ca85c41e6e1c09e4`
 
 ## 1. Read This First
 
@@ -56,12 +56,20 @@ At the latest handoff:
   `705f8ba94fee8ccbb9330d2c37f14bb47114e0d1`;
 - documentation entry cleanup is complete at
   `b0d96b0dece4009e753dd15307235e2e8b8badac`;
+- RTSPINE-003 target identity implementation and focused QA are PASS at
+  `5ea838f6fd3428e7e67b77c1ca85c41e6e1c09e4`;
+- RTSPINE-003 focused QA reports the focused
+  `YuRuntimeAssetDataClosedLoopTests` build PASS, exact target identity plus
+  scene/runtime animation regression discovery `10` rows, execution `10/10`
+  PASS, `git diff --check` PASS, added-line hygiene PASS, and boundary scans
+  PASS without running broad full CTest;
+- RTSPINE-003 docs evidence is synchronized by workspace task
+  `d9dc3692-aa12-4f5c-872a-5b7293a92ceb`;
 - the human lead has resumed execution and requires continuous multi-agent
   coordination until the L0/L1 stop condition is actually met;
-- VQ evidence consistency audit `aa4ea04f` is the next evidence gate and must
-  close before the next write lane;
-- no next implementation lane is open until VQ accepts the current evidence
-  gate.
+- RTSPINE-003 VQ evidence consistency audit is the next evidence gate and must
+  close before RTSPINE-004/005/006, VQ-result-dependent writes, or
+  Package/Resource pressure write lanes open.
 
 Live workspace state is still authoritative for task ownership and current
 status. This file records the handoff baseline, not a replacement for the task

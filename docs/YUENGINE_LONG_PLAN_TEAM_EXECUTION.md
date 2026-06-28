@@ -3,7 +3,7 @@
 Status: active commercial-engine execution plan
 Owner: Architect, lead engineer
 Started: 2026-06-11
-Current planning checkpoint: `origin/main@0a9144b0e30cbede56a5dbf04b232f3e5b763802`
+Current planning checkpoint: `origin/main@5ea838f6fd3428e7e67b77c1ca85c41e6e1c09e4`
 Reference product target: `C:\Steam\steamapps\common\TouhouNewWorld`
 Canonical entry point: `docs/README.md`
 
@@ -237,12 +237,21 @@ spine correction.
 
 ### 5.1 Close Current Evidence Gate
 
-Current scene-animation evidence gate state:
+Current RTSPINE evidence gate state:
 
 - implementation: done;
 - QA: done;
 - docs: done;
-- VQ consistency audit: pending and should run now as a read-only gate.
+- scene-animation VQ consistency evidence: verify as regression coverage inside
+  the RTSPINE-003 VQ gate instead of reopening a separate write lane;
+- RTSPINE-003 target identity implementation: done at
+  `origin/main@5ea838f6fd3428e7e67b77c1ca85c41e6e1c09e4`;
+- RTSPINE-003 focused QA: done, `10/10` focused target identity plus
+  scene/runtime animation regression rows PASS;
+- RTSPINE-003 docs: synchronized by workspace task
+  `d9dc3692-aa12-4f5c-872a-5b7293a92ceb`;
+- RTSPINE-003 VQ consistency audit: pending and should run now as a read-only
+  gate.
 
 This gate must close before opening a new implementation write lane. Independent
 read-only architecture, code-surface scouting, and pressure-audit lanes may run
@@ -272,7 +281,7 @@ editor object, scene instance, raw pointer, display name, or file path.
 | --- | --- | --- |
 | RTSPINE-001 | Final VQ for scene-animation evidence gate | Implementation, QA, docs, `origin/main`, and evidence matrices agree; no next lane opens before PASS |
 | RTSPINE-002 | RuntimeAsset production target addendum | Long-term target, TouhouNewWorld package reference, and no-compatibility policy are written into planning docs |
-| RTSPINE-003 | Asset-internal target identity contract | Scene node, model node, and skeleton joint target IDs are stable, bounded, versioned, and independent from WorldObject |
+| RTSPINE-003 | Asset-internal target identity contract | PASS at `origin/main@5ea838f6fd3428e7e67b77c1ca85c41e6e1c09e4`: scene node, model node, and skeleton joint target IDs are bounded output records independent from WorldObject; duplicate id, missing parent, and capacity overflow fail without mutation |
 | RTSPINE-004 | Animation track target binding contract | Tracks bind to target ID plus property, not world instance or editor object |
 | RTSPINE-005 | Minimal interpolation contract | Step and Linear scalar/vector/transform sampling pass fixed-time tests with no hidden global time |
 | RTSPINE-006 | Invalid target failure contract | Missing target, unsupported property, unsupported interpolation, capacity overflow, and invalid selected clip fail without output mutation |

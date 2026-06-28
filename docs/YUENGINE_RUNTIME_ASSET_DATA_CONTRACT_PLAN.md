@@ -324,6 +324,8 @@ C++ in-memory construction alone.
 | Runtime animation output tables | PASS | `RuntimeAssetData_SceneAnimationLoaderEmitsReusableRuntimeAnimationTables` and `RuntimeAssetData_RuntimeAnimationTablesResampleAndFeedRenderSceneSubmission` prove bounded clip/track/keyframe tables can be emitted and consumed by RenderScene submission |
 | Scene animation explicit clip selection | PASS | `RuntimeAssetData_SceneAnimationLoaderSamplesExplicitSelectedClip` proves `selected_animation_clip_id` selects the requested clip from a multi-clip file; `RuntimeAssetData_SceneAnimationLoaderRejectsMissingSelectedClipWithoutMutation` rejects a missing selected clip as `InvalidDependency` without mutating output |
 | Scene animation focused QA | PASS | `origin/main@f211f7f95299388987ccef00b4d1e8ee6f7bf0c1` has focused `YuRuntimeAssetDataClosedLoopTests` build PASS, exact scene-animation/runtime animation CTest `11/11` PASS, `git diff --check` PASS, added-line hygiene PASS, and dependency boundary PASS |
+| Asset target identity table | PASS | `origin/main@5ea838f6fd3428e7e67b77c1ca85c41e6e1c09e4` defines `RuntimeAssetTargetIdentityRecord` output tables for scene node, model node, and skeleton joint identities; `RuntimeAssetData_TargetIdentityTableLoadsSceneModelAndSkeletonJointIds`, `RuntimeAssetData_TargetIdentityTableRejectsDuplicateIdWithoutMutation`, `RuntimeAssetData_TargetIdentityTableRejectsMissingParentWithoutMutation`, and `RuntimeAssetData_TargetIdentityTableRejectsCapacityOverflowWithoutMutation` are covered by focused QA |
+| Asset target identity focused QA | PASS | focused `YuRuntimeAssetDataClosedLoopTests` build PASS; exact target identity plus scene/runtime animation regression discovery found `10` rows and execution reported `10/10` PASS; `git diff --check`, added-line hygiene, and production boundary scans passed; broad full CTest was not run for this docs lane |
 | Mesh/material/texture cook payloads | PASS | `RuntimeAssetData_CookStoresDecodedPayloadsForMeshMaterialTexture` stores decoded payload records for seven decodable runtime records |
 | RenderScene records | PASS | loaded handles feed cube/cylinder/cone geometry, shared material, camera, and frame records |
 | Generic RenderScene CPU submission | PASS | `RuntimeAssetData_GenericRenderSceneSubmissionBuildsFrameFromLoadedSceneRecords`, `RuntimeAssetData_GenericRenderSceneSubmissionBindsActiveCameraIntoFrame`, `RuntimeAssetData_GenericRenderSceneSubmissionRejectsMissingCameraWithoutMutation`, `RuntimeAssetData_GenericRenderSceneSubmissionUsesMeshRefsNotEntityOrder`, `RuntimeAssetData_GenericRenderSceneSubmissionRejectsMissingTransformWithoutMutation`, `RuntimeAssetData_GenericRenderSceneSubmissionRejectsMissingMeshRefWithoutMutation`, `RuntimeAssetData_GenericRenderSceneSubmissionRejectsMissingMaterialRefWithoutMutation`, `RuntimeAssetData_GenericRenderSceneSubmissionReportsMaterialVariantsUntilFrameApiSupportsThem`, `RuntimeAssetData_GenericRenderSceneSubmissionBuildsPerEntityMaterialTableFromRefs`, `RuntimeAssetData_GenericRenderSceneSubmissionPreservesPerEntityMaterialBlendState`, `RuntimeAssetData_GenericRenderSceneSubmissionUsesMaterialRefOrderNotEntityOrder`, `RuntimeAssetData_GenericRenderSceneSubmissionRejectsSmallMaterialTableWithoutMutation`, and `RuntimeAssetData_GenericRenderSceneSubmissionRejectsDuplicateMaterialIdWithoutMutation` prove loaded scene records can build RenderScene frame records, active camera bindings, and per-entity material tables with bounded no-mutation failures |
@@ -341,12 +343,14 @@ shader module creation, cooked reflection/input-layout bridge, shader
 reflection hardening for variable input/texture-slot counts, cooked shader
 no-mutation failures, disk animation sampling, staged scene loader output,
 runtime animation output tables, explicit selected animation clip sampling,
+asset-internal scene node/model node/skeleton joint target identity tables,
 generic RenderScene CPU submission records, per-entity material tables,
 package/cook/run ledgers, and product-run smoke as the current mainline closed
 loop. The remaining work is production hardening for broader material and scene
 variants, native/non-fixture shader compiler integration, richer animation
-blending and clip-family variants, and scene/animation/camera production variants beyond
-the canonical cube/cylinder/cone graph.
+target/property binding, interpolation and invalid-target failures, blending and
+clip-family variants, and scene/animation/camera production variants beyond the
+canonical cube/cylinder/cone graph.
 
 ## Validator, Cook, Load, Render
 
@@ -410,23 +414,24 @@ or Asset ownership, or runtime output records.
 ## Next Slice Decision
 
 The next RuntimeAsset-adjacent implementation must not deepen animation binding
-before target identity exists. Selected clip sampling is accepted as the current
-closed slice because it only selects among bounded clip records and proves
-no-mutation failure for a missing selected clip.
+until the RTSPINE-003 target identity docs and VQ gates are closed. Selected clip
+sampling is accepted as the earlier closed slice because it only selects among
+bounded clip records and proves no-mutation failure for a missing selected clip.
 
-The next accepted RuntimeAsset spine work is:
+RTSPINE-003 now has implementation and focused QA evidence at
+`origin/main@5ea838f6fd3428e7e67b77c1ca85c41e6e1c09e4`. After VQ accepts
+RTSPINE-003, the next accepted RuntimeAsset spine work is:
 
-1. define source and cooked asset target tables for scene nodes, model nodes,
-   and skeleton joints;
-2. validate target ids, parent/index records, optional stable names/hashes, and
-   property vocabulary;
-3. reject duplicate targets, missing parents, invalid properties, world/editor
-   ids, and capacity overflow without mutation;
-4. bind animation tracks to target id plus property only after the target table
-   contract exists;
-5. implement only Step and Linear interpolation before any cubic, blend tree,
+1. preserve source and cooked asset target tables for scene nodes, model nodes,
+   and skeleton joints as the binding root;
+2. bind animation tracks to target id plus property without WorldObject,
+   editor object, raw pointer, display name, or file path references;
+3. validate target/property refs and reject missing targets, unsupported
+   properties, unsupported interpolation, and capacity overflow without
+   mutation;
+4. implement only Step and Linear interpolation before any cubic, blend tree,
    montage, timeline, skeletal skinning, or editor authoring surface;
-6. design runtime instance mapping before any WorldObject-facing application
+5. design runtime instance mapping before any WorldObject-facing application
    path.
 
 Shader/reflection hardening remains a separate RuntimeAsset family and may
@@ -441,8 +446,8 @@ Reviewers should answer these before the next implementation slice starts:
 2. Which RVF layers must be reworked because they are test-side struct
    construction, CPU helper image generation, GDI/software viewer output, or
    non-File/VFS/Resource bypasses?
-3. Which asset-internal target identity table is required before broader
-   animation production variants?
+3. Which RTSPINE-003 VQ risks remain before broader animation production
+   variants?
 4. Which tiny source fixture files, if any, are allowed in the repo, and which
    generated outputs must stay under ignored artifact directories?
 5. Which File/VFS/Resource/Package path owns source bytes, cooked bytes, and

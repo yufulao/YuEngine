@@ -3,7 +3,7 @@
 Status: handoff plan for landing team
 Owner: 八云紫, 总架构师
 Requested: 2026-06-19
-Current observed code checkpoint: `0a9144b0e30cbede56a5dbf04b232f3e5b763802`
+Current observed code checkpoint: `5ea838f6fd3428e7e67b77c1ca85c41e6e1c09e4`
 Scope: progress adjustment, L0 closure plan, L1 runtime-core plan
 Canonical entry point: `docs/README.md`
 Parent plan: `docs/YUENGINE_LONG_PLAN_TEAM_EXECUTION.md`
@@ -129,7 +129,7 @@ target identity work.
 | --- | --- | --- |
 | RTSPINE-001 | Close current scene-animation evidence gate | implementation, QA, docs, VQ, `origin/main`, and matrices agree before any next lane opens |
 | RTSPINE-002 | Update production target planning docs | TouhouNewWorld-class native runtime, multi-GB resource package, and no-compatibility policy are written into the active plans |
-| RTSPINE-003 | Define asset-internal target identity | scene node, model node, and skeleton joint ids are stable, bounded, versioned, and independent from WorldObject |
+| RTSPINE-003 | Define asset-internal target identity | PASS at `origin/main@5ea838f6fd3428e7e67b77c1ca85c41e6e1c09e4`: scene node, model node, and skeleton joint ids are stable bounded output records independent from WorldObject; duplicate id, missing parent, and capacity overflow fail without mutation |
 | RTSPINE-004 | Define animation track target binding | track binds to target id plus property; no world instance, editor object, raw pointer, display name, or file path |
 | RTSPINE-005 | Define minimal interpolation | Step and Linear sampling at fixed times are deterministic and caller-owned-output only |
 | RTSPINE-006 | Define invalid target failure model | missing target, unsupported property, unsupported interpolation, capacity overflow, and invalid selected clip fail without output mutation |
@@ -164,15 +164,14 @@ QA or full-test lanes that do not reduce calendar time.
 Current immediate parallel pattern:
 
 ```text
-VQ read-only scene-animation evidence audit
-+ RuntimeAsset target identity design surface
+RTSPINE-003 VQ read-only evidence consistency audit
 + package/resource index pressure audit
-+ next-implementation file-surface scout
++ next-implementation file-surface scout for RTSPINE-004/005/006
 + parallelization and risk audit
 ```
 
-The next implementation write lane remains blocked until VQ accepts the current
-scene-animation evidence gate.
+The next implementation write lane remains blocked until VQ accepts the
+RTSPINE-003 target identity evidence gate.
 
 
 ## 2. Current Progress Assessment
@@ -296,6 +295,18 @@ the focused `YuRuntimeAssetDataClosedLoopTests` build passed, exact
 scene-animation/runtime animation CTest discovery found `11` rows, exact
 execution reports `11/11` PASS, `git diff --check` passed, added-line hygiene
 passed, and dependency boundary checks passed without running broad full CTest
+for the docs lane.
+
+Current RuntimeAsset target identity evidence at
+`5ea838f6fd3428e7e67b77c1ca85c41e6e1c09e4` covers
+`RuntimeAssetTargetIdentityRecord` tables for scene node, model node, and
+skeleton joint identities, with `target_id`, `parent_target_id`,
+`scene_entity_id`, and `ordinal` values written to caller-provided output
+buffers. QA evidence is focused-first: the focused
+`YuRuntimeAssetDataClosedLoopTests` build passed, exact target identity plus
+scene/runtime animation regression CTest discovery found `10` rows, exact
+execution reports `10/10` PASS, `git diff --check` passed, added-line hygiene
+passed, and production boundary scans passed without running broad full CTest
 for the docs lane.
 
 ## 3. Updated Layer Model

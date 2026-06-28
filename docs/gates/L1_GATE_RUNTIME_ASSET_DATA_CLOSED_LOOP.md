@@ -320,6 +320,7 @@ Current slice status:
 | 22. material constants CTest registration and closed-loop bridge | PASS |
 | 23. RHI constant-buffer command/list binding | PASS |
 | 24. generic RenderScene CPU submission builder | PASS |
+| 25. asset-internal target identity table | PASS |
 
 Current RuntimeAssetData proof names that future slices must keep passing or
 supersede with approved equivalents:
@@ -346,6 +347,10 @@ supersede with approved equivalents:
 - `RuntimeAssetData_ShaderProgramDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs`
 - `RuntimeAssetData_SceneCameraAnimationDependencyValidatorRejectsTypeMismatchWithoutMutation`
 - `RuntimeAssetData_AnimationDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs`
+- `RuntimeAssetData_TargetIdentityTableLoadsSceneModelAndSkeletonJointIds`
+- `RuntimeAssetData_TargetIdentityTableRejectsDuplicateIdWithoutMutation`
+- `RuntimeAssetData_TargetIdentityTableRejectsMissingParentWithoutMutation`
+- `RuntimeAssetData_TargetIdentityTableRejectsCapacityOverflowWithoutMutation`
 - `RuntimeAssetData_ShaderProgramBridgeCreatesRhiPipelineFromLoadedBytecode`
 - `RuntimeAssetData_ShaderProgramBridgeRejectsInvalidProgramDataWithoutRhiMutation`
 - `RuntimeAssetData_ProductionSceneLoaderOutputsDeterministicRecords`
@@ -385,7 +390,8 @@ This gate records these mainline implementation slices:
 | RAV1-N | Material constants closed loop | PASS; RuntimeAsset packs loaded material parameters into deterministic constant bytes, bridges cooked material constants into RenderScene material records, rejects invalid constants without mutation, and registers the material constants proof tests in CTest |
 | RAV1-O | RHI constant-buffer binding | PASS; RHI command/list records bounded constant-buffer slots, rejects overflow and stale handles, submits null-device snapshots, and propagates RenderCore fixture/material bindings |
 | RAV1-P | Generic RenderScene CPU submission builder | PASS; RuntimeAsset builds frame records from loaded scene records, validates transform/mesh/material refs without mutation, and reports material variants until frame API support lands |
-| Next slice | Production hardening | broader material variants and per-entity RenderScene material table, non-fixture shader compiler integration, broader shader reflection semantics, reusable animation runtime record tables, broader scene/animation production variants |
+| RAV1-Q | Asset target identity table | PASS; RuntimeAsset writes bounded scene node, model node, and skeleton joint target identity records to caller-owned output, and rejects duplicate ids, missing parents, and output capacity overflow without mutation |
+| Next slice | Animation track target binding | bind animation tracks to target id plus property, then prove missing target, unsupported property, unsupported interpolation, and capacity overflow failures before any WorldObject-facing mapping |
 
 The slice may split implementation tasks later, but those tasks must stay
 parallelizable by file family or stage and must not authorize upper-layer
