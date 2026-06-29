@@ -264,6 +264,23 @@ At the latest handoff:
   hardware evidence with no skip, while callback cost, sample PCM path,
   AudioResource, AudioScene, L1 rows, adjacent/full suites, and broad/full
   CTest remain separate;
+- L0-AUD-004 Audio callback cost proof closure is PASS at
+  `34093cf83ece469c75baad01e8a99b0e426e3d4e`; readiness task `a1b9ed42`
+  records the pre-fix callback handler lock/CV path as NEEDS-IMPLEMENTATION,
+  implementation task `bf2b5bc2` lands the single-file
+  `Src/YuEngine/Audio/Src/AudioCallbackDeviceWindows.cpp` fix, and focused
+  proof QA task `39cca45c` reports commit scope limited to that production
+  file, callback hot-path static scan `0` forbidden operations across
+  `VoiceCallback` lines `121`-`166` and handler lines `261`-`282`,
+  `YuAudioTests` plus `YuAudioHardwareSmokeTests` focused builds
+  PASS, fast callback/bridge execution `18/18` PASS, hardware callback
+  execution `2/2` PASS, strict hardware callback execution `2/2` PASS,
+  `git diff --check HEAD^..HEAD` PASS, and clean read-only QA at
+  `HEAD == origin/main == 34093cf`; callback hot path records bounded atomic
+  pending events, while lock/CV merge, `WaitForCompletedCallbacks`, and
+  `DrainCompletions` stay in non-callback API paths; sample PCM path,
+  AudioResource, AudioScene, L1 rows, adjacent/full suites, and broad/full CTest
+  remain separate;
 - WorldObject-facing runtime instance mapping and broader Resource/File/VFS
   follow-through remain blocked until their own gates are released.
 
