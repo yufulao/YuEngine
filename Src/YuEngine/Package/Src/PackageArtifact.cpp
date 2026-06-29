@@ -639,6 +639,24 @@ PackageStatus ValidateArtifactIntegrity(
     return PackageStatus::Success;
 }
 
+bool AllEntriesUseLegacyArtifactFormat(const ParsedArtifactEntry *entries, std::uint32_t entry_count) {
+    if (entries == nullptr) {
+        return false;
+    }
+
+    for (std::uint32_t index = 0U; index < entry_count; ++index) {
+        if (entries[index].has_integrity_hashes) {
+            return false;
+        }
+
+        if (entries[index].has_payload_metadata) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 PackageArtifactResult ReadArtifactText(
     std::string_view text,
     PackageRegistryDesc registry_desc,
@@ -727,21 +745,24 @@ PackageArtifactResult ReadArtifactText(
         return PackageArtifactFailure(build_status);
     }
 
-    ArtifactIntegrityRecord integrity{};
-    parse_status = ParseArtifactIntegrityLines(lines, &line_index, &integrity);
-    if (parse_status != PackageStatus::Success) {
-        return PackageArtifactFailure(parse_status);
-    }
+    const bool uses_legacy_artifact_format = AllEntriesUseLegacyArtifactFormat(parsed_entries.data(), entry_count);
+    if (!uses_legacy_artifact_format || line_index >= lines.size() || lines[line_index] != "end") {
+        ArtifactIntegrityRecord integrity{};
+        parse_status = ParseArtifactIntegrityLines(lines, &line_index, &integrity);
+        if (parse_status != PackageStatus::Success) {
+            return PackageArtifactFailure(parse_status);
+        }
 
-    parse_status = ValidateArtifactIntegrity(
-        package,
-        parsed_entries.data(),
-        entry_count,
-        dependencies.data(),
-        dependency_count,
-        integrity);
-    if (parse_status != PackageStatus::Success) {
-        return PackageArtifactFailure(parse_status);
+        parse_status = ValidateArtifactIntegrity(
+            package,
+            parsed_entries.data(),
+            entry_count,
+            dependencies.data(),
+            dependency_count,
+            integrity);
+        if (parse_status != PackageStatus::Success) {
+            return PackageArtifactFailure(parse_status);
+        }
     }
 
     if (line_index >= lines.size()) {

@@ -90,6 +90,10 @@ constexpr const char* TEST_ARTIFACT_LARGE_BYTE_RANGE =
     "Package_FileBackedArtifactRoundTripsLargeByteRangeMetadata";
 constexpr const char* TEST_ARTIFACT_PAYLOAD_METADATA =
     "Package_FileBackedArtifactRoundTripsPayloadWindowMetadata";
+constexpr const char* TEST_ARTIFACT_LEGACY_SEVEN_FIELD =
+    "Package_FileBackedArtifactReadsLegacySevenFieldRowsWithDefaultPayloadMetadata";
+constexpr const char* TEST_ARTIFACT_LEGACY_NINE_FIELD =
+    "Package_FileBackedArtifactReadsLegacyNineFieldRowsWithDefaultPayloadMetadata";
 constexpr const char* TEST_ARTIFACT_HASH_ROUND_TRIP =
     "Package_FileBackedArtifactRoundTripsHashAndDependencyIntegrity";
 constexpr const char* TEST_ARTIFACT_HASH_VALIDATION =
@@ -134,6 +138,8 @@ constexpr const char* ERROR_INDEX_LOAD_PLAN_CAPACITY = "indexed lookup changed l
 constexpr const char* PACKAGE_ARTIFACT_MOUNT = "package_artifact_test";
 constexpr const char* PACKAGE_ARTIFACT_PATH = "Packages/RuntimeAssetSample.yupackage";
 constexpr const char* PACKAGE_ARTIFACT_MAGIC = "YUPACKAGE_ARTIFACT_V1";
+constexpr std::uint64_t ARTIFACT_HASH_OFFSET = 14695981039346656037ULL;
+constexpr std::uint64_t ARTIFACT_HASH_MULTIPLIER = 1099511628211ULL;
 
 constexpr PackageId PACKAGE_A{1U};
 constexpr PackageId PACKAGE_B{2U};
@@ -206,6 +212,106 @@ bool ReplaceHashLineValue(std::string *artifact_text, std::string_view prefix, s
 
     artifact_text->replace(line_start, line_end - line_start, replacement);
     return true;
+}
+
+std::uint64_t MixArtifactHash(std::uint64_t hash, std::uint64_t value) {
+    hash ^= value;
+    return hash * ARTIFACT_HASH_MULTIPLIER;
+}
+
+std::uint64_t HashArtifactText(std::uint64_t hash, std::string_view text) {
+    for (const char character : text) {
+        hash = MixArtifactHash(hash, static_cast<std::uint64_t>(static_cast<unsigned char>(character)));
+    }
+
+    return hash;
+}
+
+std::uint64_t MakeNonZeroArtifactHash(std::uint64_t hash) {
+    if (hash == 0ULL) {
+        return ARTIFACT_HASH_OFFSET;
+    }
+
+    return hash;
+}
+
+std::uint64_t LegacyEntryPayloadHash(std::string_view source_key, std::uint64_t byte_offset, std::uint64_t byte_size) {
+    std::uint64_t hash = ARTIFACT_HASH_OFFSET;
+    hash = HashArtifactText(hash, source_key);
+    hash = MixArtifactHash(hash, byte_offset);
+    hash = MixArtifactHash(hash, byte_size);
+    return MakeNonZeroArtifactHash(hash);
+}
+
+std::uint64_t LegacyEntryMetadataHash(
+    PackageEntryId entry,
+    ResourceTypeId type,
+    std::string_view logical_key,
+    std::string_view source_key,
+    std::uint64_t byte_offset,
+    std::uint64_t byte_size,
+    std::uint64_t payload_hash) {
+    std::uint64_t hash = ARTIFACT_HASH_OFFSET;
+    hash = MixArtifactHash(hash, PACKAGE_A.value);
+    hash = MixArtifactHash(hash, entry.value);
+    hash = MixArtifactHash(hash, type.value);
+    hash = HashArtifactText(hash, logical_key);
+    hash = HashArtifactText(hash, source_key);
+    hash = MixArtifactHash(hash, byte_offset);
+    hash = MixArtifactHash(hash, byte_size);
+    hash = MixArtifactHash(hash, payload_hash);
+    return MakeNonZeroArtifactHash(hash);
+}
+
+std::uint64_t LegacyDependencyTableHash(std::uint32_t dependency_count) {
+    std::uint64_t hash = ARTIFACT_HASH_OFFSET;
+    hash = MixArtifactHash(hash, dependency_count);
+    return MakeNonZeroArtifactHash(hash);
+}
+
+std::uint64_t LegacyPackageTableHash(
+    PackageEntryId entry,
+    std::uint64_t payload_hash,
+    std::uint64_t metadata_hash,
+    std::uint64_t dependency_table_hash) {
+    std::uint64_t hash = ARTIFACT_HASH_OFFSET;
+    hash = MixArtifactHash(hash, PACKAGE_A.value);
+    hash = MixArtifactHash(hash, 1U);
+    hash = MixArtifactHash(hash, 0U);
+    hash = MixArtifactHash(hash, entry.value);
+    hash = MixArtifactHash(hash, payload_hash);
+    hash = MixArtifactHash(hash, metadata_hash);
+    hash = MixArtifactHash(hash, dependency_table_hash);
+    return MakeNonZeroArtifactHash(hash);
+}
+
+std::string BuildLegacyNineFieldArtifact(
+    PackageEntryId entry,
+    ResourceTypeId type,
+    std::string_view logical_key,
+    std::string_view source_key,
+    std::uint64_t byte_offset,
+    std::uint64_t byte_size) {
+    const std::uint64_t payload_hash = LegacyEntryPayloadHash(source_key, byte_offset, byte_size);
+    const std::uint64_t metadata_hash =
+        LegacyEntryMetadataHash(entry, type, logical_key, source_key, byte_offset, byte_size, payload_hash);
+    const std::uint64_t dependency_table_hash = LegacyDependencyTableHash(0U);
+    const std::uint64_t package_table_hash =
+        LegacyPackageTableHash(entry, payload_hash, metadata_hash, dependency_table_hash);
+
+    std::string artifact_text = std::string(PACKAGE_ARTIFACT_MAGIC) +
+        "\npackage|1\nentries|1\ndependencies|0\nentry|" +
+        std::to_string(entry.value) + "|" +
+        std::to_string(type.value) + "|" +
+        std::string(logical_key) + "|" +
+        std::string(source_key) + "|" +
+        std::to_string(byte_offset) + "|" +
+        std::to_string(byte_size) + "|" +
+        std::to_string(payload_hash) + "|" +
+        std::to_string(metadata_hash) + "\n" +
+        "dependency_table_hash|" + std::to_string(dependency_table_hash) + "\n" +
+        "package_table_hash|" + std::to_string(package_table_hash) + "\nend\n";
+    return artifact_text;
 }
 
 bool ReplaceFirstEntryHashField(
@@ -1537,6 +1643,96 @@ int PackageFileBackedArtifactRoundTripsPayloadWindowMetadata() {
     return 0;
 }
 
+int PackageFileBackedArtifactReadsLegacySevenFieldRowsWithDefaultPayloadMetadata() {
+    MountTable table = CreatePackageArtifactTable(TEST_ARTIFACT_LEGACY_SEVEN_FIELD);
+    const std::string artifact_text =
+        std::string(PACKAGE_ARTIFACT_MAGIC) +
+        "\npackage|1\nentries|1\ndependencies|0\nentry|1|1|texture_legacy_7|textures/legacy_7.bin|64|32\nend\n";
+    if (!WriteRawPackageArtifact(table, artifact_text)) {
+        return Fail("legacy seven-field artifact fixture write failed");
+    }
+
+    PackageRegistry artifact_registry;
+    PackageArtifactReadRequest read_request{};
+    read_request.mount_table = &table;
+    read_request.mount = MountId(PACKAGE_ARTIFACT_MOUNT);
+    read_request.artifact_path = VirtualPath(PACKAGE_ARTIFACT_PATH);
+    read_request.registry = &artifact_registry;
+    const PackageArtifactResult read_result = ReadPackageArtifact(read_request);
+    if (read_result.status != PackageStatus::Success || !read_result.rebuilt_registry) {
+        return Fail("legacy seven-field artifact did not rebuild registry");
+    }
+
+    const PackageLoadPlanResult plan =
+        artifact_registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_TEXTURE, ResourceLogicalKey("texture_legacy_7"));
+    if (!plan.Succeeded() || plan.plan.record_count != 1U) {
+        return Fail("legacy seven-field artifact did not resolve");
+    }
+
+    const PackageLoadPlanRecord& record = plan.plan.records[0U];
+    if (record.archive_byte_offset != 64ULL || record.archive_byte_size != 32ULL) {
+        return Fail("legacy seven-field artifact changed archive range");
+    }
+
+    if (record.payload_logical_byte_count != 32ULL ||
+        record.payload_window_byte_offset != 0ULL ||
+        record.payload_window_byte_size != 32ULL) {
+        return Fail("legacy seven-field artifact did not default payload metadata");
+    }
+
+    std::filesystem::remove_all(PackageArtifactRoot(TEST_ARTIFACT_LEGACY_SEVEN_FIELD));
+    return 0;
+}
+
+int PackageFileBackedArtifactReadsLegacyNineFieldRowsWithDefaultPayloadMetadata() {
+    MountTable table = CreatePackageArtifactTable(TEST_ARTIFACT_LEGACY_NINE_FIELD);
+    const std::string artifact_text = BuildLegacyNineFieldArtifact(
+        ENTRY_TEXTURE,
+        TYPE_TEXTURE,
+        "texture_legacy_9",
+        "textures/legacy_9.bin",
+        96ULL,
+        24ULL);
+    if (!WriteRawPackageArtifact(table, artifact_text)) {
+        return Fail("legacy nine-field artifact fixture write failed");
+    }
+
+    PackageRegistry artifact_registry;
+    PackageArtifactReadRequest read_request{};
+    read_request.mount_table = &table;
+    read_request.mount = MountId(PACKAGE_ARTIFACT_MOUNT);
+    read_request.artifact_path = VirtualPath(PACKAGE_ARTIFACT_PATH);
+    read_request.registry = &artifact_registry;
+    const PackageArtifactResult read_result = ReadPackageArtifact(read_request);
+    if (read_result.status != PackageStatus::Success || !read_result.rebuilt_registry) {
+        return Fail("legacy nine-field artifact did not rebuild registry");
+    }
+
+    const PackageLoadPlanResult plan =
+        artifact_registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_TEXTURE, ResourceLogicalKey("texture_legacy_9"));
+    if (!plan.Succeeded() || plan.plan.record_count != 1U) {
+        return Fail("legacy nine-field artifact did not resolve");
+    }
+
+    const PackageLoadPlanRecord& record = plan.plan.records[0U];
+    if (record.archive_byte_offset != 96ULL || record.archive_byte_size != 24ULL) {
+        return Fail("legacy nine-field artifact changed archive range");
+    }
+
+    if (record.payload_logical_byte_count != 24ULL ||
+        record.payload_window_byte_offset != 0ULL ||
+        record.payload_window_byte_size != 24ULL) {
+        return Fail("legacy nine-field artifact did not default payload metadata");
+    }
+
+    if (record.payload_hash == 0ULL) {
+        return Fail("legacy nine-field artifact did not preserve payload hash");
+    }
+
+    std::filesystem::remove_all(PackageArtifactRoot(TEST_ARTIFACT_LEGACY_NINE_FIELD));
+    return 0;
+}
+
 int PackageFileBackedArtifactRoundTripsHashAndDependencyIntegrity() {
     MountTable table = CreatePackageArtifactTable(TEST_ARTIFACT_HASH_ROUND_TRIP);
     const std::array<PackageEntryDescriptor, 3U> entries{
@@ -1777,7 +1973,7 @@ int PackageFileBackedArtifactRejectsManifestParseAndSectionErrorsWithoutMutation
     if (ExpectInvalidArtifactRead(
             table,
             extra_section,
-            PackageStatus::InvalidArtifactIntegrityTable,
+            PackageStatus::ArtifactUnknownSection,
             "artifact extra section did not return explicit status") != 0) {
         return 1;
     }
@@ -2099,6 +2295,8 @@ int main(int argc, char** argv) {
         {TEST_ARTIFACT_ROUND_TRIP, PackageFileBackedArtifactRoundTripsLoadPlanThroughFileVfs},
         {TEST_ARTIFACT_LARGE_BYTE_RANGE, PackageFileBackedArtifactRoundTripsLargeByteRangeMetadata},
         {TEST_ARTIFACT_PAYLOAD_METADATA, PackageFileBackedArtifactRoundTripsPayloadWindowMetadata},
+        {TEST_ARTIFACT_LEGACY_SEVEN_FIELD, PackageFileBackedArtifactReadsLegacySevenFieldRowsWithDefaultPayloadMetadata},
+        {TEST_ARTIFACT_LEGACY_NINE_FIELD, PackageFileBackedArtifactReadsLegacyNineFieldRowsWithDefaultPayloadMetadata},
         {TEST_ARTIFACT_HASH_ROUND_TRIP, PackageFileBackedArtifactRoundTripsHashAndDependencyIntegrity},
         {TEST_ARTIFACT_HASH_VALIDATION, PackageFileBackedArtifactRejectsHashMismatchesWithoutMutation},
         {TEST_ARTIFACT_INVALID, PackageFileBackedArtifactRejectsInvalidBytesWithoutMutation},
