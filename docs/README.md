@@ -240,6 +240,17 @@ At the latest handoff:
   this sync does not close L0-AUD-002, L0-AUD-003, L0-AUD-004, L0-AUD-005,
   L0-RES-006, L0-SAMPLE-006, AudioResource, AudioScene, hardware smoke, sample
   scripts, manual proof, adjacent/full suites, or broad/full CTest;
+- L0-AUD-002 PCM packet/stream queue closure is PASS at
+  `0de7d7076b73d7d716f6d99dca8ac90ac9974247`; readiness task `821f0e53`
+  records READY, and focused QA task `c80e3337-96db-4521-9c0e-b81d5b882efe`
+  reports `Audio_PcmSamplePacket_` discovery/execution `13/13`, tests `#840`
+  through `#852`, `Audio_PcmStreamQueue_` discovery/execution `15/15`, tests
+  `#853` through `#867`, `YuAudioTests` focused build
+  PASS, combined exact execution `28/28` PASS with `0 failed`, and a clean
+  read-only QA workspace;
+  callback rows were discovery-only for later Audio lanes, while hardware,
+  sample, AudioResource, AudioScene, L1 rows, adjacent/full suites, and
+  broad/full CTest remain separate;
 - WorldObject-facing runtime instance mapping and broader Resource/File/VFS
   follow-through remain blocked until their own gates are released.
 

@@ -134,6 +134,28 @@ UI/GameAdapter/gameplay, material graph, shader compiler pipeline, scene loader,
 old-package compatibility, real codec/parser, Package/Resource public API
 expansion, and broad/full CTest outside this closure.
 
+## 3.5 L0-AUD-002 Evidence Sync
+
+L0-AUD-002 PCM packet/stream queue closure is PASS at
+`0de7d7076b73d7d716f6d99dca8ac90ac9974247`. Readiness task `821f0e53`
+records READY.
+
+Focused QA task `c80e3337-96db-4521-9c0e-b81d5b882efe` reports
+`Audio_PcmSamplePacket_` discovery/execution `13/13`, tests `#840` through
+`#852`, `Audio_PcmStreamQueue_` discovery/execution `15/15`, tests `#853`
+through `#867`, `YuAudioTests` focused build
+PASS, combined exact execution `28/28` PASS with `0 failed`, and a clean
+read-only QA workspace.
+
+This evidence keeps `Audio_PcmStreamQueueCallback_`, L0-AUD-003 XAudio2
+callback proof, L0-AUD-004 callback cost proof, L0-AUD-005 sample PCM path,
+AudioResource, AudioScene, hardware smoke, sample scripts, screenshots/reports/
+manual listening proof, L1 rows, adjacent/full suites, RuntimeAsset/Asset
+Manager, RenderScene/RHI, World/editor/importer, UI/GameAdapter/gameplay,
+material graph, shader compiler pipeline, scene loader, old-package
+compatibility, real codec/parser, Package/Resource public API expansion, and
+broad/full CTest outside this closure.
+
 ## 4. L1 Runtime Bridge Audit
 
 | Bridge | Direction | Source owner | Destination owner | Lifecycle owner | Failure statuses | Bounds | Tests | Risk | Required action |
