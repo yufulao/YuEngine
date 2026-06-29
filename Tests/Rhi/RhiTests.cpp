@@ -165,8 +165,12 @@ constexpr const char *TEST_NULL_SWAPCHAIN_RESIZE = "RHI_NullBackend_SwapchainRes
 constexpr const char* TEST_PRIMITIVE_CAPABILITIES = "RHI_PrimitiveCapabilities_ReportBoundedCapacities";
 constexpr const char* TEST_CREATE_BUFFER = "RHI_CreateBuffer_ReturnsGenerationHandleAndSnapshot";
 constexpr const char* TEST_UPDATE_BUFFER = "RHI_UpdateBuffer_SignalsFenceAndRecordsBytes";
+constexpr const char *TEST_UPDATE_BUFFER_DESTINATION_RANGE =
+    "RHI_UpdateBufferDestinationRange_TracksOffsetAndRejectsOverflow";
 constexpr const char* TEST_BUFFER_CAPACITY = "RHI_BufferCapacityOverflow_DoesNotMutate";
 constexpr const char* TEST_TEXTURE_PRIMITIVE = "RHI_TextureCreateUpdateDestroy_TracksSnapshot";
+constexpr const char *TEST_UPDATE_TEXTURE_DESTINATION_RANGE =
+    "RHI_UpdateTextureDestinationRange_TracksOffsetAndRejectsOverflow";
 constexpr const char* TEST_SAMPLER_PRIMITIVE = "RHI_SamplerCreateDestroy_TracksSnapshot";
 constexpr const char* TEST_SHADER_EMPTY_BYTECODE = "RHI_ShaderModuleRejectsEmptyBytecode";
 constexpr const char* TEST_PIPELINE_INVALID_SHADERS = "RHI_PipelineRequiresValidShaderModules";
@@ -2439,6 +2443,54 @@ int RhiUpdateBufferSignalsFenceAndRecordsBytes() {
     return 0;
 }
 
+int RhiUpdateBufferDestinationRangeTracksOffsetAndRejectsOverflow() {
+    NullRhiDevice device = CreateInitializedDevice();
+    const std::span<const std::uint8_t> empty_bytes{};
+    RhiBufferHandle handle{};
+    if (device.CreateBuffer(SmallVertexBufferDesc(), empty_bytes, handle) != RhiStatus::Success) {
+        return Fail("buffer creation failed");
+    }
+
+    constexpr std::uint64_t DESTINATION_BYTE_OFFSET = 2ULL;
+    const std::array<std::uint8_t, 2U> update_bytes{7U, 8U};
+    const std::span<const std::uint8_t> update_span(update_bytes.data(), update_bytes.size());
+    RhiFenceHandle fence{};
+    const RhiStatus status = device.UpdateBuffer(handle, update_span, fence, DESTINATION_BYTE_OFFSET);
+    if (status != RhiStatus::Success) {
+        return Fail("buffer destination range update failed");
+    }
+
+    if (fence.generation == 0U) {
+        return Fail("buffer destination range update did not signal a fence");
+    }
+
+    const auto before_reject_snapshot = device.Snapshot();
+    RhiFenceHandle rejected_fence{};
+    constexpr std::uint64_t OVERFLOW_BYTE_OFFSET = 3ULL;
+    const RhiStatus overflow_status =
+        device.UpdateBuffer(handle, update_span, rejected_fence, OVERFLOW_BYTE_OFFSET);
+    if (overflow_status != RhiStatus::CapacityExceeded) {
+        return Fail("buffer destination range overflow returned wrong status");
+    }
+
+    const auto after_reject_snapshot = device.Snapshot();
+    if (after_reject_snapshot.resources.updated_primitive_count !=
+        before_reject_snapshot.resources.updated_primitive_count) {
+        return Fail("buffer destination range overflow changed update count");
+    }
+
+    if (after_reject_snapshot.resources.signaled_fence_count !=
+        before_reject_snapshot.resources.signaled_fence_count) {
+        return Fail("buffer destination range overflow signaled a fence");
+    }
+
+    if (rejected_fence.generation != 0U) {
+        return Fail("buffer destination range overflow wrote output fence");
+    }
+
+    return 0;
+}
+
 int RhiBufferCapacityOverflowDoesNotMutate() {
     NullRhiDevice device = CreateInitializedDevice();
     const std::span<const std::uint8_t> empty_bytes{};
@@ -2523,6 +2575,56 @@ int RhiTextureCreateUpdateDestroyTracksSnapshot() {
 
     if (snapshot.resources.last_update_bytes != update_bytes.size()) {
         return Fail("texture primitive last update bytes were wrong");
+    }
+
+    return 0;
+}
+
+int RhiUpdateTextureDestinationRangeTracksOffsetAndRejectsOverflow() {
+    NullRhiDevice device = CreateInitializedDevice();
+    const std::span<const std::uint8_t> empty_bytes{};
+    RhiTextureHandle handle{};
+    if (device.CreateTexture(SmallPrimitiveTextureDesc(), empty_bytes, handle) != RhiStatus::Success) {
+        return Fail("texture primitive creation failed");
+    }
+
+    constexpr std::uint64_t DESTINATION_BYTE_OFFSET = 8ULL;
+    const std::array<std::uint8_t, 8U> update_bytes{
+        16U, 15U, 14U, 13U,
+        12U, 11U, 10U, 9U};
+    const std::span<const std::uint8_t> update_span(update_bytes.data(), update_bytes.size());
+    RhiFenceHandle fence{};
+    const RhiStatus status = device.UpdateTexture(handle, update_span, fence, DESTINATION_BYTE_OFFSET);
+    if (status != RhiStatus::Success) {
+        return Fail("texture destination range update failed");
+    }
+
+    if (fence.generation == 0U) {
+        return Fail("texture destination range update did not signal a fence");
+    }
+
+    const auto before_reject_snapshot = device.Snapshot();
+    RhiFenceHandle rejected_fence{};
+    constexpr std::uint64_t OVERFLOW_BYTE_OFFSET = 12ULL;
+    const RhiStatus overflow_status =
+        device.UpdateTexture(handle, update_span, rejected_fence, OVERFLOW_BYTE_OFFSET);
+    if (overflow_status != RhiStatus::InvalidDescriptor) {
+        return Fail("texture destination range overflow returned wrong status");
+    }
+
+    const auto after_reject_snapshot = device.Snapshot();
+    if (after_reject_snapshot.resources.updated_primitive_count !=
+        before_reject_snapshot.resources.updated_primitive_count) {
+        return Fail("texture destination range overflow changed update count");
+    }
+
+    if (after_reject_snapshot.resources.signaled_fence_count !=
+        before_reject_snapshot.resources.signaled_fence_count) {
+        return Fail("texture destination range overflow signaled a fence");
+    }
+
+    if (rejected_fence.generation != 0U) {
+        return Fail("texture destination range overflow wrote output fence");
     }
 
     return 0;
@@ -4419,8 +4521,10 @@ int main(int argc, char** argv) {
         {TEST_PRIMITIVE_CAPABILITIES, RhiPrimitiveCapabilitiesReportBoundedCapacities},
         {TEST_CREATE_BUFFER, RhiCreateBufferReturnsGenerationHandleAndSnapshot},
         {TEST_UPDATE_BUFFER, RhiUpdateBufferSignalsFenceAndRecordsBytes},
+        {TEST_UPDATE_BUFFER_DESTINATION_RANGE, RhiUpdateBufferDestinationRangeTracksOffsetAndRejectsOverflow},
         {TEST_BUFFER_CAPACITY, RhiBufferCapacityOverflowDoesNotMutate},
         {TEST_TEXTURE_PRIMITIVE, RhiTextureCreateUpdateDestroyTracksSnapshot},
+        {TEST_UPDATE_TEXTURE_DESTINATION_RANGE, RhiUpdateTextureDestinationRangeTracksOffsetAndRejectsOverflow},
         {TEST_SAMPLER_PRIMITIVE, RhiSamplerCreateDestroyTracksSnapshot},
         {TEST_SHADER_EMPTY_BYTECODE, RhiShaderModuleRejectsEmptyBytecode},
         {TEST_PIPELINE_INVALID_SHADERS, RhiPipelineRequiresValidShaderModules},

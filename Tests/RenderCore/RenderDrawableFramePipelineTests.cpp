@@ -458,7 +458,8 @@ public:
     RhiStatus UpdateBuffer(
         RhiBufferHandle,
         std::span<const std::uint8_t>,
-        RhiFenceHandle &out_fence) override {
+        RhiFenceHandle &out_fence,
+        std::uint64_t=0ULL) override {
         out_fence = RhiFenceHandle{};
         return RhiStatus::UnsupportedBackend;
     }
@@ -488,7 +489,8 @@ public:
     RhiStatus UpdateTexture(
         RhiTextureHandle,
         std::span<const std::uint8_t>,
-        RhiFenceHandle &out_fence) override {
+        RhiFenceHandle &out_fence,
+        std::uint64_t=0ULL) override {
         out_fence = RhiFenceHandle{};
         return RhiStatus::UnsupportedBackend;
     }

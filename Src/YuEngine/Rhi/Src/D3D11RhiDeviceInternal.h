@@ -76,7 +76,8 @@ public:
     RhiStatus UpdateBuffer(
         RhiBufferHandle handle,
         std::span<const std::uint8_t> bytes,
-        RhiFenceHandle &out_fence) override;
+        RhiFenceHandle &out_fence,
+        std::uint64_t destination_byte_offset=0ULL) override;
     RhiStatus DestroyBuffer(RhiBufferHandle handle) override;
     RhiStatus CreateTexture(
         const RhiTextureDesc &desc,
@@ -85,7 +86,8 @@ public:
     RhiStatus UpdateTexture(
         RhiTextureHandle handle,
         std::span<const std::uint8_t> bytes,
-        RhiFenceHandle &out_fence) override;
+        RhiFenceHandle &out_fence,
+        std::uint64_t destination_byte_offset=0ULL) override;
     RhiStatus DestroyTexture(RhiTextureHandle handle) override;
     RhiStatus CreateSampler(const RhiSamplerDesc &desc, RhiSamplerHandle &out_handle) override;
     RhiStatus DestroySampler(RhiSamplerHandle handle) override;

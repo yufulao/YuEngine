@@ -898,8 +898,9 @@ public:
     RhiStatus UpdateBuffer(
         RhiBufferHandle handle,
         std::span<const std::uint8_t> bytes,
-        yuengine::rhi::RhiFenceHandle &out_fence) override {
-        return device_.UpdateBuffer(handle, bytes, out_fence);
+        yuengine::rhi::RhiFenceHandle &out_fence,
+        std::uint64_t destination_byte_offset=0ULL) override {
+        return device_.UpdateBuffer(handle, bytes, out_fence, destination_byte_offset);
     }
 
     RhiStatus DestroyBuffer(RhiBufferHandle handle) override {
@@ -916,8 +917,9 @@ public:
     RhiStatus UpdateTexture(
         RhiTextureHandle handle,
         std::span<const std::uint8_t> bytes,
-        yuengine::rhi::RhiFenceHandle &out_fence) override {
-        return device_.UpdateTexture(handle, bytes, out_fence);
+        yuengine::rhi::RhiFenceHandle &out_fence,
+        std::uint64_t destination_byte_offset=0ULL) override {
+        return device_.UpdateTexture(handle, bytes, out_fence, destination_byte_offset);
     }
 
     RhiStatus DestroyTexture(RhiTextureHandle handle) override {

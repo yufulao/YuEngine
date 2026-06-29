@@ -189,12 +189,14 @@ public:
      * @param handle 输入句柄。
      * @param bytes 输入字节。
      * @param out_fence 成功时写入的输出 fence 句柄。
+     * @param destination_byte_offset 目标 buffer 起始字节偏移。
      * @return 显式操作状态。
      */
     virtual RhiStatus UpdateBuffer(
         RhiBufferHandle handle,
         std::span<const std::uint8_t> bytes,
-        RhiFenceHandle &out_fence) = 0;
+        RhiFenceHandle &out_fence,
+        std::uint64_t destination_byte_offset=0ULL) = 0;
     /**
      * @comment 销毁一个 buffer primitive。
      * @param handle 输入句柄。
@@ -217,12 +219,14 @@ public:
      * @param handle 输入句柄。
      * @param bytes 输入字节。
      * @param out_fence 成功时写入的输出 fence 句柄。
+     * @param destination_byte_offset 目标 texture linear RGBA8 起始字节偏移。
      * @return 显式操作状态。
      */
     virtual RhiStatus UpdateTexture(
         RhiTextureHandle handle,
         std::span<const std::uint8_t> bytes,
-        RhiFenceHandle &out_fence) = 0;
+        RhiFenceHandle &out_fence,
+        std::uint64_t destination_byte_offset=0ULL) = 0;
     /**
      * @comment 销毁一个 texture primitive。
      * @param handle 输入句柄。

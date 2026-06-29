@@ -7,6 +7,7 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <new>
 
 #include "YuEngine/Rhi/NullRhiDevice.h"
@@ -122,6 +123,70 @@ bool HasSamplerWithoutSampledTexture(
 
     return false;
 }
+
+bool ByteRangeFits(
+    std::uint64_t byte_offset,
+    std::size_t byte_count,
+    std::size_t total_byte_count) {
+    const std::uint64_t total_bytes = static_cast<std::uint64_t>(total_byte_count);
+    if (byte_offset > total_bytes) {
+        return false;
+    }
+
+    const std::uint64_t remaining_bytes = total_bytes - byte_offset;
+    return static_cast<std::uint64_t>(byte_count) <= remaining_bytes;
+}
+
+#if defined(_WIN32)
+bool MakeFullRowTextureUpdateBox(
+    const RhiTextureDesc &desc,
+    std::uint64_t destination_byte_offset,
+    std::size_t byte_count,
+    D3D11_BOX *out_box,
+    UINT *out_row_bytes) {
+    if (out_box == nullptr || out_row_bytes == nullptr) {
+        return false;
+    }
+
+    const std::uint64_t row_bytes =
+        static_cast<std::uint64_t>(desc.extent.width) * RGBA8_BYTES_PER_PIXEL;
+    if (row_bytes == 0ULL) {
+        return false;
+    }
+
+    if (row_bytes > std::numeric_limits<UINT>::max()) {
+        return false;
+    }
+
+    if (destination_byte_offset % row_bytes != 0ULL) {
+        return false;
+    }
+
+    if (static_cast<std::uint64_t>(byte_count) % row_bytes != 0ULL) {
+        return false;
+    }
+
+    const std::uint64_t top_row = destination_byte_offset / row_bytes;
+    const std::uint64_t row_count = static_cast<std::uint64_t>(byte_count) / row_bytes;
+    if (row_count == 0ULL) {
+        return false;
+    }
+
+    const std::uint64_t bottom_row = top_row + row_count;
+    if (bottom_row > desc.extent.height) {
+        return false;
+    }
+
+    out_box->left = 0U;
+    out_box->top = static_cast<UINT>(top_row);
+    out_box->front = 0U;
+    out_box->right = static_cast<UINT>(desc.extent.width);
+    out_box->bottom = static_cast<UINT>(bottom_row);
+    out_box->back = 1U;
+    *out_row_bytes = static_cast<UINT>(row_bytes);
+    return true;
+}
+#endif
 
 bool IsStorageAligned(std::span<std::byte> device_storage, std::size_t alignment) {
     if (device_storage.data() == nullptr) {
@@ -1002,7 +1067,8 @@ RhiStatus D3D11RhiDevice::CreateBuffer(
 RhiStatus D3D11RhiDevice::UpdateBuffer(
     RhiBufferHandle handle,
     std::span<const std::uint8_t> bytes,
-    RhiFenceHandle &out_fence) {
+    RhiFenceHandle &out_fence,
+    std::uint64_t destination_byte_offset) {
     out_fence = RhiFenceHandle{};
     if (!IsBufferHandleValid(handle)) {
         return RecordFailure(RhiStatus::InvalidHandle);
@@ -1013,11 +1079,24 @@ RhiStatus D3D11RhiDevice::UpdateBuffer(
     }
 
     D3D11BufferSlot &slot = buffers_[handle.slot];
-    if (bytes.size() > slot.desc.size_bytes) {
+    if (!ByteRangeFits(destination_byte_offset, bytes.size(), slot.desc.size_bytes)) {
         return RecordFailure(RhiStatus::CapacityExceeded);
     }
 
-    context_->UpdateSubresource(slot.buffer, 0U, nullptr, bytes.data(), 0U, 0U);
+    const std::uint64_t end_byte_offset =
+        destination_byte_offset + static_cast<std::uint64_t>(bytes.size());
+    if (end_byte_offset > std::numeric_limits<UINT>::max()) {
+        return RecordFailure(RhiStatus::CapacityExceeded);
+    }
+
+    D3D11_BOX update_box{};
+    update_box.left = static_cast<UINT>(destination_byte_offset);
+    update_box.top = 0U;
+    update_box.front = 0U;
+    update_box.right = static_cast<UINT>(end_byte_offset);
+    update_box.bottom = 1U;
+    update_box.back = 1U;
+    context_->UpdateSubresource(slot.buffer, 0U, &update_box, bytes.data(), 0U, 0U);
     out_fence = SignalFence(bytes.size());
     ++snapshot_.resources.updated_primitive_count;
     return RhiStatus::Success;
@@ -1111,19 +1190,43 @@ RhiStatus D3D11RhiDevice::CreateTexture(
 RhiStatus D3D11RhiDevice::UpdateTexture(
     RhiTextureHandle handle,
     std::span<const std::uint8_t> bytes,
-    RhiFenceHandle &out_fence) {
+    RhiFenceHandle &out_fence,
+    std::uint64_t destination_byte_offset) {
     out_fence = RhiFenceHandle{};
     if (!IsTextureHandleValid(handle)) {
         return RecordFailure(RhiStatus::InvalidHandle);
     }
 
+    if (bytes.empty()) {
+        return RecordFailure(RhiStatus::InvalidDescriptor);
+    }
+
     D3D11TextureSlot &slot = textures_[handle.slot];
-    if (bytes.size() != TextureByteCount(slot.desc)) {
+    const std::size_t texture_byte_count = TextureByteCount(slot.desc);
+    if (!ByteRangeFits(destination_byte_offset, bytes.size(), texture_byte_count)) {
         return RecordFailure(RhiStatus::InvalidDescriptor);
     }
 
     const UINT row_bytes = static_cast<UINT>(slot.desc.extent.width) * RGBA8_BYTES_PER_PIXEL;
-    context_->UpdateSubresource(slot.texture, 0U, nullptr, bytes.data(), row_bytes, 0U);
+    if (destination_byte_offset == 0ULL && bytes.size() == texture_byte_count) {
+        context_->UpdateSubresource(slot.texture, 0U, nullptr, bytes.data(), row_bytes, 0U);
+        out_fence = SignalFence(bytes.size());
+        ++snapshot_.resources.updated_primitive_count;
+        return RhiStatus::Success;
+    }
+
+    D3D11_BOX update_box{};
+    UINT update_row_bytes = 0U;
+    if (!MakeFullRowTextureUpdateBox(
+            slot.desc,
+            destination_byte_offset,
+            bytes.size(),
+            &update_box,
+            &update_row_bytes)) {
+        return RecordFailure(RhiStatus::InvalidDescriptor);
+    }
+
+    context_->UpdateSubresource(slot.texture, 0U, &update_box, bytes.data(), update_row_bytes, 0U);
     out_fence = SignalFence(bytes.size());
     ++snapshot_.resources.updated_primitive_count;
     return RhiStatus::Success;

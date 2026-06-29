@@ -78,6 +78,19 @@ bool HasSamplerWithoutSampledTexture(
 
     return false;
 }
+
+bool ByteRangeFits(
+    std::uint64_t byte_offset,
+    std::size_t byte_count,
+    std::size_t total_byte_count) {
+    const std::uint64_t total_bytes = static_cast<std::uint64_t>(total_byte_count);
+    if (byte_offset > total_bytes) {
+        return false;
+    }
+
+    const std::uint64_t remaining_bytes = total_bytes - byte_offset;
+    return static_cast<std::uint64_t>(byte_count) <= remaining_bytes;
+}
 }
 
 RhiDeviceCreateResult RhiDeviceFactory::CreateDevice(const RhiDeviceDesc &desc, NullRhiDevice *null_device) {
@@ -836,7 +849,8 @@ RhiStatus NullRhiDevice::CreateBuffer(
 RhiStatus NullRhiDevice::UpdateBuffer(
     RhiBufferHandle handle,
     std::span<const std::uint8_t> bytes,
-    RhiFenceHandle &out_fence) {
+    RhiFenceHandle &out_fence,
+    std::uint64_t destination_byte_offset) {
     out_fence = RhiFenceHandle{};
     if (!IsBufferHandleValid(handle)) {
         return RecordFailure(RhiStatus::InvalidHandle);
@@ -847,11 +861,12 @@ RhiStatus NullRhiDevice::UpdateBuffer(
     }
 
     NullBufferSlot &slot = buffers_[handle.slot];
-    if (bytes.size() > slot.bytes.size()) {
+    if (!ByteRangeFits(destination_byte_offset, bytes.size(), slot.bytes.size())) {
         return RecordFailure(RhiStatus::CapacityExceeded);
     }
 
-    std::copy(bytes.begin(), bytes.end(), slot.bytes.begin());
+    const std::size_t destination_byte_index = static_cast<std::size_t>(destination_byte_offset);
+    std::copy(bytes.begin(), bytes.end(), slot.bytes.begin() + destination_byte_index);
     out_fence = SignalFence(bytes.size());
     ++snapshot_.resources.updated_primitive_count;
     return RhiStatus::Success;
@@ -905,18 +920,24 @@ RhiStatus NullRhiDevice::CreateTexture(
 RhiStatus NullRhiDevice::UpdateTexture(
     RhiTextureHandle handle,
     std::span<const std::uint8_t> bytes,
-    RhiFenceHandle &out_fence) {
+    RhiFenceHandle &out_fence,
+    std::uint64_t destination_byte_offset) {
     out_fence = RhiFenceHandle{};
     if (!IsTextureHandleValid(handle)) {
         return RecordFailure(RhiStatus::InvalidHandle);
     }
 
-    NullTextureSlot &slot = textures_[handle.slot];
-    if (bytes.size() != slot.bytes.size()) {
+    if (bytes.empty()) {
         return RecordFailure(RhiStatus::InvalidDescriptor);
     }
 
-    std::copy(bytes.begin(), bytes.end(), slot.bytes.begin());
+    NullTextureSlot &slot = textures_[handle.slot];
+    if (!ByteRangeFits(destination_byte_offset, bytes.size(), slot.bytes.size())) {
+        return RecordFailure(RhiStatus::InvalidDescriptor);
+    }
+
+    const std::size_t destination_byte_index = static_cast<std::size_t>(destination_byte_offset);
+    std::copy(bytes.begin(), bytes.end(), slot.bytes.begin() + destination_byte_index);
     out_fence = SignalFence(bytes.size());
     ++snapshot_.resources.updated_primitive_count;
     return RhiStatus::Success;
