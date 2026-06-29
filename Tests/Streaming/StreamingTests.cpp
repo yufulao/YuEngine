@@ -14,7 +14,9 @@
 #include "YuEngine/File/AsyncFileReadQueue.h"
 #include "YuEngine/File/MountTable.h"
 #include "YuEngine/Memory/MemoryAccountingStatus.h"
+#include "YuEngine/Package/PackageArtifact.h"
 #include "YuEngine/Package/PackageRegistry.h"
+#include "YuEngine/Package/PackageStatus.h"
 #include "YuEngine/Resource/ResourceCachePayloadRequest.h"
 #include "YuEngine/Resource/ResourceCachePayloadSnapshot.h"
 #include "YuEngine/Resource/ResourceCachePayloadStatus.h"
@@ -57,6 +59,9 @@ using yuengine::file::MountId;
 using yuengine::file::MountTable;
 using yuengine::file::VirtualPath;
 using yuengine::memory::MemoryAccountingStatus;
+using yuengine::package::PackageArtifactReadRequest;
+using yuengine::package::PackageArtifactResult;
+using yuengine::package::PackageArtifactWriteRequest;
 using yuengine::package::PackageEntryDescriptor;
 using yuengine::package::PackageEntryId;
 using yuengine::package::PackageId;
@@ -65,6 +70,9 @@ using yuengine::package::PackageLoadPlanResult;
 using yuengine::package::PackageRegistry;
 using yuengine::package::PackageRegistrationResult;
 using yuengine::package::PackageSourceKey;
+using yuengine::package::PackageStatus;
+using yuengine::package::ReadPackageArtifact;
+using yuengine::package::WritePackageArtifact;
 using yuengine::resource::ResourceCachePayloadRequest;
 using yuengine::resource::ResourceCachePayloadSnapshot;
 using yuengine::resource::ResourceCachePayloadStatus;
@@ -216,9 +224,13 @@ constexpr const char *TEST_PIPELINE_CACHE_PAYLOAD =
     "Streaming_ResourceStreamingPipeline_CachePayloadOnlyStoresPackageWindow";
 constexpr const char *TEST_PIPELINE_CACHE_PAYLOAD_STORE_FAILURE =
     "Streaming_ResourceStreamingPipeline_CachePayloadRejectsStoreFailureWithoutMutation";
+constexpr const char *TEST_PIPELINE_PACKAGE_ARTIFACT_CACHE_PAYLOAD =
+    "Streaming_ResourceStreamingPipeline_PackageArtifactFeedsCachePayloadU64Window";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char *PRIMARY_MOUNT = "Primary";
+constexpr const char *PACKAGE_ARTIFACT_MOUNT = "PackageArtifact";
+constexpr const char *PACKAGE_ARTIFACT_PATH = "PackageToStreamingArtifact.txt";
 constexpr const char *FIXTURE_PATH = "Nested/FixtureFile.txt";
 constexpr const char *PACKAGE_SOURCE_KEY = "fixtures/fixture_file.txt";
 constexpr const char *FIXTURE_TEXT = "yuengine file fixture\n";
@@ -273,6 +285,25 @@ MountTable CreateMountedTable() {
     return table;
 }
 
+std::filesystem::path StreamingPackageArtifactRoot(std::string_view test_name) {
+    std::filesystem::path root = std::filesystem::temp_directory_path();
+    root /= "YuEngineStreamingPackageArtifactTests";
+    root /= std::string(test_name);
+    return root;
+}
+
+bool AddPackageArtifactMount(MountTable *table, std::string_view test_name) {
+    if (table == nullptr) {
+        return false;
+    }
+
+    const std::filesystem::path root = StreamingPackageArtifactRoot(test_name);
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root);
+    const FileStatus mount_status = table->RegisterLooseMount(MountId(PACKAGE_ARTIFACT_MOUNT), root);
+    return mount_status == FileStatus::Success;
+}
+
 bool BuildPackageRecord(PackageLoadPlanRecord *output_record, std::uint32_t byte_offset, std::uint32_t byte_size) {
     if (output_record == nullptr) {
         return false;
@@ -299,6 +330,82 @@ bool BuildPackageRecord(PackageLoadPlanRecord *output_record, std::uint32_t byte
 
     const PackageLoadPlanResult load_plan =
         registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_TEXTURE, ResourceLogicalKey(RESOURCE_KEY));
+    if (!load_plan.Succeeded()) {
+        return false;
+    }
+
+    if (load_plan.plan.record_count != 1U) {
+        return false;
+    }
+
+    *output_record = load_plan.plan.records[0U];
+    return true;
+}
+
+bool BuildPackageArtifactRecord(
+    MountTable *table,
+    PackageLoadPlanRecord *output_record,
+    std::string_view test_name) {
+    if (table == nullptr) {
+        return false;
+    }
+
+    if (output_record == nullptr) {
+        return false;
+    }
+
+    if (!AddPackageArtifactMount(table, test_name)) {
+        return false;
+    }
+
+    const std::uint32_t archive_window_offset = static_cast<std::uint32_t>(ARCHIVE_WINDOW_OFFSET);
+    const std::uint32_t archive_window_size = static_cast<std::uint32_t>(ARCHIVE_WINDOW_SIZE);
+    PackageEntryDescriptor descriptor{
+        PACKAGE_A,
+        ENTRY_TEXTURE,
+        TYPE_TEXTURE,
+        ResourceLogicalKey(RESOURCE_KEY),
+        PackageSourceKey(PACKAGE_SOURCE_KEY),
+        archive_window_offset,
+        archive_window_size};
+    descriptor.payload_logical_byte_count = U64_PAYLOAD_LOGICAL_BYTE_COUNT;
+    descriptor.payload_window_byte_offset = PAYLOAD_WINDOW_OFFSET;
+    descriptor.payload_window_byte_size = ARCHIVE_WINDOW_SIZE;
+    const std::array<PackageEntryDescriptor, 1U> entries{descriptor};
+
+    PackageArtifactWriteRequest write_request{};
+    write_request.mount_table = table;
+    write_request.mount = MountId(PACKAGE_ARTIFACT_MOUNT);
+    write_request.artifact_path = VirtualPath(PACKAGE_ARTIFACT_PATH);
+    write_request.package = PACKAGE_A;
+    write_request.entries = entries.data();
+    write_request.entry_count = static_cast<std::uint32_t>(entries.size());
+    const PackageArtifactResult write_result = WritePackageArtifact(write_request);
+    if (write_result.status != PackageStatus::Success) {
+        return false;
+    }
+
+    if (!write_result.wrote_artifact) {
+        return false;
+    }
+
+    PackageRegistry artifact_registry;
+    PackageArtifactReadRequest read_request{};
+    read_request.mount_table = table;
+    read_request.mount = MountId(PACKAGE_ARTIFACT_MOUNT);
+    read_request.artifact_path = VirtualPath(PACKAGE_ARTIFACT_PATH);
+    read_request.registry = &artifact_registry;
+    const PackageArtifactResult read_result = ReadPackageArtifact(read_request);
+    if (read_result.status != PackageStatus::Success) {
+        return false;
+    }
+
+    if (!read_result.rebuilt_registry) {
+        return false;
+    }
+
+    const PackageLoadPlanResult load_plan =
+        artifact_registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_TEXTURE, ResourceLogicalKey(RESOURCE_KEY));
     if (!load_plan.Succeeded()) {
         return false;
     }
@@ -3180,6 +3287,185 @@ int StreamingResourceStreamingPipelineCachePayloadOnlyStoresPackageWindow() {
     return 0;
 }
 
+int StreamingResourceStreamingPipelinePackageArtifactFeedsCachePayloadU64Window() {
+    MountTable table = CreateMountedTable();
+    PackageLoadPlanRecord record;
+    if (!BuildPackageArtifactRecord(&table, &record, TEST_PIPELINE_PACKAGE_ARTIFACT_CACHE_PAYLOAD)) {
+        return Fail("pipeline package artifact record build failed");
+    }
+
+    if (record.archive_byte_offset != ARCHIVE_WINDOW_OFFSET) {
+        return Fail("pipeline package artifact archive offset changed");
+    }
+
+    if (record.archive_byte_size != ARCHIVE_WINDOW_SIZE) {
+        return Fail("pipeline package artifact archive size changed");
+    }
+
+    if (record.payload_logical_byte_count != U64_PAYLOAD_LOGICAL_BYTE_COUNT) {
+        return Fail("pipeline package artifact payload logical count changed");
+    }
+
+    if (record.payload_window_byte_offset != PAYLOAD_WINDOW_OFFSET) {
+        return Fail("pipeline package artifact payload window offset changed");
+    }
+
+    if (record.payload_window_byte_size != ARCHIVE_WINDOW_SIZE) {
+        return Fail("pipeline package artifact payload window size changed");
+    }
+
+    AsyncFileReadQueue file_queue;
+    if (file_queue.Initialize(2U, 2U) != AsyncFileReadStatus::Success) {
+        return Fail("pipeline package artifact file queue initialize failed");
+    }
+
+    if (file_queue.Start() != AsyncFileReadStatus::Success) {
+        return Fail("pipeline package artifact file queue start failed");
+    }
+
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("pipeline package artifact resource registration failed");
+    }
+
+    const std::uint32_t archive_window_size = static_cast<std::uint32_t>(record.archive_byte_size);
+    if (!AdmitCachePayloadResource(resource_registry, resource_result.handle, TYPE_TEXTURE, archive_window_size)) {
+        return Fail("pipeline package artifact resource admission failed");
+    }
+
+    std::array<std::uint8_t, OUTPUT_CAPACITY> staged_bytes{};
+    ResourceStreamingPipelineRequest request;
+    request.resource_registry = &resource_registry;
+    request.file_queue = &file_queue;
+    request.package_record = record;
+    request.resource = resource_result.handle;
+    request.expected_type = TYPE_TEXTURE;
+    request.file_request = BuildFileRequest(table, staged_bytes.data(), staged_bytes.size());
+    request.staged_bytes = std::span<const std::uint8_t>(staged_bytes.data(), staged_bytes.size());
+    request.store_cache_payload_only = true;
+    request.cache_payload_id = CACHE_PAYLOAD_ONE;
+    request.staging_request_id = REQUEST_ONE;
+
+    ResourceStreamingPipeline pipeline;
+    if (pipeline.Submit(request) != ResourceStreamingPipelineStatus::Queued) {
+        return Fail("pipeline package artifact submit did not queue");
+    }
+
+    if (file_queue.Shutdown(false) != AsyncFileReadStatus::ShutdownComplete) {
+        return Fail("pipeline package artifact file queue shutdown failed");
+    }
+
+    AsyncFileReadResult file_result;
+    if (!DrainOneFileCompletion(file_queue, &file_result)) {
+        return Fail("pipeline package artifact file completion drain failed");
+    }
+
+    if (pipeline.CompleteFileRead(file_result) != ResourceStreamingPipelineStatus::Success) {
+        return Fail("pipeline package artifact did not store cache payload");
+    }
+
+    const PackageResourceStagingCompletion staging_completion = pipeline.LastStagingCompletion();
+    if (staging_completion.package_record.payload_logical_byte_count != U64_PAYLOAD_LOGICAL_BYTE_COUNT) {
+        return Fail("pipeline package artifact staging logical count changed");
+    }
+
+    if (staging_completion.package_record.payload_window_byte_offset != PAYLOAD_WINDOW_OFFSET) {
+        return Fail("pipeline package artifact staging window offset changed");
+    }
+
+    if (staging_completion.package_record.payload_window_byte_size != ARCHIVE_WINDOW_SIZE) {
+        return Fail("pipeline package artifact staging window size changed");
+    }
+
+    const ResourceCachePayloadBridgeResult cache_result = pipeline.LastCachePayloadResult();
+    if (cache_result.status != ResourceCachePayloadBridgeStatus::Success) {
+        return Fail("pipeline package artifact cache bridge status changed");
+    }
+
+    if (cache_result.cache_payload_status != ResourceCachePayloadStatus::Success) {
+        return Fail("pipeline package artifact resource status changed");
+    }
+
+    if (cache_result.payload_logical_byte_count != U64_PAYLOAD_LOGICAL_BYTE_COUNT) {
+        return Fail("pipeline package artifact cache logical count changed");
+    }
+
+    if (cache_result.payload_window_byte_offset != PAYLOAD_WINDOW_OFFSET) {
+        return Fail("pipeline package artifact cache window offset changed");
+    }
+
+    if (cache_result.payload_window_byte_size != ARCHIVE_WINDOW_SIZE) {
+        return Fail("pipeline package artifact cache window size changed");
+    }
+
+    if (pipeline.LastUploadCompletion().upload_id != 0U) {
+        return Fail("pipeline package artifact entered upload stage");
+    }
+
+    if (pipeline.LastCommitCompletion().commit_id != 0U) {
+        return Fail("pipeline package artifact entered commit stage");
+    }
+
+    const ResourceStreamingPipelineSnapshot pipeline_snapshot = pipeline.Snapshot();
+    if (pipeline_snapshot.completed_count != 1U) {
+        return Fail("pipeline package artifact completed count changed");
+    }
+
+    if (pipeline_snapshot.failed_count != 0U) {
+        return Fail("pipeline package artifact failed count changed");
+    }
+
+    if (pipeline_snapshot.has_active_request) {
+        return Fail("pipeline package artifact active request was not cleared");
+    }
+
+    const ResourceCachePayloadSnapshot cache_snapshot = resource_registry.CachePayloadSnapshot();
+    if (cache_snapshot.cached_payload_count != 1U) {
+        return Fail("pipeline package artifact did not store cache payload");
+    }
+
+    if (cache_snapshot.last_payload_logical_byte_count != U64_PAYLOAD_LOGICAL_BYTE_COUNT) {
+        return Fail("pipeline package artifact cache snapshot logical count changed");
+    }
+
+    if (cache_snapshot.last_payload_window_byte_offset != PAYLOAD_WINDOW_OFFSET) {
+        return Fail("pipeline package artifact cache snapshot window offset changed");
+    }
+
+    std::array<std::uint8_t, 4U> output_bytes{};
+    std::uint32_t output_byte_count = 0U;
+    const std::uint64_t read_window_size = static_cast<std::uint64_t>(output_bytes.size());
+    const ResourceCachePayloadRequest read_request = BuildCachePayloadReadRequest(
+        resource_result.handle,
+        TYPE_TEXTURE,
+        CACHE_PAYLOAD_ONE,
+        U64_PAYLOAD_LOGICAL_BYTE_COUNT,
+        PAYLOAD_WINDOW_OFFSET,
+        read_window_size);
+    const ResourceCachePayloadStatus read_status = resource_registry.ReadCachePayload(
+        read_request,
+        output_bytes.data(),
+        static_cast<std::uint32_t>(output_bytes.size()),
+        &output_byte_count);
+    if (read_status != ResourceCachePayloadStatus::Success) {
+        return Fail("pipeline package artifact cache payload read failed");
+    }
+
+    if (output_byte_count != static_cast<std::uint32_t>(output_bytes.size())) {
+        return Fail("pipeline package artifact read byte count changed");
+    }
+
+    const std::string expected_text = ArchiveWindowText(ARCHIVE_WINDOW_OFFSET, read_window_size);
+    const std::string output_text(output_bytes.begin(), output_bytes.end());
+    if (output_text != expected_text) {
+        return Fail("pipeline package artifact cache bytes changed");
+    }
+
+    std::filesystem::remove_all(StreamingPackageArtifactRoot(TEST_PIPELINE_PACKAGE_ARTIFACT_CACHE_PAYLOAD));
+    return 0;
+}
+
 int StreamingResourceStreamingPipelineCachePayloadRejectsStoreFailureWithoutMutation() {
     MountTable table = CreateMountedTable();
     AsyncFileReadQueue file_queue;
@@ -3403,6 +3689,8 @@ int main(int argc, char **argv) {
         {TEST_UPLOAD_COMMIT_SNAPSHOT, StreamingResourceUploadCommitSnapshotReportsBoundedCounters},
         {TEST_PIPELINE_FIXTURE_BUFFER, StreamingResourceStreamingPipelineFixtureBufferReadUploadCommit},
         {TEST_PIPELINE_CACHE_PAYLOAD, StreamingResourceStreamingPipelineCachePayloadOnlyStoresPackageWindow},
+        {TEST_PIPELINE_PACKAGE_ARTIFACT_CACHE_PAYLOAD,
+         StreamingResourceStreamingPipelinePackageArtifactFeedsCachePayloadU64Window},
         {TEST_PIPELINE_CACHE_PAYLOAD_STORE_FAILURE,
          StreamingResourceStreamingPipelineCachePayloadRejectsStoreFailureWithoutMutation}};
 
