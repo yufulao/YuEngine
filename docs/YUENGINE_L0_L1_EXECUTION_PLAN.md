@@ -313,6 +313,21 @@ UI/GameAdapter/gameplay, material graph, shader compiler pipeline, scene loader,
 old-package compatibility, real codec/parser, Package/Resource public API
 expansion, L0-AUD-005 sample PCM path, L0-AUD-003 callback proof, adjacent/full
 suites, and broad/full CTest stay outside this closure.
+L0-AUD-001 deterministic mixer/test backend closure is PASS at
+`aee81a39d9d9ee063f9f57bc5bab5137d88cbc9f`: readiness task `453eca90`
+records READY, and focused QA task `82548add-9a8a-48a7-adf1-ba837608fd07`
+reports first-slice discovery exactly 24 rows, tests `#804` through `#827`,
+`YuAudioTests` focused build PASS, exact 24-row execution `24/24` PASS with
+`0 failed`, BGM/SE/SFX/music/business ID scan `0`, and a clean read-only QA
+workspace. The executed set excluded Callback, PCM packet/stream queue,
+hardware, sample, and L1 rows. L0-AUD-002, L0-AUD-003, L0-AUD-004,
+L0-AUD-005, L0-RES-006, L0-SAMPLE-006, AudioResource, AudioScene, hardware
+smoke, sample scripts, screenshots/reports/manual listening proof,
+adjacent/full Audio/AudioResource/Resource/Sample suites, RuntimeAsset/Asset
+Manager, RenderScene/RHI, World/editor/importer, UI/GameAdapter/gameplay,
+material graph, shader compiler pipeline, scene loader, old-package
+compatibility, real codec/parser, Package/Resource public API expansion, and
+broad/full CTest stay outside this closure.
 
 
 ## 2. Current Progress Assessment
@@ -2006,11 +2021,16 @@ dependency execution, and broad/full CTest stay outside these closures.
 
 | ID | Work item | Depends on | Acceptance |
 | --- | --- | --- | --- |
-| L0-AUD-001 | Reconfirm deterministic mixer/test backend | current Audio first slices | existing fast tests remain deterministic and no business BGM/SE IDs appear |
+| L0-AUD-001 | Reconfirm deterministic mixer/test backend | current Audio first slices | Closed at `origin/main@aee81a39d9d9ee063f9f57bc5bab5137d88cbc9f`: readiness task `453eca90` records READY; focused QA task `82548add-9a8a-48a7-adf1-ba837608fd07` reports first-slice discovery exactly 24 rows, tests `#804` through `#827`, successful `YuAudioTests` focused build, exact 24-row execution `24/24`, BGM/SE/SFX/music/business ID scan `0`, and clean read-only QA; executed rows excluded Callback, PCM packet/stream queue, hardware, sample, and L1 rows; L0-AUD-002, L0-AUD-003, L0-AUD-004, L0-AUD-005, L0-RES-006, L0-SAMPLE-006, AudioResource, AudioScene, adjacent/full suites, hardware smoke, sample scripts, manual proof, and broad/full CTest stay separate |
 | L0-AUD-002 | Close PCM packet/stream queue | L0-AUD-001 | caller-owned packet records and queue drain pass without hidden allocation |
 | L0-AUD-003 | Close XAudio2 callback proof | L0-AUD-002 | supported machine passes hardware smoke; unavailable machine reports explicit skip/status |
 | L0-AUD-004 | Audio callback cost proof | L0-AUD-003 | callback path has no file IO, sleeps, or unbounded allocation |
 | L0-AUD-005 | Add sample PCM path | L0-AUD-002, L0-RES-006 | sample plays/queues PCM or emits explicit unavailable-device status |
+
+L0-AUD-001 evidence is limited to deterministic Audio first-slice mixer/test
+backend rows. The exact 24-row execution reported `0 failed`. Callback, PCM
+packet/stream queue, hardware, sample, and L1 rows remain governed by their own
+IDs and evidence lanes.
 
 ### 12.7 L0 Input Backlog
 

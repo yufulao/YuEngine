@@ -113,6 +113,27 @@ old-package compatibility, real codec/parser, Package/Resource public API
 expansion, L0-AUD-005 sample PCM path, L0-AUD-003 callback proof,
 adjacent/full suites, and broad/full CTest outside this closure.
 
+## 3.4 L0-AUD-001 Evidence Sync
+
+L0-AUD-001 deterministic mixer/test backend closure is PASS at
+`aee81a39d9d9ee063f9f57bc5bab5137d88cbc9f`. Readiness task `453eca90`
+records READY.
+
+Focused QA task `82548add-9a8a-48a7-adf1-ba837608fd07` reports first-slice
+discovery exactly 24 rows, tests `#804` through `#827`, `YuAudioTests` focused
+build PASS, exact 24-row execution `24/24` PASS with `0 failed`, BGM/SE/SFX/
+music/business ID scan `0`, and a clean read-only QA workspace. The executed
+set excluded Callback, PCM packet/stream queue, hardware, sample, and L1 rows.
+
+This evidence keeps L0-AUD-002 PCM packet/stream queue, L0-AUD-003 XAudio2
+callback proof, L0-AUD-004 callback cost proof, L0-AUD-005 sample PCM path,
+L0-RES-006, L0-SAMPLE-006, AudioResource, AudioScene, hardware smoke, sample
+scripts, screenshots/reports/manual listening proof, adjacent/full suites,
+RuntimeAsset/Asset Manager, RenderScene/RHI, World/editor/importer,
+UI/GameAdapter/gameplay, material graph, shader compiler pipeline, scene loader,
+old-package compatibility, real codec/parser, Package/Resource public API
+expansion, and broad/full CTest outside this closure.
+
 ## 4. L1 Runtime Bridge Audit
 
 | Bridge | Direction | Source owner | Destination owner | Lifecycle owner | Failure statuses | Bounds | Tests | Risk | Required action |

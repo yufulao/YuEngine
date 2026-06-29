@@ -229,6 +229,17 @@ At the latest handoff:
   loader, old-package compatibility, real codec/parser, Package/Resource public
   API expansion, L0-AUD-005 sample PCM path, L0-AUD-003 callback proof,
   adjacent/full suites, and broad/full CTest remain separate;
+- L0-AUD-001 deterministic mixer/test backend closure is PASS at
+  `aee81a39d9d9ee063f9f57bc5bab5137d88cbc9f`; readiness task `453eca90`
+  records READY, and focused QA task
+  `82548add-9a8a-48a7-adf1-ba837608fd07` reports first-slice discovery
+  exactly 24 rows, tests `#804` through `#827`, `YuAudioTests` focused build
+  PASS, exact 24-row execution `24/24` PASS with `0 failed`, BGM/SE/SFX/music/
+  business ID scan `0`, and a clean read-only QA workspace; the executed set
+  excluded Callback, PCM packet/stream queue, hardware, sample, and L1 rows, and
+  this sync does not close L0-AUD-002, L0-AUD-003, L0-AUD-004, L0-AUD-005,
+  L0-RES-006, L0-SAMPLE-006, AudioResource, AudioScene, hardware smoke, sample
+  scripts, manual proof, adjacent/full suites, or broad/full CTest;
 - WorldObject-facing runtime instance mapping and broader Resource/File/VFS
   follow-through remain blocked until their own gates are released.
 
