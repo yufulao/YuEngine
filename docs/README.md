@@ -251,6 +251,19 @@ At the latest handoff:
   callback rows were discovery-only for later Audio lanes, while hardware,
   sample, AudioResource, AudioScene, L1 rows, adjacent/full suites, and
   broad/full CTest remain separate;
+- L0-AUD-003 XAudio2 callback proof closure is PASS at
+  `1a1964abbb1ad021d5695ec5ea2e26ee8d5b5f6d`; readiness task `1dec3d24`
+  records READY, fast QA task `727479bd-065f-4c6d-9a0f-0cacd2763741`
+  reports callback discovery/execution `18/18`, tests `#828` through `#839`
+  and `#868` through `#873`, `YuAudioTests` focused build
+  PASS, and hardware QA task `fb347834-96a8-4f5c-913d-d3f354e8478e`
+  reports hardware/strict hardware discovery `2` rows, tests `#874` through
+  `#875`, `YuAudioHardwareSmokeTests` build
+  PASS, `windows-hardware-smoke` execution `2/2` PASS, and
+  `windows-strict-hardware-smoke` execution `2/2` PASS; this is supported
+  hardware evidence with no skip, while callback cost, sample PCM path,
+  AudioResource, AudioScene, L1 rows, adjacent/full suites, and broad/full
+  CTest remain separate;
 - WorldObject-facing runtime instance mapping and broader Resource/File/VFS
   follow-through remain blocked until their own gates are released.
 

@@ -37,7 +37,7 @@ The audit is aligned to `YUENGINE_L0_COMPLETION_MATRIX.md`:
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `HardwareFrameHost` | Platform/Input/Audio/RenderCore/RHI adapters into one hardware tick | Platform/Input/Audio/RenderCore/RHI modules keep their own internals | Hardware consumes module public contracts | Hardware owns host initialize/tick/shutdown only | `HardwareFrameHostStatus`, `HardwareFrameHostTickResult`, plus mapped module statuses | Tick requests, event output, gamepad polling, audio chunks, render frame storage | `HardwareFrameHost_*`, `HardwareFrameHost_D3D11IntegratedFrameRuns` | `BlockedByEnv` | `Medium` | Keep as orchestrating adapter only; target hardware smoke remains required before product-done claim |
 | `InputBridge` and `InputBridgeWindows` | Platform messages and XInput snapshots to Input events | Platform/Win32/XInput source values | Input owns event queue and snapshots | Input owns bridge init/shutdown and event storage | `InputStatus` including `UnsupportedBackend`, `SourceUnavailable`, `FocusLost`, `OutputBufferFull`, `BackendError` | `InputBridgeDesc::MAX_EVENT_CAPACITY`, gamepad user index, drain output capacity | `Input_Bridge*`, `Input_BridgeXInput*`, `HardwareFrameHost_GamepadPollRejectsInvalidIndex` | `Done` and XInput `BlockedByEnv` | `Medium` | Keep platform-native details private; real gamepad smoke may only skip through explicit unavailable status |
-| `AudioPcmStreamQueueCallbackBridge` | Audio PCM stream queue to `AudioCallbackDevice` or test submitter | Audio stream queue owns chunks and handles | Audio callback device consumes submitted chunks | Audio owns queue, callback device owns hardware callback | `AudioStatus` including `DeviceUnavailable`, `BufferSubmitFailed`, `CallbackFailed`, `CallbackTimeout` | Scratch chunk storage, stream queue capacity, callback drain count | `Audio_*`, `AudioScene_*`, hardware `Audio`/`XAudio2` smoke | XAudio2 `BlockedByEnv` | `Medium` | Keep callback bridge free of file/resource parsing and unbounded callback work; target XAudio2 proof is still required |
+| `AudioPcmStreamQueueCallbackBridge` | Audio PCM stream queue to `AudioCallbackDevice` or test submitter | Audio stream queue owns chunks and handles | Audio callback device consumes submitted chunks | Audio owns queue, callback device owns hardware callback | `AudioStatus` including `DeviceUnavailable`, `BufferSubmitFailed`, `CallbackFailed`, `CallbackTimeout` | Scratch chunk storage, stream queue capacity, callback drain count | `Audio_*`, `AudioScene_*`, hardware `Audio`/`XAudio2` smoke | `Done` for XAudio2 callback proof | `Medium` | Keep callback bridge free of file/resource parsing; callback cost proof and sample PCM path stay separate |
 | `AudioResourcePcmPacketImportBridge` | Resource decoded audio result to AudioResource PCM packet record | Resource owns decoded result record | AudioResource owns PCM packet import records | AudioResource owns import handle lifetime; Resource handle remains external | `AudioResourcePcmPacketImportStatus` plus Resource decode status evidence | Import slots, packet IDs, format/sample/frame/byte validation | `AudioResource_PcmPacketImportBridge_*`, `Audio_PcmSamplePacket_*`, `Audio_PcmStreamQueue_*` | `Done` | `Medium` | Keep codec expansion outside this bridge; Audio must not parse Resource payloads |
 | `PackageResourceStagingQueue` | Package load-plan record to File async read completion for Streaming | Package owns load-plan record; File owns async read result | Streaming owns staging queue records | Streaming owns pending/completion slots | `PackageResourceStagingStatus`, `ResourceStatus`, `AsyncFileReadStatus` | `MAX_PACKAGE_RESOURCE_STAGING_REQUEST_COUNT`, completion output capacity | `Streaming_PackageResourceStaging_*` | `Done` | `Medium` | Keep package as value plan provider; do not reintroduce old package runtime behavior |
 | `ResourceUploadQueue` | Staging completion to RHI upload request/completion | Streaming owns staging completion | RHI owns backend resource creation; Resource receives completion later | Streaming owns upload pending/completion slots | `ResourceUploadStatus`, `ResourceStatus`, `RhiStatus` | `MAX_RESOURCE_UPLOAD_REQUEST_COUNT`, byte range, completion output capacity | `Streaming_ResourceUpload_*` | `Done` | `Medium` | Keep Resource from owning RHI device lifecycle; hardware backend proof stays separate |
@@ -156,6 +156,33 @@ material graph, shader compiler pipeline, scene loader, old-package
 compatibility, real codec/parser, Package/Resource public API expansion, and
 broad/full CTest outside this closure.
 
+## 3.6 L0-AUD-003 Evidence Sync
+
+L0-AUD-003 XAudio2 callback proof closure is PASS at
+`1a1964abbb1ad021d5695ec5ea2e26ee8d5b5f6d`. Readiness task `1dec3d24`
+records READY.
+
+Fast QA task `727479bd-065f-4c6d-9a0f-0cacd2763741` reports callback
+discovery/execution `18/18`, tests `#828` through `#839` and `#868` through
+`#873`, `YuAudioTests` focused build
+PASS, exact fast execution `18/18` PASS with `0 failed`, and a clean read-only
+QA workspace.
+
+Hardware QA task `fb347834-96a8-4f5c-913d-d3f354e8478e` reports hardware and
+strict hardware discovery `2` rows, tests `#874` through `#875`,
+`YuAudioHardwareSmokeTests` build
+PASS, `windows-hardware-smoke` execution `2/2` PASS,
+`windows-strict-hardware-smoke` execution `2/2` PASS, supported hardware path,
+and no skip.
+
+This evidence keeps L0-AUD-004 callback cost proof, L0-AUD-005 sample PCM path,
+AudioResource, AudioScene, sample scripts, screenshots/reports/manual listening
+proof, L1 rows, adjacent/full suites, RuntimeAsset/Asset Manager,
+RenderScene/RHI, World/editor/importer, UI/GameAdapter/gameplay, material graph,
+shader compiler pipeline, scene loader, old-package compatibility, real
+codec/parser, Package/Resource public API expansion, and broad/full CTest
+outside this closure.
+
 ## 4. L1 Runtime Bridge Audit
 
 | Bridge | Direction | Source owner | Destination owner | Lifecycle owner | Failure statuses | Bounds | Tests | Risk | Required action |
@@ -195,7 +222,7 @@ broad/full CTest outside this closure.
 
 | Row | Classification | Evidence gap or blocker | Current containment |
 | --- | --- | --- | --- |
-| L0 hardware bridges (`HardwareFrameHost`, XAudio2 callback, XInput, D3D11 frame pipelines) | `Medium` architecture risk, `BlockedByEnv` proof state | Target production hardware must run `windows-hardware-smoke` and `windows-strict-hardware-smoke` | Public contracts are value/status based and have fast fixture tests |
+| L0 hardware bridges (`HardwareFrameHost`, XAudio2 callback, XInput, D3D11 frame pipelines) | `Medium` architecture risk; XInput still carries `BlockedByEnv` proof state | Target production hardware must rerun `windows-hardware-smoke` and `windows-strict-hardware-smoke`; XAudio2 callback proof is closed by L0-AUD-003 | Public contracts are value/status based and have fast fixture tests |
 | `WorldComponentResourceBindingRestoreBridge` | `High` L1 restore bridge | Future restore expansion is blocked unless rollback/resource-acquire failure tests stay green | Current tests cover destination-not-empty, rollback, no-mutation, and bounded inputs |
 | `WorldIdentityBaseline` | `High` L1 fixture bridge | Future Object/World lifecycle expansion is blocked unless baseline create/query/destroy tests stay green | Current fixture owns records and child bridges retain primitive ownership |
 | `WorldSceneAssemblyBridge` | `High` L1 scene assembly bridge | Future active scene mutation is blocked unless rollback and destination capacity evidence stay green | Current bridge applies only validated records to destination bridges |

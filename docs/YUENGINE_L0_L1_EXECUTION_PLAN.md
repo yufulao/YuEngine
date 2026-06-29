@@ -339,6 +339,18 @@ read-only QA workspace.
 The executed set excluded `Audio_PcmStreamQueueCallback_` rows, hardware,
 sample, AudioResource, AudioScene, L1 rows, adjacent/full suites, and broad/full
 CTest.
+L0-AUD-003 XAudio2 callback proof closure is PASS at
+`1a1964abbb1ad021d5695ec5ea2e26ee8d5b5f6d`: readiness task `1dec3d24`
+records READY, fast QA task `727479bd-065f-4c6d-9a0f-0cacd2763741` reports
+callback discovery/execution `18/18`, tests `#828` through `#839` and `#868`
+through `#873`, `YuAudioTests` focused build
+PASS, and hardware QA task `fb347834-96a8-4f5c-913d-d3f354e8478e` reports
+hardware/strict hardware discovery `2` rows, tests `#874` through `#875`,
+`YuAudioHardwareSmokeTests` build
+PASS, `windows-hardware-smoke` execution `2/2` PASS, and
+`windows-strict-hardware-smoke` execution `2/2` PASS. This is supported hardware
+evidence with no skip. The executed set excluded callback cost, sample,
+AudioResource, AudioScene, L1 rows, adjacent/full suites, and broad/full CTest.
 
 
 ## 2. Current Progress Assessment
@@ -2034,7 +2046,7 @@ dependency execution, and broad/full CTest stay outside these closures.
 | --- | --- | --- | --- |
 | L0-AUD-001 | Reconfirm deterministic mixer/test backend | current Audio first slices | Closed at `origin/main@aee81a39d9d9ee063f9f57bc5bab5137d88cbc9f`: readiness task `453eca90` records READY; focused QA task `82548add-9a8a-48a7-adf1-ba837608fd07` reports first-slice discovery exactly 24 rows, tests `#804` through `#827`, successful `YuAudioTests` focused build, exact 24-row execution `24/24`, BGM/SE/SFX/music/business ID scan `0`, and clean read-only QA; executed rows excluded Callback, PCM packet/stream queue, hardware, sample, and L1 rows; L0-AUD-002, L0-AUD-003, L0-AUD-004, L0-AUD-005, L0-RES-006, L0-SAMPLE-006, AudioResource, AudioScene, adjacent/full suites, hardware smoke, sample scripts, manual proof, and broad/full CTest stay separate |
 | L0-AUD-002 | Close PCM packet/stream queue | L0-AUD-001 | Closed at `origin/main@0de7d7076b73d7d716f6d99dca8ac90ac9974247`: readiness task `821f0e53` records READY; focused QA task `c80e3337-96db-4521-9c0e-b81d5b882efe` reports `Audio_PcmSamplePacket_` discovery/execution `13/13`, tests `#840` through `#852`, `Audio_PcmStreamQueue_` discovery/execution `15/15`, tests `#853` through `#867`, successful `YuAudioTests` focused build, combined exact execution `28/28`, and clean read-only QA; executed rows excluded `Audio_PcmStreamQueueCallback_`, hardware, sample, AudioResource, AudioScene, L1 rows, adjacent/full suites, and broad/full CTest |
-| L0-AUD-003 | Close XAudio2 callback proof | L0-AUD-002 | supported machine passes hardware smoke; unavailable machine reports explicit skip/status |
+| L0-AUD-003 | Close XAudio2 callback proof | L0-AUD-002 | Closed at `origin/main@1a1964abbb1ad021d5695ec5ea2e26ee8d5b5f6d`: readiness task `1dec3d24` records READY; fast QA task `727479bd-065f-4c6d-9a0f-0cacd2763741` reports callback discovery/execution `18/18`, tests `#828` through `#839` and `#868` through `#873`, successful `YuAudioTests` focused build, exact fast execution `18/18`, and clean read-only QA; hardware QA task `fb347834-96a8-4f5c-913d-d3f354e8478e` reports hardware and strict hardware discovery `2` rows, tests `#874` through `#875`, successful `YuAudioHardwareSmokeTests` build, `windows-hardware-smoke` execution `2/2`, `windows-strict-hardware-smoke` execution `2/2`, supported hardware classification, and no skip; L0-AUD-004/005, sample, AudioResource, AudioScene, L1 rows, adjacent/full suites, and broad/full CTest stay separate |
 | L0-AUD-004 | Audio callback cost proof | L0-AUD-003 | callback path has no file IO, sleeps, or unbounded allocation |
 | L0-AUD-005 | Add sample PCM path | L0-AUD-002, L0-RES-006 | sample plays/queues PCM or emits explicit unavailable-device status |
 
@@ -2046,6 +2058,11 @@ L0-AUD-002 evidence is limited to Audio PCM sample packet and stream queue rows.
 The exact 28-row execution reported `0 failed`. Callback, hardware, sample,
 AudioResource, AudioScene, L1 rows, and adjacent/full suites remain governed by
 their own IDs and evidence lanes.
+L0-AUD-003 evidence is limited to XAudio2 callback proof. The exact fast
+execution reported `0 failed`, and the hardware plus strict hardware executions
+reported no skip. Callback cost, sample PCM path, AudioResource, AudioScene, L1
+rows, and adjacent/full suites remain governed by their own IDs and evidence
+lanes.
 
 ### 12.7 L0 Input Backlog
 
