@@ -2145,14 +2145,16 @@ adjacent/full suites remain governed by their own IDs and evidence lanes.
 | ID | Work item | Depends on | Acceptance |
 | --- | --- | --- | --- |
 | L1-GOV-001 | Create `YUENGINE_L1_RUNTIME_CORE_MATRIX.md` | L0-GOV-001 and L0-SAMPLE-008 evidence chain | Closed at `origin/main@79790a39ef17eac11d2feda696708b63005d1bf9`: readiness scout `d1eed41a` COMPLETE-PASS / READY confirms the runtime core matrix exists and documents L1 owners, dependencies, forbidden scope, tests, vertical evidence, StageClose states, and environment-gated boundaries; no implementation lane is needed |
-| L1-GOV-002 | Freeze current World bridge expansion | L1-GOV-001 | no new World bridge gates without mapping to runtime vertical closure |
+| L1-GOV-002 | Freeze current World bridge expansion | L1-GOV-001 | Closed at `origin/main@71b3b67c8dbdee80cfeb96b21cc2401aae34b066`: readiness scout `a5a9431d` COMPLETE-PASS / SPLIT-READY confirms the existing docs freeze new World bridge gates unless they map to runtime vertical closure; no implementation lane is needed |
 | L1-GOV-003 | Decide L1 vertical sample scope | L1-GOV-001 | sample scene content, required subsystems, and non-goals are documented |
 
 L1-GOV-001 close evidence is limited to runtime core matrix readiness.
-L1-GOV-002, L1-GOV-003, strict target XInput hardware proof, final L1 stop
-condition, L1 final sample acceptance, runtime animation broad work,
-World/GameAdapter/UI/gameplay, Render/RHI/World/UI/material/shader/scene/
-importer/package expansion, and old package runtime proof remain separate.
+L1-GOV-002 close evidence is limited to World bridge expansion freeze.
+L1-GOV-003, strict target XInput hardware proof, L0 hardware-grade sample
+proof, final L1 stop condition, L1 final sample acceptance, runtime animation
+broad work, World/GameAdapter/UI/gameplay implementation,
+Render/RHI/World/UI/material/shader/scene/importer/package expansion, and old
+package runtime proof remain separate.
 
 ### 12.11 L1 Runtime Kernel Backlog
 

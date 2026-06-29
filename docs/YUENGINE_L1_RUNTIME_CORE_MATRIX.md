@@ -178,13 +178,31 @@ linkage, StageClose states, and environment-gated boundaries. No implementation
 lane is needed for this governance row.
 
 This close sync is limited to `L1-GOV-001`.
-The combined governance table row above stays `FirstSlice` for follow-up
-governance rows only. `L1-GOV-002` broad World bridge freeze and `L1-GOV-003`
-vertical sample scope decision remain separate. Strict target XInput hardware
-proof, final L1 stop condition, L1 final sample acceptance, runtime animation
-broad work, World/GameAdapter/UI/gameplay, Render/RHI/World/UI/material/shader/
-scene/importer/package expansion, and old package runtime proof remain outside
-this sync.
+The combined governance table row above stays `FirstSlice` for remaining
+follow-up governance rows only. `L1-GOV-002` is handled by the next split sync
+below. `L1-GOV-003` vertical sample scope decision remains separate. Strict
+target XInput hardware proof, final L1 stop condition, L1 final sample
+acceptance, runtime animation broad work, World/GameAdapter/UI/gameplay,
+Render/RHI/World/UI/material/shader/scene/importer/package expansion, and old
+package runtime proof remain outside this sync.
+
+## 3.2 L1-GOV-002 Close Sync
+
+L1-GOV-002 World bridge expansion freeze is closed by docs-only evidence at
+`origin/main@71b3b67c8dbdee80cfeb96b21cc2401aae34b066`. Readiness scout task
+`a5a9431d` reports COMPLETE-PASS / SPLIT-READY: the execution plan stops using
+more World bridge slices as progress proof, records the Bridge Audit Plan, and
+this matrix forbids new broad World/GameAdapter/UI/gameplay tasks, old package
+runtime proof, and editor/UI/input dependency for pure runtime visual proof. No
+implementation lane is needed for this governance row.
+
+This close sync is limited to `L1-GOV-002`.
+`L1-GOV-003` vertical sample scope decision remains separate. Strict target
+XInput hardware proof, L0 hardware-grade sample proof, final L1 stop condition,
+L1 final sample acceptance, runtime animation broad work,
+World/GameAdapter/UI/gameplay implementation,
+Render/RHI/World/UI/material/shader/scene/importer/package expansion, and old
+package runtime proof remain outside this sync.
 
 ## 4. Dependency And Scope Rules
 
