@@ -30,6 +30,7 @@ struct ResourceCachePayloadSnapshot final {
     ResourceCachePayloadStatus last_status = ResourceCachePayloadStatus::Success;
     ResourceHandle last_resource;
     std::uint64_t last_payload_id = 0U;
+    std::uint64_t last_payload_logical_byte_count = 0U;
     std::uint64_t last_payload_window_byte_offset = 0U;
     std::uint64_t last_payload_window_byte_size = 0U;
     std::uint32_t last_cache_slot_index = INVALID_RESOURCE_SLOT;

@@ -43,6 +43,7 @@ struct ResourceDecodedPayloadSnapshot {
     std::uint64_t last_decode_plan_id = 0U;
     std::uint64_t last_decode_result_id = 0U;
     std::uint64_t last_decoded_payload_id = 0U;
+    std::uint64_t last_payload_logical_byte_count = 0U;
     std::uint64_t last_payload_window_byte_offset = 0U;
     std::uint64_t last_payload_window_byte_size = 0U;
     ResourceDecodePlanAssetClass last_asset_class = ResourceDecodePlanAssetClass::Unknown;

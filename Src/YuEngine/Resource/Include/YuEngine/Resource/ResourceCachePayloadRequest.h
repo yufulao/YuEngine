@@ -13,6 +13,7 @@ struct ResourceCachePayloadRequest final {
     ResourceHandle resource;
     ResourceTypeId expected_type;
     std::uint64_t payload_id = 0U;
+    std::uint64_t payload_logical_byte_count = 0U;
     std::uint64_t payload_window_byte_offset = 0U;
     std::uint64_t payload_window_byte_size = 0U;
     const std::uint8_t *payload_bytes = nullptr;

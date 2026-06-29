@@ -167,6 +167,8 @@ constexpr const char *TEST_CACHE_PAYLOAD_OUTPUT_SMALL =
     "Resource_CachePayload_ReadRejectsOutputBufferTooSmall";
 constexpr const char *TEST_CACHE_PAYLOAD_WINDOW_REFERENCE =
     "Resource_CachePayload_StoresWindowMetadataAndReferenceBudget";
+constexpr const char *TEST_CACHE_PAYLOAD_U64_LOGICAL_WINDOW =
+    "Resource_CachePayload_StoresU64LogicalWindowWithU32LocalBytes";
 constexpr const char *TEST_CACHE_PAYLOAD_WINDOW_OVERFLOW =
     "Resource_CachePayload_RejectsWindowOverflowWithoutMutation";
 constexpr const char *TEST_CACHE_PAYLOAD_REFERENCE_BUDGET =
@@ -245,6 +247,8 @@ constexpr const char *TEST_DECODED_PAYLOAD_OUTPUT_SMALL =
     "Resource_DecodedPayload_ReadRejectsOutputBufferTooSmall";
 constexpr const char *TEST_DECODED_PAYLOAD_WINDOW_REFERENCE =
     "Resource_DecodedPayload_StoresWindowMetadataAndReferenceBudget";
+constexpr const char *TEST_DECODED_PAYLOAD_U64_LOGICAL_WINDOW =
+    "Resource_DecodedPayload_StoresU64LogicalWindowWithU32LocalBytes";
 constexpr const char *TEST_DECODED_PAYLOAD_WINDOW_MISMATCH =
     "Resource_DecodedPayload_RejectsWindowMismatchWithoutMutation";
 constexpr const char *TEST_DECODED_PAYLOAD_REFERENCE_BUDGET =
@@ -315,6 +319,8 @@ constexpr std::uint64_t DECODE_RESULT_ONE = 7001U;
 constexpr std::uint64_t DECODE_RESULT_TWO = 7002U;
 constexpr std::uint64_t DECODED_PAYLOAD_ONE = 8001U;
 constexpr std::uint64_t DECODED_PAYLOAD_TWO = 8002U;
+constexpr std::uint64_t U64_LOGICAL_PAYLOAD_BYTE_COUNT = 0x100001000ULL;
+constexpr std::uint64_t U64_PAYLOAD_WINDOW_BYTE_OFFSET = 0x100000040ULL;
 constexpr std::uint32_t DECODE_PLAN_DECODED_BYTE_COUNT = 128U;
 constexpr std::uint32_t DECODE_PLAN_PAYLOAD_BYTE_COUNT = RESOURCE_DECODE_PLAN_HEADER_BYTE_COUNT + 4U;
 constexpr std::uint32_t DECODED_PAYLOAD_BYTE_COUNT = DECODE_PLAN_DECODED_BYTE_COUNT;
@@ -2692,6 +2698,84 @@ int ResourceCachePayloadStoresWindowMetadataAndReferenceBudget() {
     return 0;
 }
 
+int ResourceCachePayloadStoresU64LogicalWindowWithU32LocalBytes() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_cache_u64_window");
+    if (!result.Succeeded()) {
+        return Fail("u64 window cache payload fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("u64 window cache payload fixture residency failed");
+    }
+
+    const std::array<std::uint8_t, 4U> payload{{61U, 62U, 63U, 64U}};
+    const std::uint32_t payload_byte_count = static_cast<std::uint32_t>(payload.size());
+    const std::uint64_t payload_window_byte_size = payload_byte_count;
+    ResourceCachePayloadRequest store_request = CachePayloadWindowRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        payload.data(),
+        payload_byte_count,
+        U64_PAYLOAD_WINDOW_BYTE_OFFSET,
+        payload_window_byte_size);
+    store_request.payload_logical_byte_count = U64_LOGICAL_PAYLOAD_BYTE_COUNT;
+    if (registry.StoreCachePayload(store_request) != ResourceCachePayloadStatus::Success) {
+        return Fail("u64 window cache payload store failed");
+    }
+
+    const ResourceCachePayloadSnapshot store_snapshot = registry.CachePayloadSnapshot();
+    if (store_snapshot.last_payload_logical_byte_count != U64_LOGICAL_PAYLOAD_BYTE_COUNT) {
+        return Fail("u64 window cache payload logical total was not tracked");
+    }
+
+    if (store_snapshot.last_payload_window_byte_offset != U64_PAYLOAD_WINDOW_BYTE_OFFSET) {
+        return Fail("u64 window cache payload offset was not tracked");
+    }
+
+    if (store_snapshot.last_payload_window_byte_size != payload_window_byte_size) {
+        return Fail("u64 window cache payload size was not tracked");
+    }
+
+    std::array<std::uint8_t, 2U> output{};
+    std::uint32_t output_byte_count = 0U;
+    const std::uint64_t read_window_byte_offset = U64_PAYLOAD_WINDOW_BYTE_OFFSET + 1U;
+    const std::uint64_t read_window_byte_size = static_cast<std::uint64_t>(output.size());
+    ResourceCachePayloadRequest read_request = CachePayloadWindowRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        nullptr,
+        0U,
+        read_window_byte_offset,
+        read_window_byte_size);
+    read_request.payload_logical_byte_count = U64_LOGICAL_PAYLOAD_BYTE_COUNT;
+    const std::uint32_t output_byte_capacity = static_cast<std::uint32_t>(output.size());
+    const ResourceCachePayloadStatus read_status = registry.ReadCachePayload(
+        read_request,
+        output.data(),
+        output_byte_capacity,
+        &output_byte_count);
+    if (read_status != ResourceCachePayloadStatus::Success) {
+        return Fail("u64 window cache payload read failed");
+    }
+
+    if (output_byte_count != output_byte_capacity) {
+        return Fail("u64 window cache payload read returned wrong byte count");
+    }
+
+    if (output[0U] != payload[1U]) {
+        return Fail("u64 window cache payload read returned wrong first byte");
+    }
+
+    if (output[1U] != payload[2U]) {
+        return Fail("u64 window cache payload read returned wrong second byte");
+    }
+
+    return 0;
+}
+
 int ResourceCachePayloadRejectsWindowOverflowWithoutMutation() {
     ResourceRegistry registry;
     const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_cache_window_overflow");
@@ -4785,6 +4869,103 @@ int ResourceDecodedPayloadStoresWindowMetadataAndReferenceBudget() {
     return 0;
 }
 
+int ResourceDecodedPayloadStoresU64LogicalWindowWithU32LocalBytes() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decoded_payload_u64_window");
+    if (!result.Succeeded()) {
+        return Fail("u64 window decoded payload fixture registration failed");
+    }
+
+    const std::uint32_t decoded_byte_count = 4U;
+    if (!CreateTextureDecodeResultChain(registry, result.handle, decoded_byte_count)) {
+        return Fail("u64 window decoded payload fixture chain failed");
+    }
+
+    const std::array<std::uint8_t, 4U> bytes{{71U, 72U, 73U, 74U}};
+    const std::uint64_t payload_window_byte_size = decoded_byte_count;
+    ResourceDecodedPayloadRequest store_request = DecodedPayloadWindowRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        bytes.data(),
+        decoded_byte_count,
+        U64_PAYLOAD_WINDOW_BYTE_OFFSET,
+        payload_window_byte_size);
+    store_request.payload_logical_byte_count = U64_LOGICAL_PAYLOAD_BYTE_COUNT;
+    if (registry.StoreDecodedPayload(store_request) != ResourceDecodedPayloadStatus::Success) {
+        return Fail("u64 window decoded payload store failed");
+    }
+
+    ResourceDecodedPayloadRecord record;
+    if (registry.QueryDecodedPayload(store_request, &record) != ResourceDecodedPayloadStatus::Success) {
+        return Fail("u64 window decoded payload query failed");
+    }
+
+    if (record.payload_logical_byte_count != U64_LOGICAL_PAYLOAD_BYTE_COUNT) {
+        return Fail("u64 window decoded payload logical total was not tracked");
+    }
+
+    if (record.payload_window_byte_offset != U64_PAYLOAD_WINDOW_BYTE_OFFSET) {
+        return Fail("u64 window decoded payload offset was not tracked");
+    }
+
+    if (record.payload_window_byte_size != payload_window_byte_size) {
+        return Fail("u64 window decoded payload size was not tracked");
+    }
+
+    const ResourceDecodedPayloadSnapshot store_snapshot = registry.DecodedPayloadSnapshot();
+    if (store_snapshot.last_payload_logical_byte_count != U64_LOGICAL_PAYLOAD_BYTE_COUNT) {
+        return Fail("u64 window decoded payload snapshot logical total was not tracked");
+    }
+
+    std::array<std::uint8_t, 2U> output{};
+    std::uint32_t output_byte_count = 0U;
+    const std::uint64_t read_window_byte_offset = U64_PAYLOAD_WINDOW_BYTE_OFFSET + 1U;
+    const std::uint64_t read_window_byte_size = static_cast<std::uint64_t>(output.size());
+    ResourceDecodedPayloadRequest read_request = DecodedPayloadWindowRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        nullptr,
+        decoded_byte_count,
+        read_window_byte_offset,
+        read_window_byte_size);
+    read_request.payload_logical_byte_count = U64_LOGICAL_PAYLOAD_BYTE_COUNT;
+    const std::uint32_t output_byte_capacity = static_cast<std::uint32_t>(output.size());
+    const ResourceDecodedPayloadStatus read_status = registry.ReadDecodedPayload(
+        read_request,
+        output.data(),
+        output_byte_capacity,
+        &output_byte_count);
+    if (read_status != ResourceDecodedPayloadStatus::Success) {
+        return Fail("u64 window decoded payload read failed");
+    }
+
+    if (output_byte_count != output_byte_capacity) {
+        return Fail("u64 window decoded payload read returned wrong byte count");
+    }
+
+    if (output[0U] != bytes[1U]) {
+        return Fail("u64 window decoded payload read returned wrong first byte");
+    }
+
+    if (output[1U] != bytes[2U]) {
+        return Fail("u64 window decoded payload read returned wrong second byte");
+    }
+
+    return 0;
+}
+
 int ResourceDecodedPayloadRejectsWindowMismatchWithoutMutation() {
     ResourceRegistry registry;
     const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decoded_payload_window_mismatch");
@@ -5668,6 +5849,7 @@ int main(int argc, char** argv) {
         {TEST_CACHE_PAYLOAD_BUDGET, ResourceCachePayloadRejectsBudgetOverflow},
         {TEST_CACHE_PAYLOAD_OUTPUT_SMALL, ResourceCachePayloadReadRejectsOutputBufferTooSmall},
         {TEST_CACHE_PAYLOAD_WINDOW_REFERENCE, ResourceCachePayloadStoresWindowMetadataAndReferenceBudget},
+        {TEST_CACHE_PAYLOAD_U64_LOGICAL_WINDOW, ResourceCachePayloadStoresU64LogicalWindowWithU32LocalBytes},
         {TEST_CACHE_PAYLOAD_WINDOW_OVERFLOW, ResourceCachePayloadRejectsWindowOverflowWithoutMutation},
         {TEST_CACHE_PAYLOAD_REFERENCE_BUDGET, ResourceCachePayloadRejectsReferenceBudgetWithoutMutation},
         {TEST_CACHE_PAYLOAD_FAILED_VALIDATION, ResourceCachePayloadFailedValidationDoesNotMutateResourceState},
@@ -5707,6 +5889,7 @@ int main(int argc, char** argv) {
         {TEST_DECODED_PAYLOAD_EMPTY, ResourceDecodedPayloadRejectsEmptyPayload},
         {TEST_DECODED_PAYLOAD_OUTPUT_SMALL, ResourceDecodedPayloadReadRejectsOutputBufferTooSmall},
         {TEST_DECODED_PAYLOAD_WINDOW_REFERENCE, ResourceDecodedPayloadStoresWindowMetadataAndReferenceBudget},
+        {TEST_DECODED_PAYLOAD_U64_LOGICAL_WINDOW, ResourceDecodedPayloadStoresU64LogicalWindowWithU32LocalBytes},
         {TEST_DECODED_PAYLOAD_WINDOW_MISMATCH, ResourceDecodedPayloadRejectsWindowMismatchWithoutMutation},
         {TEST_DECODED_PAYLOAD_REFERENCE_BUDGET, ResourceDecodedPayloadRejectsReferenceBudgetWithoutMutation},
         {TEST_DECODED_PAYLOAD_DUPLICATE, ResourceDecodedPayloadRejectsDuplicatePayloadId},

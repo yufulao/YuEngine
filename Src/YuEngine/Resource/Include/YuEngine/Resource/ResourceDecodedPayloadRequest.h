@@ -23,6 +23,7 @@ struct ResourceDecodedPayloadRequest {
     std::uint64_t decode_plan_id = 0U;
     std::uint64_t decode_result_id = 0U;
     std::uint64_t decoded_payload_id = 0U;
+    std::uint64_t payload_logical_byte_count = 0U;
     std::uint64_t payload_window_byte_offset = 0U;
     std::uint64_t payload_window_byte_size = 0U;
     ResourceDecodePlanAssetClass asset_class = ResourceDecodePlanAssetClass::Unknown;
