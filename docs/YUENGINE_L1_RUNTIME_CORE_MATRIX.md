@@ -168,6 +168,24 @@ snapshots only; broader Resource/File/VFS follow-through remains separate.
 | Runtime diagnostics | `L1-DIAG-001..003` | Diagnostics owner owns bounded runtime counters, disabled equivalence, and optional overlay hook proposal | FrameContext, runtime subsystem counters, Diagnostics channel | Sample validation route, tooling plane only | Done | `Diagnostics_RuntimeCounters_*`, `Diagnostics_OverlayHookProposalStaysOptionalToolingPlane`, `Diagnostics_OverlayHookRejectsRuntimeDependency`, `Diagnostics_OverlayHookDisabledDoesNotChangeRuntimeValues` | `L1-SAMPLE-010` validation route and sample diagnostics counters | Visual overlay implementation is deferred tooling, not runtime dependency | Report JSON as core API, unbounded logging, overlay required for correctness | Keep diagnostics optional and behavior-equivalent when disabled |
 | L1 vertical sample prep | `L1-SAMPLE-001..012`, `L1-VIS-001..006` | Sample owner aggregates L1 value-contract proof for manifest, runtime boot, object graph, asset/render/audio routes, input, serialize, cleanup, validation, and pure runtime visual scene closure | All L1 subsystem rows above plus L0 explicit hardware statuses and the runtime visual foundation ladder from camera/geometry/material/animation through RenderScene/RenderCore/RHI/capture | RuntimeApp, World, Asset, Input, RenderScene, AudioScene, Serialize, Diagnostics, runtime camera/material/resource/animation records | StageClose | Existing value rows pass, runtime visual foundation rows pass through RVF-016/018/019, RuntimeAssetData device-backed visual/product-run rows prove disk-loaded data through RenderScene/RenderCore/RHI, the post-6718b74 focused blocker/blend/package group reports `13/13` PASS, scene-animation selected-clip focused evidence reports `11/11` PASS, and RTSPINE-003 target identity focused evidence reports `10/10` PASS plus VQ COMPLETE-PASS; remaining stage-close evidence is strict XInput target hardware proof | This is the vertical sample linkage row; visual closure now has checked-in focused tests, product/package generic submission ledgers, exact missing-layer diagnostics, selected-clip animation proof, target identity table proof, and D3D11 RuntimeAsset hardware smoke evidence | `docs/YUENGINE_L1_VERTICAL_SAMPLE_ACCEPTANCE.md` and `docs/YUENGINE_RUNTIME_VISUAL_FOUNDATION_PLAN.md` exist; real XInput remains L0 `BlockedByEnv` on machines without a connected target controller | TouhouNewWorld business logic, old package runtime parsing, UI/GameAdapter/gameplay, editor/rejected editor route/UI/input dependency, manual-only screenshot proof, committed generated output | Continue strict XInput grading and consume RTSPINE-003 VQ PASS without reopening runtime visual foundations |
 
+## 3.1 L1-GOV-001 Close Sync
+
+L1-GOV-001 runtime core matrix readiness is closed by docs-only evidence at
+`origin/main@79790a39ef17eac11d2feda696708b63005d1bf9`. Readiness scout task
+`d1eed41a` reports COMPLETE-PASS / READY: this matrix already records L1 owner
+responsibilities, dependencies, forbidden scope, tests, vertical sample
+linkage, StageClose states, and environment-gated boundaries. No implementation
+lane is needed for this governance row.
+
+This close sync is limited to `L1-GOV-001`.
+The combined governance table row above stays `FirstSlice` for follow-up
+governance rows only. `L1-GOV-002` broad World bridge freeze and `L1-GOV-003`
+vertical sample scope decision remain separate. Strict target XInput hardware
+proof, final L1 stop condition, L1 final sample acceptance, runtime animation
+broad work, World/GameAdapter/UI/gameplay, Render/RHI/World/UI/material/shader/
+scene/importer/package expansion, and old package runtime proof remain outside
+this sync.
+
 ## 4. Dependency And Scope Rules
 
 The current L1 dependency direction is:
