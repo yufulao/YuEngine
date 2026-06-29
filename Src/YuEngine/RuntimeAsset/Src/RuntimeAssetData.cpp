@@ -267,6 +267,9 @@ constexpr std::uint32_t RUNTIME_ASSET_VISUAL_PROOF_TARGET_HEIGHT = 2U;
 struct RuntimeAssetPayloadWindow final {
     std::uint64_t byte_offset = 0ULL;
     std::uint64_t byte_size = 0ULL;
+    std::uint64_t payload_logical_byte_count = 0ULL;
+    std::uint64_t payload_window_byte_offset = 0ULL;
+    std::uint64_t payload_window_byte_size = 0ULL;
     bool from_package = false;
 };
 
@@ -4183,7 +4186,14 @@ bool ConfigureRuntimeAssetResourceBudgets(ResourceRegistry &registry) {
 RuntimeAssetPayloadWindow RuntimeAssetWholePayloadWindow(std::size_t byte_count) {
     RuntimeAssetPayloadWindow window{};
     window.byte_size = static_cast<std::uint64_t>(byte_count);
+    window.payload_logical_byte_count = window.byte_size;
+    window.payload_window_byte_size = window.byte_size;
     return window;
+}
+
+bool RuntimeAssetPayloadWindowEndOverflows(std::uint64_t byte_offset, std::uint64_t byte_size) {
+    const std::uint64_t maximum_size = std::numeric_limits<std::uint64_t>::max() - byte_offset;
+    return byte_size > maximum_size;
 }
 
 RuntimeAssetDataStatus FindRuntimeAssetGraphPackageRecord(
@@ -4256,6 +4266,16 @@ RuntimeAssetDataStatus ReadRuntimeAssetFile(
         if (package_record != nullptr) {
             out_window->byte_offset = package_record->archive_byte_offset;
             out_window->byte_size = package_record->archive_byte_size;
+            out_window->payload_logical_byte_count = package_record->payload_logical_byte_count;
+            out_window->payload_window_byte_offset = package_record->payload_window_byte_offset;
+            out_window->payload_window_byte_size = package_record->payload_window_byte_size;
+            if (out_window->payload_logical_byte_count == 0ULL &&
+                out_window->payload_window_byte_offset == 0ULL &&
+                out_window->payload_window_byte_size == 0ULL) {
+                out_window->payload_logical_byte_count = package_record->archive_byte_size;
+                out_window->payload_window_byte_size = package_record->archive_byte_size;
+            }
+
             out_window->from_package = true;
         }
     }
@@ -4375,14 +4395,30 @@ RuntimeAssetDataStatus StoreSourcePayload(
         return RuntimeAssetDataStatus::InvalidSize;
     }
 
-    std::uint64_t source_payload_logical_byte_count = static_cast<std::uint64_t>(bytes.size());
+    const std::uint64_t source_payload_byte_count = static_cast<std::uint64_t>(bytes.size());
+    std::uint64_t source_payload_logical_byte_count = source_payload_byte_count;
+    std::uint64_t source_payload_window_byte_offset = 0ULL;
+    std::uint64_t source_payload_window_byte_size = source_payload_byte_count;
     if (payload_window.from_package) {
-        const std::uint64_t maximum_offset = std::numeric_limits<std::uint64_t>::max() - payload_window.byte_size;
-        if (payload_window.byte_offset > maximum_offset) {
+        if (payload_window.payload_window_byte_size != source_payload_byte_count) {
+            return RuntimeAssetDataStatus::InvalidSize;
+        }
+
+        if (RuntimeAssetPayloadWindowEndOverflows(
+            payload_window.payload_window_byte_offset,
+            payload_window.payload_window_byte_size)) {
             return RuntimeAssetDataStatus::InvalidBounds;
         }
 
-        source_payload_logical_byte_count = payload_window.byte_offset + payload_window.byte_size;
+        const std::uint64_t payload_window_end =
+            payload_window.payload_window_byte_offset + payload_window.payload_window_byte_size;
+        if (payload_window.payload_logical_byte_count < payload_window_end) {
+            return RuntimeAssetDataStatus::InvalidBounds;
+        }
+
+        source_payload_logical_byte_count = payload_window.payload_logical_byte_count;
+        source_payload_window_byte_offset = payload_window.payload_window_byte_offset;
+        source_payload_window_byte_size = payload_window.payload_window_byte_size;
     }
 
     ResourceCachePayloadRequest payload_request{};
@@ -4391,8 +4427,8 @@ RuntimeAssetDataStatus StoreSourcePayload(
     payload_request.payload_id = desc.stable_id + SOURCE_PAYLOAD_ID_OFFSET;
     payload_request.payload_logical_byte_count = source_payload_logical_byte_count;
     if (payload_window.from_package) {
-        payload_request.payload_window_byte_offset = payload_window.byte_offset;
-        payload_request.payload_window_byte_size = payload_window.byte_size;
+        payload_request.payload_window_byte_offset = source_payload_window_byte_offset;
+        payload_request.payload_window_byte_size = source_payload_window_byte_size;
     }
 
     payload_request.payload_bytes = bytes.data();
@@ -4403,12 +4439,8 @@ RuntimeAssetDataStatus StoreSourcePayload(
 
     out_record->cache_payload_id = payload_request.payload_id;
     out_record->source_payload_logical_byte_count = source_payload_logical_byte_count;
-    out_record->source_payload_window_byte_offset =
-        payload_window.from_package ? payload_window.byte_offset : 0ULL;
-    out_record->source_payload_window_byte_size =
-        payload_window.from_package
-            ? payload_window.byte_size
-            : static_cast<std::uint64_t>(bytes.size());
+    out_record->source_payload_window_byte_offset = source_payload_window_byte_offset;
+    out_record->source_payload_window_byte_size = source_payload_window_byte_size;
     out_record->cache_payload_stored = true;
     out_record->source_payload_window_from_package = payload_window.from_package;
     return RuntimeAssetDataStatus::Success;

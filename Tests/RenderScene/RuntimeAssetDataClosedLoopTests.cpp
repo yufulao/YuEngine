@@ -5634,6 +5634,12 @@ bool PadPackageRecordFileWindow(
     record->archive_byte_size = static_cast<std::uint64_t>(original_bytes.size());
     record->byte_offset = static_cast<std::uint32_t>(record->archive_byte_offset);
     record->byte_size = static_cast<std::uint32_t>(record->archive_byte_size);
+    const std::uint64_t payload_window_ordinal = static_cast<std::uint64_t>(ordinal);
+    const std::uint64_t payload_window_byte_offset = 4096ULL + payload_window_ordinal * 257ULL;
+    record->payload_window_byte_offset = payload_window_byte_offset;
+    record->payload_window_byte_size = record->archive_byte_size;
+    record->payload_logical_byte_count =
+        record->payload_window_byte_offset + record->payload_window_byte_size + 17ULL;
     record->payload_hash = PackagePayloadMetadataHash(*record);
     return true;
 }
@@ -5680,10 +5686,10 @@ bool ReadResourceSourcePayloadWindow(
     request.expected_type = file.resource_type;
     request.payload_id = file.cache_payload_id;
     request.payload_logical_byte_count = file.source_payload_logical_byte_count;
-    request.payload_window_byte_offset = record.archive_byte_offset;
-    request.payload_window_byte_size = record.archive_byte_size;
+    request.payload_window_byte_offset = record.payload_window_byte_offset;
+    request.payload_window_byte_size = record.payload_window_byte_size;
     std::vector<std::uint8_t> bytes{};
-    bytes.resize(static_cast<std::size_t>(record.archive_byte_size));
+    bytes.resize(static_cast<std::size_t>(record.payload_window_byte_size));
     std::uint32_t output_byte_count = 0U;
     const ResourceCachePayloadStatus read_status = registry.ReadCachePayload(
         request,
@@ -5695,7 +5701,7 @@ bool ReadResourceSourcePayloadWindow(
     }
 
     const std::uint64_t actual_byte_count = static_cast<std::uint64_t>(output_byte_count);
-    if (actual_byte_count != record.archive_byte_size) {
+    if (actual_byte_count != record.payload_window_byte_size) {
         return FailStep("resource source payload window byte count mismatch");
     }
 
@@ -5707,10 +5713,14 @@ bool VerifyResourceSourcePayloadWindowLogicalCount(
     ResourceRegistry &registry,
     const RuntimeAssetLoadedFile &file,
     const PackageLoadPlanRecord &record) {
-    const std::uint64_t expected_logical_byte_count =
-        record.archive_byte_offset + record.archive_byte_size;
+    const std::uint64_t expected_logical_byte_count = record.payload_logical_byte_count;
     if (file.source_payload_logical_byte_count != expected_logical_byte_count) {
-        return FailStep("resource source payload logical count did not cover archive window");
+        return FailStep("resource source payload logical count did not use package metadata");
+    }
+
+    if (file.source_payload_window_byte_offset != record.payload_window_byte_offset ||
+        file.source_payload_window_byte_size != record.payload_window_byte_size) {
+        return FailStep("resource source payload window did not use package metadata");
     }
 
     std::vector<std::uint8_t> bytes{};
@@ -5720,9 +5730,9 @@ bool VerifyResourceSourcePayloadWindowLogicalCount(
 
     const auto snapshot = registry.CachePayloadSnapshot();
     if (snapshot.last_payload_logical_byte_count != expected_logical_byte_count ||
-        snapshot.last_payload_window_byte_offset != record.archive_byte_offset ||
-        snapshot.last_payload_window_byte_size != record.archive_byte_size ||
-        static_cast<std::uint64_t>(snapshot.last_payload_byte_count) != record.archive_byte_size) {
+        snapshot.last_payload_window_byte_offset != record.payload_window_byte_offset ||
+        snapshot.last_payload_window_byte_size != record.payload_window_byte_size ||
+        static_cast<std::uint64_t>(snapshot.last_payload_byte_count) != record.payload_window_byte_size) {
         return FailStep("resource source payload logical count snapshot mismatch");
     }
 
@@ -6976,17 +6986,18 @@ int RuntimeAssetDataPackagedResourcePayloadWindowsUseArchiveRanges() {
     }
 
     if (!run.graph_load_result.scene.source_payload_window_from_package ||
-        run.graph_load_result.scene.source_payload_window_byte_offset != scene_record->archive_byte_offset ||
-        run.graph_load_result.scene.source_payload_window_byte_size != scene_record->archive_byte_size ||
-        scene_record->archive_byte_offset == 0ULL) {
-        return Fail("scene payload window did not expose package archive range");
+        run.graph_load_result.scene.source_payload_window_byte_offset != scene_record->payload_window_byte_offset ||
+        run.graph_load_result.scene.source_payload_window_byte_size != scene_record->payload_window_byte_size ||
+        run.graph_load_result.scene.source_payload_logical_byte_count != scene_record->payload_logical_byte_count ||
+        scene_record->payload_window_byte_offset == scene_record->archive_byte_offset) {
+        return Fail("scene payload window did not expose package payload metadata");
     }
 
     if (!VerifyResourceSourcePayloadWindowLogicalCount(
             context.registry,
             run.graph_load_result.scene,
             *scene_record)) {
-        return Fail("scene payload logical count did not expose package archive range");
+        return Fail("scene payload logical count did not expose package metadata");
     }
 
     for (std::uint32_t index = 0U; index < context.fixture.command.fixture.cooked_file_count; ++index) {
@@ -6998,14 +7009,15 @@ int RuntimeAssetDataPackagedResourcePayloadWindowsUseArchiveRanges() {
 
         const RuntimeAssetLoadedFile &loaded_file = context.loaded_files[index];
         if (!loaded_file.source_payload_window_from_package ||
-            loaded_file.source_payload_window_byte_offset != record->archive_byte_offset ||
-            loaded_file.source_payload_window_byte_size != record->archive_byte_size ||
-            record->archive_byte_offset == 0ULL) {
-            return Fail("loaded file payload window did not expose package archive range");
+            loaded_file.source_payload_window_byte_offset != record->payload_window_byte_offset ||
+            loaded_file.source_payload_window_byte_size != record->payload_window_byte_size ||
+            loaded_file.source_payload_logical_byte_count != record->payload_logical_byte_count ||
+            record->payload_window_byte_offset == record->archive_byte_offset) {
+            return Fail("loaded file payload window did not expose package payload metadata");
         }
 
         if (!VerifyResourceSourcePayloadWindowLogicalCount(context.registry, loaded_file, *record)) {
-            return Fail("loaded file payload logical count did not expose package archive range");
+            return Fail("loaded file payload logical count did not expose package metadata");
         }
 
         std::vector<std::uint8_t> resource_bytes{};
