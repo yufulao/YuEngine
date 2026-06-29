@@ -374,6 +374,8 @@ struct RuntimeAssetLoadedFile final {
     std::uint32_t shader_import_policy_count = 0U;
     std::uint64_t shader_import_policy_hash = 0U;
     std::uint64_t cache_payload_id = 0U;
+    std::uint64_t source_payload_window_byte_offset = 0U;
+    std::uint64_t source_payload_window_byte_size = 0U;
     std::uint64_t decode_plan_payload_id = 0U;
     std::uint64_t decode_plan_id = 0U;
     std::uint64_t decode_result_id = 0U;
@@ -384,6 +386,7 @@ struct RuntimeAssetLoadedFile final {
         yuengine::resource::ResourceDecodeResultClass::Unknown;
     std::uint32_t decoded_byte_count = 0U;
     bool cache_payload_stored = false;
+    bool source_payload_window_from_package = false;
     bool decode_plan_created = false;
     bool decode_result_committed = false;
     bool decoded_payload_stored = false;
@@ -540,6 +543,7 @@ struct RuntimeAssetGraphLoadRequest final {
     yuengine::file::MountTable *mount_table = nullptr;
     yuengine::file::MountId mount;
     yuengine::file::VirtualPath scene_path;
+    const yuengine::package::PackageLoadPlan *package_load_plan = nullptr;
     yuengine::resource::ResourceTypeId scene_resource_type;
     yuengine::asset::AssetTypeId scene_asset_type;
     std::uint64_t scene_stable_id = 0U;
@@ -629,6 +633,8 @@ struct RuntimeAssetGraphLoadResult final {
     std::uint32_t file_read_count = 0U;
     std::uint32_t cache_payload_count = 0U;
     std::uint32_t decoded_payload_count = 0U;
+    std::uint32_t package_payload_window_count = 0U;
+    std::uint64_t package_payload_window_byte_count = 0U;
     std::uint32_t resource_dependency_count = 0U;
     std::uint32_t asset_dependency_count = 0U;
     std::size_t scene_dependency_count = 0U;
@@ -1125,10 +1131,13 @@ struct RuntimeAssetPackagedRunResult final {
     std::uint32_t loaded_file_count = 0U;
     std::uint32_t resource_dependency_count = 0U;
     std::uint32_t asset_dependency_count = 0U;
+    std::uint32_t resource_payload_window_count = 0U;
+    std::uint64_t resource_payload_window_byte_count = 0U;
     std::uint32_t runtime_app_completed_frame_count = 0U;
     bool package_load_plan_consumed = false;
     bool runtime_asset_validation_load_success = false;
     bool resource_asset_registration_success = false;
+    bool resource_payload_windows_loaded = false;
     bool shader_program_decoded = false;
     bool render_scene_render_core_rhi_success = false;
     bool generic_render_scene_submission_success = false;

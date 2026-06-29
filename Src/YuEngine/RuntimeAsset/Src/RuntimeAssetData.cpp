@@ -119,6 +119,7 @@ using yuengine::kernel::RuntimeAppRunResult;
 using yuengine::kernel::RuntimeFramePhase;
 using yuengine::package::PackageArtifactReadRequest;
 using yuengine::package::PackageArtifactResult;
+using yuengine::package::PackageLoadPlan;
 using yuengine::package::PackageLoadPlanRecord;
 using yuengine::package::PackageLoadPlanResult;
 using yuengine::package::PackageRegistry;
@@ -262,6 +263,18 @@ constexpr std::uint32_t RUNTIME_ASSET_VISUAL_PROOF_TEXTURE_SLOT_COUNT = 3U;
 constexpr std::size_t RUNTIME_ASSET_VISUAL_PROOF_ENTITY_COUNT = 3U;
 constexpr std::uint32_t RUNTIME_ASSET_VISUAL_PROOF_TARGET_WIDTH = 2U;
 constexpr std::uint32_t RUNTIME_ASSET_VISUAL_PROOF_TARGET_HEIGHT = 2U;
+
+struct RuntimeAssetPayloadWindow final {
+    std::uint64_t byte_offset = 0ULL;
+    std::uint64_t byte_size = 0ULL;
+    bool from_package = false;
+};
+
+bool RuntimeAssetPackageRecordRangeIsValid(const PackageLoadPlanRecord &record);
+bool FindRuntimeAssetPackageRecordIndexForDesc(
+    const PackageLoadPlan &plan,
+    const RuntimeAssetFileDesc &desc,
+    std::uint32_t *out_index);
 
 bool Contains(std::string_view text, std::string_view token) {
     return text.find(token) != std::string_view::npos;
@@ -4167,23 +4180,86 @@ bool ConfigureRuntimeAssetResourceBudgets(ResourceRegistry &registry) {
     return registry.SetDecodedPayloadBudget(decoded_budget) == ResourceDecodedPayloadStatus::Success;
 }
 
+RuntimeAssetPayloadWindow RuntimeAssetWholePayloadWindow(std::size_t byte_count) {
+    RuntimeAssetPayloadWindow window{};
+    window.byte_size = static_cast<std::uint64_t>(byte_count);
+    return window;
+}
+
+RuntimeAssetDataStatus FindRuntimeAssetGraphPackageRecord(
+    const RuntimeAssetGraphLoadRequest &request,
+    const RuntimeAssetFileDesc &desc,
+    const PackageLoadPlanRecord **out_record) {
+    if (out_record == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    *out_record = nullptr;
+    if (request.package_load_plan == nullptr) {
+        return RuntimeAssetDataStatus::Success;
+    }
+
+    std::uint32_t record_index = 0U;
+    if (!FindRuntimeAssetPackageRecordIndexForDesc(*request.package_load_plan, desc, &record_index)) {
+        return RuntimeAssetDataStatus::MissingDependency;
+    }
+
+    const PackageLoadPlanRecord &record = request.package_load_plan->records[record_index];
+    if (!RuntimeAssetPackageRecordRangeIsValid(record)) {
+        if (record.archive_byte_size == 0ULL) {
+            return RuntimeAssetDataStatus::InvalidSize;
+        }
+
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    *out_record = &record;
+    return RuntimeAssetDataStatus::Success;
+}
+
 RuntimeAssetDataStatus ReadRuntimeAssetFile(
     const RuntimeAssetGraphLoadRequest &request,
-    const yuengine::file::VirtualPath &path,
-    std::vector<std::uint8_t> *out_bytes) {
+    const RuntimeAssetFileDesc &desc,
+    std::vector<std::uint8_t> *out_bytes,
+    RuntimeAssetPayloadWindow *out_window) {
     if (out_bytes == nullptr) {
         return RuntimeAssetDataStatus::InvalidArgument;
     }
 
+    if (desc.path == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    const PackageLoadPlanRecord *package_record = nullptr;
+    RuntimeAssetDataStatus status = FindRuntimeAssetGraphPackageRecord(request, desc, &package_record);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
     FileReadRequest read_request{};
     read_request.mount = request.mount;
-    read_request.path = path;
+    read_request.path = yuengine::file::VirtualPath(desc.path);
+    if (package_record != nullptr) {
+        read_request.use_range = true;
+        read_request.range_byte_offset = package_record->archive_byte_offset;
+        read_request.range_byte_size = package_record->archive_byte_size;
+    }
+
     const FileReadResult read_result = request.mount_table->Read(read_request);
     if (!read_result.Succeeded()) {
         return RuntimeAssetDataStatus::FileReadFailed;
     }
 
     *out_bytes = read_result.bytes;
+    if (out_window != nullptr) {
+        *out_window = RuntimeAssetWholePayloadWindow(read_result.bytes.size());
+        if (package_record != nullptr) {
+            out_window->byte_offset = package_record->archive_byte_offset;
+            out_window->byte_size = package_record->archive_byte_size;
+            out_window->from_package = true;
+        }
+    }
+
     return RuntimeAssetDataStatus::Success;
 }
 
@@ -4292,11 +4368,22 @@ RuntimeAssetDataStatus StoreSourcePayload(
     ResourceHandle resource,
     const RuntimeAssetFileDesc &desc,
     std::span<const std::uint8_t> bytes,
+    const RuntimeAssetPayloadWindow &payload_window,
     RuntimeAssetLoadedFile *out_record) {
+    if (payload_window.from_package &&
+        payload_window.byte_size != static_cast<std::uint64_t>(bytes.size())) {
+        return RuntimeAssetDataStatus::InvalidSize;
+    }
+
     ResourceCachePayloadRequest payload_request{};
     payload_request.resource = resource;
     payload_request.expected_type = desc.resource_type;
     payload_request.payload_id = desc.stable_id + SOURCE_PAYLOAD_ID_OFFSET;
+    if (payload_window.from_package) {
+        payload_request.payload_window_byte_offset = payload_window.byte_offset;
+        payload_request.payload_window_byte_size = payload_window.byte_size;
+    }
+
     payload_request.payload_bytes = bytes.data();
     payload_request.payload_byte_count = static_cast<std::uint32_t>(bytes.size());
     if (registry.StoreCachePayload(payload_request) != ResourceCachePayloadStatus::Success) {
@@ -4304,7 +4391,14 @@ RuntimeAssetDataStatus StoreSourcePayload(
     }
 
     out_record->cache_payload_id = payload_request.payload_id;
+    out_record->source_payload_window_byte_offset =
+        payload_window.from_package ? payload_window.byte_offset : 0ULL;
+    out_record->source_payload_window_byte_size =
+        payload_window.from_package
+            ? payload_window.byte_size
+            : static_cast<std::uint64_t>(bytes.size());
     out_record->cache_payload_stored = true;
+    out_record->source_payload_window_from_package = payload_window.from_package;
     return RuntimeAssetDataStatus::Success;
 }
 
@@ -4415,6 +4509,7 @@ RuntimeAssetDataStatus RegisterLoadedFile(
     AssetManager &manager,
     const RuntimeAssetFileDesc &desc,
     std::span<const std::uint8_t> bytes,
+    const RuntimeAssetPayloadWindow &payload_window,
     RuntimeAssetLoadedFile *out_record,
     RuntimeAssetLoadedFile *out_rollback_record) {
     if (out_record == nullptr) {
@@ -4481,6 +4576,7 @@ RuntimeAssetDataStatus RegisterLoadedFile(
         resource_result.handle,
         desc,
         bytes,
+        payload_window,
         &record);
     if (status != RuntimeAssetDataStatus::Success) {
         CopyRuntimeAssetRollbackRecord(record, out_rollback_record);
@@ -5771,7 +5867,9 @@ struct RuntimeAssetGraphTransactionData final {
     RuntimeAssetLoadTransactionPlan plan;
     RuntimeAssetGraphLoadResult result;
     std::vector<std::uint8_t> scene_bytes;
+    RuntimeAssetPayloadWindow scene_payload_window;
     std::vector<std::vector<std::uint8_t>> file_bytes;
+    std::vector<RuntimeAssetPayloadWindow> file_payload_windows;
     std::string scene_text;
     std::string animation_text;
     RuntimeAssetSceneLoaderStage scene_stage;
@@ -6000,7 +6098,17 @@ RuntimeAssetDataStatus BuildRuntimeAssetGraphTransactionPlan(
     }
 
     SetTransactionPhase(transaction, RuntimeAssetLoadTransactionPhase::ReadBytes);
-    status = ReadRuntimeAssetFile(request, request.scene_path, &transaction->scene_bytes);
+    RuntimeAssetFileDesc scene_desc{};
+    scene_desc.path = request.scene_path.Value().data();
+    scene_desc.kind = RuntimeAssetFileKind::Scene;
+    scene_desc.resource_type = request.scene_resource_type;
+    scene_desc.asset_type = request.scene_asset_type;
+    scene_desc.stable_id = request.scene_stable_id;
+    status = ReadRuntimeAssetFile(
+        request,
+        scene_desc,
+        &transaction->scene_bytes,
+        &transaction->scene_payload_window);
     if (status != RuntimeAssetDataStatus::Success) {
         SetTransactionFailure(transaction, status, RuntimeAssetLoadTransactionPhase::ReadBytes);
         return status;
@@ -6035,6 +6143,7 @@ RuntimeAssetDataStatus BuildRuntimeAssetGraphTransactionPlan(
     }
 
     transaction->file_bytes.resize(request.file_count);
+    transaction->file_payload_windows.resize(request.file_count);
     std::uint32_t file_index = 0U;
     while (file_index < request.file_count) {
         const RuntimeAssetFileDesc &file = request.files[file_index];
@@ -6049,8 +6158,11 @@ RuntimeAssetDataStatus BuildRuntimeAssetGraphTransactionPlan(
         }
 
         SetTransactionPhase(transaction, RuntimeAssetLoadTransactionPhase::ReadBytes);
-        const yuengine::file::VirtualPath path(file.path);
-        status = ReadRuntimeAssetFile(request, path, &transaction->file_bytes[file_index]);
+        status = ReadRuntimeAssetFile(
+            request,
+            file,
+            &transaction->file_bytes[file_index],
+            &transaction->file_payload_windows[file_index]);
         if (status != RuntimeAssetDataStatus::Success) {
             SetTransactionFailure(
                 transaction,
@@ -6124,6 +6236,11 @@ void RecordCommittedRuntimeAssetFile(
     ++result->transaction_result.committed_asset_count;
     ++result->transaction_result.committed_cache_payload_count;
     ++result->cache_payload_count;
+    if (file.source_payload_window_from_package) {
+        ++result->package_payload_window_count;
+        result->package_payload_window_byte_count += file.source_payload_window_byte_size;
+    }
+
     if (file.decode_plan_created) {
         ++result->transaction_result.committed_cache_payload_count;
         ++result->cache_payload_count;
@@ -6196,6 +6313,8 @@ void ClearRuntimeAssetCommittedCallerOutputs(
     transaction->result.loaded_file_count = 0U;
     transaction->result.cache_payload_count = 0U;
     transaction->result.decoded_payload_count = 0U;
+    transaction->result.package_payload_window_count = 0U;
+    transaction->result.package_payload_window_byte_count = 0U;
     transaction->result.resource_dependency_count = 0U;
     transaction->result.asset_dependency_count = 0U;
 }
@@ -6356,6 +6475,7 @@ RuntimeAssetDataStatus CommitRuntimeAssetGraphTransaction(
         *request.asset_manager,
         scene_desc,
         std::span<const std::uint8_t>(transaction->scene_bytes.data(), transaction->scene_bytes.size()),
+        transaction->scene_payload_window,
         &transaction->result.scene,
         &rollback_record);
     if (status != RuntimeAssetDataStatus::Success) {
@@ -6382,6 +6502,7 @@ RuntimeAssetDataStatus CommitRuntimeAssetGraphTransaction(
             std::span<const std::uint8_t>(
                 transaction->file_bytes[file_index].data(),
                 transaction->file_bytes[file_index].size()),
+            transaction->file_payload_windows[file_index],
             &request.loaded_files[file_index],
             &rollback_record);
         if (status != RuntimeAssetDataStatus::Success) {
@@ -10010,17 +10131,44 @@ RuntimeAssetDataStatus ValidateRuntimeAssetPackageLoadPlan(
 }
 
 RuntimeAssetDataStatus ReadRuntimeAssetPackagedBytes(
-    MountTable &mount_table,
-    yuengine::file::MountId mount,
-    const char *path,
+    const RuntimeAssetPackagedRunRequest &request,
+    const RuntimeAssetFileDesc &desc,
     std::vector<std::uint8_t> *out_bytes) {
-    if (path == nullptr || out_bytes == nullptr) {
+    if (request.mount_table == nullptr ||
+        request.package_load_plan == nullptr ||
+        desc.path == nullptr ||
+        out_bytes == nullptr) {
         return RuntimeAssetDataStatus::InvalidArgument;
     }
 
-    const FileReadResult read_result = mount_table.Read({mount, yuengine::file::VirtualPath(path)});
+    std::uint32_t record_index = 0U;
+    if (!FindRuntimeAssetPackageRecordIndexForDesc(*request.package_load_plan, desc, &record_index)) {
+        return RuntimeAssetDataStatus::MissingDependency;
+    }
+
+    const PackageLoadPlanRecord &record = request.package_load_plan->records[record_index];
+    if (!RuntimeAssetPackageRecordRangeIsValid(record)) {
+        if (record.archive_byte_size == 0ULL) {
+            return RuntimeAssetDataStatus::InvalidSize;
+        }
+
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    FileReadRequest read_request{};
+    read_request.mount = request.mount;
+    read_request.path = yuengine::file::VirtualPath(desc.path);
+    read_request.use_range = true;
+    read_request.range_byte_offset = record.archive_byte_offset;
+    read_request.range_byte_size = record.archive_byte_size;
+    const FileReadResult read_result = request.mount_table->Read(read_request);
     if (!read_result.Succeeded()) {
         return RuntimeAssetDataStatus::FileReadFailed;
+    }
+
+    const std::uint64_t read_byte_count = static_cast<std::uint64_t>(read_result.bytes.size());
+    if (read_byte_count != record.archive_byte_size) {
+        return RuntimeAssetDataStatus::InvalidSize;
     }
 
     *out_bytes = read_result.bytes;
@@ -10060,9 +10208,8 @@ RuntimeAssetDataStatus DecodeRuntimeAssetPackagedShader(
 
     std::vector<std::uint8_t> bytes{};
     RuntimeAssetDataStatus status = ReadRuntimeAssetPackagedBytes(
-        *request.mount_table,
-        request.mount,
-        shader_desc->path,
+        request,
+        *shader_desc,
         &bytes);
     if (status != RuntimeAssetDataStatus::Success) {
         return status;
@@ -10090,6 +10237,7 @@ RuntimeAssetGraphLoadRequest BuildRuntimeAssetPackagedGraphLoadRequest(
     load_request.mount_table = request.mount_table;
     load_request.mount = request.mount;
     load_request.scene_path = yuengine::file::VirtualPath(request.scene.path);
+    load_request.package_load_plan = request.package_load_plan;
     load_request.scene_resource_type = request.scene.resource_type;
     load_request.scene_asset_type = request.scene.asset_type;
     load_request.scene_stable_id = request.scene.stable_id;
@@ -10775,6 +10923,13 @@ private:
         result_->loaded_file_count = result_->graph_load_result.loaded_file_count;
         result_->resource_dependency_count = result_->graph_load_result.resource_dependency_count;
         result_->asset_dependency_count = result_->graph_load_result.asset_dependency_count;
+        result_->resource_payload_window_count = result_->graph_load_result.package_payload_window_count;
+        result_->resource_payload_window_byte_count =
+            result_->graph_load_result.package_payload_window_byte_count;
+        result_->resource_payload_windows_loaded =
+            result_->resource_payload_window_count == request_.file_count + 1U &&
+            result_->resource_payload_window_byte_count ==
+                result_->packaged_validation.validated_archive_byte_count;
         result_->runtime_asset_validation_load_success =
             status == RuntimeAssetDataStatus::Success &&
             result_->graph_load_result.status == RuntimeAssetDataStatus::Success &&

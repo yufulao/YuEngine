@@ -107,6 +107,7 @@ using yuengine::asset::AssetRegistrationResult;
 using yuengine::asset::AssetSnapshot;
 using yuengine::asset::AssetStatus;
 using yuengine::asset::AssetTypeId;
+using yuengine::file::FileReadRequest;
 using yuengine::file::FileReadResult;
 using yuengine::file::FileStatus;
 using yuengine::file::FileWriteRequest;
@@ -123,6 +124,7 @@ using yuengine::package::PackageEntryDescriptor;
 using yuengine::package::PackageEntryId;
 using yuengine::package::PackageId;
 using yuengine::package::PackageLoadPlan;
+using yuengine::package::PackageLoadPlanRecord;
 using yuengine::package::PackageLoadPlanResult;
 using yuengine::package::PackageRegistry;
 using yuengine::package::PackageSourceKey;
@@ -597,6 +599,8 @@ constexpr const char *TEST_PRODUCT_RUN_COMMAND_MISSING_ARTIFACT =
     "RuntimeAssetData_ProductRunCommandReportsMissingPackageArtifactPath";
 constexpr const char *TEST_PACKAGED_VALIDATION_BRIDGE =
     "RuntimeAssetData_PackagedValidationBridgeConsumesArchiveByteRangesAndHashes";
+constexpr const char *TEST_PACKAGED_RESOURCE_PAYLOAD_WINDOWS =
+    "RuntimeAssetData_PackagedResourcePayloadWindowsUseArchiveRanges";
 constexpr const char *TEST_PACKAGED_VALIDATION_ARCHIVE_COUNT =
     "RuntimeAssetData_PackagedValidationBridgeRejectsArchiveByteCountMismatchWithoutMutation";
 constexpr const char *TEST_PACKAGED_VALIDATION_PAYLOAD_HASH =
@@ -5439,6 +5443,199 @@ bool BuildRuntimeAssetCookedPackagePlan(
         plan.plan.records[plan.plan.record_count - 1U].entry.value == RUNTIME_ASSET_SMOKE_SCENE_ENTRY.value;
 }
 
+std::uint64_t MixPackagePayloadHash(std::uint64_t hash, std::uint64_t value) {
+    hash ^= value;
+    return hash * FNV_PRIME;
+}
+
+std::uint64_t HashPackagePayloadText(std::uint64_t hash, std::string_view text) {
+    for (const char character : text) {
+        const std::uint64_t value = static_cast<std::uint64_t>(static_cast<std::uint8_t>(character));
+        hash = MixPackagePayloadHash(hash, value);
+    }
+
+    return hash;
+}
+
+std::uint64_t PackagePayloadMetadataHash(const PackageLoadPlanRecord &record) {
+    std::uint64_t hash = FNV_OFFSET;
+    hash = HashPackagePayloadText(hash, record.source_key.Value());
+    hash = MixPackagePayloadHash(hash, record.archive_byte_offset);
+    hash = MixPackagePayloadHash(hash, record.archive_byte_size);
+    if (hash == 0ULL) {
+        return FNV_OFFSET;
+    }
+
+    return hash;
+}
+
+std::string PackageLogicalKeyForStableId(std::uint64_t stable_id) {
+    return std::string("runtime_asset_") + std::to_string(stable_id);
+}
+
+std::string PackageSourceKeyForStableId(std::uint64_t stable_id) {
+    return std::string("cooked_record_") + std::to_string(stable_id);
+}
+
+bool PackageRecordMatchesDesc(const PackageLoadPlanRecord &record, const RuntimeAssetFileDesc &desc) {
+    if (record.type.value != desc.resource_type.value) {
+        return false;
+    }
+
+    const std::string logical_key = PackageLogicalKeyForStableId(desc.stable_id);
+    if (record.logical_key.Value() != std::string_view(logical_key)) {
+        return false;
+    }
+
+    const std::string source_key = PackageSourceKeyForStableId(desc.stable_id);
+    return record.source_key.Value() == std::string_view(source_key);
+}
+
+PackageLoadPlanRecord *FindPackageRecordForDesc(PackageLoadPlan &plan, const RuntimeAssetFileDesc &desc) {
+    for (std::uint32_t index = 0U; index < plan.record_count; ++index) {
+        if (PackageRecordMatchesDesc(plan.records[index], desc)) {
+            return &plan.records[index];
+        }
+    }
+
+    return nullptr;
+}
+
+const PackageLoadPlanRecord *FindPackageRecordForDesc(
+    const PackageLoadPlan &plan,
+    const RuntimeAssetFileDesc &desc) {
+    for (std::uint32_t index = 0U; index < plan.record_count; ++index) {
+        if (PackageRecordMatchesDesc(plan.records[index], desc)) {
+            return &plan.records[index];
+        }
+    }
+
+    return nullptr;
+}
+
+bool PadPackageRecordFileWindow(
+    MountTable &table,
+    const RuntimeAssetFileDesc &desc,
+    std::uint32_t ordinal,
+    PackageLoadPlanRecord *record) {
+    if (record == nullptr) {
+        return FailStep("missing package record for padded window");
+    }
+
+    std::vector<std::uint8_t> original_bytes{};
+    if (!ReadFile(table, desc.path, &original_bytes)) {
+        return false;
+    }
+
+    const std::string prefix_text = "padding-prefix-" + std::to_string(ordinal) + "\n";
+    const std::string suffix_text = "\npadding-suffix-" + std::to_string(ordinal) + "\n";
+    std::vector<std::uint8_t> padded_bytes{};
+    const std::size_t padded_byte_count =
+        prefix_text.size() + original_bytes.size() + suffix_text.size();
+    padded_bytes.reserve(padded_byte_count);
+    padded_bytes.insert(padded_bytes.end(), prefix_text.begin(), prefix_text.end());
+    padded_bytes.insert(padded_bytes.end(), original_bytes.begin(), original_bytes.end());
+    padded_bytes.insert(padded_bytes.end(), suffix_text.begin(), suffix_text.end());
+    if (!WriteBytes(table, desc.path, padded_bytes)) {
+        return FailStep("write padded package record file failed");
+    }
+
+    record->archive_byte_offset = static_cast<std::uint64_t>(prefix_text.size());
+    record->archive_byte_size = static_cast<std::uint64_t>(original_bytes.size());
+    record->byte_offset = static_cast<std::uint32_t>(record->archive_byte_offset);
+    record->byte_size = static_cast<std::uint32_t>(record->archive_byte_size);
+    record->payload_hash = PackagePayloadMetadataHash(*record);
+    return true;
+}
+
+bool PadPackageRecordFileWindows(CookedVisualProofContext &context, PackageCookRunSmokeLedger *ledger) {
+    if (ledger == nullptr) {
+        return FailStep("null package ledger for padded windows");
+    }
+
+    PackageLoadPlanRecord *scene_record = FindPackageRecordForDesc(
+        ledger->package_load_plan,
+        context.fixture.command.fixture.cooked_scene);
+    if (!PadPackageRecordFileWindow(
+            context.fixture.table,
+            context.fixture.command.fixture.cooked_scene,
+            0U,
+            scene_record)) {
+        return false;
+    }
+
+    for (std::uint32_t index = 0U; index < context.fixture.command.fixture.cooked_file_count; ++index) {
+        const RuntimeAssetFileDesc &desc = context.fixture.cooked_files[index];
+        PackageLoadPlanRecord *record = FindPackageRecordForDesc(ledger->package_load_plan, desc);
+        const std::uint32_t ordinal = index + 1U;
+        if (!PadPackageRecordFileWindow(context.fixture.table, desc, ordinal, record)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool ReadResourceSourcePayloadWindow(
+    ResourceRegistry &registry,
+    const RuntimeAssetLoadedFile &file,
+    const PackageLoadPlanRecord &record,
+    std::vector<std::uint8_t> *out_bytes) {
+    if (out_bytes == nullptr) {
+        return FailStep("null payload window read output");
+    }
+
+    ResourceCachePayloadRequest request{};
+    request.resource = file.resource;
+    request.expected_type = file.resource_type;
+    request.payload_id = file.cache_payload_id;
+    request.payload_window_byte_offset = record.archive_byte_offset;
+    request.payload_window_byte_size = record.archive_byte_size;
+    std::vector<std::uint8_t> bytes{};
+    bytes.resize(static_cast<std::size_t>(record.archive_byte_size));
+    std::uint32_t output_byte_count = 0U;
+    const ResourceCachePayloadStatus read_status = registry.ReadCachePayload(
+        request,
+        bytes.data(),
+        static_cast<std::uint32_t>(bytes.size()),
+        &output_byte_count);
+    if (read_status != ResourceCachePayloadStatus::Success) {
+        return FailStep("read resource source payload window failed");
+    }
+
+    const std::uint64_t actual_byte_count = static_cast<std::uint64_t>(output_byte_count);
+    if (actual_byte_count != record.archive_byte_size) {
+        return FailStep("resource source payload window byte count mismatch");
+    }
+
+    *out_bytes = bytes;
+    return true;
+}
+
+bool ReadPackageRangeBytes(
+    MountTable &table,
+    const RuntimeAssetFileDesc &desc,
+    const PackageLoadPlanRecord &record,
+    std::vector<std::uint8_t> *out_bytes) {
+    if (out_bytes == nullptr) {
+        return FailStep("null package range read output");
+    }
+
+    FileReadRequest request{};
+    request.mount = MountId(MOUNT_ID);
+    request.path = VirtualPath(desc.path);
+    request.use_range = true;
+    request.range_byte_offset = record.archive_byte_offset;
+    request.range_byte_size = record.archive_byte_size;
+    const FileReadResult read_result = table.Read(request);
+    if (!read_result.Succeeded()) {
+        return FailStep("read package range bytes failed");
+    }
+
+    *out_bytes = read_result.bytes;
+    return true;
+}
+
 RuntimeAssetPackagedRunRequest BuildPackagedRunRequest(CookedVisualProofContext &context, PackageCookRunSmokeLedger &ledger) {
     RuntimeAssetPackagedRunRequest request{};
     request.mount_table = &context.fixture.table;
@@ -6599,6 +6796,103 @@ int RuntimeAssetDataPackagedValidationBridgeConsumesArchiveByteRangesAndHashes()
             run.packaged_validation.payload_hashes_validated ? 1U : 0U,
             run.packaged_validation.runtime_asset_payloads_validated ? 1U : 0U);
         return Fail("packaged validation bridge did not consume pressure ledger");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataPackagedResourcePayloadWindowsUseArchiveRanges() {
+    PackageCookRunSmokeLedger ledger{};
+    CookedVisualProofContext context{};
+    if (!ExecuteGeneratedFixtureCommand("PackagedResourcePayloadWindows", &context.fixture)) {
+        return Fail("packaged resource payload window fixture setup failed");
+    }
+
+    if (!BuildRuntimeAssetCookedPackagePlan(context, &ledger)) {
+        return Fail("packaged resource payload window package plan failed");
+    }
+
+    if (!PadPackageRecordFileWindows(context, &ledger)) {
+        return Fail("packaged resource payload window padding failed");
+    }
+
+    if (context.device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+        return Fail("packaged resource payload window rhi init failed");
+    }
+
+    RuntimeAssetPackagedRunRequest request = BuildPackagedRunRequest(context, ledger);
+    RuntimeAssetPackagedRunResult run{};
+    const RuntimeAssetDataStatus status = RunRuntimeAssetPackagedEntryPoint(request, &run);
+    const std::uint32_t expected_record_count =
+        RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT + 1U;
+    if (status != RuntimeAssetDataStatus::Success ||
+        run.status != RuntimeAssetDataStatus::Success ||
+        run.blocked_layer != RuntimeAssetPackagedRunBlockedLayer::None ||
+        !run.resource_payload_windows_loaded ||
+        run.resource_payload_window_count != expected_record_count ||
+        run.resource_payload_window_byte_count != ledger.package_load_plan.archive_byte_count ||
+        run.graph_load_result.package_payload_window_count != expected_record_count ||
+        run.graph_load_result.package_payload_window_byte_count !=
+            ledger.package_load_plan.archive_byte_count) {
+        std::fprintf(
+            stderr,
+            "status=%s run=%s layer=%s windows=%u/%u bytes=%llu/%llu graph=%u/%llu loaded=%u\n",
+            StatusName(status),
+            StatusName(run.status),
+            PackagedRunBlockedLayerName(run.blocked_layer),
+            run.resource_payload_window_count,
+            expected_record_count,
+            static_cast<unsigned long long>(run.resource_payload_window_byte_count),
+            static_cast<unsigned long long>(ledger.package_load_plan.archive_byte_count),
+            run.graph_load_result.package_payload_window_count,
+            static_cast<unsigned long long>(run.graph_load_result.package_payload_window_byte_count),
+            run.resource_payload_windows_loaded ? 1U : 0U);
+        return Fail("packaged resource payload windows were not loaded from archive ranges");
+    }
+
+    const RuntimeAssetFileDesc &scene_desc = context.fixture.command.fixture.cooked_scene;
+    const PackageLoadPlanRecord *scene_record = FindPackageRecordForDesc(
+        ledger.package_load_plan,
+        scene_desc);
+    if (scene_record == nullptr) {
+        return Fail("packaged resource payload window scene record missing");
+    }
+
+    if (!run.graph_load_result.scene.source_payload_window_from_package ||
+        run.graph_load_result.scene.source_payload_window_byte_offset != scene_record->archive_byte_offset ||
+        run.graph_load_result.scene.source_payload_window_byte_size != scene_record->archive_byte_size ||
+        scene_record->archive_byte_offset == 0ULL) {
+        return Fail("scene payload window did not expose package archive range");
+    }
+
+    for (std::uint32_t index = 0U; index < context.fixture.command.fixture.cooked_file_count; ++index) {
+        const RuntimeAssetFileDesc &desc = context.fixture.cooked_files[index];
+        const PackageLoadPlanRecord *record = FindPackageRecordForDesc(ledger.package_load_plan, desc);
+        if (record == nullptr) {
+            return Fail("packaged resource payload window file record missing");
+        }
+
+        const RuntimeAssetLoadedFile &loaded_file = context.loaded_files[index];
+        if (!loaded_file.source_payload_window_from_package ||
+            loaded_file.source_payload_window_byte_offset != record->archive_byte_offset ||
+            loaded_file.source_payload_window_byte_size != record->archive_byte_size ||
+            record->archive_byte_offset == 0ULL) {
+            return Fail("loaded file payload window did not expose package archive range");
+        }
+
+        std::vector<std::uint8_t> resource_bytes{};
+        if (!ReadResourceSourcePayloadWindow(context.registry, loaded_file, *record, &resource_bytes)) {
+            return Fail("read loaded file resource payload window failed");
+        }
+
+        std::vector<std::uint8_t> package_bytes{};
+        if (!ReadPackageRangeBytes(context.fixture.table, desc, *record, &package_bytes)) {
+            return Fail("read package range for payload window failed");
+        }
+
+        if (resource_bytes != package_bytes) {
+            return Fail("resource payload window bytes did not match package range bytes");
+        }
     }
 
     return 0;
@@ -14583,6 +14877,8 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
      RuntimeAssetDataProductRunCommandReportsMissingPackageArtifactPath},
     {TEST_PACKAGED_VALIDATION_BRIDGE,
      RuntimeAssetDataPackagedValidationBridgeConsumesArchiveByteRangesAndHashes},
+    {TEST_PACKAGED_RESOURCE_PAYLOAD_WINDOWS,
+     RuntimeAssetDataPackagedResourcePayloadWindowsUseArchiveRanges},
     {TEST_PACKAGED_VALIDATION_ARCHIVE_COUNT,
      RuntimeAssetDataPackagedValidationBridgeRejectsArchiveByteCountMismatchWithoutMutation},
     {TEST_PACKAGED_VALIDATION_PAYLOAD_HASH,
