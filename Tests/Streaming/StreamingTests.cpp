@@ -15,10 +15,17 @@
 #include "YuEngine/File/MountTable.h"
 #include "YuEngine/Memory/MemoryAccountingStatus.h"
 #include "YuEngine/Package/PackageRegistry.h"
+#include "YuEngine/Resource/ResourceCachePayloadRequest.h"
+#include "YuEngine/Resource/ResourceCachePayloadSnapshot.h"
+#include "YuEngine/Resource/ResourceCachePayloadStatus.h"
 #include "YuEngine/Resource/ResourceDescriptor.h"
+#include "YuEngine/Resource/ResourceLoadCommitRequest.h"
 #include "YuEngine/Resource/ResourceLoadCommitStatus.h"
 #include "YuEngine/Resource/ResourceLoadState.h"
 #include "YuEngine/Resource/ResourceRegistry.h"
+#include "YuEngine/Resource/ResourceResidencyBudgetDesc.h"
+#include "YuEngine/Resource/ResourceResidencyRequest.h"
+#include "YuEngine/Resource/ResourceResidencyStatus.h"
 #include "YuEngine/Rhi/NullRhiDevice.h"
 #include "YuEngine/Rhi/RhiBufferDesc.h"
 #include "YuEngine/Rhi/RhiBufferHandle.h"
@@ -29,6 +36,11 @@
 #include "YuEngine/Rhi/RhiTextureDesc.h"
 #include "YuEngine/Rhi/RhiTextureHandle.h"
 #include "YuEngine/Streaming/PackageResourceStagingQueue.h"
+#include "YuEngine/Streaming/ResourceCachePayloadBridge.h"
+#include "YuEngine/Streaming/ResourceCachePayloadBridgeRequest.h"
+#include "YuEngine/Streaming/ResourceCachePayloadBridgeResult.h"
+#include "YuEngine/Streaming/ResourceCachePayloadBridgeSnapshot.h"
+#include "YuEngine/Streaming/ResourceCachePayloadBridgeStatus.h"
 #include "YuEngine/Streaming/ResourceStreamingPipeline.h"
 #include "YuEngine/Streaming/ResourceStreamingPipelineRequest.h"
 #include "YuEngine/Streaming/ResourceStreamingPipelineSnapshot.h"
@@ -53,13 +65,20 @@ using yuengine::package::PackageLoadPlanResult;
 using yuengine::package::PackageRegistry;
 using yuengine::package::PackageRegistrationResult;
 using yuengine::package::PackageSourceKey;
+using yuengine::resource::ResourceCachePayloadRequest;
+using yuengine::resource::ResourceCachePayloadSnapshot;
+using yuengine::resource::ResourceCachePayloadStatus;
 using yuengine::resource::ResourceDescriptor;
 using yuengine::resource::ResourceHandle;
+using yuengine::resource::ResourceLoadCommitRequest;
 using yuengine::resource::ResourceLoadCommitStatus;
 using yuengine::resource::ResourceLoadState;
 using yuengine::resource::ResourceLogicalKey;
 using yuengine::resource::ResourceRegistrationResult;
 using yuengine::resource::ResourceRegistry;
+using yuengine::resource::ResourceResidencyBudgetDesc;
+using yuengine::resource::ResourceResidencyRequest;
+using yuengine::resource::ResourceResidencyStatus;
 using yuengine::resource::ResourceStatus;
 using yuengine::resource::ResourceTypeId;
 using yuengine::rhi::NullRhiDevice;
@@ -77,6 +96,11 @@ using yuengine::streaming::PackageResourceStagingQueueDesc;
 using yuengine::streaming::PackageResourceStagingRequest;
 using yuengine::streaming::PackageResourceStagingSnapshot;
 using yuengine::streaming::PackageResourceStagingStatus;
+using yuengine::streaming::ResourceCachePayloadBridge;
+using yuengine::streaming::ResourceCachePayloadBridgeRequest;
+using yuengine::streaming::ResourceCachePayloadBridgeResult;
+using yuengine::streaming::ResourceCachePayloadBridgeSnapshot;
+using yuengine::streaming::ResourceCachePayloadBridgeStatus;
 using yuengine::streaming::ResourceStreamingPipeline;
 using yuengine::streaming::ResourceStreamingPipelineRequest;
 using yuengine::streaming::ResourceStreamingPipelineSnapshot;
@@ -124,6 +148,16 @@ constexpr const char *TEST_SNAPSHOT =
     "Streaming_PackageResourceStaging_SnapshotReportsBoundedCounters";
 constexpr const char *TEST_NO_UPPER_DEPENDENCY =
     "Streaming_PackageResourceStaging_NoUpperRuntimeDependency";
+constexpr const char *TEST_CACHE_PAYLOAD_BRIDGE_STORE =
+    "Streaming_ResourceCachePayloadBridge_StoresPackageWindowWithU64LogicalTotal";
+constexpr const char *TEST_CACHE_PAYLOAD_BRIDGE_OFFSET =
+    "Streaming_ResourceCachePayloadBridge_SeparatesArchiveAndPayloadOffsets";
+constexpr const char *TEST_CACHE_PAYLOAD_BRIDGE_FAILED_STAGING =
+    "Streaming_ResourceCachePayloadBridge_RejectsFailedStagingWithoutResourceMutation";
+constexpr const char *TEST_CACHE_PAYLOAD_BRIDGE_WINDOW_OUT_OF_BOUNDS =
+    "Streaming_ResourceCachePayloadBridge_RejectsPayloadWindowOutOfBoundsBeforeStore";
+constexpr const char *TEST_CACHE_PAYLOAD_BRIDGE_BYTE_MISMATCH =
+    "Streaming_ResourceCachePayloadBridge_RejectsLocalByteCountMismatchBeforeStore";
 constexpr const char *TEST_UPLOAD_CREATE_BUFFER =
     "Streaming_ResourceUpload_CreateBufferFromStagingCompletion";
 constexpr const char *TEST_UPLOAD_UPDATE_BUFFER =
@@ -202,6 +236,9 @@ constexpr std::uint64_t UPLOAD_THREE = 103U;
 constexpr std::uint64_t COMMIT_ONE = 201U;
 constexpr std::uint64_t COMMIT_TWO = 202U;
 constexpr std::uint64_t COMMIT_THREE = 203U;
+constexpr std::uint64_t CACHE_PAYLOAD_ONE = 301U;
+constexpr std::uint64_t U64_PAYLOAD_LOGICAL_BYTE_COUNT = 0x100001000ULL;
+constexpr std::uint64_t PAYLOAD_WINDOW_OFFSET = 0x100000040ULL;
 constexpr std::uint32_t OUTPUT_CAPACITY = 64U;
 using TestFunction = int (*)();
 
@@ -549,6 +586,335 @@ bool ResourceLoadStateMatches(
     }
 
     return load_state == expected_state;
+}
+
+ResourceLoadCommitRequest BuildResourceLoadCommitRequest(
+    ResourceHandle resource,
+    ResourceTypeId expected_type,
+    std::uint32_t loaded_byte_count) {
+    ResourceLoadCommitRequest request;
+    request.resource = resource;
+    request.expected_type = expected_type;
+    request.load_state = ResourceLoadState::Uploaded;
+    request.commit_id = COMMIT_ONE;
+    request.upload_id = UPLOAD_ONE;
+    request.staging_request_id = REQUEST_ONE;
+    request.upload_byte_count = loaded_byte_count;
+    return request;
+}
+
+bool AdmitCachePayloadResource(
+    ResourceRegistry &registry,
+    ResourceHandle resource,
+    ResourceTypeId expected_type,
+    std::uint32_t loaded_byte_count) {
+    ResourceResidencyBudgetDesc budget;
+    budget.byte_capacity = OUTPUT_CAPACITY;
+    if (registry.SetResidencyBudget(budget) != ResourceResidencyStatus::Success) {
+        return false;
+    }
+
+    const ResourceLoadCommitRequest commit_request =
+        BuildResourceLoadCommitRequest(resource, expected_type, loaded_byte_count);
+    if (registry.CommitUploadCompletion(commit_request) != ResourceLoadCommitStatus::Success) {
+        return false;
+    }
+
+    ResourceResidencyRequest residency_request;
+    residency_request.resource = resource;
+    residency_request.expected_type = expected_type;
+    return registry.AdmitResident(residency_request) == ResourceResidencyStatus::Success;
+}
+
+ResourceCachePayloadBridgeRequest BuildCachePayloadBridgeRequest(
+    ResourceRegistry &registry,
+    const PackageResourceStagingCompletion &completion,
+    std::span<const std::uint8_t> staged_bytes) {
+    ResourceCachePayloadBridgeRequest request;
+    request.resource_registry = &registry;
+    request.staging_completion = completion;
+    request.staged_bytes = staged_bytes;
+    request.payload_id = CACHE_PAYLOAD_ONE;
+    request.payload_logical_byte_count = U64_PAYLOAD_LOGICAL_BYTE_COUNT;
+    request.payload_window_byte_offset = PAYLOAD_WINDOW_OFFSET;
+    request.payload_window_byte_size = completion.staged_byte_count;
+    return request;
+}
+
+ResourceCachePayloadRequest BuildCachePayloadReadRequest(
+    ResourceHandle resource,
+    ResourceTypeId expected_type,
+    std::uint64_t payload_id,
+    std::uint64_t logical_byte_count,
+    std::uint64_t window_byte_offset,
+    std::uint64_t window_byte_size) {
+    ResourceCachePayloadRequest request;
+    request.resource = resource;
+    request.expected_type = expected_type;
+    request.payload_id = payload_id;
+    request.payload_logical_byte_count = logical_byte_count;
+    request.payload_window_byte_offset = window_byte_offset;
+    request.payload_window_byte_size = window_byte_size;
+    return request;
+}
+
+int StreamingResourceCachePayloadBridgeStoresPackageWindowWithU64LogicalTotal() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("cache payload bridge resource registration failed");
+    }
+
+    const std::array<std::uint8_t, 4U> payload_bytes = BufferUploadBytes();
+    const std::uint32_t payload_byte_count = static_cast<std::uint32_t>(payload_bytes.size());
+    if (!AdmitCachePayloadResource(resource_registry, resource_result.handle, TYPE_TEXTURE, payload_byte_count)) {
+        return Fail("cache payload bridge resource admission failed");
+    }
+
+    const PackageResourceStagingCompletion completion =
+        BuildSuccessfulStagingCompletion(resource_result.handle, TYPE_TEXTURE, REQUEST_ONE, payload_byte_count);
+    ResourceCachePayloadBridge bridge;
+    const std::span<const std::uint8_t> staged_bytes(payload_bytes.data(), payload_bytes.size());
+    const ResourceCachePayloadBridgeRequest request =
+        BuildCachePayloadBridgeRequest(resource_registry, completion, staged_bytes);
+    const ResourceCachePayloadBridgeResult result = bridge.StorePayload(request);
+    if (result.status != ResourceCachePayloadBridgeStatus::Success) {
+        return Fail("cache payload bridge store did not succeed");
+    }
+
+    if (result.cache_payload_status != ResourceCachePayloadStatus::Success) {
+        return Fail("cache payload bridge resource store status changed");
+    }
+
+    if (result.payload_logical_byte_count != U64_PAYLOAD_LOGICAL_BYTE_COUNT) {
+        return Fail("cache payload bridge result logical byte count changed");
+    }
+
+    if (result.payload_window_byte_offset != PAYLOAD_WINDOW_OFFSET) {
+        return Fail("cache payload bridge result window offset changed");
+    }
+
+    if (result.payload_byte_count != payload_byte_count) {
+        return Fail("cache payload bridge result local byte count changed");
+    }
+
+    const ResourceCachePayloadBridgeSnapshot bridge_snapshot = bridge.Snapshot();
+    if (bridge_snapshot.submitted_count != 1U) {
+        return Fail("cache payload bridge submitted count changed");
+    }
+
+    if (bridge_snapshot.completed_count != 1U) {
+        return Fail("cache payload bridge completed count changed");
+    }
+
+    const ResourceCachePayloadSnapshot cache_snapshot = resource_registry.CachePayloadSnapshot();
+    if (cache_snapshot.cached_payload_count != 1U) {
+        return Fail("cache payload bridge did not store resource cache payload");
+    }
+
+    if (cache_snapshot.last_payload_logical_byte_count != U64_PAYLOAD_LOGICAL_BYTE_COUNT) {
+        return Fail("cache payload bridge snapshot logical byte count changed");
+    }
+
+    if (cache_snapshot.last_payload_window_byte_offset != PAYLOAD_WINDOW_OFFSET) {
+        return Fail("cache payload bridge snapshot window offset changed");
+    }
+
+    std::array<std::uint8_t, 2U> output_bytes{};
+    std::uint32_t output_byte_count = 0U;
+    const std::uint64_t read_window_offset = PAYLOAD_WINDOW_OFFSET + 1U;
+    const ResourceCachePayloadRequest read_request = BuildCachePayloadReadRequest(
+        resource_result.handle,
+        TYPE_TEXTURE,
+        CACHE_PAYLOAD_ONE,
+        U64_PAYLOAD_LOGICAL_BYTE_COUNT,
+        read_window_offset,
+        static_cast<std::uint64_t>(output_bytes.size()));
+    const ResourceCachePayloadStatus read_status = resource_registry.ReadCachePayload(
+        read_request,
+        output_bytes.data(),
+        static_cast<std::uint32_t>(output_bytes.size()),
+        &output_byte_count);
+    if (read_status != ResourceCachePayloadStatus::Success) {
+        return Fail("cache payload bridge stored window could not be read");
+    }
+
+    if (output_byte_count != static_cast<std::uint32_t>(output_bytes.size())) {
+        return Fail("cache payload bridge read byte count changed");
+    }
+
+    if (output_bytes[0U] != payload_bytes[1U]) {
+        return Fail("cache payload bridge read first byte changed");
+    }
+
+    if (output_bytes[1U] != payload_bytes[2U]) {
+        return Fail("cache payload bridge read second byte changed");
+    }
+
+    return 0;
+}
+
+int StreamingResourceCachePayloadBridgeSeparatesArchiveAndPayloadOffsets() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("cache payload bridge offset resource registration failed");
+    }
+
+    const std::array<std::uint8_t, 4U> payload_bytes = BufferUploadBytes();
+    const std::uint32_t payload_byte_count = static_cast<std::uint32_t>(payload_bytes.size());
+    if (!AdmitCachePayloadResource(resource_registry, resource_result.handle, TYPE_TEXTURE, payload_byte_count)) {
+        return Fail("cache payload bridge offset resource admission failed");
+    }
+
+    PackageLoadPlanRecord package_record;
+    if (!BuildPackageRecord(&package_record, static_cast<std::uint32_t>(ARCHIVE_WINDOW_OFFSET), payload_byte_count)) {
+        return Fail("cache payload bridge offset package record build failed");
+    }
+
+    PackageResourceStagingCompletion completion =
+        BuildSuccessfulStagingCompletion(resource_result.handle, TYPE_TEXTURE, REQUEST_ONE, payload_byte_count);
+    completion.package_record = package_record;
+
+    ResourceCachePayloadBridge bridge;
+    const std::span<const std::uint8_t> staged_bytes(payload_bytes.data(), payload_bytes.size());
+    const ResourceCachePayloadBridgeRequest request =
+        BuildCachePayloadBridgeRequest(resource_registry, completion, staged_bytes);
+    const ResourceCachePayloadBridgeResult result = bridge.StorePayload(request);
+    if (result.status != ResourceCachePayloadBridgeStatus::Success) {
+        return Fail("cache payload bridge offset store did not succeed");
+    }
+
+    std::array<std::uint8_t, 2U> output_bytes{};
+    std::uint32_t output_byte_count = 0U;
+    const ResourceCachePayloadRequest archive_offset_request = BuildCachePayloadReadRequest(
+        resource_result.handle,
+        TYPE_TEXTURE,
+        CACHE_PAYLOAD_ONE,
+        U64_PAYLOAD_LOGICAL_BYTE_COUNT,
+        ARCHIVE_WINDOW_OFFSET,
+        static_cast<std::uint64_t>(output_bytes.size()));
+    const ResourceCachePayloadStatus read_status = resource_registry.ReadCachePayload(
+        archive_offset_request,
+        output_bytes.data(),
+        static_cast<std::uint32_t>(output_bytes.size()),
+        &output_byte_count);
+    if (read_status != ResourceCachePayloadStatus::PayloadWindowOutOfBounds) {
+        return Fail("cache payload bridge treated archive offset as payload offset");
+    }
+
+    return 0;
+}
+
+int StreamingResourceCachePayloadBridgeRejectsFailedStagingWithoutResourceMutation() {
+    ResourceRegistry resource_registry;
+    const std::array<std::uint8_t, 4U> payload_bytes = BufferUploadBytes();
+    const std::uint32_t payload_byte_count = static_cast<std::uint32_t>(payload_bytes.size());
+    PackageResourceStagingCompletion completion =
+        BuildSuccessfulStagingCompletion(ResourceHandle{}, TYPE_TEXTURE, REQUEST_ONE, payload_byte_count);
+    completion.status = PackageResourceStagingStatus::FileReadFailed;
+
+    ResourceCachePayloadBridge bridge;
+    const std::span<const std::uint8_t> staged_bytes(payload_bytes.data(), payload_bytes.size());
+    const ResourceCachePayloadBridgeRequest request =
+        BuildCachePayloadBridgeRequest(resource_registry, completion, staged_bytes);
+    const ResourceCachePayloadBridgeResult result = bridge.StorePayload(request);
+    if (result.status != ResourceCachePayloadBridgeStatus::StagingFailed) {
+        return Fail("cache payload bridge did not reject failed staging");
+    }
+
+    const ResourceCachePayloadBridgeSnapshot bridge_snapshot = bridge.Snapshot();
+    if (bridge_snapshot.submitted_count != 0U) {
+        return Fail("cache payload bridge submitted failed staging");
+    }
+
+    if (bridge_snapshot.rejected_count != 1U) {
+        return Fail("cache payload bridge rejected count changed for failed staging");
+    }
+
+    const ResourceCachePayloadSnapshot cache_snapshot = resource_registry.CachePayloadSnapshot();
+    if (cache_snapshot.cached_payload_count != 0U) {
+        return Fail("cache payload bridge mutated resource cache for failed staging");
+    }
+
+    return 0;
+}
+
+int StreamingResourceCachePayloadBridgeRejectsPayloadWindowOutOfBoundsBeforeStore() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("cache payload bridge bounds resource registration failed");
+    }
+
+    const std::array<std::uint8_t, 4U> payload_bytes = BufferUploadBytes();
+    const std::uint32_t payload_byte_count = static_cast<std::uint32_t>(payload_bytes.size());
+    if (!AdmitCachePayloadResource(resource_registry, resource_result.handle, TYPE_TEXTURE, payload_byte_count)) {
+        return Fail("cache payload bridge bounds resource admission failed");
+    }
+
+    const PackageResourceStagingCompletion completion =
+        BuildSuccessfulStagingCompletion(resource_result.handle, TYPE_TEXTURE, REQUEST_ONE, payload_byte_count);
+    ResourceCachePayloadBridge bridge;
+    const std::span<const std::uint8_t> staged_bytes(payload_bytes.data(), payload_bytes.size());
+    ResourceCachePayloadBridgeRequest request =
+        BuildCachePayloadBridgeRequest(resource_registry, completion, staged_bytes);
+    const std::uint64_t payload_window_end = PAYLOAD_WINDOW_OFFSET + payload_byte_count;
+    request.payload_logical_byte_count = payload_window_end - 1U;
+    const ResourceCachePayloadBridgeResult result = bridge.StorePayload(request);
+    if (result.status != ResourceCachePayloadBridgeStatus::PayloadWindowOutOfBounds) {
+        return Fail("cache payload bridge did not reject payload window bounds");
+    }
+
+    const ResourceCachePayloadBridgeSnapshot bridge_snapshot = bridge.Snapshot();
+    if (bridge_snapshot.submitted_count != 0U) {
+        return Fail("cache payload bridge submitted bounds failure");
+    }
+
+    const ResourceCachePayloadSnapshot cache_snapshot = resource_registry.CachePayloadSnapshot();
+    if (cache_snapshot.cached_payload_count != 0U) {
+        return Fail("cache payload bridge mutated resource cache for bounds failure");
+    }
+
+    return 0;
+}
+
+int StreamingResourceCachePayloadBridgeRejectsLocalByteCountMismatchBeforeStore() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("cache payload bridge mismatch resource registration failed");
+    }
+
+    const std::array<std::uint8_t, 4U> payload_bytes = BufferUploadBytes();
+    const std::uint32_t payload_byte_count = static_cast<std::uint32_t>(payload_bytes.size());
+    if (!AdmitCachePayloadResource(resource_registry, resource_result.handle, TYPE_TEXTURE, payload_byte_count)) {
+        return Fail("cache payload bridge mismatch resource admission failed");
+    }
+
+    const PackageResourceStagingCompletion completion =
+        BuildSuccessfulStagingCompletion(resource_result.handle, TYPE_TEXTURE, REQUEST_ONE, payload_byte_count);
+    ResourceCachePayloadBridge bridge;
+    const std::span<const std::uint8_t> staged_bytes(payload_bytes.data(), payload_bytes.size());
+    ResourceCachePayloadBridgeRequest request =
+        BuildCachePayloadBridgeRequest(resource_registry, completion, staged_bytes);
+    request.payload_window_byte_size = static_cast<std::uint64_t>(payload_byte_count) + 1U;
+    const ResourceCachePayloadBridgeResult result = bridge.StorePayload(request);
+    if (result.status != ResourceCachePayloadBridgeStatus::StagingByteCountMismatch) {
+        return Fail("cache payload bridge did not reject local byte mismatch");
+    }
+
+    const ResourceCachePayloadBridgeSnapshot bridge_snapshot = bridge.Snapshot();
+    if (bridge_snapshot.submitted_count != 0U) {
+        return Fail("cache payload bridge submitted local byte mismatch");
+    }
+
+    const ResourceCachePayloadSnapshot cache_snapshot = resource_registry.CachePayloadSnapshot();
+    if (cache_snapshot.cached_payload_count != 0U) {
+        return Fail("cache payload bridge mutated resource cache for local byte mismatch");
+    }
+
+    return 0;
 }
 
 int StreamingPackageResourceStagingSubmitsAndCompletesFixtureRead() {
@@ -2657,6 +3023,14 @@ int main(int argc, char **argv) {
         {TEST_DUPLICATE_REQUEST, StreamingPackageResourceStagingRejectsDuplicateRequestId},
         {TEST_SNAPSHOT, StreamingPackageResourceStagingSnapshotReportsBoundedCounters},
         {TEST_NO_UPPER_DEPENDENCY, StreamingPackageResourceStagingNoUpperRuntimeDependency},
+        {TEST_CACHE_PAYLOAD_BRIDGE_STORE, StreamingResourceCachePayloadBridgeStoresPackageWindowWithU64LogicalTotal},
+        {TEST_CACHE_PAYLOAD_BRIDGE_OFFSET, StreamingResourceCachePayloadBridgeSeparatesArchiveAndPayloadOffsets},
+        {TEST_CACHE_PAYLOAD_BRIDGE_FAILED_STAGING,
+         StreamingResourceCachePayloadBridgeRejectsFailedStagingWithoutResourceMutation},
+        {TEST_CACHE_PAYLOAD_BRIDGE_WINDOW_OUT_OF_BOUNDS,
+         StreamingResourceCachePayloadBridgeRejectsPayloadWindowOutOfBoundsBeforeStore},
+        {TEST_CACHE_PAYLOAD_BRIDGE_BYTE_MISMATCH,
+         StreamingResourceCachePayloadBridgeRejectsLocalByteCountMismatchBeforeStore},
         {TEST_UPLOAD_CREATE_BUFFER, StreamingResourceUploadCreateBufferFromStagingCompletion},
         {TEST_UPLOAD_UPDATE_BUFFER, StreamingResourceUploadUpdateBufferSignalsFence},
         {TEST_UPLOAD_CREATE_TEXTURE, StreamingResourceUploadCreateTextureFromStagingCompletion},
