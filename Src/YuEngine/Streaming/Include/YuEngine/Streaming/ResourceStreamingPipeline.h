@@ -6,6 +6,9 @@
 #include "YuEngine/File/AsyncFileReadResult.h"
 #include "YuEngine/Streaming/PackageResourceStagingCompletion.h"
 #include "YuEngine/Streaming/PackageResourceStagingQueue.h"
+#include "YuEngine/Streaming/ResourceCachePayloadBridge.h"
+#include "YuEngine/Streaming/ResourceCachePayloadBridgeResult.h"
+#include "YuEngine/Streaming/ResourceCachePayloadBridgeSnapshot.h"
 #include "YuEngine/Streaming/ResourceStreamingPipelineRequest.h"
 #include "YuEngine/Streaming/ResourceStreamingPipelineSnapshot.h"
 #include "YuEngine/Streaming/ResourceStreamingPipelineStatus.h"
@@ -64,6 +67,16 @@ public:
      * @return Completion 值。
      */
     ResourceUploadCommitCompletion LastCommitCompletion() const;
+    /**
+     * @comment 返回最近的 cache payload 桥接结果。
+     * @return 桥接结果值。
+     */
+    ResourceCachePayloadBridgeResult LastCachePayloadResult() const;
+    /**
+     * @comment 返回 cache payload 桥接计数器和最近状态。
+     * @return 桥接快照值。
+     */
+    ResourceCachePayloadBridgeSnapshot CachePayloadBridgeSnapshot() const;
 
 private:
     ResourceStreamingPipelineStatus ValidateRequest(const ResourceStreamingPipelineRequest &request) const;
@@ -71,15 +84,20 @@ private:
     ResourceStreamingPipelineStatus RecordFailed(ResourceStreamingPipelineStatus status);
     ResourceStreamingPipelineStatus RecordCompleted(ResourceStreamingPipelineStatus status);
     void ClearActiveRequest();
+    ResourceStreamingPipelineStatus StoreCachePayload(const PackageResourceStagingCompletion &completion);
     PackageResourceStagingRequest BuildStagingRequest(const ResourceStreamingPipelineRequest &request) const;
+    ResourceCachePayloadBridgeRequest BuildCachePayloadBridgeRequest(
+        const PackageResourceStagingCompletion &completion) const;
     ResourceUploadRequest BuildUploadRequest(const PackageResourceStagingCompletion &completion) const;
     ResourceUploadCommitRequest BuildCommitRequest(const ResourceUploadCompletion &completion) const;
 
     PackageResourceStagingQueue staging_queue_;
+    ResourceCachePayloadBridge cache_payload_bridge_;
     ResourceUploadQueue upload_queue_;
     ResourceUploadCommitQueue commit_queue_;
     ResourceStreamingPipelineRequest request_;
     PackageResourceStagingCompletion last_staging_completion_;
+    ResourceCachePayloadBridgeResult last_cache_payload_result_;
     ResourceUploadCompletion last_upload_completion_;
     ResourceUploadCommitCompletion last_commit_completion_;
     ResourceStreamingPipelineSnapshot snapshot_;

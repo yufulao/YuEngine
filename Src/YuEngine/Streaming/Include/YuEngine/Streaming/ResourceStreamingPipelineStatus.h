@@ -16,6 +16,7 @@ enum class ResourceStreamingPipelineStatus {
     UploadSubmitFailed,
     UploadProcessFailed,
     UploadCompletionMissing,
+    CachePayloadStoreFailed,
     CommitSubmitFailed,
     CommitProcessFailed,
     CommitCompletionMissing

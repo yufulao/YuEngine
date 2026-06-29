@@ -6,7 +6,9 @@
 #include <cstdint>
 
 #include "YuEngine/File/AsyncFileReadStatus.h"
+#include "YuEngine/Resource/ResourceCachePayloadStatus.h"
 #include "YuEngine/Streaming/PackageResourceStagingStatus.h"
+#include "YuEngine/Streaming/ResourceCachePayloadBridgeStatus.h"
 #include "YuEngine/Streaming/ResourceStreamingPipelineStatus.h"
 #include "YuEngine/Streaming/ResourceUploadCommitStatus.h"
 #include "YuEngine/Streaming/ResourceUploadStatus.h"
@@ -20,6 +22,9 @@ struct ResourceStreamingPipelineSnapshot final {
     ResourceStreamingPipelineStatus last_status = ResourceStreamingPipelineStatus::Success;
     PackageResourceStagingStatus last_staging_status = PackageResourceStagingStatus::Success;
     file::AsyncFileReadStatus last_async_file_status = file::AsyncFileReadStatus::Success;
+    ResourceCachePayloadBridgeStatus last_cache_payload_status = ResourceCachePayloadBridgeStatus::Success;
+    resource::ResourceCachePayloadStatus last_cache_payload_resource_status =
+        resource::ResourceCachePayloadStatus::Success;
     ResourceUploadStatus last_upload_status = ResourceUploadStatus::Success;
     ResourceUploadCommitStatus last_commit_status = ResourceUploadCommitStatus::Success;
     bool has_active_request = false;

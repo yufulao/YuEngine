@@ -8,10 +8,12 @@
 namespace yuengine::streaming {
 ResourceStreamingPipeline::ResourceStreamingPipeline()
     : staging_queue_(),
+      cache_payload_bridge_(),
       upload_queue_(),
       commit_queue_(),
       request_(),
       last_staging_completion_(),
+      last_cache_payload_result_(),
       last_upload_completion_(),
       last_commit_completion_(),
       snapshot_(),
@@ -38,6 +40,7 @@ ResourceStreamingPipelineStatus ResourceStreamingPipeline::Submit(
 
     request_ = request;
     last_staging_completion_ = PackageResourceStagingCompletion{};
+    last_cache_payload_result_ = ResourceCachePayloadBridgeResult{};
     last_upload_completion_ = ResourceUploadCompletion{};
     last_commit_completion_ = ResourceUploadCommitCompletion{};
     has_active_request_ = true;
@@ -75,6 +78,10 @@ ResourceStreamingPipelineStatus ResourceStreamingPipeline::CompleteFileRead(
     last_staging_completion_ = completions[0U];
     if (staging_status != PackageResourceStagingStatus::Success) {
         return RecordFailed(ResourceStreamingPipelineStatus::FileCompletionFailed);
+    }
+
+    if (request_.store_cache_payload_only) {
+        return StoreCachePayload(last_staging_completion_);
     }
 
     const ResourceUploadRequest upload_request = BuildUploadRequest(last_staging_completion_);
@@ -178,6 +185,14 @@ ResourceUploadCommitCompletion ResourceStreamingPipeline::LastCommitCompletion()
     return last_commit_completion_;
 }
 
+ResourceCachePayloadBridgeResult ResourceStreamingPipeline::LastCachePayloadResult() const {
+    return last_cache_payload_result_;
+}
+
+ResourceCachePayloadBridgeSnapshot ResourceStreamingPipeline::CachePayloadBridgeSnapshot() const {
+    return cache_payload_bridge_.Snapshot();
+}
+
 ResourceStreamingPipelineStatus ResourceStreamingPipeline::ValidateRequest(
     const ResourceStreamingPipelineRequest &request) const {
     if (request.resource_registry == nullptr) {
@@ -188,11 +203,23 @@ ResourceStreamingPipelineStatus ResourceStreamingPipeline::ValidateRequest(
         return ResourceStreamingPipelineStatus::InvalidArgument;
     }
 
-    if (request.rhi_device == nullptr) {
+    if (request.staging_request_id == 0U) {
         return ResourceStreamingPipelineStatus::InvalidArgument;
     }
 
-    if (request.staging_request_id == 0U) {
+    if (request.store_cache_payload_only) {
+        if (request.cache_payload_id == 0U) {
+            return ResourceStreamingPipelineStatus::InvalidArgument;
+        }
+
+        if (request.staged_bytes.data() == nullptr) {
+            return ResourceStreamingPipelineStatus::InvalidArgument;
+        }
+
+        return ResourceStreamingPipelineStatus::Success;
+    }
+
+    if (request.rhi_device == nullptr) {
         return ResourceStreamingPipelineStatus::InvalidArgument;
     }
 
@@ -247,6 +274,19 @@ void ResourceStreamingPipeline::ClearActiveRequest() {
     snapshot_.has_active_request = false;
 }
 
+ResourceStreamingPipelineStatus ResourceStreamingPipeline::StoreCachePayload(
+    const PackageResourceStagingCompletion &completion) {
+    const ResourceCachePayloadBridgeRequest cache_request = BuildCachePayloadBridgeRequest(completion);
+    last_cache_payload_result_ = cache_payload_bridge_.StorePayload(cache_request);
+    snapshot_.last_cache_payload_status = last_cache_payload_result_.status;
+    snapshot_.last_cache_payload_resource_status = last_cache_payload_result_.cache_payload_status;
+    if (last_cache_payload_result_.status != ResourceCachePayloadBridgeStatus::Success) {
+        return RecordFailed(ResourceStreamingPipelineStatus::CachePayloadStoreFailed);
+    }
+
+    return RecordCompleted(ResourceStreamingPipelineStatus::Success);
+}
+
 PackageResourceStagingRequest ResourceStreamingPipeline::BuildStagingRequest(
     const ResourceStreamingPipelineRequest &request) const {
     PackageResourceStagingRequest staging_request;
@@ -258,6 +298,19 @@ PackageResourceStagingRequest ResourceStreamingPipeline::BuildStagingRequest(
     staging_request.file_request = request.file_request;
     staging_request.request_id = request.staging_request_id;
     return staging_request;
+}
+
+ResourceCachePayloadBridgeRequest ResourceStreamingPipeline::BuildCachePayloadBridgeRequest(
+    const PackageResourceStagingCompletion &completion) const {
+    ResourceCachePayloadBridgeRequest cache_request;
+    cache_request.resource_registry = request_.resource_registry;
+    cache_request.staging_completion = completion;
+    cache_request.staged_bytes = request_.staged_bytes;
+    cache_request.payload_id = request_.cache_payload_id;
+    cache_request.payload_logical_byte_count = completion.package_record.payload_logical_byte_count;
+    cache_request.payload_window_byte_offset = completion.package_record.payload_window_byte_offset;
+    cache_request.payload_window_byte_size = completion.package_record.payload_window_byte_size;
+    return cache_request;
 }
 
 ResourceUploadRequest ResourceStreamingPipeline::BuildUploadRequest(

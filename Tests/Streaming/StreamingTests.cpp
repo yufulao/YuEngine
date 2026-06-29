@@ -212,6 +212,8 @@ constexpr const char *TEST_UPLOAD_COMMIT_SNAPSHOT =
     "Streaming_ResourceUploadCommit_SnapshotReportsBoundedCounters";
 constexpr const char *TEST_PIPELINE_FIXTURE_BUFFER =
     "Streaming_ResourceStreamingPipeline_FixtureBufferReadUploadCommit";
+constexpr const char *TEST_PIPELINE_CACHE_PAYLOAD =
+    "Streaming_ResourceStreamingPipeline_CachePayloadOnlyStoresPackageWindow";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char *PRIMARY_MOUNT = "Primary";
@@ -2999,6 +3001,180 @@ int StreamingResourceStreamingPipelineFixtureBufferReadUploadCommit() {
         return Fail("pipeline active request was not cleared");
     }
 
+    if (resource_registry.CachePayloadSnapshot().cached_payload_count != 0U) {
+        return Fail("pipeline default path stored cache payload");
+    }
+
+    if (pipeline.LastCachePayloadResult().payload_id != 0U) {
+        return Fail("pipeline default path mutated cache payload result");
+    }
+
+    return 0;
+}
+
+int StreamingResourceStreamingPipelineCachePayloadOnlyStoresPackageWindow() {
+    MountTable table = CreateMountedTable();
+    AsyncFileReadQueue file_queue;
+    if (file_queue.Initialize(2U, 2U) != AsyncFileReadStatus::Success) {
+        return Fail("pipeline cache payload file queue initialize failed");
+    }
+
+    if (file_queue.Start() != AsyncFileReadStatus::Success) {
+        return Fail("pipeline cache payload file queue start failed");
+    }
+
+    const std::uint32_t archive_window_offset = static_cast<std::uint32_t>(ARCHIVE_WINDOW_OFFSET);
+    const std::uint32_t archive_window_size = static_cast<std::uint32_t>(ARCHIVE_WINDOW_SIZE);
+    PackageLoadPlanRecord record;
+    if (!BuildPackageRecord(&record, archive_window_offset, archive_window_size)) {
+        return Fail("pipeline cache payload package record build failed");
+    }
+
+    record.payload_logical_byte_count = U64_PAYLOAD_LOGICAL_BYTE_COUNT;
+    record.payload_window_byte_offset = PAYLOAD_WINDOW_OFFSET;
+    record.payload_window_byte_size = ARCHIVE_WINDOW_SIZE;
+
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("pipeline cache payload resource registration failed");
+    }
+
+    if (!AdmitCachePayloadResource(resource_registry, resource_result.handle, TYPE_TEXTURE, archive_window_size)) {
+        return Fail("pipeline cache payload resource admission failed");
+    }
+
+    std::array<std::uint8_t, OUTPUT_CAPACITY> staged_bytes{};
+    ResourceStreamingPipelineRequest request;
+    request.resource_registry = &resource_registry;
+    request.file_queue = &file_queue;
+    request.package_record = record;
+    request.resource = resource_result.handle;
+    request.expected_type = TYPE_TEXTURE;
+    request.file_request = BuildFileRequest(table, staged_bytes.data(), staged_bytes.size());
+    request.staged_bytes = std::span<const std::uint8_t>(staged_bytes.data(), staged_bytes.size());
+    request.store_cache_payload_only = true;
+    request.cache_payload_id = CACHE_PAYLOAD_ONE;
+    request.staging_request_id = REQUEST_ONE;
+
+    ResourceStreamingPipeline pipeline;
+    if (pipeline.Submit(request) != ResourceStreamingPipelineStatus::Queued) {
+        return Fail("pipeline cache payload submit did not queue");
+    }
+
+    if (file_queue.Shutdown(false) != AsyncFileReadStatus::ShutdownComplete) {
+        return Fail("pipeline cache payload file queue shutdown failed");
+    }
+
+    AsyncFileReadResult file_result;
+    if (!DrainOneFileCompletion(file_queue, &file_result)) {
+        return Fail("pipeline cache payload file completion drain failed");
+    }
+
+    if (pipeline.CompleteFileRead(file_result) != ResourceStreamingPipelineStatus::Success) {
+        return Fail("pipeline cache payload file completion did not store cache payload");
+    }
+
+    const ResourceCachePayloadBridgeResult cache_result = pipeline.LastCachePayloadResult();
+    if (cache_result.status != ResourceCachePayloadBridgeStatus::Success) {
+        return Fail("pipeline cache payload bridge status changed");
+    }
+
+    if (cache_result.cache_payload_status != ResourceCachePayloadStatus::Success) {
+        return Fail("pipeline cache payload resource status changed");
+    }
+
+    if (cache_result.payload_id != CACHE_PAYLOAD_ONE) {
+        return Fail("pipeline cache payload id changed");
+    }
+
+    if (cache_result.payload_logical_byte_count != U64_PAYLOAD_LOGICAL_BYTE_COUNT) {
+        return Fail("pipeline cache payload logical byte count changed");
+    }
+
+    if (cache_result.payload_window_byte_offset != PAYLOAD_WINDOW_OFFSET) {
+        return Fail("pipeline cache payload window offset changed");
+    }
+
+    if (cache_result.payload_window_byte_size != ARCHIVE_WINDOW_SIZE) {
+        return Fail("pipeline cache payload window size changed");
+    }
+
+    if (pipeline.LastUploadCompletion().upload_id != 0U) {
+        return Fail("pipeline cache payload entered upload stage");
+    }
+
+    if (pipeline.LastCommitCompletion().commit_id != 0U) {
+        return Fail("pipeline cache payload entered commit stage");
+    }
+
+    const ResourceStreamingPipelineSnapshot snapshot = pipeline.Snapshot();
+    if (snapshot.completed_count != 1U) {
+        return Fail("pipeline cache payload completed count changed");
+    }
+
+    if (snapshot.failed_count != 0U) {
+        return Fail("pipeline cache payload failed count changed");
+    }
+
+    if (snapshot.last_cache_payload_status != ResourceCachePayloadBridgeStatus::Success) {
+        return Fail("pipeline cache payload snapshot status changed");
+    }
+
+    if (snapshot.last_cache_payload_resource_status != ResourceCachePayloadStatus::Success) {
+        return Fail("pipeline cache payload snapshot resource status changed");
+    }
+
+    if (snapshot.last_upload_status != ResourceUploadStatus::Success) {
+        return Fail("pipeline cache payload mutated upload status");
+    }
+
+    if (snapshot.has_active_request) {
+        return Fail("pipeline cache payload active request was not cleared");
+    }
+
+    const ResourceCachePayloadSnapshot cache_snapshot = resource_registry.CachePayloadSnapshot();
+    if (cache_snapshot.cached_payload_count != 1U) {
+        return Fail("pipeline cache payload did not store resource cache payload");
+    }
+
+    if (cache_snapshot.last_payload_logical_byte_count != U64_PAYLOAD_LOGICAL_BYTE_COUNT) {
+        return Fail("pipeline cache payload snapshot logical byte count changed");
+    }
+
+    if (cache_snapshot.last_payload_window_byte_offset != PAYLOAD_WINDOW_OFFSET) {
+        return Fail("pipeline cache payload snapshot window offset changed");
+    }
+
+    std::array<std::uint8_t, 4U> output_bytes{};
+    std::uint32_t output_byte_count = 0U;
+    const std::uint64_t read_window_size = static_cast<std::uint64_t>(output_bytes.size());
+    const ResourceCachePayloadRequest read_request = BuildCachePayloadReadRequest(
+        resource_result.handle,
+        TYPE_TEXTURE,
+        CACHE_PAYLOAD_ONE,
+        U64_PAYLOAD_LOGICAL_BYTE_COUNT,
+        PAYLOAD_WINDOW_OFFSET,
+        read_window_size);
+    const ResourceCachePayloadStatus read_status = resource_registry.ReadCachePayload(
+        read_request,
+        output_bytes.data(),
+        static_cast<std::uint32_t>(output_bytes.size()),
+        &output_byte_count);
+    if (read_status != ResourceCachePayloadStatus::Success) {
+        return Fail("pipeline cache payload read failed");
+    }
+
+    if (output_byte_count != static_cast<std::uint32_t>(output_bytes.size())) {
+        return Fail("pipeline cache payload read byte count changed");
+    }
+
+    const std::string expected_text = ArchiveWindowText(ARCHIVE_WINDOW_OFFSET, read_window_size);
+    const std::string output_text(output_bytes.begin(), output_bytes.end());
+    if (output_text != expected_text) {
+        return Fail("pipeline cache payload bytes changed");
+    }
+
     return 0;
 }
 }
@@ -3058,7 +3234,8 @@ int main(int argc, char **argv) {
          StreamingResourceUploadCommitReportsCompletionOverflowWithoutProcessingPending},
         {TEST_UPLOAD_COMMIT_SLOT_REUSE_ORDER, StreamingResourceUploadCommitPreservesOldestOrderAfterSlotReuse},
         {TEST_UPLOAD_COMMIT_SNAPSHOT, StreamingResourceUploadCommitSnapshotReportsBoundedCounters},
-        {TEST_PIPELINE_FIXTURE_BUFFER, StreamingResourceStreamingPipelineFixtureBufferReadUploadCommit}};
+        {TEST_PIPELINE_FIXTURE_BUFFER, StreamingResourceStreamingPipelineFixtureBufferReadUploadCommit},
+        {TEST_PIPELINE_CACHE_PAYLOAD, StreamingResourceStreamingPipelineCachePayloadOnlyStoresPackageWindow}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);

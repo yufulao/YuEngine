@@ -39,6 +39,8 @@ struct ResourceStreamingPipelineRequest final {
     resource::ResourceTypeId expected_type;
     file::AsyncFileReadRequest file_request;
     std::span<const std::uint8_t> staged_bytes;
+    bool store_cache_payload_only = false;
+    std::uint64_t cache_payload_id = 0U;
     std::uint32_t upload_byte_offset = 0U;
     std::uint32_t upload_byte_count = 0U;
     ResourceUploadKind upload_kind = ResourceUploadKind::Unsupported;
