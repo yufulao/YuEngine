@@ -281,6 +281,21 @@ At the latest handoff:
   `DrainCompletions` stay in non-callback API paths; sample PCM path,
   AudioResource, AudioScene, L1 rows, adjacent/full suites, and broad/full CTest
   remain separate;
+- L0-AUD-005 sample PCM path closure is PASS at
+  `e14869b9138c750152b7e0ea16f466fd4101a8a8`; readiness task `5270aafd`
+  records the existing sample path as READY: synthetic audio resource evidence
+  flows through `AssetAudioReadyRecord` and
+  `AudioSceneContractQueue::SubmitSourceUpdates` into
+  `AudioPcmStreamQueueRequest`, with explicit `BackendUnavailable` status.
+  Focused QA task `e4e6cece` reports `YuSampleTests` build
+  PASS, `YuAudioSceneTests` build
+  PASS, focused regex execution only `8/8` PASS with `0 failed` and
+  `0 skipped/not-run`, and clean read-only QA at
+  `HEAD == origin/main == e14869b`; hardware output/listening, sample
+  scripts/manual proof, L0-SAMPLE-006, AudioResource closure, AudioScene closure,
+  L1 ASCENE rows, L1-SAMPLE-007, adjacent/full suites, broad/full CTest, and
+  Render/RHI/World/UI/material/shader/scene/importer/package expansion remain
+  separate;
 - WorldObject-facing runtime instance mapping and broader Resource/File/VFS
   follow-through remain blocked until their own gates are released.
 

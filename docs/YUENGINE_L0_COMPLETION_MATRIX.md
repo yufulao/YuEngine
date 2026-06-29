@@ -196,6 +196,22 @@ PASS, fast callback/bridge execution `18/18` PASS, hardware callback execution
 AudioResource, AudioScene, L1 rows, adjacent/full suites, and broad/full CTest
 to their own rows.
 
+L0-AUD-005 docs sync records sample PCM path closure at
+`origin/main@e14869b9138c750152b7e0ea16f466fd4101a8a8`. Readiness task
+`5270aafd` records the existing sample path as READY: synthetic audio resource
+evidence flows through `AssetAudioReadyRecord` and
+`AudioSceneContractQueue::SubmitSourceUpdates` into
+`AudioPcmStreamQueueRequest`, with explicit `BackendUnavailable` status.
+Focused QA task `e4e6cece` reports `YuSampleTests` build
+PASS, `YuAudioSceneTests` build
+PASS, focused regex execution only `8/8` PASS with `0 failed` and
+`0 skipped/not-run`, and clean read-only QA at
+`HEAD == origin/main == e14869b`. The matrix keeps hardware output/listening,
+sample scripts/manual proof, L0-SAMPLE-006, AudioResource closure, AudioScene
+closure, L1 ASCENE rows, L1-SAMPLE-007, adjacent/full suites, broad/full CTest,
+and Render/RHI/World/UI/material/shader/scene/importer/package expansion to
+their own rows.
+
 ## 5. L0 Closure Candidate Gate
 
 The current repository may enter L0 closure-candidate review only when all of

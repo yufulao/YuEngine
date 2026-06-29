@@ -37,7 +37,7 @@ The audit is aligned to `YUENGINE_L0_COMPLETION_MATRIX.md`:
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `HardwareFrameHost` | Platform/Input/Audio/RenderCore/RHI adapters into one hardware tick | Platform/Input/Audio/RenderCore/RHI modules keep their own internals | Hardware consumes module public contracts | Hardware owns host initialize/tick/shutdown only | `HardwareFrameHostStatus`, `HardwareFrameHostTickResult`, plus mapped module statuses | Tick requests, event output, gamepad polling, audio chunks, render frame storage | `HardwareFrameHost_*`, `HardwareFrameHost_D3D11IntegratedFrameRuns` | `BlockedByEnv` | `Medium` | Keep as orchestrating adapter only; target hardware smoke remains required before product-done claim |
 | `InputBridge` and `InputBridgeWindows` | Platform messages and XInput snapshots to Input events | Platform/Win32/XInput source values | Input owns event queue and snapshots | Input owns bridge init/shutdown and event storage | `InputStatus` including `UnsupportedBackend`, `SourceUnavailable`, `FocusLost`, `OutputBufferFull`, `BackendError` | `InputBridgeDesc::MAX_EVENT_CAPACITY`, gamepad user index, drain output capacity | `Input_Bridge*`, `Input_BridgeXInput*`, `HardwareFrameHost_GamepadPollRejectsInvalidIndex` | `Done` and XInput `BlockedByEnv` | `Medium` | Keep platform-native details private; real gamepad smoke may only skip through explicit unavailable status |
-| `AudioPcmStreamQueueCallbackBridge` | Audio PCM stream queue to `AudioCallbackDevice` or test submitter | Audio stream queue owns chunks and handles | Audio callback device consumes submitted chunks | Audio owns queue, callback device owns hardware callback | `AudioStatus` including `DeviceUnavailable`, `BufferSubmitFailed`, `CallbackFailed`, `CallbackTimeout` | Scratch chunk storage, stream queue capacity, callback drain count | `Audio_*`, hardware `Audio`/`XAudio2` smoke | `Done` for XAudio2 callback and callback cost proof | `Medium` | Keep callback bridge free of file/resource parsing; see L0-AUD-004 evidence below |
+| `AudioPcmStreamQueueCallbackBridge` | Audio PCM stream queue to `AudioCallbackDevice` or test submitter | Audio stream queue owns chunks and handles | Audio callback device consumes submitted chunks | Audio owns queue, callback device owns hardware callback | `AudioStatus` including `DeviceUnavailable`, `BufferSubmitFailed`, `CallbackFailed`, `CallbackTimeout` | Scratch chunk storage, stream queue capacity, callback drain count | `Audio_*`, hardware `Audio`/`XAudio2` smoke | `Done` for XAudio2 callback, callback cost proof, and sample PCM path handoff | `Medium` | Keep callback bridge free of file/resource parsing; see L0-AUD-004 and L0-AUD-005 evidence below |
 | `AudioResourcePcmPacketImportBridge` | Resource decoded audio result to AudioResource PCM packet record | Resource owns decoded result record | AudioResource owns PCM packet import records | AudioResource owns import handle lifetime; Resource handle remains external | `AudioResourcePcmPacketImportStatus` plus Resource decode status evidence | Import slots, packet IDs, format/sample/frame/byte validation | `AudioResource_PcmPacketImportBridge_*`, `Audio_PcmSamplePacket_*`, `Audio_PcmStreamQueue_*` | `Done` | `Medium` | Keep codec expansion outside this bridge; Audio must not parse Resource payloads |
 | `PackageResourceStagingQueue` | Package load-plan record to File async read completion for Streaming | Package owns load-plan record; File owns async read result | Streaming owns staging queue records | Streaming owns pending/completion slots | `PackageResourceStagingStatus`, `ResourceStatus`, `AsyncFileReadStatus` | `MAX_PACKAGE_RESOURCE_STAGING_REQUEST_COUNT`, completion output capacity | `Streaming_PackageResourceStaging_*` | `Done` | `Medium` | Keep package as value plan provider; do not reintroduce old package runtime behavior |
 | `ResourceUploadQueue` | Staging completion to RHI upload request/completion | Streaming owns staging completion | RHI owns backend resource creation; Resource receives completion later | Streaming owns upload pending/completion slots | `ResourceUploadStatus`, `ResourceStatus`, `RhiStatus` | `MAX_RESOURCE_UPLOAD_REQUEST_COUNT`, byte range, completion output capacity | `Streaming_ResourceUpload_*` | `Done` | `Medium` | Keep Resource from owning RHI device lifecycle; hardware backend proof stays separate |
@@ -210,6 +210,31 @@ World/editor/importer, UI/GameAdapter/gameplay, material graph, shader compiler
 pipeline, scene loader, old-package compatibility, real codec/parser,
 Package/Resource public API expansion, and broad/full CTest outside this
 closure.
+
+## 3.8 L0-AUD-005 Evidence Sync
+
+L0-AUD-005 sample PCM path closure is PASS at
+`e14869b9138c750152b7e0ea16f466fd4101a8a8`. Readiness task `5270aafd`
+records the existing sample path as READY: synthetic audio resource evidence
+flows through `AssetAudioReadyRecord` and
+`AudioSceneContractQueue::SubmitSourceUpdates` into
+`AudioPcmStreamQueueRequest`, with explicit `BackendUnavailable` status.
+
+Focused QA task `e4e6cece` reports `YuSampleTests` build
+PASS, `YuAudioSceneTests` build
+PASS, focused regex execution only `8/8` PASS with `0 failed` and
+`0 skipped/not-run`, and clean read-only QA at
+`HEAD == origin/main == e14869b`. QA did not edit, stage, commit, push, run
+broad/full CTest, run hardware smoke, run sample scripts/manual listening, or
+edit docs.
+
+This evidence keeps hardware output/listening, sample scripts/assets/manual
+proof, L0-SAMPLE-006, AudioResource closure, AudioScene closure, L1 ASCENE rows,
+L1-SAMPLE-007, adjacent/full suites, RuntimeAsset/Asset Manager,
+RenderScene/RHI, World/editor/importer, UI/GameAdapter/gameplay, material graph,
+shader compiler pipeline, scene loader, old-package compatibility, real
+codec/parser, Package/Resource public API expansion, unrelated Resource
+expansion, and broad/full CTest outside this closure.
 
 ## 4. L1 Runtime Bridge Audit
 

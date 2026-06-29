@@ -368,6 +368,23 @@ pending events; lock/CV merge, `WaitForCompletedCallbacks`, and
 `DrainCompletions` stay in non-callback API paths. Sample PCM path,
 AudioResource, AudioScene, L1 rows, adjacent/full suites, and broad/full CTest
 stay outside this closure.
+L0-AUD-005 sample PCM path closure is PASS at
+`e14869b9138c750152b7e0ea16f466fd4101a8a8`: readiness task `5270aafd`
+records the existing sample path as READY. The path sends synthetic audio
+resource evidence through `AssetAudioReadyRecord` and
+`AudioSceneContractQueue::SubmitSourceUpdates` into
+`AudioPcmStreamQueueRequest`, and it preserves explicit `BackendUnavailable`
+status. Focused QA task `e4e6cece` reports `YuSampleTests` build
+PASS, `YuAudioSceneTests` build
+PASS, focused regex execution only `8/8` PASS with `0 failed` and
+`0 skipped/not-run`, and clean read-only QA at
+`HEAD == origin/main == e14869b`. The executed set stayed limited to
+`Sample_L1VerticalPrep_` rows plus the two audio scene contract rows needed for
+the sample PCM path proof. Hardware output/listening, sample scripts/manual
+proof, L0-SAMPLE-006, AudioResource closure, AudioScene closure, L1 ASCENE rows,
+L1-SAMPLE-007, adjacent/full suites, broad/full CTest, and
+Render/RHI/World/UI/material/shader/scene/importer/package expansion stay
+outside this closure.
 
 
 ## 2. Current Progress Assessment
@@ -2065,7 +2082,7 @@ dependency execution, and broad/full CTest stay outside these closures.
 | L0-AUD-002 | Close PCM packet/stream queue | L0-AUD-001 | Closed at `origin/main@0de7d7076b73d7d716f6d99dca8ac90ac9974247`: readiness task `821f0e53` records READY; focused QA task `c80e3337-96db-4521-9c0e-b81d5b882efe` reports `Audio_PcmSamplePacket_` discovery/execution `13/13`, tests `#840` through `#852`, `Audio_PcmStreamQueue_` discovery/execution `15/15`, tests `#853` through `#867`, successful `YuAudioTests` focused build, combined exact execution `28/28`, and clean read-only QA; executed rows excluded `Audio_PcmStreamQueueCallback_`, hardware, sample, AudioResource, AudioScene, L1 rows, adjacent/full suites, and broad/full CTest |
 | L0-AUD-003 | Close XAudio2 callback proof | L0-AUD-002 | Closed at `origin/main@1a1964abbb1ad021d5695ec5ea2e26ee8d5b5f6d`: readiness task `1dec3d24` records READY; fast QA task `727479bd-065f-4c6d-9a0f-0cacd2763741` reports callback discovery/execution `18/18`, tests `#828` through `#839` and `#868` through `#873`, successful `YuAudioTests` focused build, exact fast execution `18/18`, and clean read-only QA; hardware QA task `fb347834-96a8-4f5c-913d-d3f354e8478e` reports hardware and strict hardware discovery `2` rows, tests `#874` through `#875`, successful `YuAudioHardwareSmokeTests` build, `windows-hardware-smoke` execution `2/2`, `windows-strict-hardware-smoke` execution `2/2`, supported hardware classification, and no skip; L0-AUD-004/005, sample, AudioResource, AudioScene, L1 rows, adjacent/full suites, and broad/full CTest stay separate |
 | L0-AUD-004 | Audio callback cost proof | L0-AUD-003 | Closed at `origin/main@34093cf83ece469c75baad01e8a99b0e426e3d4e`: readiness task `a1b9ed42` records NEEDS-IMPLEMENTATION for the pre-fix callback handler lock/CV path; implementation task `bf2b5bc2` lands the single-file `Src/YuEngine/Audio/Src/AudioCallbackDeviceWindows.cpp` fix; focused proof QA task `39cca45c` reports commit scope limited to that file, callback hot-path static scan `0` forbidden operations over `VoiceCallback` lines `121`-`166` and handler lines `261`-`282`, successful `YuAudioTests` and `YuAudioHardwareSmokeTests` focused builds, fast callback/bridge execution `18/18`, hardware callback execution `2/2`, strict hardware callback execution `2/2`, `git diff --check HEAD^..HEAD`, and clean read-only QA; callback hot path records bounded atomic pending events while lock/CV merge, `WaitForCompletedCallbacks`, and `DrainCompletions` stay in non-callback API paths; L0-AUD-005, sample, AudioResource, AudioScene, L1 rows, adjacent/full suites, and broad/full CTest stay separate |
-| L0-AUD-005 | Add sample PCM path | L0-AUD-002, L0-RES-006 | sample plays/queues PCM or emits explicit unavailable-device status |
+| L0-AUD-005 | Add sample PCM path | L0-AUD-002, L0-RES-006 | Closed at `origin/main@e14869b9138c750152b7e0ea16f466fd4101a8a8`: readiness task `5270aafd` records READY for the existing sample path from synthetic audio resource evidence through `AssetAudioReadyRecord` and `AudioSceneContractQueue::SubmitSourceUpdates` into `AudioPcmStreamQueueRequest`, with explicit `BackendUnavailable` status; focused QA task `e4e6cece` reports successful `YuSampleTests` and `YuAudioSceneTests` focused builds, focused regex execution only `8/8`, no skipped/not-run rows, and clean read-only QA; downstream sample/audio-scene/L1/render/resource expansion stays separate |
 
 L0-AUD-001 evidence is limited to deterministic Audio first-slice mixer/test
 backend rows. The exact 24-row execution reported `0 failed`. Callback, PCM
@@ -2085,6 +2102,11 @@ QA recorded `0` forbidden callback hot-path operations, and the single productio
 file fix keeps lock/CV merge plus completion waits in non-callback API paths.
 Sample PCM path, AudioResource, AudioScene, L1 rows, and adjacent/full suites
 remain governed by their own IDs and evidence lanes.
+L0-AUD-005 evidence is limited to the sample PCM path handoff into the Audio PCM
+queue request contract. The focused execution reported `0 failed` and
+`0 skipped/not-run`. AudioResource closure, AudioScene closure, L1 ASCENE rows,
+L1-SAMPLE-007, hardware output/listening, sample scripts/manual proof, and
+adjacent/full suites remain governed by their own IDs and evidence lanes.
 
 ### 12.7 L0 Input Backlog
 
