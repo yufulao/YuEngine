@@ -33,6 +33,23 @@ accepted as a value-contract proof. It does not replace L0 native sample smoke,
 does not claim target hardware closure, and does not create new implementation
 scope.
 
+## 1.1 L1-GOV-003 Scope Decision
+
+L1-GOV-003 vertical sample scope decision is closed by docs-only governance
+evidence at `origin/main@d10b9a97fc29381af5b5336fc04326fbf79c3e1c`.
+Upstream scout task `a5a9431d` reports COMPLETE-PASS / SPLIT-READY, and docs VQ
+task `b750cf98` reports COMPLETE-PASS after the L1-GOV-002 split. This document
+already defines the project-independent sample content, `L1-DIAG-003`,
+`L1-SAMPLE-001..012`, required subsystem rows, the runtime visual foundation
+route, L0 sample relationship, deferred or environment blockers, and forbidden
+scope.
+
+This is a scope decision only. Strict target XInput hardware proof, L0
+hardware-grade sample proof, final L1 stop condition, L1 final sample
+acceptance, runtime animation broad work, World/GameAdapter/UI/gameplay
+implementation, Render/RHI/World/UI/material/shader/scene/importer/package
+expansion, and old package runtime proof remain outside this sync.
+
 The current value-contract sample is necessary but not sufficient for L1
 runtime visual closure. L1 must also carry a pure runtime visual sample that
 does not depend on editor, rejected editor route, UI, or input work.

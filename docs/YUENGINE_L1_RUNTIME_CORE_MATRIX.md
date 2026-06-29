@@ -179,9 +179,9 @@ lane is needed for this governance row.
 
 This close sync is limited to `L1-GOV-001`.
 The combined governance table row above stays `FirstSlice` for remaining
-follow-up governance rows only. `L1-GOV-002` is handled by the next split sync
-below. `L1-GOV-003` vertical sample scope decision remains separate. Strict
-target XInput hardware proof, final L1 stop condition, L1 final sample
+follow-up governance rows only. `L1-GOV-002` and `L1-GOV-003` are handled by
+the split sync sections below. Strict target XInput hardware proof, final L1
+stop condition, L1 final sample
 acceptance, runtime animation broad work, World/GameAdapter/UI/gameplay,
 Render/RHI/World/UI/material/shader/scene/importer/package expansion, and old
 package runtime proof remain outside this sync.
@@ -197,9 +197,27 @@ runtime proof, and editor/UI/input dependency for pure runtime visual proof. No
 implementation lane is needed for this governance row.
 
 This close sync is limited to `L1-GOV-002`.
-`L1-GOV-003` vertical sample scope decision remains separate. Strict target
-XInput hardware proof, L0 hardware-grade sample proof, final L1 stop condition,
-L1 final sample acceptance, runtime animation broad work,
+`L1-GOV-003` is handled by the next split sync below. Strict target XInput
+hardware proof, L0 hardware-grade sample proof, final L1 stop condition, L1
+final sample acceptance, runtime animation broad work,
+World/GameAdapter/UI/gameplay implementation,
+Render/RHI/World/UI/material/shader/scene/importer/package expansion, and old
+package runtime proof remain outside this sync.
+
+## 3.3 L1-GOV-003 Close Sync
+
+L1-GOV-003 vertical sample scope decision is closed by docs-only evidence at
+`origin/main@d10b9a97fc29381af5b5336fc04326fbf79c3e1c`. Upstream scout task
+`a5a9431d` reports COMPLETE-PASS / SPLIT-READY, and docs VQ task `b750cf98`
+reports COMPLETE-PASS after the L1-GOV-002 split. Existing docs define the
+project-independent L1 vertical sample scope: `L1-DIAG-003`,
+`L1-SAMPLE-001..012`, the runtime visual foundation route, L0 sample boundary,
+deferred or environment blockers, and forbidden scope. No implementation lane
+is needed for this governance row.
+
+This close sync is limited to `L1-GOV-003`.
+Strict target XInput hardware proof, L0 hardware-grade sample proof, final L1
+stop condition, L1 final sample acceptance, runtime animation broad work,
 World/GameAdapter/UI/gameplay implementation,
 Render/RHI/World/UI/material/shader/scene/importer/package expansion, and old
 package runtime proof remain outside this sync.
