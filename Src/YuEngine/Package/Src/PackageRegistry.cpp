@@ -65,6 +65,78 @@ std::uint64_t GetArchiveByteSize(const PackageEntryDescriptor& descriptor) {
     return descriptor.byte_size;
 }
 
+bool HasExplicitPayloadMetadata(const PackageEntryDescriptor& descriptor) {
+    if (descriptor.payload_logical_byte_count != 0ULL) {
+        return true;
+    }
+
+    if (descriptor.payload_window_byte_offset != 0ULL) {
+        return true;
+    }
+
+    return descriptor.payload_window_byte_size != 0ULL;
+}
+
+std::uint64_t GetPayloadLogicalByteCount(const PackageEntryDescriptor& descriptor) {
+    if (HasExplicitPayloadMetadata(descriptor)) {
+        return descriptor.payload_logical_byte_count;
+    }
+
+    return GetArchiveByteSize(descriptor);
+}
+
+std::uint64_t GetPayloadWindowByteOffset(const PackageEntryDescriptor& descriptor) {
+    if (HasExplicitPayloadMetadata(descriptor)) {
+        return descriptor.payload_window_byte_offset;
+    }
+
+    return 0ULL;
+}
+
+std::uint64_t GetPayloadWindowByteSize(const PackageEntryDescriptor& descriptor) {
+    if (HasExplicitPayloadMetadata(descriptor)) {
+        return descriptor.payload_window_byte_size;
+    }
+
+    return GetArchiveByteSize(descriptor);
+}
+
+bool PayloadWindowIsWithinBounds(
+    std::uint64_t payload_logical_byte_count,
+    std::uint64_t payload_window_byte_offset,
+    std::uint64_t payload_window_byte_size) {
+    if (payload_logical_byte_count == 0ULL) {
+        return false;
+    }
+
+    if (payload_window_byte_size == 0ULL) {
+        return false;
+    }
+
+    const std::uint64_t max_offset = std::numeric_limits<std::uint64_t>::max();
+    if (payload_window_byte_offset > max_offset - payload_window_byte_size) {
+        return false;
+    }
+
+    const std::uint64_t payload_window_byte_end = payload_window_byte_offset + payload_window_byte_size;
+    return payload_window_byte_end <= payload_logical_byte_count;
+}
+
+bool PayloadMetadataMatchesArchiveRange(const PackageEntryDescriptor& descriptor) {
+    const std::uint64_t archive_byte_size = GetArchiveByteSize(descriptor);
+    const std::uint64_t payload_logical_byte_count = GetPayloadLogicalByteCount(descriptor);
+    const std::uint64_t payload_window_byte_offset = GetPayloadWindowByteOffset(descriptor);
+    const std::uint64_t payload_window_byte_size = GetPayloadWindowByteSize(descriptor);
+    if (payload_window_byte_size != archive_byte_size) {
+        return false;
+    }
+
+    return PayloadWindowIsWithinBounds(
+        payload_logical_byte_count,
+        payload_window_byte_offset,
+        payload_window_byte_size);
+}
+
 std::uint32_t MakeLegacyByteValue(std::uint64_t value) {
     const std::uint64_t max_legacy_value = std::numeric_limits<std::uint32_t>::max();
     if (value > max_legacy_value) {
@@ -107,6 +179,9 @@ PackageEntryDescriptor NormalizeEntryDescriptor(const PackageEntryDescriptor& de
     normalized.byte_size = MakeLegacyByteValue(archive_byte_size);
     normalized.archive_byte_offset = archive_byte_offset;
     normalized.archive_byte_size = archive_byte_size;
+    normalized.payload_logical_byte_count = GetPayloadLogicalByteCount(descriptor);
+    normalized.payload_window_byte_offset = GetPayloadWindowByteOffset(descriptor);
+    normalized.payload_window_byte_size = GetPayloadWindowByteSize(descriptor);
     if (normalized.payload_hash == 0ULL) {
         normalized.payload_hash = MakeEntryPayloadHash(normalized);
     }
@@ -520,6 +595,10 @@ PackageStatus PackageRegistry::ValidateEntryDescriptor(const PackageEntryDescrip
         return PackageStatus::ByteRangeOutOfBounds;
     }
 
+    if (!PayloadMetadataMatchesArchiveRange(descriptor)) {
+        return PackageStatus::ByteRangeOutOfBounds;
+    }
+
     return PackageStatus::Success;
 }
 
@@ -714,6 +793,9 @@ void PackageRegistry::AppendRecord(PackageLoadPlan& plan, const PackageEntryDesc
     const std::uint64_t archive_byte_size = GetArchiveByteSize(descriptor);
     const std::uint32_t legacy_byte_offset = MakeLegacyByteValue(archive_byte_offset);
     const std::uint32_t legacy_byte_size = MakeLegacyByteValue(archive_byte_size);
+    const std::uint64_t payload_logical_byte_count = GetPayloadLogicalByteCount(descriptor);
+    const std::uint64_t payload_window_byte_offset = GetPayloadWindowByteOffset(descriptor);
+    const std::uint64_t payload_window_byte_size = GetPayloadWindowByteSize(descriptor);
     plan.records[plan.record_count] = PackageLoadPlanRecord{
         descriptor.package,
         descriptor.entry,
@@ -724,7 +806,10 @@ void PackageRegistry::AppendRecord(PackageLoadPlan& plan, const PackageEntryDesc
         legacy_byte_size,
         archive_byte_offset,
         archive_byte_size,
-        descriptor.payload_hash};
+        descriptor.payload_hash,
+        payload_logical_byte_count,
+        payload_window_byte_offset,
+        payload_window_byte_size};
     ++plan.record_count;
 }
 

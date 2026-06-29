@@ -26,5 +26,8 @@ struct PackageEntryDescriptor final {
     std::uint64_t archive_byte_offset = 0ULL;
     std::uint64_t archive_byte_size = 0ULL;
     std::uint64_t payload_hash = 0ULL;
+    std::uint64_t payload_logical_byte_count = 0ULL;
+    std::uint64_t payload_window_byte_offset = 0ULL;
+    std::uint64_t payload_window_byte_size = 0ULL;
 };
 }

@@ -62,6 +62,8 @@ constexpr const char* TEST_OVERSIZED_KEYS = "Package_RegisterEntryRejectsOversiz
 constexpr const char* TEST_OVERSIZED_BYTE_RANGE = "Package_RegisterEntryRejectsOversizedByteRangeWithoutMutation";
 constexpr const char* TEST_LARGE_BYTE_RANGE_INDEX =
     "Package_RegisterEntryAcceptsLargeByteRangeAndResolvePreservesIndexMetadata";
+constexpr const char* TEST_PAYLOAD_METADATA_LOAD_PLAN =
+    "Package_LoadPlanPreservesPayloadWindowMetadataDistinctFromArchiveRange";
 constexpr const char* TEST_RESOLVE = "Package_ResolveEntryByResourceKey_ReturnsDeterministicLoadPlan";
 constexpr const char* TEST_RESOLVE_RESOURCE_KEY_TUPLE = "Package_ResolveEntryByResourceKey_UsesTypeAndLogicalKeyTuple";
 constexpr const char* TEST_INDEXED_LOOKUPS = "Package_IndexedLookupsPreserveStatusOrderAndCapacities";
@@ -86,6 +88,8 @@ constexpr const char* TEST_NO_HIDDEN_ALLOCATION = "Package_NoHiddenAllocation_Us
 constexpr const char* TEST_ARTIFACT_ROUND_TRIP = "Package_FileBackedArtifactRoundTripsLoadPlanThroughFileVfs";
 constexpr const char* TEST_ARTIFACT_LARGE_BYTE_RANGE =
     "Package_FileBackedArtifactRoundTripsLargeByteRangeMetadata";
+constexpr const char* TEST_ARTIFACT_PAYLOAD_METADATA =
+    "Package_FileBackedArtifactRoundTripsPayloadWindowMetadata";
 constexpr const char* TEST_ARTIFACT_HASH_ROUND_TRIP =
     "Package_FileBackedArtifactRoundTripsHashAndDependencyIntegrity";
 constexpr const char* TEST_ARTIFACT_HASH_VALIDATION =
@@ -142,6 +146,9 @@ constexpr ResourceTypeId TYPE_MATERIAL{2U};
 constexpr ResourceTypeId TYPE_AUDIO{3U};
 constexpr ResourceTypeId TYPE_EFFECT{4U};
 constexpr std::uint64_t LARGE_ARCHIVE_BYTE_OFFSET = 0x100000400ULL;
+constexpr std::uint64_t PAYLOAD_LOGICAL_BYTE_COUNT = 0x100000800ULL;
+constexpr std::uint64_t PAYLOAD_WINDOW_BYTE_OFFSET = 0x100000040ULL;
+constexpr std::uint64_t PAYLOAD_WINDOW_BYTE_SIZE = 128ULL;
 using TestFunction = int (*)();
 
 std::filesystem::path PackageArtifactRoot(std::string_view test_name) {
@@ -209,7 +216,7 @@ bool ReplaceFirstEntryHashField(
         return false;
     }
 
-    const std::string entry_prefix = "entry|1|1|texture_a|textures/texture_a.bin|0|16|";
+    const std::string entry_prefix = "entry|1|1|texture_a|textures/texture_a.bin|0|16|16|0|16|";
     std::size_t field_start = artifact_text->find(entry_prefix);
     if (field_start == std::string::npos) {
         return false;
@@ -647,6 +654,58 @@ int PackageRegisterEntryAcceptsLargeByteRangeAndResolvePreservesIndexMetadata() 
 
     if (record.archive_byte_size != MAX_DECLARED_ENTRY_SIZE) {
         return Fail("large byte-range size was not preserved");
+    }
+
+    if (record.payload_logical_byte_count != MAX_DECLARED_ENTRY_SIZE ||
+        record.payload_window_byte_offset != 0ULL ||
+        record.payload_window_byte_size != MAX_DECLARED_ENTRY_SIZE) {
+        return Fail("large byte-range default payload metadata changed");
+    }
+
+    return 0;
+}
+
+int PackageLoadPlanPreservesPayloadWindowMetadataDistinctFromArchiveRange() {
+    PackageRegistry registry;
+    RegisterManifest(registry);
+
+    PackageEntryDescriptor descriptor = Entry(
+        PACKAGE_A,
+        ENTRY_TEXTURE,
+        TYPE_TEXTURE,
+        "texture_payload_window",
+        "textures/texture_payload_window.bin",
+        LARGE_ARCHIVE_BYTE_OFFSET,
+        PAYLOAD_WINDOW_BYTE_SIZE);
+    descriptor.payload_logical_byte_count = PAYLOAD_LOGICAL_BYTE_COUNT;
+    descriptor.payload_window_byte_offset = PAYLOAD_WINDOW_BYTE_OFFSET;
+    descriptor.payload_window_byte_size = PAYLOAD_WINDOW_BYTE_SIZE;
+
+    const PackageRegistrationResult entry_result = registry.RegisterEntry(descriptor);
+    if (!entry_result.Succeeded()) {
+        return Fail("payload metadata entry did not register");
+    }
+
+    const PackageLoadPlanResult plan =
+        registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_TEXTURE, ResourceLogicalKey("texture_payload_window"));
+    if (!plan.Succeeded() || plan.plan.record_count != 1U) {
+        return Fail("payload metadata entry did not resolve");
+    }
+
+    const PackageLoadPlanRecord& record = plan.plan.records[0U];
+    if (record.archive_byte_offset != LARGE_ARCHIVE_BYTE_OFFSET ||
+        record.archive_byte_size != PAYLOAD_WINDOW_BYTE_SIZE) {
+        return Fail("payload metadata changed archive range");
+    }
+
+    if (record.payload_logical_byte_count != PAYLOAD_LOGICAL_BYTE_COUNT ||
+        record.payload_window_byte_offset != PAYLOAD_WINDOW_BYTE_OFFSET ||
+        record.payload_window_byte_size != PAYLOAD_WINDOW_BYTE_SIZE) {
+        return Fail("payload metadata was not preserved");
+    }
+
+    if (record.payload_window_byte_offset == record.archive_byte_offset) {
+        return Fail("payload metadata reused archive offset");
     }
 
     return 0;
@@ -1404,7 +1463,77 @@ int PackageFileBackedArtifactRoundTripsLargeByteRangeMetadata() {
         return Fail("large byte-range artifact metadata changed");
     }
 
+    if (record.payload_logical_byte_count != 128ULL ||
+        record.payload_window_byte_offset != 0ULL ||
+        record.payload_window_byte_size != 128ULL) {
+        return Fail("large byte-range artifact default payload metadata changed");
+    }
+
     std::filesystem::remove_all(PackageArtifactRoot(TEST_ARTIFACT_LARGE_BYTE_RANGE));
+    return 0;
+}
+
+int PackageFileBackedArtifactRoundTripsPayloadWindowMetadata() {
+    MountTable table = CreatePackageArtifactTable(TEST_ARTIFACT_PAYLOAD_METADATA);
+    PackageEntryDescriptor descriptor = Entry(
+        PACKAGE_A,
+        ENTRY_TEXTURE,
+        TYPE_TEXTURE,
+        "texture_payload_window",
+        "textures/texture_payload_window.bin",
+        LARGE_ARCHIVE_BYTE_OFFSET,
+        PAYLOAD_WINDOW_BYTE_SIZE);
+    descriptor.payload_logical_byte_count = PAYLOAD_LOGICAL_BYTE_COUNT;
+    descriptor.payload_window_byte_offset = PAYLOAD_WINDOW_BYTE_OFFSET;
+    descriptor.payload_window_byte_size = PAYLOAD_WINDOW_BYTE_SIZE;
+    const std::array<PackageEntryDescriptor, 1U> entries{descriptor};
+
+    PackageArtifactWriteRequest write_request{};
+    write_request.mount_table = &table;
+    write_request.mount = MountId(PACKAGE_ARTIFACT_MOUNT);
+    write_request.artifact_path = VirtualPath(PACKAGE_ARTIFACT_PATH);
+    write_request.package = PACKAGE_A;
+    write_request.entries = entries.data();
+    write_request.entry_count = static_cast<std::uint32_t>(entries.size());
+    const PackageArtifactResult write_result = WritePackageArtifact(write_request);
+    if (write_result.status != PackageStatus::Success || !write_result.wrote_artifact) {
+        return Fail("payload metadata artifact did not write");
+    }
+
+    PackageRegistry artifact_registry;
+    PackageArtifactReadRequest read_request{};
+    read_request.mount_table = &table;
+    read_request.mount = MountId(PACKAGE_ARTIFACT_MOUNT);
+    read_request.artifact_path = VirtualPath(PACKAGE_ARTIFACT_PATH);
+    read_request.registry = &artifact_registry;
+    const PackageArtifactResult read_result = ReadPackageArtifact(read_request);
+    if (read_result.status != PackageStatus::Success || !read_result.rebuilt_registry) {
+        return Fail("payload metadata artifact did not rebuild registry");
+    }
+
+    const PackageLoadPlanResult plan =
+        artifact_registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_TEXTURE, ResourceLogicalKey("texture_payload_window"));
+    if (!plan.Succeeded() || plan.plan.record_count != 1U) {
+        return Fail("payload metadata artifact did not resolve");
+    }
+
+    const PackageLoadPlanRecord& record = plan.plan.records[0U];
+    if (record.archive_byte_offset != LARGE_ARCHIVE_BYTE_OFFSET ||
+        record.archive_byte_size != PAYLOAD_WINDOW_BYTE_SIZE) {
+        return Fail("payload metadata artifact changed archive range");
+    }
+
+    if (record.payload_logical_byte_count != PAYLOAD_LOGICAL_BYTE_COUNT ||
+        record.payload_window_byte_offset != PAYLOAD_WINDOW_BYTE_OFFSET ||
+        record.payload_window_byte_size != PAYLOAD_WINDOW_BYTE_SIZE) {
+        return Fail("payload metadata artifact changed payload window");
+    }
+
+    if (record.payload_window_byte_offset == record.archive_byte_offset) {
+        return Fail("payload metadata artifact reused archive offset");
+    }
+
+    std::filesystem::remove_all(PackageArtifactRoot(TEST_ARTIFACT_PAYLOAD_METADATA));
     return 0;
 }
 
@@ -1682,6 +1811,14 @@ int PackageFileBackedArtifactRejectsEntryMetadataWithoutMutation() {
         std::string(PACKAGE_ARTIFACT_MAGIC) +
         "\npackage|1\nentries|1\ndependencies|0\nentry|1|1|texture_a|textures/texture_a.bin|"
         "18446744073709551615|1\nend\n";
+    const std::string payload_window_size_mismatch =
+        std::string(PACKAGE_ARTIFACT_MAGIC) +
+        "\npackage|1\nentries|1\ndependencies|0\nentry|1|1|texture_a|textures/texture_a.bin|"
+        "0|16|32|0|15|1|1\nend\n";
+    const std::string payload_window_out_of_bounds =
+        std::string(PACKAGE_ARTIFACT_MAGIC) +
+        "\npackage|1\nentries|1\ndependencies|0\nentry|1|1|texture_a|textures/texture_a.bin|"
+        "0|16|16|1|16|1|1\nend\n";
     const std::string duplicate_entry =
         std::string(PACKAGE_ARTIFACT_MAGIC) +
         "\npackage|1\nentries|2\ndependencies|0\nentry|1|1|texture_a|textures/texture_a.bin|0|16\n"
@@ -1747,6 +1884,22 @@ int PackageFileBackedArtifactRejectsEntryMetadataWithoutMutation() {
             overflow_range,
             PackageStatus::ByteRangeOutOfBounds,
             "artifact overflow byte range did not return explicit status") != 0) {
+        return 1;
+    }
+
+    if (ExpectInvalidArtifactRead(
+            table,
+            payload_window_size_mismatch,
+            PackageStatus::ByteRangeOutOfBounds,
+            "artifact payload window size mismatch did not return explicit status") != 0) {
+        return 1;
+    }
+
+    if (ExpectInvalidArtifactRead(
+            table,
+            payload_window_out_of_bounds,
+            PackageStatus::ByteRangeOutOfBounds,
+            "artifact payload window out-of-bounds did not return explicit status") != 0) {
         return 1;
     }
 
@@ -1923,6 +2076,7 @@ int main(int argc, char** argv) {
         {TEST_OVERSIZED_KEYS, PackageRegisterEntryRejectsOversizedKeysWithoutMutation},
         {TEST_OVERSIZED_BYTE_RANGE, PackageRegisterEntryRejectsOversizedByteRangeWithoutMutation},
         {TEST_LARGE_BYTE_RANGE_INDEX, PackageRegisterEntryAcceptsLargeByteRangeAndResolvePreservesIndexMetadata},
+        {TEST_PAYLOAD_METADATA_LOAD_PLAN, PackageLoadPlanPreservesPayloadWindowMetadataDistinctFromArchiveRange},
         {TEST_RESOLVE, PackageResolveEntryByResourceKeyReturnsDeterministicLoadPlan},
         {TEST_RESOLVE_RESOURCE_KEY_TUPLE, PackageResolveEntryByResourceKeyUsesTypeAndLogicalKeyTuple},
         {TEST_INDEXED_LOOKUPS, PackageIndexedLookupsPreserveStatusOrderAndCapacities},
@@ -1944,6 +2098,7 @@ int main(int argc, char** argv) {
         {TEST_NO_HIDDEN_ALLOCATION, PackageNoHiddenAllocationUsesYuMemorySignal},
         {TEST_ARTIFACT_ROUND_TRIP, PackageFileBackedArtifactRoundTripsLoadPlanThroughFileVfs},
         {TEST_ARTIFACT_LARGE_BYTE_RANGE, PackageFileBackedArtifactRoundTripsLargeByteRangeMetadata},
+        {TEST_ARTIFACT_PAYLOAD_METADATA, PackageFileBackedArtifactRoundTripsPayloadWindowMetadata},
         {TEST_ARTIFACT_HASH_ROUND_TRIP, PackageFileBackedArtifactRoundTripsHashAndDependencyIntegrity},
         {TEST_ARTIFACT_HASH_VALIDATION, PackageFileBackedArtifactRejectsHashMismatchesWithoutMutation},
         {TEST_ARTIFACT_INVALID, PackageFileBackedArtifactRejectsInvalidBytesWithoutMutation},

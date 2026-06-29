@@ -26,6 +26,7 @@ struct ParsedArtifactEntry final {
     PackageEntryDescriptor descriptor;
     std::uint64_t metadata_hash = 0ULL;
     bool has_integrity_hashes = false;
+    bool has_payload_metadata = false;
 };
 
 struct ArtifactIntegrityRecord final {
@@ -70,6 +71,42 @@ std::uint64_t GetArchiveByteSize(const PackageEntryDescriptor &entry) {
     return entry.byte_size;
 }
 
+bool HasExplicitPayloadMetadata(const PackageEntryDescriptor &entry) {
+    if (entry.payload_logical_byte_count != 0ULL) {
+        return true;
+    }
+
+    if (entry.payload_window_byte_offset != 0ULL) {
+        return true;
+    }
+
+    return entry.payload_window_byte_size != 0ULL;
+}
+
+std::uint64_t GetPayloadLogicalByteCount(const PackageEntryDescriptor &entry) {
+    if (HasExplicitPayloadMetadata(entry)) {
+        return entry.payload_logical_byte_count;
+    }
+
+    return GetArchiveByteSize(entry);
+}
+
+std::uint64_t GetPayloadWindowByteOffset(const PackageEntryDescriptor &entry) {
+    if (HasExplicitPayloadMetadata(entry)) {
+        return entry.payload_window_byte_offset;
+    }
+
+    return 0ULL;
+}
+
+std::uint64_t GetPayloadWindowByteSize(const PackageEntryDescriptor &entry) {
+    if (HasExplicitPayloadMetadata(entry)) {
+        return entry.payload_window_byte_size;
+    }
+
+    return GetArchiveByteSize(entry);
+}
+
 std::uint32_t MakeLegacyByteValue(std::uint64_t value) {
     const std::uint64_t max_legacy_value = std::numeric_limits<std::uint32_t>::max();
     if (value > max_legacy_value) {
@@ -112,7 +149,7 @@ std::uint64_t GetEntryPayloadHash(const PackageEntryDescriptor &entry) {
     return MakeNonZeroHash(hash);
 }
 
-std::uint64_t ComputeEntryMetadataHash(const PackageEntryDescriptor &entry) {
+std::uint64_t ComputeEntryMetadataHash(const PackageEntryDescriptor &entry, bool include_payload_metadata) {
     std::uint64_t hash = ARTIFACT_HASH_OFFSET;
     hash = MixArtifactHash(hash, entry.package.value);
     hash = MixArtifactHash(hash, entry.entry.value);
@@ -121,6 +158,12 @@ std::uint64_t ComputeEntryMetadataHash(const PackageEntryDescriptor &entry) {
     hash = HashArtifactText(hash, entry.source_key.Value());
     hash = MixArtifactHash(hash, GetArchiveByteOffset(entry));
     hash = MixArtifactHash(hash, GetArchiveByteSize(entry));
+    if (include_payload_metadata) {
+        hash = MixArtifactHash(hash, GetPayloadLogicalByteCount(entry));
+        hash = MixArtifactHash(hash, GetPayloadWindowByteOffset(entry));
+        hash = MixArtifactHash(hash, GetPayloadWindowByteSize(entry));
+    }
+
     hash = MixArtifactHash(hash, GetEntryPayloadHash(entry));
     return MakeNonZeroHash(hash);
 }
@@ -151,11 +194,47 @@ std::uint64_t ComputePackageTableHash(
     for (std::uint32_t index = 0U; index < entry_count; ++index) {
         hash = MixArtifactHash(hash, entries[index].entry.value);
         hash = MixArtifactHash(hash, GetEntryPayloadHash(entries[index]));
-        hash = MixArtifactHash(hash, ComputeEntryMetadataHash(entries[index]));
+        hash = MixArtifactHash(hash, ComputeEntryMetadataHash(entries[index], true));
     }
 
     hash = MixArtifactHash(hash, ComputeDependencyTableHash(dependencies, dependency_count));
     return MakeNonZeroHash(hash);
+}
+
+std::uint64_t ComputeParsedPackageTableHash(
+    PackageId package,
+    const ParsedArtifactEntry *entries,
+    std::uint32_t entry_count,
+    const PackageArtifactDependency *dependencies,
+    std::uint32_t dependency_count) {
+    std::uint64_t hash = ARTIFACT_HASH_OFFSET;
+    hash = MixArtifactHash(hash, package.value);
+    hash = MixArtifactHash(hash, entry_count);
+    hash = MixArtifactHash(hash, dependency_count);
+    for (std::uint32_t index = 0U; index < entry_count; ++index) {
+        const PackageEntryDescriptor &entry = entries[index].descriptor;
+        hash = MixArtifactHash(hash, entry.entry.value);
+        hash = MixArtifactHash(hash, GetEntryPayloadHash(entry));
+        hash = MixArtifactHash(hash, ComputeEntryMetadataHash(entry, entries[index].has_payload_metadata));
+    }
+
+    hash = MixArtifactHash(hash, ComputeDependencyTableHash(dependencies, dependency_count));
+    return MakeNonZeroHash(hash);
+}
+
+PackageEntryDescriptor NormalizeArtifactEntry(const PackageEntryDescriptor &entry) {
+    PackageEntryDescriptor normalized = entry;
+    const std::uint64_t archive_byte_offset = GetArchiveByteOffset(entry);
+    const std::uint64_t archive_byte_size = GetArchiveByteSize(entry);
+    normalized.byte_offset = MakeLegacyByteValue(archive_byte_offset);
+    normalized.byte_size = MakeLegacyByteValue(archive_byte_size);
+    normalized.archive_byte_offset = archive_byte_offset;
+    normalized.archive_byte_size = archive_byte_size;
+    normalized.payload_logical_byte_count = GetPayloadLogicalByteCount(entry);
+    normalized.payload_window_byte_offset = GetPayloadWindowByteOffset(entry);
+    normalized.payload_window_byte_size = GetPayloadWindowByteSize(entry);
+    normalized.payload_hash = GetEntryPayloadHash(normalized);
+    return normalized;
 }
 
 PackageStatus BuildRegistryFromRecords(
@@ -213,8 +292,7 @@ std::string BuildArtifactText(
     std::uint32_t dependency_count) {
     std::array<PackageEntryDescriptor, MAX_PACKAGE_ENTRY_COUNT> normalized_entries{};
     for (std::uint32_t index = 0U; index < entry_count; ++index) {
-        normalized_entries[index] = entries[index];
-        normalized_entries[index].payload_hash = GetEntryPayloadHash(entries[index]);
+        normalized_entries[index] = NormalizeArtifactEntry(entries[index]);
     }
 
     std::ostringstream output;
@@ -226,8 +304,11 @@ std::string BuildArtifactText(
         const PackageEntryDescriptor &entry = normalized_entries[index];
         const std::uint64_t archive_byte_offset = GetArchiveByteOffset(entry);
         const std::uint64_t archive_byte_size = GetArchiveByteSize(entry);
+        const std::uint64_t payload_logical_byte_count = GetPayloadLogicalByteCount(entry);
+        const std::uint64_t payload_window_byte_offset = GetPayloadWindowByteOffset(entry);
+        const std::uint64_t payload_window_byte_size = GetPayloadWindowByteSize(entry);
         const std::uint64_t payload_hash = GetEntryPayloadHash(entry);
-        const std::uint64_t metadata_hash = ComputeEntryMetadataHash(entry);
+        const std::uint64_t metadata_hash = ComputeEntryMetadataHash(entry, true);
         output << "entry|"
                << entry.entry.value << '|'
                << entry.type.value << '|'
@@ -235,6 +316,9 @@ std::string BuildArtifactText(
                << entry.source_key.Value() << '|'
                << archive_byte_offset << '|'
                << archive_byte_size << '|'
+               << payload_logical_byte_count << '|'
+               << payload_window_byte_offset << '|'
+               << payload_window_byte_size << '|'
                << payload_hash << '|'
                << metadata_hash << '\n';
     }
@@ -362,7 +446,7 @@ PackageStatus ParseEntryLine(
     }
 
     const std::vector<std::string_view> fields = SplitFields(line);
-    if ((fields.size() != 7U && fields.size() != 9U) || fields[0] != "entry") {
+    if ((fields.size() != 7U && fields.size() != 9U && fields.size() != 12U) || fields[0] != "entry") {
         return PackageStatus::InvalidArtifactEntryTable;
     }
 
@@ -370,6 +454,9 @@ PackageStatus ParseEntryLine(
     std::uint32_t type_value = 0U;
     std::uint64_t byte_offset = 0ULL;
     std::uint64_t byte_size = 0ULL;
+    std::uint64_t payload_logical_byte_count = 0ULL;
+    std::uint64_t payload_window_byte_offset = 0ULL;
+    std::uint64_t payload_window_byte_size = 0ULL;
     std::uint64_t payload_hash = 0ULL;
     std::uint64_t metadata_hash = 0ULL;
     if (!ParseUInt32(fields[1], &entry_value) ||
@@ -380,6 +467,7 @@ PackageStatus ParseEntryLine(
     }
 
     bool has_integrity_hashes = false;
+    bool has_payload_metadata = false;
     if (fields.size() == 9U) {
         if (!ParseUInt64(fields[7], &payload_hash) || !ParseUInt64(fields[8], &metadata_hash)) {
             return PackageStatus::ArtifactParseFailure;
@@ -388,8 +476,26 @@ PackageStatus ParseEntryLine(
         has_integrity_hashes = true;
     }
 
+    if (fields.size() == 12U) {
+        if (!ParseUInt64(fields[7], &payload_logical_byte_count) ||
+            !ParseUInt64(fields[8], &payload_window_byte_offset) ||
+            !ParseUInt64(fields[9], &payload_window_byte_size) ||
+            !ParseUInt64(fields[10], &payload_hash) ||
+            !ParseUInt64(fields[11], &metadata_hash)) {
+            return PackageStatus::ArtifactParseFailure;
+        }
+
+        has_integrity_hashes = true;
+        has_payload_metadata = true;
+    }
+
     const std::uint32_t legacy_byte_offset = MakeLegacyByteValue(byte_offset);
     const std::uint32_t legacy_byte_size = MakeLegacyByteValue(byte_size);
+    if (!has_payload_metadata) {
+        payload_logical_byte_count = byte_size;
+        payload_window_byte_offset = 0ULL;
+        payload_window_byte_size = byte_size;
+    }
 
     out_entry->descriptor = PackageEntryDescriptor{
         package,
@@ -401,9 +507,13 @@ PackageStatus ParseEntryLine(
         legacy_byte_size,
         byte_offset,
         byte_size,
-        payload_hash};
+        payload_hash,
+        payload_logical_byte_count,
+        payload_window_byte_offset,
+        payload_window_byte_size};
     out_entry->metadata_hash = metadata_hash;
     out_entry->has_integrity_hashes = has_integrity_hashes;
+    out_entry->has_payload_metadata = has_payload_metadata;
     return PackageStatus::Success;
 }
 
@@ -498,7 +608,6 @@ PackageStatus ValidateArtifactIntegrity(
         return PackageStatus::InvalidArtifactEntryTable;
     }
 
-    std::array<PackageEntryDescriptor, MAX_PACKAGE_ENTRY_COUNT> descriptors{};
     for (std::uint32_t index = 0U; index < entry_count; ++index) {
         if (!entries[index].has_integrity_hashes) {
             return PackageStatus::InvalidArtifactIntegrityTable;
@@ -508,12 +617,12 @@ PackageStatus ValidateArtifactIntegrity(
             return PackageStatus::ArtifactHashMismatch;
         }
 
-        const std::uint64_t metadata_hash = ComputeEntryMetadataHash(entries[index].descriptor);
+        const std::uint64_t metadata_hash = ComputeEntryMetadataHash(
+            entries[index].descriptor,
+            entries[index].has_payload_metadata);
         if (entries[index].metadata_hash != metadata_hash) {
             return PackageStatus::ArtifactHashMismatch;
         }
-
-        descriptors[index] = entries[index].descriptor;
     }
 
     const std::uint64_t dependency_table_hash = ComputeDependencyTableHash(dependencies, dependency_count);
@@ -522,7 +631,7 @@ PackageStatus ValidateArtifactIntegrity(
     }
 
     const std::uint64_t package_table_hash =
-        ComputePackageTableHash(package, descriptors.data(), entry_count, dependencies, dependency_count);
+        ComputeParsedPackageTableHash(package, entries, entry_count, dependencies, dependency_count);
     if (integrity.package_table_hash != package_table_hash) {
         return PackageStatus::ArtifactHashMismatch;
     }
