@@ -374,12 +374,15 @@ struct RuntimeAssetLoadedFile final {
     std::uint32_t shader_import_policy_count = 0U;
     std::uint64_t shader_import_policy_hash = 0U;
     std::uint64_t cache_payload_id = 0U;
+    std::uint64_t source_payload_logical_byte_count = 0U;
     std::uint64_t source_payload_window_byte_offset = 0U;
     std::uint64_t source_payload_window_byte_size = 0U;
     std::uint64_t decode_plan_payload_id = 0U;
+    std::uint64_t decode_plan_payload_logical_byte_count = 0U;
     std::uint64_t decode_plan_id = 0U;
     std::uint64_t decode_result_id = 0U;
     std::uint64_t decoded_payload_id = 0U;
+    std::uint64_t decoded_payload_logical_byte_count = 0U;
     yuengine::resource::ResourceDecodePlanAssetClass decode_asset_class =
         yuengine::resource::ResourceDecodePlanAssetClass::Unknown;
     yuengine::resource::ResourceDecodeResultClass decode_result_class =

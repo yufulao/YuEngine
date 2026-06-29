@@ -189,6 +189,7 @@ using yuengine::renderscene::RenderSceneThreePrimitiveCaptureStatus;
 using yuengine::renderscene::RenderSceneThreePrimitiveEntityRequest;
 using yuengine::resource::ResourceCachePayloadRequest;
 using yuengine::resource::ResourceCachePayloadStatus;
+using yuengine::resource::ResourceDecodedPayloadRecord;
 using yuengine::resource::ResourceDecodedPayloadRequest;
 using yuengine::resource::ResourceDecodedPayloadStatus;
 using yuengine::resource::ResourceDescriptor;
@@ -2075,10 +2076,99 @@ ResourceDecodedPayloadRequest DecodedPayloadRequestFor(const RuntimeAssetLoadedF
     request.decode_plan_id = texture_file.decode_plan_id;
     request.decode_result_id = texture_file.decode_result_id;
     request.decoded_payload_id = texture_file.decoded_payload_id;
+    request.payload_logical_byte_count = texture_file.decoded_payload_logical_byte_count;
     request.asset_class = texture_file.decode_asset_class;
     request.result_class = texture_file.decode_result_class;
     request.decoded_byte_count = texture_file.decoded_byte_count;
     return request;
+}
+
+bool VerifyDecodedPayloadLogicalCount(
+    ResourceRegistry &registry,
+    const RuntimeAssetLoadedFile &file) {
+    if (!file.decoded_payload_stored) {
+        return FailStep("decoded payload logical count file was not stored");
+    }
+
+    const std::uint64_t decoded_byte_count = static_cast<std::uint64_t>(file.decoded_byte_count);
+    if (file.decoded_payload_logical_byte_count != decoded_byte_count) {
+        return FailStep("decoded payload logical count did not mirror local byte count");
+    }
+
+    ResourceDecodedPayloadRecord record{};
+    const ResourceDecodedPayloadRequest request = DecodedPayloadRequestFor(file);
+    const ResourceDecodedPayloadStatus query_status = registry.QueryDecodedPayload(request, &record);
+    if (query_status != ResourceDecodedPayloadStatus::Success) {
+        return FailStep("decoded payload logical count query failed");
+    }
+
+    if (record.payload_logical_byte_count != file.decoded_payload_logical_byte_count ||
+        record.decoded_byte_count != file.decoded_byte_count) {
+        return FailStep("decoded payload logical count record mismatch");
+    }
+
+    std::vector<std::uint8_t> bytes{};
+    bytes.resize(static_cast<std::size_t>(file.decoded_byte_count));
+    std::uint32_t read_byte_count = 0U;
+    const ResourceDecodedPayloadStatus read_status = registry.ReadDecodedPayload(
+        request,
+        bytes.data(),
+        static_cast<std::uint32_t>(bytes.size()),
+        &read_byte_count);
+    if (read_status != ResourceDecodedPayloadStatus::Success ||
+        read_byte_count != file.decoded_byte_count) {
+        return FailStep("decoded payload logical count read failed");
+    }
+
+    const auto snapshot = registry.DecodedPayloadSnapshot();
+    if (snapshot.last_payload_logical_byte_count != file.decoded_payload_logical_byte_count ||
+        snapshot.last_decoded_byte_count != file.decoded_byte_count) {
+        return FailStep("decoded payload logical count snapshot mismatch");
+    }
+
+    return true;
+}
+
+bool VerifyDecodePlanPayloadLogicalCount(
+    ResourceRegistry &registry,
+    const RuntimeAssetLoadedFile &file) {
+    if (!file.decode_plan_created || file.decode_plan_payload_id == 0U) {
+        return FailStep("decode plan payload logical count file was not stored");
+    }
+
+    const std::uint64_t plan_byte_count =
+        static_cast<std::uint64_t>(yuengine::resource::RESOURCE_DECODE_PLAN_HEADER_BYTE_COUNT);
+    if (file.decode_plan_payload_logical_byte_count != plan_byte_count) {
+        return FailStep("decode plan payload logical count did not mirror local byte count");
+    }
+
+    ResourceCachePayloadRequest request{};
+    request.resource = file.resource;
+    request.expected_type = file.resource_type;
+    request.payload_id = file.decode_plan_payload_id;
+    request.payload_logical_byte_count = file.decode_plan_payload_logical_byte_count;
+
+    std::array<std::uint8_t, yuengine::resource::RESOURCE_DECODE_PLAN_HEADER_BYTE_COUNT> bytes{};
+    std::uint32_t read_byte_count = 0U;
+    const ResourceCachePayloadStatus read_status = registry.ReadCachePayload(
+        request,
+        bytes.data(),
+        static_cast<std::uint32_t>(bytes.size()),
+        &read_byte_count);
+    if (read_status != ResourceCachePayloadStatus::Success ||
+        read_byte_count != static_cast<std::uint32_t>(bytes.size())) {
+        return FailStep("decode plan payload logical count read failed");
+    }
+
+    const auto snapshot = registry.CachePayloadSnapshot();
+    if (snapshot.last_payload_logical_byte_count != file.decode_plan_payload_logical_byte_count ||
+        snapshot.last_payload_window_byte_offset != 0U ||
+        snapshot.last_payload_window_byte_size != plan_byte_count ||
+        static_cast<std::uint64_t>(snapshot.last_payload_byte_count) != plan_byte_count) {
+        return FailStep("decode plan payload logical count snapshot mismatch");
+    }
+
+    return true;
 }
 
 bool ReadDecodedTexturePayloadBytes(
@@ -5589,6 +5679,7 @@ bool ReadResourceSourcePayloadWindow(
     request.resource = file.resource;
     request.expected_type = file.resource_type;
     request.payload_id = file.cache_payload_id;
+    request.payload_logical_byte_count = file.source_payload_logical_byte_count;
     request.payload_window_byte_offset = record.archive_byte_offset;
     request.payload_window_byte_size = record.archive_byte_size;
     std::vector<std::uint8_t> bytes{};
@@ -5609,6 +5700,32 @@ bool ReadResourceSourcePayloadWindow(
     }
 
     *out_bytes = bytes;
+    return true;
+}
+
+bool VerifyResourceSourcePayloadWindowLogicalCount(
+    ResourceRegistry &registry,
+    const RuntimeAssetLoadedFile &file,
+    const PackageLoadPlanRecord &record) {
+    const std::uint64_t expected_logical_byte_count =
+        record.archive_byte_offset + record.archive_byte_size;
+    if (file.source_payload_logical_byte_count != expected_logical_byte_count) {
+        return FailStep("resource source payload logical count did not cover archive window");
+    }
+
+    std::vector<std::uint8_t> bytes{};
+    if (!ReadResourceSourcePayloadWindow(registry, file, record, &bytes)) {
+        return false;
+    }
+
+    const auto snapshot = registry.CachePayloadSnapshot();
+    if (snapshot.last_payload_logical_byte_count != expected_logical_byte_count ||
+        snapshot.last_payload_window_byte_offset != record.archive_byte_offset ||
+        snapshot.last_payload_window_byte_size != record.archive_byte_size ||
+        static_cast<std::uint64_t>(snapshot.last_payload_byte_count) != record.archive_byte_size) {
+        return FailStep("resource source payload logical count snapshot mismatch");
+    }
+
     return true;
 }
 
@@ -6865,6 +6982,13 @@ int RuntimeAssetDataPackagedResourcePayloadWindowsUseArchiveRanges() {
         return Fail("scene payload window did not expose package archive range");
     }
 
+    if (!VerifyResourceSourcePayloadWindowLogicalCount(
+            context.registry,
+            run.graph_load_result.scene,
+            *scene_record)) {
+        return Fail("scene payload logical count did not expose package archive range");
+    }
+
     for (std::uint32_t index = 0U; index < context.fixture.command.fixture.cooked_file_count; ++index) {
         const RuntimeAssetFileDesc &desc = context.fixture.cooked_files[index];
         const PackageLoadPlanRecord *record = FindPackageRecordForDesc(ledger.package_load_plan, desc);
@@ -6878,6 +7002,10 @@ int RuntimeAssetDataPackagedResourcePayloadWindowsUseArchiveRanges() {
             loaded_file.source_payload_window_byte_size != record->archive_byte_size ||
             record->archive_byte_offset == 0ULL) {
             return Fail("loaded file payload window did not expose package archive range");
+        }
+
+        if (!VerifyResourceSourcePayloadWindowLogicalCount(context.registry, loaded_file, *record)) {
+            return Fail("loaded file payload logical count did not expose package archive range");
         }
 
         std::vector<std::uint8_t> resource_bytes{};
@@ -12168,8 +12296,10 @@ int RuntimeAssetDataCookStoresDecodedPayloadsForMeshMaterialTexture() {
         return Fail("generator write failed");
     }
 
+    ResourceRegistry registry;
+    AssetManager manager;
     LoadedGraph graph{};
-    if (!LoadGraph(table, &graph)) {
+    if (!LoadRuntimeAssetRecords(table, registry, manager, &graph)) {
         return Fail("loaded graph failed");
     }
 
@@ -12181,6 +12311,14 @@ int RuntimeAssetDataCookStoresDecodedPayloadsForMeshMaterialTexture() {
     while (index < 7U) {
         if (!graph.assets[index].decoded_payload_stored) {
             return Fail("decoded runtime asset payload was not stored");
+        }
+
+        if (!VerifyDecodedPayloadLogicalCount(registry, graph.assets[index])) {
+            return Fail("decoded runtime asset payload logical count was not stored");
+        }
+
+        if (!VerifyDecodePlanPayloadLogicalCount(registry, graph.assets[index])) {
+            return Fail("decode plan payload logical count was not stored");
         }
 
         ++index;

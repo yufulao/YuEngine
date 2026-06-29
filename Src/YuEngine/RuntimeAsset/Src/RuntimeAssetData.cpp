@@ -4375,10 +4375,21 @@ RuntimeAssetDataStatus StoreSourcePayload(
         return RuntimeAssetDataStatus::InvalidSize;
     }
 
+    std::uint64_t source_payload_logical_byte_count = static_cast<std::uint64_t>(bytes.size());
+    if (payload_window.from_package) {
+        const std::uint64_t maximum_offset = std::numeric_limits<std::uint64_t>::max() - payload_window.byte_size;
+        if (payload_window.byte_offset > maximum_offset) {
+            return RuntimeAssetDataStatus::InvalidBounds;
+        }
+
+        source_payload_logical_byte_count = payload_window.byte_offset + payload_window.byte_size;
+    }
+
     ResourceCachePayloadRequest payload_request{};
     payload_request.resource = resource;
     payload_request.expected_type = desc.resource_type;
     payload_request.payload_id = desc.stable_id + SOURCE_PAYLOAD_ID_OFFSET;
+    payload_request.payload_logical_byte_count = source_payload_logical_byte_count;
     if (payload_window.from_package) {
         payload_request.payload_window_byte_offset = payload_window.byte_offset;
         payload_request.payload_window_byte_size = payload_window.byte_size;
@@ -4391,6 +4402,7 @@ RuntimeAssetDataStatus StoreSourcePayload(
     }
 
     out_record->cache_payload_id = payload_request.payload_id;
+    out_record->source_payload_logical_byte_count = source_payload_logical_byte_count;
     out_record->source_payload_window_byte_offset =
         payload_window.from_package ? payload_window.byte_offset : 0ULL;
     out_record->source_payload_window_byte_size =
@@ -4428,6 +4440,7 @@ RuntimeAssetDataStatus StoreDecodedPayload(
     plan_payload_request.resource = resource;
     plan_payload_request.expected_type = desc.resource_type;
     plan_payload_request.payload_id = plan_payload_id;
+    plan_payload_request.payload_logical_byte_count = static_cast<std::uint64_t>(plan_payload.size());
     plan_payload_request.payload_bytes = plan_payload.data();
     plan_payload_request.payload_byte_count = static_cast<std::uint32_t>(plan_payload.size());
     if (registry.StoreCachePayload(plan_payload_request) != ResourceCachePayloadStatus::Success) {
@@ -4468,6 +4481,7 @@ RuntimeAssetDataStatus StoreDecodedPayload(
     decoded_request.decode_plan_id = plan_request.decode_plan_id;
     decoded_request.decode_result_id = result_request.decode_result_id;
     decoded_request.decoded_payload_id = desc.stable_id + DECODED_PAYLOAD_ID_OFFSET;
+    decoded_request.payload_logical_byte_count = static_cast<std::uint64_t>(decoded_bytes.size());
     decoded_request.asset_class = desc.decode_asset_class;
     decoded_request.result_class = desc.decode_result_class;
     decoded_request.decoded_bytes = decoded_bytes.data();
@@ -4477,9 +4491,11 @@ RuntimeAssetDataStatus StoreDecodedPayload(
     }
 
     out_record->decode_plan_payload_id = plan_payload_id;
+    out_record->decode_plan_payload_logical_byte_count = plan_payload_request.payload_logical_byte_count;
     out_record->decode_plan_id = plan_request.decode_plan_id;
     out_record->decode_result_id = result_request.decode_result_id;
     out_record->decoded_payload_id = decoded_request.decoded_payload_id;
+    out_record->decoded_payload_logical_byte_count = decoded_request.payload_logical_byte_count;
     out_record->decode_plan_created = true;
     out_record->decode_result_committed = true;
     out_record->decoded_payload_stored = true;
@@ -6610,6 +6626,7 @@ ResourceDecodedPayloadRequest DecodedPayloadRequestForCookedTexture(
     request.decode_plan_id = loaded_texture.decode_plan_id;
     request.decode_result_id = loaded_texture.decode_result_id;
     request.decoded_payload_id = texture.decoded_payload_id;
+    request.payload_logical_byte_count = loaded_texture.decoded_payload_logical_byte_count;
     request.asset_class = loaded_texture.decode_asset_class;
     request.result_class = loaded_texture.decode_result_class;
     request.decoded_byte_count = texture.payload_byte_count;
@@ -7489,6 +7506,7 @@ RuntimeAssetDataStatus ReadVisualProofDecodedMeshPayload(
     request.decode_plan_id = mesh.decode_plan_id;
     request.decode_result_id = mesh.decode_result_id;
     request.decoded_payload_id = mesh.decoded_payload_id;
+    request.payload_logical_byte_count = mesh.decoded_payload_logical_byte_count;
     request.asset_class = mesh.decode_asset_class;
     request.result_class = mesh.decode_result_class;
     request.decoded_byte_count = mesh.decoded_byte_count;
@@ -7696,6 +7714,7 @@ RuntimeAssetDataStatus ReadVisualProofDecodedTexturePayload(
     request.decode_plan_id = texture.decode_plan_id;
     request.decode_result_id = texture.decode_result_id;
     request.decoded_payload_id = texture.decoded_payload_id;
+    request.payload_logical_byte_count = texture.decoded_payload_logical_byte_count;
     request.asset_class = texture.decode_asset_class;
     request.result_class = texture.decode_result_class;
     request.decoded_byte_count = texture.decoded_byte_count;
