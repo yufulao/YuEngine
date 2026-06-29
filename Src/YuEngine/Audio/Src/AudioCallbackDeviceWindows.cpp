@@ -6,13 +6,14 @@
 #include "AudioCallbackDeviceWindowsInternal.h"
 
 #include <algorithm>
+#include <array>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstring>
 #include <mutex>
 #include <new>
 #include <utility>
-#include <vector>
 
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
@@ -27,6 +28,8 @@ namespace {
 constexpr std::uint16_t BITS_PER_SAMPLE = 16U;
 constexpr std::uint16_t BYTES_PER_SAMPLE = BITS_PER_SAMPLE / 8U;
 constexpr std::uint64_t NO_COMPLETED_CALLBACKS = 0U;
+constexpr std::size_t MAX_CALLBACK_SAMPLE_COUNT = AudioCallbackDeviceDesc::MAX_FRAMES_PER_BUFFER * CHANNEL_COUNT;
+constexpr std::uint32_t CALLBACK_WAIT_POLL_MILLISECONDS = 1U;
 AudioCallbackDeviceBackendTestConfig s_backend_test_config{};
 
 AudioStatus ValidateCallbackDesc(const AudioCallbackDeviceDesc &desc) {
@@ -106,9 +109,11 @@ AudioStatus MapXAudio2InitializeStatus(HRESULT native_result) {
 }
 
 struct AudioCallbackBufferSlot final {
-    std::vector<std::int16_t> samples{};
+    std::array<std::int16_t, MAX_CALLBACK_SAMPLE_COUNT> samples{};
+    AudioCallbackCompletion pending_completion{};
     std::uint64_t sequence = 0U;
-    bool queued = false;
+    std::atomic_bool queued{false};
+    std::atomic_bool completion_pending{false};
 };
 
 struct AudioCallbackDeviceState final {
@@ -168,11 +173,13 @@ struct AudioCallbackDeviceState final {
 
     AudioCallbackDeviceDesc desc{};
     AudioCallbackSnapshot snapshot{};
-    std::vector<AudioCallbackBufferSlot> buffers{};
-    std::vector<AudioCallbackCompletion> completions{};
+    std::array<AudioCallbackBufferSlot, AudioCallbackDeviceDesc::MAX_BUFFER_COUNT> buffers{};
+    std::array<AudioCallbackCompletion, AudioCallbackDeviceDesc::MAX_BUFFER_COUNT> completions{};
     std::size_t completion_count = 0U;
     mutable std::mutex mutex{};
     std::condition_variable completion_signal{};
+    std::atomic<std::uint64_t> pending_shutdown_callback_count{0U};
+    std::atomic<std::uint64_t> pending_failed_callback_count{0U};
     std::uint64_t next_sequence = 1U;
     bool uses_controlled_backend = false;
 #if defined(_WIN32)
@@ -186,6 +193,42 @@ struct AudioCallbackDeviceState final {
     AudioStatus SetLastStatus(AudioStatus status) {
         snapshot.last_status = status;
         return status;
+    }
+
+    void MergeCallbackEventsLocked() {
+        for (std::size_t index = 0U; index < desc.buffer_count; ++index) {
+            AudioCallbackBufferSlot &slot = buffers[index];
+            if (!slot.completion_pending.exchange(false, std::memory_order_acq_rel)) {
+                continue;
+            }
+
+            slot.queued.store(false, std::memory_order_release);
+            if (snapshot.queued_buffer_count > 0U) {
+                --snapshot.queued_buffer_count;
+            }
+
+            if (completion_count >= completions.size()) {
+                ++snapshot.failed_callback_count;
+                snapshot.last_status = AudioStatus::CallbackFailed;
+                continue;
+            }
+
+            completions[completion_count] = slot.pending_completion;
+            ++completion_count;
+            ++snapshot.completed_callback_count;
+            snapshot.last_status = AudioStatus::Success;
+        }
+
+        const std::uint64_t shutdown_count = pending_shutdown_callback_count.exchange(0U, std::memory_order_acq_rel);
+        snapshot.shutdown_callback_count += shutdown_count;
+
+        const std::uint64_t failed_count = pending_failed_callback_count.exchange(0U, std::memory_order_acq_rel);
+        if (failed_count == 0U) {
+            return;
+        }
+
+        snapshot.failed_callback_count += failed_count;
+        snapshot.last_status = AudioStatus::CallbackFailed;
     }
 
     void ReleaseNativeObjects() {
@@ -216,12 +259,7 @@ struct AudioCallbackDeviceState final {
     }
 
     void OnStreamEnd() {
-        {
-            std::lock_guard<std::mutex> lock(mutex);
-            ++snapshot.shutdown_callback_count;
-        }
-
-        completion_signal.notify_all();
+        pending_shutdown_callback_count.fetch_add(1U, std::memory_order_release);
     }
 
     void OnBufferEnd(void *buffer_context) {
@@ -231,46 +269,15 @@ struct AudioCallbackDeviceState final {
             return;
         }
 
-        bool completed = true;
-        {
-            std::lock_guard<std::mutex> lock(mutex);
-            slot->queued = false;
-            if (snapshot.queued_buffer_count > 0U) {
-                --snapshot.queued_buffer_count;
-            }
-
-            if (completion_count >= completions.size()) {
-                ++snapshot.failed_callback_count;
-                snapshot.last_status = AudioStatus::CallbackFailed;
-                completed = false;
-            }
-
-            if (!completed) {
-                completion_signal.notify_all();
-                return;
-            }
-
-            AudioCallbackCompletion &completion = completions[completion_count];
-            completion.status = AudioStatus::Success;
-            completion.sequence = slot->sequence;
-            completion.buffer_slot = static_cast<std::size_t>(slot - buffers.data());
-            completion.frame_count = desc.frames_per_buffer;
-            ++completion_count;
-            ++snapshot.completed_callback_count;
-            snapshot.last_status = AudioStatus::Success;
-        }
-
-        completion_signal.notify_all();
+        slot->pending_completion.status = AudioStatus::Success;
+        slot->pending_completion.sequence = slot->sequence;
+        slot->pending_completion.buffer_slot = static_cast<std::size_t>(slot - buffers.data());
+        slot->pending_completion.frame_count = desc.frames_per_buffer;
+        slot->completion_pending.store(true, std::memory_order_release);
     }
 
     void OnVoiceError() {
-        {
-            std::lock_guard<std::mutex> lock(mutex);
-            ++snapshot.failed_callback_count;
-            snapshot.last_status = AudioStatus::CallbackFailed;
-        }
-
-        completion_signal.notify_all();
+        pending_failed_callback_count.fetch_add(1U, std::memory_order_release);
     }
 };
 
@@ -284,7 +291,7 @@ void ClearAudioCallbackDeviceBackendTestConfig() {
 
 AudioStatus RollBackFailedSubmit(AudioCallbackDeviceState *state, AudioCallbackBufferSlot *slot, AudioStatus status) {
     std::lock_guard<std::mutex> lock(state->mutex);
-    slot->queued = false;
+    slot->queued.store(false, std::memory_order_release);
     if (state->snapshot.queued_buffer_count > 0U) {
         --state->snapshot.queued_buffer_count;
     }
@@ -328,15 +335,6 @@ AudioStatus AudioCallbackDevice::Initialize(const AudioCallbackDeviceDesc &desc)
     }
 
     state_->desc = desc;
-    state_->buffers.reserve(desc.buffer_count);
-    state_->completions.assign(desc.buffer_count, AudioCallbackCompletion{});
-    const std::size_t sample_count = RequiredSampleCount(desc);
-    for (std::size_t index = 0U; index < desc.buffer_count; ++index) {
-        AudioCallbackBufferSlot slot{};
-        slot.samples.assign(sample_count, 0);
-        state_->buffers.emplace_back(std::move(slot));
-    }
-
     state_->snapshot = AudioCallbackSnapshot{};
     state_->snapshot.buffer_capacity = desc.buffer_count;
     state_->snapshot.frames_per_buffer = desc.frames_per_buffer;
@@ -480,8 +478,10 @@ AudioStatus AudioCallbackDevice::SubmitS16Buffer(std::span<const std::int16_t> i
     AudioCallbackBufferSlot *selected_slot = nullptr;
     {
         std::lock_guard<std::mutex> lock(state_->mutex);
-        for (AudioCallbackBufferSlot &slot : state_->buffers) {
-            if (slot.queued) {
+        state_->MergeCallbackEventsLocked();
+        for (std::size_t index = 0U; index < state_->desc.buffer_count; ++index) {
+            AudioCallbackBufferSlot &slot = state_->buffers[index];
+            if (slot.queued.load(std::memory_order_acquire)) {
                 continue;
             }
 
@@ -495,8 +495,10 @@ AudioStatus AudioCallbackDevice::SubmitS16Buffer(std::span<const std::int16_t> i
         }
 
         std::copy(interleaved_samples.begin(), interleaved_samples.begin() + required_samples, selected_slot->samples.begin());
-        selected_slot->queued = true;
         selected_slot->sequence = state_->next_sequence;
+        selected_slot->pending_completion = AudioCallbackCompletion{};
+        selected_slot->completion_pending.store(false, std::memory_order_release);
+        selected_slot->queued.store(true, std::memory_order_release);
         ++state_->next_sequence;
         ++state_->snapshot.submitted_buffer_count;
         ++state_->snapshot.queued_buffer_count;
@@ -512,6 +514,7 @@ AudioStatus AudioCallbackDevice::SubmitS16Buffer(std::span<const std::int16_t> i
         if (backend_test_config.report_callback_error_on_submit) {
             state_->OnVoiceError();
             std::lock_guard<std::mutex> lock(state_->mutex);
+            state_->MergeCallbackEventsLocked();
             return state_->SetLastStatus(AudioStatus::Success);
         }
 
@@ -520,6 +523,7 @@ AudioStatus AudioCallbackDevice::SubmitS16Buffer(std::span<const std::int16_t> i
         }
 
         std::lock_guard<std::mutex> lock(state_->mutex);
+        state_->MergeCallbackEventsLocked();
         return state_->SetLastStatus(AudioStatus::Success);
     }
 
@@ -554,20 +558,31 @@ AudioStatus AudioCallbackDevice::WaitForCompletedCallbacks(std::uint64_t target_
 
     std::unique_lock<std::mutex> lock(state_->mutex);
     const auto timeout = std::chrono::milliseconds(timeout_milliseconds);
-    const bool completed = state_->completion_signal.wait_for(lock, timeout, [this, target_completed_count]() {
-        return state_->snapshot.completed_callback_count >= target_completed_count ||
-               state_->snapshot.failed_callback_count > 0U;
-    });
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (true) {
+        state_->MergeCallbackEventsLocked();
+        if (state_->snapshot.failed_callback_count > 0U) {
+            return state_->SetLastStatus(AudioStatus::CallbackFailed);
+        }
 
-    if (!completed) {
-        return state_->SetLastStatus(AudioStatus::CallbackTimeout);
+        if (state_->snapshot.completed_callback_count >= target_completed_count) {
+            return state_->SetLastStatus(AudioStatus::Success);
+        }
+
+        const auto now = std::chrono::steady_clock::now();
+        if (now >= deadline) {
+            return state_->SetLastStatus(AudioStatus::CallbackTimeout);
+        }
+
+        auto wait_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::milliseconds(CALLBACK_WAIT_POLL_MILLISECONDS));
+        const auto remaining_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(deadline - now);
+        if (remaining_duration < wait_duration) {
+            wait_duration = remaining_duration;
+        }
+
+        state_->completion_signal.wait_for(lock, wait_duration);
     }
-
-    if (state_->snapshot.failed_callback_count > 0U) {
-        return state_->SetLastStatus(AudioStatus::CallbackFailed);
-    }
-
-    return state_->SetLastStatus(AudioStatus::Success);
 }
 
 AudioStatus AudioCallbackDevice::DrainCompletions(AudioCallbackCompletion *completions, std::size_t completion_capacity, std::size_t &out_completion_count) {
@@ -581,6 +596,7 @@ AudioStatus AudioCallbackDevice::DrainCompletions(AudioCallbackCompletion *compl
     }
 
     std::lock_guard<std::mutex> lock(state_->mutex);
+    state_->MergeCallbackEventsLocked();
     const std::size_t write_count = std::min(completion_capacity, state_->completion_count);
     for (std::size_t index = 0U; index < write_count; ++index) {
         completions[index] = state_->completions[index];
@@ -642,8 +658,10 @@ AudioStatus AudioCallbackDevice::Shutdown() {
 
     {
         std::lock_guard<std::mutex> lock(state_->mutex);
+        state_->MergeCallbackEventsLocked();
         for (AudioCallbackBufferSlot &slot : state_->buffers) {
-            slot.queued = false;
+            slot.queued.store(false, std::memory_order_release);
+            slot.completion_pending.store(false, std::memory_order_release);
         }
 
         state_->snapshot.queued_buffer_count = 0U;
@@ -661,6 +679,7 @@ AudioCallbackSnapshot AudioCallbackDevice::Snapshot() const {
     }
 
     std::lock_guard<std::mutex> lock(state_->mutex);
+    state_->MergeCallbackEventsLocked();
     return state_->snapshot;
 }
 }
