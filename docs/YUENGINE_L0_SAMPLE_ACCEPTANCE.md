@@ -83,6 +83,36 @@ Current main checkpoint: `origin/main@c663125b516d17593fdb748eacb7783ee3d6b0d8`.
 | Strict hardware smoke | `BlockedByEnv` | `ctest --preset windows-strict-hardware-smoke --output-on-failure` fails only `Input_HardwareBridge_PollsXInputGamepad` with `xinput gamepad hardware smoke requires a connected controller`. |
 | Generated-output hygiene | `PASS` | `git status --short --ignored Samples\AssetSmokeDemo` lists generated `Build/` and capture output as ignored-only rows. |
 
+## 3.2 L0-RES-007 Evidence Sync
+
+L0-RES-007 sample texture/mesh asset path closure is PASS at
+`origin/main@026f1d06af688ccaa1ff9a421f71ac1ea092cd5a`. Readiness task
+`76377a9a` records the lane READY, and focused QA task
+`37d47308-4d38-43d0-85cb-d98f9867b6f8` reports a read-only clean workspace.
+
+The focused QA evidence for this row is:
+
+- Debug `AssetSmokeDemo` smoke PASS on the current machine with
+  `YuAssetSmokeDemo PASS`, `YuAssetSmokeDemo L0_ENGINE PASS`, and
+  `YuAssetSmokeDemo L1_PREP PASS`;
+- Release `AssetSmokeDemo` smoke PASS on the current machine with the same
+  required status lines;
+- `YuSampleTests` focused build PASS;
+- `Sample_L1VerticalPrep_` discovery/execution `6/6` PASS;
+- dependency discovery-only counts `Streaming_ResourceDecodedTextureBridge_`
+  `5`, `Streaming_ResourceUpload_.*Texture` `2`, RHI texture/sampler/sampling
+  `10`, and RenderCore texture/material/frame/draw/view `60`;
+- generated-output hygiene tracked/staged `0`, untracked `0`, with ignored
+  sample/build outputs only.
+
+This sync does not close L0-SAMPLE-004, L1 sample closure, L0-RHI table
+closure, hardware closure, manual screenshot/listening proof,
+RenderScene/L1 visual implementation, RuntimeAsset/Asset Manager expansion,
+World/editor/importer, UI/GameAdapter/gameplay, material graph, shader compiler
+pipeline, scene loader, old-package compatibility, real codec/parser,
+Package/Resource public API expansion, L0-AUD-005 sample PCM path, L0-AUD-003
+callback proof, adjacent/full suites, or broad/full CTest.
+
 ## 4. Required Sample Output
 
 The standalone sample command is accepted only when the command reaches the

@@ -210,6 +210,25 @@ At the latest handoff:
   `Audio_PcmStreamQueue_` `15`; Audio dependency rows were not executed by this
   lane, `L0-AUD-002` is not table-closed here, and no adjacent/full
   Audio/AudioResource/Resource or broad/full CTest was run;
+- L0-RES-007 sample texture/mesh asset path closure is PASS at
+  `026f1d06af688ccaa1ff9a421f71ac1ea092cd5a`; readiness task `76377a9a`
+  records the lane READY, and focused QA task
+  `37d47308-4d38-43d0-85cb-d98f9867b6f8` reports a read-only clean
+  workspace, Debug and Release `AssetSmokeDemo` smoke PASS on the current
+  machine with `YuAssetSmokeDemo PASS`, `YuAssetSmokeDemo L0_ENGINE PASS`,
+  and `YuAssetSmokeDemo L1_PREP PASS`, `YuSampleTests` focused build PASS,
+  `Sample_L1VerticalPrep_` discovery/execution `6/6` PASS, dependency
+  discovery-only counts `Streaming_ResourceDecodedTextureBridge_` `5`,
+  `Streaming_ResourceUpload_.*Texture` `2`, RHI texture/sampler/sampling `10`,
+  and RenderCore texture/material/frame/draw/view `60`; generated-output
+  hygiene stayed tracked/staged `0`, untracked `0`, with ignored sample/build
+  outputs only; L0-SAMPLE-004, L1 sample closure, L0-RHI table closure,
+  hardware closure, manual screenshot/listening proof, RenderScene/L1 visual
+  implementation, RuntimeAsset/Asset Manager expansion, World/editor/importer,
+  UI/GameAdapter/gameplay, material graph, shader compiler pipeline, scene
+  loader, old-package compatibility, real codec/parser, Package/Resource public
+  API expansion, L0-AUD-005 sample PCM path, L0-AUD-003 callback proof,
+  adjacent/full suites, and broad/full CTest remain separate;
 - WorldObject-facing runtime instance mapping and broader Resource/File/VFS
   follow-through remain blocked until their own gates are released.
 

@@ -122,6 +122,22 @@ explicit skip:
 | Engine sample | `Samples/AssetSmokeDemo`, `Tests/Sample` | ENG-171/174/176 sample paths; `YuSampleTests` now cover L1 prep and validation route | BlockedByEnv | Builds from source, no committed generated binaries, proves YuEngine module path, reports audio/gamepad/hardware skip explicitly, handles resize/shutdown | `ctest --preset windows-fast-gate -R "^Sample_L1Vertical" --output-on-failure`; `powershell -ExecutionPolicy Bypass -File Samples/AssetSmokeDemo/RunAssetSmokeDemo.ps1 -Configuration Debug`; release variant at stage close | Missing UE Ogg/Vorbis dependency, unsupported D3D11, missing audio device, missing gamepad may skip only with explicit status | Standalone demo path as L1 proof, UI/GameAdapter/gameplay, committed exe/dll/capture proof | Sample owner | Run sample command on supported machine; keep L1 value-contract tests separate from native L0 demo entry |
 | Third-party/sample asset hygiene | `Samples/AssetSmokeDemo/README.md`, sample assets, `.gitignore` | ENG-170/171/176 sample cleanup and README provenance | Done | Generated binaries/captures ignored, sample assets intentional, Ogg/Vorbis dependency documented, command documents what it proves and does not prove | `git status --short --ignored Samples/AssetSmokeDemo`; sample README review; `git diff --check -- docs/YUENGINE_L0_COMPLETION_MATRIX.md` | Local third-party dependency absence may skip sample run but not provenance review | Vendored unknown binaries, generated outputs under `Temp`, undocumented asset provenance | Evidence/sample owner | VQ should verify no generated sample outputs are staged |
 
+L0-RES-007 docs sync records sample texture/mesh asset path closure at
+`origin/main@026f1d06af688ccaa1ff9a421f71ac1ea092cd5a`. Readiness task
+`76377a9a` records READY, and focused QA task
+`37d47308-4d38-43d0-85cb-d98f9867b6f8` reports Debug and Release
+`AssetSmokeDemo` smoke PASS on the current machine with `YuAssetSmokeDemo PASS`,
+`YuAssetSmokeDemo L0_ENGINE PASS`, and `YuAssetSmokeDemo L1_PREP PASS`,
+`YuSampleTests` focused build PASS, `Sample_L1VerticalPrep_` discovery/execution
+`6/6` PASS, dependency discovery-only counts `Streaming_ResourceDecodedTextureBridge_`
+`5`, `Streaming_ResourceUpload_.*Texture` `2`, RHI texture/sampler/sampling
+`10`, RenderCore texture/material/frame/draw/view `60`, and generated-output
+hygiene tracked/staged `0`, untracked `0`, ignored sample/build outputs only.
+The matrix still leaves target XInput hardware proof, L0-SAMPLE-004, L1 sample
+closure, L0-RHI table closure, manual screenshot/listening proof, broader
+RenderScene/L1 visual work, Package/Resource public API expansion, adjacent/full
+suites, and broad/full CTest to their own rows.
+
 ## 5. L0 Closure Candidate Gate
 
 The current repository may enter L0 closure-candidate review only when all of
@@ -145,7 +161,7 @@ these are true:
 | Gap | Classification | Required follow-up |
 | --- | --- | --- |
 | Target XInput gamepad proof | `BlockedByEnv` | Current `windows-hardware-smoke` passes all non-XInput rows and explicitly skips `Input_HardwareBridge_PollsXInputGamepad`; run strict XInput hardware smoke with a connected controller |
-| Release sample command with local Ogg/Vorbis dependency | `BlockedByEnv` | Run `RunAssetSmokeDemo.ps1 -Configuration Release` on a machine with `UE_ENGINE_ROOT` configured |
+| Target hardware-grade sample proof | `BlockedByEnv` | L0-RES-007 records current-machine Debug/Release sample smoke and focused sample value tests; target XInput gamepad and strict hardware proof are governed by the hardware gap above |
 | Bridge audit high-risk rows | `FirstSlice` | `docs/YUENGINE_BRIDGE_AUDIT.md` exists; keep high-risk bridge rows current and require target hardware proof before current-product done claim |
 | L1 governance follow-through | `FirstSlice` | `docs/YUENGINE_L1_RUNTIME_CORE_MATRIX.md`, `docs/YUENGINE_L0_SAMPLE_ACCEPTANCE.md`, and `docs/YUENGINE_L1_VERTICAL_SAMPLE_ACCEPTANCE.md` exist; use them as L1 closure inputs rather than re-opening L0 scope |
 

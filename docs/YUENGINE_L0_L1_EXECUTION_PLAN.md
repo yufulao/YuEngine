@@ -294,11 +294,25 @@ dependency discovery counts `Audio_PcmSamplePacket_` `13` plus
 `Audio_PcmStreamQueue_` `15`. Audio dependency rows were not executed by this
 lane, `L0-AUD-002` is not table-closed here, and no adjacent/full
 Audio/AudioResource/Resource or broad/full CTest was run. L0-RES-007 sample
-texture/mesh asset path, L0-AUD-003 callback proof, L0-AUD-005 sample PCM path,
-RuntimeAsset/Asset Manager expansion, RenderScene/RHI implementation,
-WorldObject/editor/importer, codec/parser, Package/Resource public API
-expansion, screenshots/reports/manual listening proof, and broad/full CTest
-stay outside this closure.
+texture/mesh asset path closure is PASS at
+`026f1d06af688ccaa1ff9a421f71ac1ea092cd5a`: readiness task `76377a9a`
+records the lane READY, and focused QA task
+`37d47308-4d38-43d0-85cb-d98f9867b6f8` reports a read-only clean workspace,
+Debug and Release `AssetSmokeDemo` smoke PASS on the current machine with
+`YuAssetSmokeDemo PASS`, `YuAssetSmokeDemo L0_ENGINE PASS`, and
+`YuAssetSmokeDemo L1_PREP PASS`, `YuSampleTests` focused build PASS,
+`Sample_L1VerticalPrep_` discovery/execution `6/6` PASS, dependency
+discovery-only counts `Streaming_ResourceDecodedTextureBridge_` `5`,
+`Streaming_ResourceUpload_.*Texture` `2`, RHI texture/sampler/sampling `10`,
+and RenderCore texture/material/frame/draw/view `60`, plus generated-output
+hygiene with tracked/staged `0`, untracked `0`, and ignored sample/build
+outputs only. L0-SAMPLE-004, L1 sample closure, L0-RHI table closure, hardware
+closure, manual screenshot/listening proof, RenderScene/L1 visual
+implementation, RuntimeAsset/Asset Manager expansion, WorldObject/editor/importer,
+UI/GameAdapter/gameplay, material graph, shader compiler pipeline, scene loader,
+old-package compatibility, real codec/parser, Package/Resource public API
+expansion, L0-AUD-005 sample PCM path, L0-AUD-003 callback proof, adjacent/full
+suites, and broad/full CTest stay outside this closure.
 
 
 ## 2. Current Progress Assessment
@@ -1962,7 +1976,7 @@ backlog or from phase-sized batches, not only from the first few rows.
 | L0-RES-004 | Close Resource residency/upload chain | L0-RES-003, L0-RHI-003 | Closed at `origin/main@45f91f6cda02e42f0dce7eae7ff3df6db3616467`: focused QA task `2917323c-9869-4a1c-a9fb-67a90b513a23` reports successful `YuStreamingTests` and `YuResourceTests` builds, `Streaming_ResourceUpload_` `17/17`, `Streaming_ResourceUploadCommit_` `9/9`, `Resource_LoadCommit_`/`Resource_Residency_` `18/18`, combined focused execution `44/44`, and a clean read-only QA workspace; readiness task `d88846fd` records existing Resource/Streaming/RHI value/status records for upload queue, upload commit, Resource load commit, residency budget/state, pin/unpin/eviction, and stale/invalid handle no-mutation; QA did not build or execute `YuRHITests`, RHI 38-row dependency execution, adjacent/full Resource, full `^Resource_`, or broad/full CTest; `L0-RHI-003` stays a dependency row, not a completion claim from this evidence sync |
 | L0-RES-005 | Close texture bridge to RHI | L0-RES-004, L0-RHI-003 | Closed at `origin/main@18030b201c69452a2a7da44fc3d08a4462c3d34f`: readiness task `6fc3d241` records existing `ResourceDecodedTextureBridge` mapping from decoded texture payload to `ResourceUploadKind::CreateTexture` and sampled texture binding values without Resource owning RHI lifecycle; focused QA task `261fa423-28aa-498f-944f-c4eb44cf9d23` reports read-only clean workspace, successful `YuStreamingTests` focused build, `Streaming_ResourceDecodedTextureBridge_` `5/5`, `Streaming_ResourceUpload_.*Texture` `2/2`, and RHI texture/sampler/sampling dependency discovery count `10`; the RHI dependency set was not executed, RHI closure is unchanged, and there is no adjacent/full Resource/Streaming or broad/full CTest claim |
 | L0-RES-006 | Close PCM bridge to Audio | L0-RES-003, L0-AUD-002 | Closed at `origin/main@804206712988733f38990af6975c67854b16de6a`: readiness task `69ddc757` records existing `AudioResourcePcmPacketImportBridge` mapping from Resource decoded audio metadata to `AudioPcmSamplePacketRequest` values and bridge-owned import records without Audio parsing Resource payloads or Resource owning Audio lifecycle; focused QA task `1dbfdaf6-61ff-4ac4-9e47-a2703f2e5a1e` reports read-only clean workspace, successful `YuAudioResourceTests` focused build, `AudioResource_PcmPacketImportBridge_` `8/8`, and dependency discovery counts `Audio_PcmSamplePacket_` `13` plus `Audio_PcmStreamQueue_` `15`; Audio dependency rows were not executed by this lane, `L0-AUD-002` stays a dependency row, and there is no adjacent/full Audio, AudioResource, Resource, or broad/full CTest claim |
-| L0-RES-007 | Add sample texture/mesh asset path | L0-RES-001, L0-RES-003, L0-RES-005 | sample asset reaches RenderCore/RHI through YuEngine modules |
+| L0-RES-007 | Add sample texture/mesh asset path | L0-RES-001, L0-RES-003, L0-RES-005 | Closed at `origin/main@026f1d06af688ccaa1ff9a421f71ac1ea092cd5a`: readiness task `76377a9a` records the sample path lane READY; focused QA task `37d47308-4d38-43d0-85cb-d98f9867b6f8` reports read-only clean workspace, successful Debug and Release `AssetSmokeDemo` smoke with expected `YuAssetSmokeDemo`, `L0_ENGINE`, and `L1_PREP` status lines, successful `YuSampleTests` focused build, `Sample_L1VerticalPrep_` discovery/execution `6/6`, dependency discovery-only counts `Streaming_ResourceDecodedTextureBridge_` `5`, `Streaming_ResourceUpload_.*Texture` `2`, RHI texture/sampler/sampling `10`, RenderCore texture/material/frame/draw/view `60`, and generated-output hygiene with tracked/staged `0`, untracked `0`, ignored sample/build outputs only; L0-SAMPLE-004, L1 sample closure, L0-RHI table closure, hardware closure, manual screenshot/listening proof, RenderScene/L1 visual implementation, RuntimeAsset/Asset Manager expansion, World/editor/importer, UI/GameAdapter/gameplay, material graph, shader compiler pipeline, scene loader, old-package compatibility, real codec/parser, Package/Resource public API expansion, L0-AUD-005 sample PCM path, L0-AUD-003 callback proof, adjacent/full suites, and broad/full CTest stay separate |
 
 L0-RES-001 evidence is intentionally limited to `Tests/File/FileTests.cpp`.
 L0-RES-002 evidence is based on existing Package and Streaming value/status
@@ -1976,13 +1990,17 @@ focused Streaming texture bridge execution, with RHI texture/sampler/sampling
 rows used as discovery-only dependency evidence. L0-RES-006 evidence is based
 on existing `AudioResourcePcmPacketImportBridge` and focused AudioResource
 bridge execution, with `Audio_PcmSamplePacket_` and `Audio_PcmStreamQueue_`
-rows used as discovery-only dependency evidence. L0-RES-007 sample texture/mesh
-asset path, L0-AUD-003 callback proof, L0-AUD-005 sample PCM path,
-RuntimeAsset/Asset Manager expansion, RenderScene/RHI implementation,
-WorldObject/editor/importer, old-package compatibility, real codec/parser,
-unrelated animation mapping, Package/Resource public API expansion,
-adjacent/full Audio, AudioResource, Resource, or Streaming, dependency
-execution, full `^Resource_`, and broad/full CTest stay outside these closures.
+rows used as discovery-only dependency evidence. L0-RES-007 evidence is based
+on the sample texture/mesh asset path, Debug/Release `AssetSmokeDemo` smoke,
+`Sample_L1VerticalPrep_` focused execution, dependency discovery-only support,
+and generated-output hygiene. L0-SAMPLE-004, L1 sample closure, L0-RHI table
+closure, hardware closure, manual screenshot/listening proof, L0-AUD-003
+callback proof, L0-AUD-005 sample PCM path, RuntimeAsset/Asset Manager
+expansion, RenderScene/RHI implementation, WorldObject/editor/importer,
+UI/GameAdapter/gameplay, material graph, shader compiler pipeline, scene
+loader, old-package compatibility, real codec/parser, unrelated animation
+mapping, Package/Resource public API expansion, adjacent/full suites,
+dependency execution, and broad/full CTest stay outside these closures.
 
 ### 12.6 L0 Audio Backlog
 
