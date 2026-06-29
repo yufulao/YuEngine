@@ -170,10 +170,14 @@ constexpr const char *TEST_UPLOAD_CREATE_BUFFER =
     "Streaming_ResourceUpload_CreateBufferFromStagingCompletion";
 constexpr const char *TEST_UPLOAD_UPDATE_BUFFER =
     "Streaming_ResourceUpload_UpdateBufferSignalsFence";
+constexpr const char *TEST_UPLOAD_UPDATE_BUFFER_DESTINATION_RANGE =
+    "Streaming_ResourceUpload_UpdateBufferUsesDestinationOffsetAndRejectsOverflow";
 constexpr const char *TEST_UPLOAD_CREATE_TEXTURE =
     "Streaming_ResourceUpload_CreateTextureFromStagingCompletion";
 constexpr const char *TEST_UPLOAD_UPDATE_TEXTURE =
     "Streaming_ResourceUpload_UpdateTextureSignalsFence";
+constexpr const char *TEST_UPLOAD_UPDATE_TEXTURE_DESTINATION_RANGE =
+    "Streaming_ResourceUpload_UpdateTextureUsesDestinationOffsetAndRejectsOverflow";
 constexpr const char *TEST_UPLOAD_INVALID_HANDLE =
     "Streaming_ResourceUpload_RejectsInvalidResourceHandleWithoutMutation";
 constexpr const char *TEST_UPLOAD_TYPE_MISMATCH =
@@ -220,6 +224,8 @@ constexpr const char *TEST_UPLOAD_COMMIT_SNAPSHOT =
     "Streaming_ResourceUploadCommit_SnapshotReportsBoundedCounters";
 constexpr const char *TEST_PIPELINE_FIXTURE_BUFFER =
     "Streaming_ResourceStreamingPipeline_FixtureBufferReadUploadCommit";
+constexpr const char *TEST_PIPELINE_UPDATE_BUFFER_DESTINATION_RANGE =
+    "Streaming_ResourceStreamingPipeline_UpdateBufferUsesPayloadWindowDestinationOffset";
 constexpr const char *TEST_PIPELINE_CACHE_PAYLOAD =
     "Streaming_ResourceStreamingPipeline_CachePayloadOnlyStoresPackageWindow";
 constexpr const char *TEST_PIPELINE_CACHE_PAYLOAD_STORE_FAILURE =
@@ -1827,6 +1833,92 @@ int StreamingResourceUploadUpdateBufferSignalsFence() {
     return 0;
 }
 
+int StreamingResourceUploadUpdateBufferUsesDestinationOffsetAndRejectsOverflow() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("resource registration failed");
+    }
+
+    NullRhiDevice device = CreateInitializedUploadDevice();
+    const std::span<const std::uint8_t> empty_bytes{};
+    RhiBufferHandle input_handle{};
+    if (device.CreateBuffer(UploadBufferDesc(4U), empty_bytes, input_handle) != RhiStatus::Success) {
+        return Fail("buffer primitive creation failed");
+    }
+
+    const std::array<std::uint8_t, 2U> bytes{7U, 8U};
+    const std::span<const std::uint8_t> byte_span(bytes.data(), bytes.size());
+    const PackageResourceStagingCompletion staging_completion =
+        BuildSuccessfulStagingCompletion(resource_result.handle, TYPE_TEXTURE, REQUEST_ONE, 2U);
+    ResourceUploadRequest request =
+        BuildBaseUploadRequest(resource_registry, &device, staging_completion, byte_span, UPLOAD_ONE);
+    RhiFenceHandle output_fence{};
+    request.upload_kind = ResourceUploadKind::UpdateBuffer;
+    request.input_buffer_handle = input_handle;
+    request.output_fence = &output_fence;
+    request.destination_byte_offset = 2ULL;
+
+    ResourceUploadQueue success_queue(ResourceUploadQueueDesc{1U, 1U});
+    if (success_queue.Submit(request) != ResourceUploadStatus::Queued) {
+        return Fail("buffer update destination request was not queued");
+    }
+
+    if (success_queue.ProcessNext() != ResourceUploadStatus::Success) {
+        return Fail("buffer update destination request did not succeed");
+    }
+
+    if (output_fence.generation == 0U) {
+        return Fail("buffer update destination request did not write fence");
+    }
+
+    const auto before_reject_snapshot = device.Snapshot();
+    const PackageResourceStagingCompletion reject_completion =
+        BuildSuccessfulStagingCompletion(resource_result.handle, TYPE_TEXTURE, REQUEST_TWO, 2U);
+    ResourceUploadRequest reject_request =
+        BuildBaseUploadRequest(resource_registry, &device, reject_completion, byte_span, UPLOAD_TWO);
+    RhiFenceHandle rejected_fence{};
+    reject_request.upload_kind = ResourceUploadKind::UpdateBuffer;
+    reject_request.input_buffer_handle = input_handle;
+    reject_request.output_fence = &rejected_fence;
+    reject_request.destination_byte_offset = 3ULL;
+
+    ResourceUploadQueue reject_queue(ResourceUploadQueueDesc{1U, 1U});
+    if (reject_queue.Submit(reject_request) != ResourceUploadStatus::Queued) {
+        return Fail("buffer update overflow request was not queued");
+    }
+
+    if (reject_queue.ProcessNext() != ResourceUploadStatus::RhiUploadFailed) {
+        return Fail("buffer update overflow did not report RHI upload failure");
+    }
+
+    ResourceUploadCompletion completion;
+    if (!DrainOneUploadCompletion(reject_queue, &completion)) {
+        return Fail("buffer update overflow completion drain failed");
+    }
+
+    if (completion.rhi_status != RhiStatus::CapacityExceeded) {
+        return Fail("buffer update overflow RHI status changed");
+    }
+
+    if (completion.fence.generation != 0U || rejected_fence.generation != 0U) {
+        return Fail("buffer update overflow wrote fence");
+    }
+
+    const auto after_reject_snapshot = device.Snapshot();
+    if (after_reject_snapshot.resources.updated_primitive_count !=
+        before_reject_snapshot.resources.updated_primitive_count) {
+        return Fail("buffer update overflow changed update count");
+    }
+
+    if (after_reject_snapshot.resources.signaled_fence_count !=
+        before_reject_snapshot.resources.signaled_fence_count) {
+        return Fail("buffer update overflow signaled fence");
+    }
+
+    return 0;
+}
+
 int StreamingResourceUploadCreateTextureFromStagingCompletion() {
     ResourceRegistry resource_registry;
     const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
@@ -1912,6 +2004,94 @@ int StreamingResourceUploadUpdateTextureSignalsFence() {
 
     if (snapshot.resources.last_update_bytes != bytes.size()) {
         return Fail("texture update byte count was not tracked");
+    }
+
+    return 0;
+}
+
+int StreamingResourceUploadUpdateTextureUsesDestinationOffsetAndRejectsOverflow() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("resource registration failed");
+    }
+
+    NullRhiDevice device = CreateInitializedUploadDevice();
+    const std::span<const std::uint8_t> empty_bytes{};
+    RhiTextureHandle input_handle{};
+    if (device.CreateTexture(UploadTextureDesc(), empty_bytes, input_handle) != RhiStatus::Success) {
+        return Fail("texture primitive creation failed");
+    }
+
+    const std::array<std::uint8_t, 8U> bytes{
+        16U, 15U, 14U, 13U,
+        12U, 11U, 10U, 9U};
+    const std::span<const std::uint8_t> byte_span(bytes.data(), bytes.size());
+    const PackageResourceStagingCompletion staging_completion =
+        BuildSuccessfulStagingCompletion(resource_result.handle, TYPE_TEXTURE, REQUEST_ONE, 8U);
+    ResourceUploadRequest request =
+        BuildBaseUploadRequest(resource_registry, &device, staging_completion, byte_span, UPLOAD_ONE);
+    RhiFenceHandle output_fence{};
+    request.upload_kind = ResourceUploadKind::UpdateTexture;
+    request.input_texture_handle = input_handle;
+    request.output_fence = &output_fence;
+    request.destination_byte_offset = 8ULL;
+
+    ResourceUploadQueue success_queue(ResourceUploadQueueDesc{1U, 1U});
+    if (success_queue.Submit(request) != ResourceUploadStatus::Queued) {
+        return Fail("texture update destination request was not queued");
+    }
+
+    if (success_queue.ProcessNext() != ResourceUploadStatus::Success) {
+        return Fail("texture update destination request did not succeed");
+    }
+
+    if (output_fence.generation == 0U) {
+        return Fail("texture update destination request did not write fence");
+    }
+
+    const auto before_reject_snapshot = device.Snapshot();
+    const PackageResourceStagingCompletion reject_completion =
+        BuildSuccessfulStagingCompletion(resource_result.handle, TYPE_TEXTURE, REQUEST_TWO, 8U);
+    ResourceUploadRequest reject_request =
+        BuildBaseUploadRequest(resource_registry, &device, reject_completion, byte_span, UPLOAD_TWO);
+    RhiFenceHandle rejected_fence{};
+    reject_request.upload_kind = ResourceUploadKind::UpdateTexture;
+    reject_request.input_texture_handle = input_handle;
+    reject_request.output_fence = &rejected_fence;
+    reject_request.destination_byte_offset = 12ULL;
+
+    ResourceUploadQueue reject_queue(ResourceUploadQueueDesc{1U, 1U});
+    if (reject_queue.Submit(reject_request) != ResourceUploadStatus::Queued) {
+        return Fail("texture update overflow request was not queued");
+    }
+
+    if (reject_queue.ProcessNext() != ResourceUploadStatus::RhiUploadFailed) {
+        return Fail("texture update overflow did not report RHI upload failure");
+    }
+
+    ResourceUploadCompletion completion;
+    if (!DrainOneUploadCompletion(reject_queue, &completion)) {
+        return Fail("texture update overflow completion drain failed");
+    }
+
+    if (completion.rhi_status != RhiStatus::InvalidDescriptor) {
+        return Fail("texture update overflow RHI status changed");
+    }
+
+    if (completion.fence.generation != 0U || rejected_fence.generation != 0U) {
+        return Fail("texture update overflow wrote fence");
+    }
+
+    const auto after_reject_snapshot = device.Snapshot();
+    if (after_reject_snapshot.resources.updated_primitive_count !=
+        before_reject_snapshot.resources.updated_primitive_count) {
+        return Fail("texture update overflow changed update count");
+    }
+
+    if (after_reject_snapshot.resources.signaled_fence_count !=
+        before_reject_snapshot.resources.signaled_fence_count) {
+        return Fail("texture update overflow signaled fence");
     }
 
     return 0;
@@ -3121,6 +3301,121 @@ int StreamingResourceStreamingPipelineFixtureBufferReadUploadCommit() {
     return 0;
 }
 
+int StreamingResourceStreamingPipelineUpdateBufferUsesPayloadWindowDestinationOffset() {
+    MountTable table = CreateMountedTable();
+    AsyncFileReadQueue file_queue;
+    if (file_queue.Initialize(2U, 2U) != AsyncFileReadStatus::Success) {
+        return Fail("pipeline update file queue initialize failed");
+    }
+
+    if (file_queue.Start() != AsyncFileReadStatus::Success) {
+        return Fail("pipeline update file queue start failed");
+    }
+
+    PackageLoadPlanRecord record;
+    if (!BuildPackageRecord(&record, 0U, 2U)) {
+        return Fail("pipeline update package record build failed");
+    }
+
+    record.payload_logical_byte_count = 4ULL;
+    record.payload_window_byte_offset = 3ULL;
+    record.payload_window_byte_size = 2ULL;
+
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("pipeline update resource registration failed");
+    }
+
+    NullRhiDevice device = CreateInitializedUploadDevice();
+    const std::span<const std::uint8_t> empty_bytes{};
+    RhiBufferHandle input_handle{};
+    if (device.CreateBuffer(UploadBufferDesc(4U), empty_bytes, input_handle) != RhiStatus::Success) {
+        return Fail("pipeline update input buffer creation failed");
+    }
+
+    std::array<std::uint8_t, OUTPUT_CAPACITY> staged_bytes{};
+    RhiFenceHandle output_fence{};
+    ResourceStreamingPipelineRequest request;
+    request.resource_registry = &resource_registry;
+    request.file_queue = &file_queue;
+    request.rhi_device = &device;
+    request.package_record = record;
+    request.resource = resource_result.handle;
+    request.expected_type = TYPE_TEXTURE;
+    request.file_request = BuildFileRequest(table, staged_bytes.data(), staged_bytes.size());
+    request.staged_bytes = std::span<const std::uint8_t>(staged_bytes.data(), staged_bytes.size());
+    request.upload_byte_count = 2U;
+    request.upload_kind = ResourceUploadKind::UpdateBuffer;
+    request.input_buffer_handle = input_handle;
+    request.output_fence = &output_fence;
+    request.staging_request_id = REQUEST_ONE;
+    request.upload_id = UPLOAD_ONE;
+    request.commit_id = COMMIT_ONE;
+
+    ResourceStreamingPipeline pipeline;
+    if (pipeline.Submit(request) != ResourceStreamingPipelineStatus::Queued) {
+        return Fail("pipeline update submit did not queue");
+    }
+
+    if (file_queue.Shutdown(false) != AsyncFileReadStatus::ShutdownComplete) {
+        return Fail("pipeline update file queue shutdown failed");
+    }
+
+    AsyncFileReadResult file_result;
+    if (!DrainOneFileCompletion(file_queue, &file_result)) {
+        return Fail("pipeline update file completion drain failed");
+    }
+
+    if (pipeline.CompleteFileRead(file_result) != ResourceStreamingPipelineStatus::Queued) {
+        return Fail("pipeline update file completion did not queue upload");
+    }
+
+    const auto before_upload_snapshot = device.Snapshot();
+    if (pipeline.ProcessUpload() != ResourceStreamingPipelineStatus::Queued) {
+        return Fail("pipeline update upload did not queue commit");
+    }
+
+    const ResourceUploadCompletion upload_completion = pipeline.LastUploadCompletion();
+    if (upload_completion.status != ResourceUploadStatus::RhiUploadFailed) {
+        return Fail("pipeline update did not preserve upload failure");
+    }
+
+    if (upload_completion.rhi_status != RhiStatus::CapacityExceeded) {
+        return Fail("pipeline update did not use payload window destination offset");
+    }
+
+    if (upload_completion.fence.generation != 0U || output_fence.generation != 0U) {
+        return Fail("pipeline update overflow wrote fence");
+    }
+
+    const auto after_upload_snapshot = device.Snapshot();
+    if (after_upload_snapshot.resources.updated_primitive_count !=
+        before_upload_snapshot.resources.updated_primitive_count) {
+        return Fail("pipeline update overflow changed update count");
+    }
+
+    if (after_upload_snapshot.resources.signaled_fence_count !=
+        before_upload_snapshot.resources.signaled_fence_count) {
+        return Fail("pipeline update overflow signaled fence");
+    }
+
+    if (pipeline.ProcessCommit() != ResourceStreamingPipelineStatus::UploadProcessFailed) {
+        return Fail("pipeline update commit did not surface upload failure");
+    }
+
+    const ResourceStreamingPipelineSnapshot pipeline_snapshot = pipeline.Snapshot();
+    if (pipeline_snapshot.failed_count != 1U) {
+        return Fail("pipeline update failure count changed");
+    }
+
+    if (pipeline_snapshot.has_active_request) {
+        return Fail("pipeline update active request was not cleared");
+    }
+
+    return 0;
+}
+
 int StreamingResourceStreamingPipelineCachePayloadOnlyStoresPackageWindow() {
     MountTable table = CreateMountedTable();
     AsyncFileReadQueue file_queue;
@@ -3662,8 +3957,12 @@ int main(int argc, char **argv) {
          StreamingResourceCachePayloadBridgeRejectsLocalByteCountMismatchBeforeStore},
         {TEST_UPLOAD_CREATE_BUFFER, StreamingResourceUploadCreateBufferFromStagingCompletion},
         {TEST_UPLOAD_UPDATE_BUFFER, StreamingResourceUploadUpdateBufferSignalsFence},
+        {TEST_UPLOAD_UPDATE_BUFFER_DESTINATION_RANGE,
+         StreamingResourceUploadUpdateBufferUsesDestinationOffsetAndRejectsOverflow},
         {TEST_UPLOAD_CREATE_TEXTURE, StreamingResourceUploadCreateTextureFromStagingCompletion},
         {TEST_UPLOAD_UPDATE_TEXTURE, StreamingResourceUploadUpdateTextureSignalsFence},
+        {TEST_UPLOAD_UPDATE_TEXTURE_DESTINATION_RANGE,
+         StreamingResourceUploadUpdateTextureUsesDestinationOffsetAndRejectsOverflow},
         {TEST_UPLOAD_INVALID_HANDLE, StreamingResourceUploadRejectsInvalidResourceHandleWithoutMutation},
         {TEST_UPLOAD_TYPE_MISMATCH, StreamingResourceUploadRejectsResourceTypeMismatchWithoutMutation},
         {TEST_UPLOAD_FAILED_STAGING, StreamingResourceUploadRejectsFailedStagingCompletion},
@@ -3688,6 +3987,8 @@ int main(int argc, char **argv) {
         {TEST_UPLOAD_COMMIT_SLOT_REUSE_ORDER, StreamingResourceUploadCommitPreservesOldestOrderAfterSlotReuse},
         {TEST_UPLOAD_COMMIT_SNAPSHOT, StreamingResourceUploadCommitSnapshotReportsBoundedCounters},
         {TEST_PIPELINE_FIXTURE_BUFFER, StreamingResourceStreamingPipelineFixtureBufferReadUploadCommit},
+        {TEST_PIPELINE_UPDATE_BUFFER_DESTINATION_RANGE,
+         StreamingResourceStreamingPipelineUpdateBufferUsesPayloadWindowDestinationOffset},
         {TEST_PIPELINE_CACHE_PAYLOAD, StreamingResourceStreamingPipelineCachePayloadOnlyStoresPackageWindow},
         {TEST_PIPELINE_PACKAGE_ARTIFACT_CACHE_PAYLOAD,
          StreamingResourceStreamingPipelinePackageArtifactFeedsCachePayloadU64Window},

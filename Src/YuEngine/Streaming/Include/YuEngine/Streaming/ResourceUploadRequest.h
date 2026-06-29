@@ -34,6 +34,7 @@ struct ResourceUploadRequest final {
     std::span<const std::uint8_t> staged_bytes;
     std::uint32_t upload_byte_offset = 0U;
     std::uint32_t upload_byte_count = 0U;
+    std::uint64_t destination_byte_offset = 0ULL;
     ResourceUploadKind upload_kind = ResourceUploadKind::Unsupported;
     rhi::RhiBufferDesc buffer_desc;
     rhi::RhiBufferHandle input_buffer_handle;

@@ -325,6 +325,11 @@ ResourceUploadRequest ResourceStreamingPipeline::BuildUploadRequest(
     upload_request.upload_byte_offset = request_.upload_byte_offset;
     upload_request.upload_byte_count = request_.upload_byte_count;
     upload_request.upload_kind = request_.upload_kind;
+    if (request_.upload_kind == ResourceUploadKind::UpdateBuffer ||
+        request_.upload_kind == ResourceUploadKind::UpdateTexture) {
+        upload_request.destination_byte_offset = completion.package_record.payload_window_byte_offset;
+    }
+
     upload_request.buffer_desc = request_.buffer_desc;
     upload_request.input_buffer_handle = request_.input_buffer_handle;
     upload_request.output_buffer_handle = request_.output_buffer_handle;

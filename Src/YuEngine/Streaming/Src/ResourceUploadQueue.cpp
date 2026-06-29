@@ -418,7 +418,11 @@ ResourceUploadStatus ResourceUploadQueue::ProcessUpdateBuffer(
     const std::span<const std::uint8_t> bytes =
         request.staged_bytes.subspan(request.upload_byte_offset, request.upload_byte_count);
     rhi::RhiFenceHandle fence;
-    const rhi::RhiStatus rhi_status = request.rhi_device->UpdateBuffer(request.input_buffer_handle, bytes, fence);
+    const rhi::RhiStatus rhi_status = request.rhi_device->UpdateBuffer(
+        request.input_buffer_handle,
+        bytes,
+        fence,
+        request.destination_byte_offset);
     completion.rhi_status = rhi_status;
     completion.fence = fence;
     if (rhi_status != rhi::RhiStatus::Success) {
@@ -460,7 +464,11 @@ ResourceUploadStatus ResourceUploadQueue::ProcessUpdateTexture(
     const std::span<const std::uint8_t> bytes =
         request.staged_bytes.subspan(request.upload_byte_offset, request.upload_byte_count);
     rhi::RhiFenceHandle fence;
-    const rhi::RhiStatus rhi_status = request.rhi_device->UpdateTexture(request.input_texture_handle, bytes, fence);
+    const rhi::RhiStatus rhi_status = request.rhi_device->UpdateTexture(
+        request.input_texture_handle,
+        bytes,
+        fence,
+        request.destination_byte_offset);
     completion.rhi_status = rhi_status;
     completion.fence = fence;
     if (rhi_status != rhi::RhiStatus::Success) {
