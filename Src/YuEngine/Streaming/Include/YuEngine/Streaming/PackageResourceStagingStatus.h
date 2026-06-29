@@ -18,6 +18,7 @@ enum class PackageResourceStagingStatus {
     DuplicateRequestId,
     FileSubmitFailed,
     FileReadFailed,
+    FileByteCountMismatch,
     MissingFileCompletion
 };
 }

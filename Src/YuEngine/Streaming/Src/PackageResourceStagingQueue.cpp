@@ -3,6 +3,7 @@
 
 #include "YuEngine/Streaming/PackageResourceStagingQueue.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 
@@ -19,15 +20,16 @@ std::uint32_t ClampCapacity(std::uint32_t requested_capacity, std::uint32_t maxi
     return requested_capacity;
 }
 
-bool ByteRangeOverflows(std::uint32_t byte_offset, std::uint32_t byte_size) {
-    const std::uint64_t end_offset = static_cast<std::uint64_t>(byte_offset) + static_cast<std::uint64_t>(byte_size);
-    return end_offset > static_cast<std::uint64_t>(std::numeric_limits<std::uint32_t>::max());
+bool ByteRangeOverflows(std::uint64_t byte_offset, std::uint64_t byte_size) {
+    return byte_offset > std::numeric_limits<std::uint64_t>::max() - byte_size;
 }
 
-bool ByteRangeExceedsSize(std::uint32_t byte_offset, std::uint32_t byte_size, std::size_t byte_count) {
-    const std::uint64_t end_offset = static_cast<std::uint64_t>(byte_offset) + static_cast<std::uint64_t>(byte_size);
-    const std::uint64_t available_byte_count = static_cast<std::uint64_t>(byte_count);
-    return end_offset > available_byte_count;
+bool ByteCountExceedsCapacity(std::uint64_t byte_count, std::size_t capacity) {
+    return byte_count > static_cast<std::uint64_t>(capacity);
+}
+
+bool ByteCountExceedsUInt32(std::uint64_t byte_count) {
+    return byte_count > static_cast<std::uint64_t>(std::numeric_limits<std::uint32_t>::max());
 }
 }
 
@@ -82,6 +84,9 @@ PackageResourceStagingStatus PackageResourceStagingQueue::Submit(
     }
 
     file::AsyncFileReadRequest file_request = request.file_request;
+    file_request.read_request.use_range = true;
+    file_request.read_request.range_byte_offset = request.package_record.archive_byte_offset;
+    file_request.read_request.range_byte_size = request.package_record.archive_byte_size;
     file_request.request_index = request.request_id;
     const file::AsyncFileReadStatus async_file_status = request.file_queue->Submit(file_request);
     if (async_file_status != file::AsyncFileReadStatus::Queued) {
@@ -114,8 +119,6 @@ PackageResourceStagingStatus PackageResourceStagingQueue::CompleteFileRead(
     completion.expected_type = pending_record->expected_type;
     completion.request_id = pending_record->request_id;
     completion.file_byte_count = file_result.byte_count;
-    completion.staged_byte_offset = pending_record->package_record.byte_offset;
-    completion.staged_byte_count = pending_record->package_record.byte_size;
     completion.async_file_status = file_result.status;
     completion.file_status = file_result.file_status;
 
@@ -130,11 +133,9 @@ PackageResourceStagingStatus PackageResourceStagingQueue::CompleteFileRead(
         return completion.status;
     }
 
-    if (ByteRangeExceedsSize(
-            pending_record->package_record.byte_offset,
-            pending_record->package_record.byte_size,
-            file_result.byte_count)) {
-        completion.status = PackageResourceStagingStatus::ByteRangeOutOfBounds;
+    const std::uint64_t archive_byte_size = pending_record->package_record.archive_byte_size;
+    if (static_cast<std::uint64_t>(file_result.byte_count) != archive_byte_size) {
+        completion.status = PackageResourceStagingStatus::FileByteCountMismatch;
         AppendCompletion(completion);
         RemovePendingRecord(*pending_record);
         ++snapshot_.failed_count;
@@ -145,6 +146,8 @@ PackageResourceStagingStatus PackageResourceStagingQueue::CompleteFileRead(
     }
 
     completion.status = PackageResourceStagingStatus::Success;
+    completion.staged_byte_offset = 0U;
+    completion.staged_byte_count = static_cast<std::uint32_t>(archive_byte_size);
     AppendCompletion(completion);
     RemovePendingRecord(*pending_record);
     ++snapshot_.completed_count;
@@ -242,11 +245,15 @@ PackageResourceStagingStatus PackageResourceStagingQueue::ValidateRequest(
         return PackageResourceStagingStatus::InvalidArgument;
     }
 
-    if (request.package_record.byte_size > 0U && request.file_request.output_bytes == nullptr) {
+    if (request.package_record.archive_byte_size > 0ULL && request.file_request.output_bytes == nullptr) {
         return PackageResourceStagingStatus::InvalidArgument;
     }
 
-    if (static_cast<std::size_t>(request.package_record.byte_size) > request.file_request.output_capacity) {
+    if (ByteCountExceedsCapacity(request.package_record.archive_byte_size, request.file_request.output_capacity)) {
+        return PackageResourceStagingStatus::OutputTooSmall;
+    }
+
+    if (ByteCountExceedsUInt32(request.package_record.archive_byte_size)) {
         return PackageResourceStagingStatus::OutputTooSmall;
     }
 
@@ -278,6 +285,10 @@ PackageResourceStagingStatus PackageResourceStagingQueue::ValidateRequest(
         return PackageResourceStagingStatus::InvalidPackageRecord;
     }
 
+    if (request.package_record.archive_byte_size == 0ULL) {
+        return PackageResourceStagingStatus::InvalidPackageRecord;
+    }
+
     if (!request.expected_type.IsValid()) {
         return PackageResourceStagingStatus::InvalidArgument;
     }
@@ -286,7 +297,7 @@ PackageResourceStagingStatus PackageResourceStagingQueue::ValidateRequest(
         return PackageResourceStagingStatus::TypeMismatch;
     }
 
-    if (ByteRangeOverflows(request.package_record.byte_offset, request.package_record.byte_size)) {
+    if (ByteRangeOverflows(request.package_record.archive_byte_offset, request.package_record.archive_byte_size)) {
         return PackageResourceStagingStatus::ByteRangeOutOfBounds;
     }
 

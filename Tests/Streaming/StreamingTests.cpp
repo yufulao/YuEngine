@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <limits>
 #include <span>
 #include <string>
 #include <string_view>
@@ -101,8 +102,16 @@ constexpr const char *TEST_INVALID_HANDLE =
     "Streaming_PackageResourceStaging_RejectsInvalidResourceHandleWithoutMutation";
 constexpr const char *TEST_TYPE_MISMATCH =
     "Streaming_PackageResourceStaging_RejectsResourceTypeMismatchWithoutMutation";
+constexpr const char *TEST_ARCHIVE_RANGE =
+    "Streaming_PackageResourceStaging_UsesArchiveByteRangeForFileRead";
+constexpr const char *TEST_LEGACY_MIRROR =
+    "Streaming_PackageResourceStaging_PreservesLegacyMirrorAsMetadataOnly";
+constexpr const char *TEST_OUTPUT_CAPACITY =
+    "Streaming_PackageResourceStaging_RejectsArchiveByteSizeOverOutputCapacity";
 constexpr const char *TEST_BYTE_RANGE =
     "Streaming_PackageResourceStaging_RejectsByteRangeOverflowWithoutMutation";
+constexpr const char *TEST_FILE_BYTE_MISMATCH =
+    "Streaming_PackageResourceStaging_ReportsFileByteCountMismatch";
 constexpr const char *TEST_MISSING_COMPLETION =
     "Streaming_PackageResourceStaging_ReportsMissingFileCompletion";
 constexpr const char *TEST_QUEUE_OVERFLOW =
@@ -185,6 +194,8 @@ constexpr ResourceTypeId TYPE_AUDIO{2U};
 constexpr std::uint64_t REQUEST_ONE = 1U;
 constexpr std::uint64_t REQUEST_TWO = 2U;
 constexpr std::uint64_t REQUEST_THREE = 3U;
+constexpr std::uint64_t ARCHIVE_WINDOW_OFFSET = 3ULL;
+constexpr std::uint64_t ARCHIVE_WINDOW_SIZE = 8ULL;
 constexpr std::uint64_t UPLOAD_ONE = 101U;
 constexpr std::uint64_t UPLOAD_TWO = 102U;
 constexpr std::uint64_t UPLOAD_THREE = 103U;
@@ -206,6 +217,13 @@ int Fail(const std::string &message) {
 
 std::uint32_t FixtureByteCount() {
     return static_cast<std::uint32_t>(std::string_view(FIXTURE_TEXT).size());
+}
+
+std::string ArchiveWindowText(std::uint64_t byte_offset, std::uint64_t byte_size) {
+    const std::size_t text_offset = static_cast<std::size_t>(byte_offset);
+    const std::size_t text_size = static_cast<std::size_t>(byte_size);
+    const std::string_view fixture_text(FIXTURE_TEXT);
+    return std::string(fixture_text.substr(text_offset, text_size));
 }
 
 MountTable CreateMountedTable() {
@@ -678,6 +696,202 @@ int StreamingPackageResourceStagingRejectsResourceTypeMismatchWithoutMutation() 
     return 0;
 }
 
+int StreamingPackageResourceStagingUsesArchiveByteRangeForFileRead() {
+    MountTable table = CreateMountedTable();
+    AsyncFileReadQueue file_queue;
+    if (file_queue.Initialize(2U, 2U) != AsyncFileReadStatus::Success) {
+        return Fail("archive range file queue initialize failed");
+    }
+
+    if (file_queue.Start() != AsyncFileReadStatus::Success) {
+        return Fail("archive range file queue start failed");
+    }
+
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("archive range resource registration failed");
+    }
+
+    std::array<std::uint8_t, OUTPUT_CAPACITY> output_bytes{};
+    PackageLoadPlanRecord record;
+    BuildPackageRecord(&record, 0U, FixtureByteCount());
+    record.archive_byte_offset = ARCHIVE_WINDOW_OFFSET;
+    record.archive_byte_size = ARCHIVE_WINDOW_SIZE;
+    PackageResourceStagingRequest request = BuildStagingRequest(
+        resource_registry,
+        file_queue,
+        table,
+        record,
+        resource_result.handle,
+        REQUEST_ONE,
+        output_bytes.data(),
+        output_bytes.size());
+    PackageResourceStagingQueue queue(PackageResourceStagingQueueDesc{1U, 1U});
+    if (queue.Submit(request) != PackageResourceStagingStatus::Queued) {
+        return Fail("archive range request was not queued");
+    }
+
+    if (file_queue.Shutdown(false) != AsyncFileReadStatus::ShutdownComplete) {
+        return Fail("archive range file queue shutdown failed");
+    }
+
+    AsyncFileReadResult file_result;
+    if (!DrainOneFileCompletion(file_queue, &file_result)) {
+        return Fail("archive range file completion drain failed");
+    }
+
+    if (queue.CompleteFileRead(file_result) != PackageResourceStagingStatus::Success) {
+        return Fail("archive range completion did not succeed");
+    }
+
+    PackageResourceStagingCompletion completion;
+    if (!DrainOneStagingCompletion(queue, &completion)) {
+        return Fail("archive range staging completion drain failed");
+    }
+
+    const std::size_t expected_file_byte_count = static_cast<std::size_t>(ARCHIVE_WINDOW_SIZE);
+    if (completion.file_byte_count != expected_file_byte_count) {
+        return Fail("archive range file byte count changed");
+    }
+
+    if (completion.staged_byte_offset != 0U) {
+        return Fail("archive range staged byte offset was not buffer local");
+    }
+
+    if (completion.staged_byte_count != static_cast<std::uint32_t>(ARCHIVE_WINDOW_SIZE)) {
+        return Fail("archive range staged byte count changed");
+    }
+
+    const std::string text(output_bytes.begin(), output_bytes.begin() + completion.file_byte_count);
+    const std::string expected_text = ArchiveWindowText(ARCHIVE_WINDOW_OFFSET, ARCHIVE_WINDOW_SIZE);
+    if (text != expected_text) {
+        return Fail("archive range output bytes did not match fixture window");
+    }
+
+    return 0;
+}
+
+int StreamingPackageResourceStagingPreservesLegacyMirrorAsMetadataOnly() {
+    MountTable table = CreateMountedTable();
+    AsyncFileReadQueue file_queue;
+    if (file_queue.Initialize(2U, 2U) != AsyncFileReadStatus::Success) {
+        return Fail("legacy mirror file queue initialize failed");
+    }
+
+    if (file_queue.Start() != AsyncFileReadStatus::Success) {
+        return Fail("legacy mirror file queue start failed");
+    }
+
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("legacy mirror resource registration failed");
+    }
+
+    std::array<std::uint8_t, OUTPUT_CAPACITY> output_bytes{};
+    PackageLoadPlanRecord record;
+    BuildPackageRecord(&record, 0U, FixtureByteCount());
+    record.byte_offset = std::numeric_limits<std::uint32_t>::max();
+    record.byte_size = 1U;
+    record.archive_byte_offset = 0ULL;
+    record.archive_byte_size = FixtureByteCount();
+    PackageResourceStagingRequest request = BuildStagingRequest(
+        resource_registry,
+        file_queue,
+        table,
+        record,
+        resource_result.handle,
+        REQUEST_ONE,
+        output_bytes.data(),
+        output_bytes.size());
+    PackageResourceStagingQueue queue(PackageResourceStagingQueueDesc{1U, 1U});
+    if (queue.Submit(request) != PackageResourceStagingStatus::Queued) {
+        return Fail("legacy mirror request was not queued");
+    }
+
+    if (file_queue.Shutdown(false) != AsyncFileReadStatus::ShutdownComplete) {
+        return Fail("legacy mirror file queue shutdown failed");
+    }
+
+    AsyncFileReadResult file_result;
+    if (!DrainOneFileCompletion(file_queue, &file_result)) {
+        return Fail("legacy mirror file completion drain failed");
+    }
+
+    if (queue.CompleteFileRead(file_result) != PackageResourceStagingStatus::Success) {
+        return Fail("legacy mirror completion did not succeed");
+    }
+
+    PackageResourceStagingCompletion completion;
+    if (!DrainOneStagingCompletion(queue, &completion)) {
+        return Fail("legacy mirror staging completion drain failed");
+    }
+
+    if (completion.package_record.byte_offset != std::numeric_limits<std::uint32_t>::max()) {
+        return Fail("legacy mirror byte offset was not preserved");
+    }
+
+    const std::uint64_t fixture_byte_count = static_cast<std::uint64_t>(FixtureByteCount());
+    if (completion.package_record.archive_byte_size != fixture_byte_count) {
+        return Fail("legacy mirror archive byte size changed");
+    }
+
+    if (completion.staged_byte_offset != 0U) {
+        return Fail("legacy mirror staged byte offset was not buffer local");
+    }
+
+    if (completion.staged_byte_count != FixtureByteCount()) {
+        return Fail("legacy mirror staged byte count changed");
+    }
+
+    const std::string text(output_bytes.begin(), output_bytes.begin() + completion.file_byte_count);
+    if (text != FIXTURE_TEXT) {
+        return Fail("legacy mirror output bytes did not match fixture");
+    }
+
+    return 0;
+}
+
+int StreamingPackageResourceStagingRejectsArchiveByteSizeOverOutputCapacity() {
+    MountTable table = CreateMountedTable();
+    AsyncFileReadQueue file_queue;
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("output capacity resource registration failed");
+    }
+
+    std::array<std::uint8_t, 1U> output_bytes{};
+    PackageLoadPlanRecord record;
+    BuildPackageRecord(&record, 0U, FixtureByteCount());
+    PackageResourceStagingRequest request = BuildStagingRequest(
+        resource_registry,
+        file_queue,
+        table,
+        record,
+        resource_result.handle,
+        REQUEST_ONE,
+        output_bytes.data(),
+        output_bytes.size());
+    PackageResourceStagingQueue queue(PackageResourceStagingQueueDesc{1U, 1U});
+    const PackageResourceStagingStatus status = queue.Submit(request);
+    if (status != PackageResourceStagingStatus::OutputTooSmall) {
+        return Fail("archive byte size over output capacity did not return explicit status");
+    }
+
+    const PackageResourceStagingSnapshot snapshot = queue.Snapshot();
+    if (snapshot.pending_count != 0U) {
+        return Fail("archive byte size over output capacity changed pending count");
+    }
+
+    if (snapshot.submitted_count != 0U) {
+        return Fail("archive byte size over output capacity submitted file work");
+    }
+
+    return 0;
+}
+
 int StreamingPackageResourceStagingRejectsByteRangeOverflowWithoutMutation() {
     MountTable table = CreateMountedTable();
     AsyncFileReadQueue file_queue;
@@ -690,8 +904,8 @@ int StreamingPackageResourceStagingRejectsByteRangeOverflowWithoutMutation() {
     std::array<std::uint8_t, OUTPUT_CAPACITY> output_bytes{};
     PackageLoadPlanRecord record;
     BuildPackageRecord(&record, 0U, FixtureByteCount());
-    record.byte_offset = 0xFFFFFFFFU;
-    record.byte_size = 1U;
+    record.archive_byte_offset = std::numeric_limits<std::uint64_t>::max();
+    record.archive_byte_size = 1ULL;
     PackageResourceStagingRequest request = BuildStagingRequest(
         resource_registry,
         file_queue,
@@ -714,6 +928,65 @@ int StreamingPackageResourceStagingRejectsByteRangeOverflowWithoutMutation() {
 
     if (snapshot.submitted_count != 0U) {
         return Fail("byte range overflow submitted file work");
+    }
+
+    return 0;
+}
+
+int StreamingPackageResourceStagingReportsFileByteCountMismatch() {
+    MountTable table = CreateMountedTable();
+    AsyncFileReadQueue file_queue;
+    file_queue.Initialize(2U, 2U);
+    file_queue.Start();
+
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("file byte mismatch resource registration failed");
+    }
+
+    std::array<std::uint8_t, OUTPUT_CAPACITY> output_bytes{};
+    PackageLoadPlanRecord record;
+    BuildPackageRecord(&record, 0U, FixtureByteCount());
+    PackageResourceStagingRequest request = BuildStagingRequest(
+        resource_registry,
+        file_queue,
+        table,
+        record,
+        resource_result.handle,
+        REQUEST_ONE,
+        output_bytes.data(),
+        output_bytes.size());
+    PackageResourceStagingQueue queue(PackageResourceStagingQueueDesc{1U, 1U});
+    if (queue.Submit(request) != PackageResourceStagingStatus::Queued) {
+        return Fail("file byte mismatch request was not queued");
+    }
+
+    AsyncFileReadResult file_result = SuccessFileResult(REQUEST_ONE);
+    --file_result.byte_count;
+    const PackageResourceStagingStatus status = queue.CompleteFileRead(file_result);
+    if (status != PackageResourceStagingStatus::FileByteCountMismatch) {
+        return Fail("file byte mismatch did not return explicit status");
+    }
+
+    file_queue.Shutdown(false);
+
+    PackageResourceStagingCompletion completion;
+    if (!DrainOneStagingCompletion(queue, &completion)) {
+        return Fail("file byte mismatch staging completion drain failed");
+    }
+
+    if (completion.status != PackageResourceStagingStatus::FileByteCountMismatch) {
+        return Fail("file byte mismatch completion status changed");
+    }
+
+    const PackageResourceStagingSnapshot snapshot = queue.Snapshot();
+    if (snapshot.failed_count != 1U) {
+        return Fail("file byte mismatch failed count changed");
+    }
+
+    if (snapshot.pending_count != 0U) {
+        return Fail("file byte mismatch left pending record");
     }
 
     return 0;
@@ -2373,7 +2646,11 @@ int main(int argc, char **argv) {
         {TEST_SUBMIT_COMPLETE, StreamingPackageResourceStagingSubmitsAndCompletesFixtureRead},
         {TEST_INVALID_HANDLE, StreamingPackageResourceStagingRejectsInvalidResourceHandleWithoutMutation},
         {TEST_TYPE_MISMATCH, StreamingPackageResourceStagingRejectsResourceTypeMismatchWithoutMutation},
+        {TEST_ARCHIVE_RANGE, StreamingPackageResourceStagingUsesArchiveByteRangeForFileRead},
+        {TEST_LEGACY_MIRROR, StreamingPackageResourceStagingPreservesLegacyMirrorAsMetadataOnly},
+        {TEST_OUTPUT_CAPACITY, StreamingPackageResourceStagingRejectsArchiveByteSizeOverOutputCapacity},
         {TEST_BYTE_RANGE, StreamingPackageResourceStagingRejectsByteRangeOverflowWithoutMutation},
+        {TEST_FILE_BYTE_MISMATCH, StreamingPackageResourceStagingReportsFileByteCountMismatch},
         {TEST_MISSING_COMPLETION, StreamingPackageResourceStagingReportsMissingFileCompletion},
         {TEST_QUEUE_OVERFLOW, StreamingPackageResourceStagingRejectsQueueOverflowWithoutMutation},
         {TEST_COMPLETION_OVERFLOW, StreamingPackageResourceStagingReportsCompletionOverflowWithoutDroppingPending},
