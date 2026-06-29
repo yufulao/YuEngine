@@ -3,7 +3,7 @@
 Status: active commercial-engine execution plan
 Owner: Architect, lead engineer
 Started: 2026-06-11
-Current planning checkpoint: `origin/main@d18f1679ebd389ecec506055764602591f5b9ab6`
+Current planning checkpoint: `origin/main@a4a520ffbdb1049dd4674330854033c61c91d6bb`
 Reference product target: `C:\Steam\steamapps\common\TouhouNewWorld`
 Canonical entry point: `docs/README.md`
 
@@ -21,9 +21,12 @@ If context is compacted or a new team takes over, preserve these facts first:
 - Package, Resource, and RuntimeAsset are the production spine.
 - RuntimeAsset must define asset-internal targets before deeper animation,
   model, scene, or WorldObject binding.
-- The current nearest stage is RuntimeAsset spine correction.
+- L0/L1 is complete at
+  `a4a520ffbdb1049dd4674330854033c61c91d6bb`; final VQ reports
+  `COMPLETE-PASS / FINAL-L0L1-DONE-READY`.
+- The current nearest stage is RuntimeAsset production spine continuation.
 - The human lead has resumed continuous execution. The coordinator must keep the
-  team moving until the L0/L1 stop condition is met.
+  team moving through the active accepted goal until its stop condition is met.
 - The architect should preserve context for architecture, dependency control,
   task design, and evidence governance, not spend the main lane on routine
   frontline implementation.

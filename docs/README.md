@@ -2,7 +2,7 @@
 
 Status: canonical documentation handoff
 Owner: Architect
-Last major planning sync: `origin/main@5ea838f6fd3428e7e67b77c1ca85c41e6e1c09e4`
+Last major planning sync: `origin/main@a4a520ffbdb1049dd4674330854033c61c91d6bb`
 
 ## 1. Read This First
 
@@ -48,6 +48,28 @@ If these documents conflict with older docs, these documents win.
 
 At the latest handoff:
 
+- L0/L1 final closure is complete at
+  `a4a520ffbdb1049dd4674330854033c61c91d6bb`;
+- workspace goal `e427bbd0-2259-4400-9ca0-df0acd5e1dac` is done with
+  checkpoint `FINAL_L0L1_DONE_STRICT_XINPUT_PASS_VQ_COMPLETE_2026-06-29`;
+- final VQ task `b9e75e70-0dd7-4e3b-a77c-6cda449e2d6a` reports
+  `COMPLETE-PASS / FINAL-L0L1-DONE-READY`;
+- strict target XInput proof is no longer blocked: DualSenseX 1.4.9 with
+  `Xbox 360` emulation exposed the connected DualSense as XInput index `0`,
+  `ctest --preset windows-strict-hardware-smoke --output-on-failure` returned
+  exit code `0`, `Input_HardwareBridge_PollsXInputGamepad` passed, and strict
+  hardware smoke reported `16/16` PASS;
+- the previous strict XInput failure cause was environment mapping, not engine
+  runtime logic: Windows saw the DualSense HID device, but `XInputGetState(0..3)`
+  returned `1167 / ERROR_DEVICE_NOT_CONNECTED` until DualSenseX exposed an
+  XInput controller;
+- the current repo baseline is clean:
+  `HEAD == origin/main == a4a520ffbdb1049dd4674330854033c61c91d6bb`;
+- active workspace tasks, timers, and coordinator goals were empty at the final
+  L0/L1 handoff;
+- the next mainline is RuntimeAsset production spine continuation, starting from
+  the accepted RAV1/RTSPINE evidence and the next-slice boundary in
+  `docs/gates/L1_GATE_RUNTIME_ASSET_DATA_CLOSED_LOOP.md`;
 - scene-animation implementation is complete at
   `f211f7f95299388987ccef00b4d1e8ee6f7bf0c1`;
 - scene-animation QA is PASS;
@@ -99,7 +121,7 @@ At the latest handoff:
   repo, and no broad/full CTest;
 - WorldObject-facing runtime instance mapping remains unopened;
 - the human lead has resumed execution and requires continuous multi-agent
-  coordination until the L0/L1 stop condition is actually met;
+  coordination until the active accepted goal's stop condition is actually met;
 - RTSPINE-008A docs/spec is PASS at
   `ad1a7fb5b3dfa2e1f118103158b640a7111d767f`; the only current
   Package/Resource write lane is RTSPINE-008B Package byte-range/index;
@@ -305,8 +327,9 @@ board.
 
 ## 5. Current Nearest Stage
 
-The next stage is RuntimeAsset production spine correction. It is not broad
-feature expansion.
+L0/L1 is closed. The next stage is RuntimeAsset production spine continuation.
+It is not broad feature expansion, editor-first work, or product-specific L2
+integration.
 
 Required order:
 
@@ -317,7 +340,8 @@ RuntimeAsset container and family identity
 -> animation track/channel binding to target plus property
 -> Step/Linear interpolation
 -> sampled transform application to runtime instance records
--> WorldObject mapping only after instance contracts exist
+-> WorldObject-facing mapping or broader Resource/File/VFS follow-through only
+   after their own gates are released
 -> editor/importer authoring surfaces after runtime contracts pass
 ```
 
@@ -356,9 +380,11 @@ Stop and return to architecture if any future work:
 
 ## 8. Continuous Execution Rule
 
-The coordinator must continue driving the accepted plan until the L0/L1 stop
+The coordinator must continue driving the active accepted plan until its stop
 condition is met. Do not stop after one task, and do not wait for the human lead
-to say "continue" while accepted work remains.
+to say "continue" while accepted work remains. L0/L1 is already closed; the
+current continuation lane is RuntimeAsset production spine work unless a newer
+workspace goal explicitly changes the active lane.
 
 Required execution discipline:
 
