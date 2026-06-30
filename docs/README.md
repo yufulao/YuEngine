@@ -2,7 +2,7 @@
 
 Status: canonical documentation handoff
 Owner: Architect
-Last major planning sync: `origin/main@54e02e049bb6f67fd15ca32d1675f1c61380ae70`
+Last major planning sync: `origin/main@4d9f244ca373c466478b54b7fbc0dd91bf8b5720`
 
 ## 1. Read This First
 
@@ -162,10 +162,27 @@ At the latest handoff:
   the older adapter-preflight negative row now uses
   `RuntimeAssetTargetIdentityKind::Unknown` and still proves
   `AdapterBuildFailed`, `UnsupportedTargetKind`, and no output/world mutation;
+- RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-ATTACHMENT-BINDING-GATE-PROOF-U64-001
+  is VQ-closed at `4d9f244ca373c466478b54b7fbc0dd91bf8b5720`;
+  implementation task `3d8c0c2b-987c-4046-8f01-4e04f16f3715` reports
+  committed completion and VQ task `4607e700-6bd8-4f0d-a508-ac86b991e7e7`
+  reports
+  `COMPLETE-PASS / RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-ATTACHMENT-BINDING-GATE-PROOF-U64-001-VQ-READY`;
+  exact implementation scope was `CMakeLists.txt` and
+  `Tests/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`;
+  production handoff bridge/state files were unchanged; focused
+  `YuRuntimeAssetWorldAdapterHandoffTests` build PASS, focused
+  `RuntimeAssetWorldObjectRestoreHandoff` discovery and execution PASS was
+  `6/6`, including
+  `RuntimeAssetWorldObjectRestoreHandoff_CarriesAttachmentAndBindingGateRecordsForTargetAliases`;
+  the proof covers non-zero component attachment and component resource binding
+  sidecar gate records for ModelNode/SkeletonJoint aliases through the existing
+  adapter/world active restore path, with output gates `4/5` as Attachment and
+  `6/7` as Binding;
 - direct WorldObject/editor object binding remains unopened; the later
-  RuntimeAssetWorldAdapter alias/handoff gate reuses existing scene entity,
-  scene transform, and identity-record handoff rows and does not authorize
-  editor/GameAdapter/gameplay binding;
+  RuntimeAssetWorldAdapter alias/handoff/sidecar gates reuse existing scene
+  entity, scene transform, identity-record handoff, and World active restore
+  rows and do not authorize editor/GameAdapter/UI/gameplay binding;
 - the human lead has resumed execution and requires continuous multi-agent
   coordination until the active accepted goal's stop condition is actually met;
 - RTSPINE-008A docs/spec is PASS at
@@ -232,17 +249,16 @@ At the latest handoff:
 - exact docs-only VQ marker labels for the `50ff335` evidence ledger are
   `RuntimeAssetWorldObjectAdapter`, `RuntimeAssetWorldObjectRestoreHandoff`, and
   `payload_window`;
-- current canonical HEAD is `54e02e049bb6f67fd15ca32d1675f1c61380ae70`,
-  adding the VQ-closed RuntimeAssetWorldAdapter handoff target-family proof
-  evidence above; read-only scout
-  `06ca8037-d242-4482-bfe2-3eee93342bf3` selected
-  `RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-ATTACHMENT-BINDING-GATE-PROOF-U64-001`
-  as the next same-module sidecar proof gate, scoped to
-  `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, `CMakeLists.txt`, and
-  optional handoff bridge/state files only if evidence requires them; the gate
-  must prove non-zero component attachment and component resource binding
-  records through the existing World active restore gate without opening direct
-  WorldObject/editor/GameAdapter or broader Resource/File/VFS;
+- current canonical HEAD is `4d9f244ca373c466478b54b7fbc0dd91bf8b5720`,
+  adding the VQ-closed RuntimeAssetWorldAdapter handoff attachment/resource
+  binding sidecar proof evidence above; read-only scout
+  `71f9c68d-0fca-4a28-b3a6-3893ab3a3c38` selected
+  `RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-SIDECAR-ASSEMBLY-RESTORE-U64-001`
+  as the next narrow gate; implementation task
+  `81f4806a-cfc4-464b-a644-b163bfc0459f` is released with scope limited to
+  RuntimeAssetWorldAdapter handoff bridge/state/test/CMake plus read-only
+  World/Resource evidence, and no direct WorldObject/editor/GameAdapter/UI or
+  broader Resource/File/VFS gate is released by this docs sync;
 - L0-RES-001 File/VFS loose read/write policy closure is PASS at
   `43cfc18fec4c4c5a5135e4ed15da64c8308247ff`; focused QA task
   `5020f3d6-a492-4138-b81f-c5e80cdd92e2` reports test-only
@@ -423,8 +439,10 @@ RuntimeAsset container and family identity
 -> ModelNode/SkeletonJoint target-family binding VQ-closed at `3fa4ef7`
 -> RuntimeAssetWorldAdapter ModelNode/SkeletonJoint alias handoff VQ-closed at `296100b`
 -> RuntimeAssetWorldAdapter handoff target-family proof VQ-closed at `54e02e0`
+-> RuntimeAssetWorldAdapter handoff attachment/resource binding sidecar proof VQ-closed at `4d9f244`
 -> Resource/Streaming payload-window follow-through as narrow evidence already
    landed through `50ff335`
+-> RuntimeAssetWorldAdapter handoff sidecar assembly restore selected by scout `71f9c68d`
 -> direct WorldObject/editor/GameAdapter binding or broader Resource/File/VFS expansion only
    after their own gates are released
 -> editor/importer authoring surfaces after runtime contracts pass
