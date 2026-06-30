@@ -122,7 +122,7 @@ UiDrawListStatus UiDrawListBuilder::Validate(
     }
 
     if (out_elements.size() < static_cast<std::size_t>(visible_count)) {
-        SetResult(out_result, UiDrawListStatus::OutputCapacityExceeded, 0U);
+        SetResult(out_result, UiDrawListStatus::OutputCapacityExceeded, visible_count);
         return UiDrawListStatus::OutputCapacityExceeded;
     }
 

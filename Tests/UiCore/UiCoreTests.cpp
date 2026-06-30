@@ -118,6 +118,8 @@ constexpr std::string_view TEST_HIT_TEST =
     "UiCore_HitTest_LayerClipDisabled";
 constexpr std::string_view TEST_DRAW_LIST =
     "UiCore_DrawList_DeterministicElements";
+constexpr std::string_view TEST_DRAW_LIST_SMALL_OUTPUT =
+    "UiCore_DrawList_OutputCapacityReportsVisibleCount";
 constexpr std::string_view TEST_STATIC_ATLAS_RESOLVE =
     "UiCore_StaticAtlasMetadata_ResolvesSpritePageUvNineSlice";
 constexpr std::string_view TEST_STATIC_ATLAS_MISSING =
@@ -907,6 +909,73 @@ int UiCoreDrawListDeterministicElements() {
     return 0;
 }
 
+int UiCoreDrawListOutputCapacityReportsVisibleCount() {
+    UiNodeTree tree(MakeTreeDesc());
+    UiNodeDesc root_desc = MakeNodeDesc(NodeId(1U), UiNodeId{}, 0U);
+    int ret_code = CreateNode(tree, root_desc, "root create failed");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    UiNodeDesc high_desc = MakeNodeDesc(NodeId(2U), NodeId(1U), 10U);
+    high_desc.layer = 2;
+    ret_code = CreateNode(tree, high_desc, "high child create failed");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    UiNodeDesc low_desc = MakeNodeDesc(NodeId(3U), NodeId(1U), 20U);
+    low_desc.layer = 1;
+    ret_code = CreateNode(tree, low_desc, "low child create failed");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    UiNodeDesc middle_desc = MakeNodeDesc(NodeId(4U), NodeId(1U), 5U);
+    middle_desc.layer = 2;
+    ret_code = CreateNode(tree, middle_desc, "middle child create failed");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    UiNodeDesc hidden_desc = MakeNodeDesc(NodeId(5U), NodeId(1U), 30U);
+    hidden_desc.is_visible = false;
+    ret_code = CreateNode(tree, hidden_desc, "hidden child create failed");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    const std::array<UiDrawElementDesc, 4U> descs{
+        UiDrawElementDesc{NodeId(2U), UiDrawElementType::Rect, 11U, 21U, 31U, 0U, true},
+        UiDrawElementDesc{NodeId(4U), UiDrawElementType::Text, 12U, 22U, 0U, 41U, false},
+        UiDrawElementDesc{NodeId(3U), UiDrawElementType::TexturedQuad, 13U, 23U, 33U, 0U, true},
+        UiDrawElementDesc{NodeId(5U), UiDrawElementType::Rect, 14U, 24U, 34U, 0U, false}};
+    std::array<UiDrawElement, 2U> elements{};
+    elements[0U].node_id = NodeId(91U);
+    elements[0U].style_key = 401U;
+    elements[1U].node_id = NodeId(92U);
+    elements[1U].style_key = 402U;
+
+    UiDrawListResult result;
+    UiDrawListBuilder builder;
+    const UiDrawListStatus status = builder.Build(tree, descs, elements, &result);
+    if (status != UiDrawListStatus::OutputCapacityExceeded ||
+        result.status != UiDrawListStatus::OutputCapacityExceeded ||
+        result.element_count != 3U ||
+        result.skipped_node_count != 1U) {
+        return Fail("small draw list output did not report required visible count");
+    }
+
+    if (elements[0U].node_id.value != 91U ||
+        elements[0U].style_key != 401U ||
+        elements[1U].node_id.value != 92U ||
+        elements[1U].style_key != 402U) {
+        return Fail("small draw list output mutated output elements");
+    }
+
+    return 0;
+}
+
 int UiCoreStaticAtlasMetadataResolvesSpritePageUvNineSlice() {
     const std::array<UiStaticAtlasPageDesc, 1U> pages{
         MakeAtlasPage(7U, 77U, 256U, 128U)};
@@ -1046,6 +1115,7 @@ int main(int argc, char **argv) {
         {TEST_INVALIDATION_SMALL_OUTPUT, UiCoreInvalidationModelRejectsSmallOutputWithoutMutation},
         {TEST_HIT_TEST, UiCoreHitTestLayerClipDisabled},
         {TEST_DRAW_LIST, UiCoreDrawListDeterministicElements},
+        {TEST_DRAW_LIST_SMALL_OUTPUT, UiCoreDrawListOutputCapacityReportsVisibleCount},
         {TEST_STATIC_ATLAS_RESOLVE, UiCoreStaticAtlasMetadataResolvesSpritePageUvNineSlice},
         {TEST_STATIC_ATLAS_MISSING, UiCoreStaticAtlasMetadataMissingSpriteReportsStatus},
         {TEST_STATIC_ATLAS_INVALID, UiCoreStaticAtlasMetadataRejectsInvalidSpriteMetadata}};
