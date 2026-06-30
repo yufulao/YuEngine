@@ -10356,15 +10356,44 @@ int WorldComponentResourceBindingRestoreBridgeRejectsDuplicateInputWithoutMutati
     WorldComponentResourceBindingBridge destination_bridge;
     WorldComponentResourceBindingRestoreBridge restore_bridge;
     const std::uint32_t input_count = static_cast<std::uint32_t>(input_bindings.size());
-    return ExpectComponentResourceRestoreFailureWithoutMutation(
-        restore_bridge,
+    const WorldComponentResourceBindingSnapshot before_destination = destination_bridge.Snapshot();
+    const ResourceSnapshot before_registry = registry.Snapshot();
+    const WorldComponentResourceBindingRestoreResult result = restore_bridge.Restore(
         &destination_bridge,
         &attachment_bridge,
         &registry,
         input_bindings.data(),
-        input_count,
-        WorldComponentResourceBindingRestoreStatus::DuplicateInputBinding,
-        "component resource restore duplicate returned wrong status");
+        input_count);
+    if (result.status != WorldComponentResourceBindingRestoreStatus::DuplicateInputBinding) {
+        return Fail("component resource restore duplicate returned wrong status");
+    }
+
+    if (result.state.input_binding_count != input_count) {
+        return Fail("component resource restore duplicate state input count wrong");
+    }
+
+    if (result.state.restored_binding_count != 0U) {
+        return Fail("component resource restore duplicate state restored count wrong");
+    }
+
+    if (result.state.rejected_binding_count != input_count) {
+        return Fail("component resource restore duplicate state rejected count wrong");
+    }
+
+    if (!ComponentResourceBindingSnapshotsMatch(before_destination, destination_bridge.Snapshot())) {
+        return Fail("component resource restore duplicate mutated destination");
+    }
+
+    if (!ResourceSnapshotsMatch(before_registry, registry.Snapshot())) {
+        return Fail("component resource restore duplicate mutated registry");
+    }
+
+    const WorldComponentResourceBindingRestoreSnapshot restore_snapshot = restore_bridge.Snapshot();
+    if (restore_snapshot.rejected_record_count != 1U) {
+        return Fail("component resource restore duplicate snapshot rejected count wrong");
+    }
+
+    return 0;
 }
 
 int WorldComponentResourceBindingRestoreBridgeRejectsDestinationCapacityOverflowWithoutMutation() {

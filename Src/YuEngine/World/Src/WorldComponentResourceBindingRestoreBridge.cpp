@@ -81,8 +81,13 @@ WorldComponentResourceBindingRestoreResult WorldComponentResourceBindingRestoreB
         return RecordFailure(destination_status);
     }
 
+    WorldComponentResourceBindingRestoreState state{};
+    state.input_binding_count = input_binding_count;
     if (input_binding_count > binding_capacity_) {
-        return RecordRejectedFailure(WorldComponentResourceBindingRestoreStatus::InputCountExceeded);
+        state.rejected_binding_count = input_binding_count;
+        return RecordRejectedFailure(
+            WorldComponentResourceBindingRestoreStatus::InputCountExceeded,
+            state);
     }
 
     ResourceStatus resource_status = ResourceStatus::Success;
@@ -91,13 +96,12 @@ WorldComponentResourceBindingRestoreResult WorldComponentResourceBindingRestoreB
         *resource_registry,
         input_bindings,
         input_binding_count,
-        &resource_status);
+        &resource_status,
+        &state);
     if (record_status != WorldComponentResourceBindingRestoreStatus::Success) {
-        return RecordRejectedFailure(record_status, resource_status);
+        return RecordRejectedFailure(record_status, resource_status, state);
     }
 
-    WorldComponentResourceBindingRestoreState state{};
-    state.input_binding_count = input_binding_count;
     if (input_binding_count == 0U) {
         return RecordSuccess(state);
     }
@@ -156,11 +160,27 @@ WorldComponentResourceBindingRestoreResult WorldComponentResourceBindingRestoreB
     WorldComponentResourceBindingRestoreStatus status,
     WorldComponentResourceBindingStatus binding_status,
     ResourceStatus resource_status) {
+    return RecordFailure(
+        status,
+        binding_status,
+        resource_status,
+        WorldComponentResourceBindingRestoreState{});
+}
+
+WorldComponentResourceBindingRestoreResult WorldComponentResourceBindingRestoreBridge::RecordFailure(
+    WorldComponentResourceBindingRestoreStatus status,
+    WorldComponentResourceBindingStatus binding_status,
+    ResourceStatus resource_status,
+    const WorldComponentResourceBindingRestoreState &state) {
     ++snapshot_.failed_operation_count;
     snapshot_.last_status = status;
     snapshot_.last_binding_status = binding_status;
     snapshot_.last_resource_status = resource_status;
-    return WorldComponentResourceBindingRestoreResult::Failure(status, binding_status, resource_status);
+    return WorldComponentResourceBindingRestoreResult::Failure(
+        status,
+        binding_status,
+        resource_status,
+        state);
 }
 
 WorldComponentResourceBindingRestoreResult WorldComponentResourceBindingRestoreBridge::RecordRejectedFailure(
@@ -171,9 +191,32 @@ WorldComponentResourceBindingRestoreResult WorldComponentResourceBindingRestoreB
 
 WorldComponentResourceBindingRestoreResult WorldComponentResourceBindingRestoreBridge::RecordRejectedFailure(
     WorldComponentResourceBindingRestoreStatus status,
+    const WorldComponentResourceBindingRestoreState &state) {
+    ++snapshot_.rejected_record_count;
+    return RecordFailure(
+        status,
+        WorldComponentResourceBindingStatus::Success,
+        ResourceStatus::Success,
+        state);
+}
+
+WorldComponentResourceBindingRestoreResult WorldComponentResourceBindingRestoreBridge::RecordRejectedFailure(
+    WorldComponentResourceBindingRestoreStatus status,
     ResourceStatus resource_status) {
     ++snapshot_.rejected_record_count;
     return RecordFailure(status, resource_status);
+}
+
+WorldComponentResourceBindingRestoreResult WorldComponentResourceBindingRestoreBridge::RecordRejectedFailure(
+    WorldComponentResourceBindingRestoreStatus status,
+    ResourceStatus resource_status,
+    const WorldComponentResourceBindingRestoreState &state) {
+    ++snapshot_.rejected_record_count;
+    return RecordFailure(
+        status,
+        WorldComponentResourceBindingStatus::Success,
+        resource_status,
+        state);
 }
 
 WorldComponentResourceBindingRestoreResult WorldComponentResourceBindingRestoreBridge::RecordSuccess(
@@ -222,7 +265,8 @@ WorldComponentResourceBindingRestoreStatus WorldComponentResourceBindingRestoreB
     const ResourceRegistry &resource_registry,
     const WorldComponentResourceBinding *input_bindings,
     std::uint32_t input_binding_count,
-    ResourceStatus *out_resource_status) const {
+    ResourceStatus *out_resource_status,
+    WorldComponentResourceBindingRestoreState *state) const {
     std::uint32_t record_index = 0U;
     while (record_index < input_binding_count) {
         const WorldComponentResourceBindingRestoreStatus status = ValidateRecord(
@@ -232,6 +276,10 @@ WorldComponentResourceBindingRestoreStatus WorldComponentResourceBindingRestoreB
             record_index,
             out_resource_status);
         if (status != WorldComponentResourceBindingRestoreStatus::Success) {
+            if (state != nullptr) {
+                state->rejected_binding_count = record_index + 1U;
+            }
+
             return status;
         }
 

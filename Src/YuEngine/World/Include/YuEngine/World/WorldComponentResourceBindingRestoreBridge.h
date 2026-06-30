@@ -65,11 +65,23 @@ private:
         WorldComponentResourceBindingRestoreStatus status,
         WorldComponentResourceBindingStatus binding_status,
         yuengine::resource::ResourceStatus resource_status);
+    WorldComponentResourceBindingRestoreResult RecordFailure(
+        WorldComponentResourceBindingRestoreStatus status,
+        WorldComponentResourceBindingStatus binding_status,
+        yuengine::resource::ResourceStatus resource_status,
+        const WorldComponentResourceBindingRestoreState &state);
     WorldComponentResourceBindingRestoreResult RecordRejectedFailure(
         WorldComponentResourceBindingRestoreStatus status);
     WorldComponentResourceBindingRestoreResult RecordRejectedFailure(
         WorldComponentResourceBindingRestoreStatus status,
+        const WorldComponentResourceBindingRestoreState &state);
+    WorldComponentResourceBindingRestoreResult RecordRejectedFailure(
+        WorldComponentResourceBindingRestoreStatus status,
         yuengine::resource::ResourceStatus resource_status);
+    WorldComponentResourceBindingRestoreResult RecordRejectedFailure(
+        WorldComponentResourceBindingRestoreStatus status,
+        yuengine::resource::ResourceStatus resource_status,
+        const WorldComponentResourceBindingRestoreState &state);
     WorldComponentResourceBindingRestoreResult RecordSuccess(
         const WorldComponentResourceBindingRestoreState &state);
     WorldComponentResourceBindingRestoreStatus ValidateBridgeCapacity() const;
@@ -81,7 +93,8 @@ private:
         const yuengine::resource::ResourceRegistry &resource_registry,
         const WorldComponentResourceBinding *input_bindings,
         std::uint32_t input_binding_count,
-        yuengine::resource::ResourceStatus *out_resource_status) const;
+        yuengine::resource::ResourceStatus *out_resource_status,
+        WorldComponentResourceBindingRestoreState *state) const;
     WorldComponentResourceBindingRestoreStatus ValidateRecord(
         const WorldComponentAttachmentBridge &attachment_source,
         const yuengine::resource::ResourceRegistry &resource_registry,
