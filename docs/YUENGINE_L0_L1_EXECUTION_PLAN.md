@@ -609,9 +609,12 @@ Package-to-Streaming artifact fixture; `10f7b30` RuntimeAssetData package
 payload-window consumer; `c3cf022` RHI update destination range contract; and
 `50ff335` ResourceUpload destination range consumer. This ledger reconciles
 HEAD with the canonical docs; it does not convert lanes without explicit VQ into
-stage-close proof. The next-gate matrix scout reference is `a5aad608` with
-`NEXT-GATE-MATRIX-READY`; treat that as docs-only VQ routing until a separate
-implementation gate is released.
+stage-close proof. The current next-gate matrix scout reference
+`13ee55d7-c208-4503-b390-475b4fe82c08` / `NEXT-GATE-MATRIX-READY` routes the
+next scoped gate to
+`RTSPINE-RUNTIMEASSETWORLDADAPTER-TARGET-FAMILY-ALIAS-HANDOFF-U64-001` as
+docs-only evidence only; treat the RuntimeAssetWorldAdapter lane as unopened
+until a separate implementation gate is released and VQ-closed.
 
 Current Package artifact hash/dependency evidence at
 `d18f1679ebd389ecec506055764602591f5b9ab6` covers RTSPINE-008C Package-only

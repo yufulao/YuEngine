@@ -160,8 +160,11 @@ artifact fixture, `10f7b30` RuntimeAssetData payload-window consumer,
 `c3cf022` RHI destination range contract, and `50ff335` ResourceUpload
 destination range consumer. This is a HEAD evidence ledger, not a blanket
 stage-close VQ: each later lane must cite its own workspace VQ before being
-called VQ-closed. Next-gate matrix reference `a5aad608` /
-`NEXT-GATE-MATRIX-READY` is docs-only VQ routing evidence.
+called VQ-closed. Next-gate matrix reference
+`13ee55d7-c208-4503-b390-475b4fe82c08` / `NEXT-GATE-MATRIX-READY` routes the
+next scoped gate to
+`RTSPINE-RUNTIMEASSETWORLDADAPTER-TARGET-FAMILY-ALIAS-HANDOFF-U64-001` as
+docs-only VQ routing evidence, not implementation closure.
 
 Current HEAD `3fa4ef7bd42da8f60bd5ebb3a7f863bd76292c84` records VQ-closed
 RuntimeAsset ModelNode/SkeletonJoint target-family binding. Implementation task

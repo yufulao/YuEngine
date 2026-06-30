@@ -203,9 +203,11 @@ At the latest handoff:
   treated as stage-close proof;
 - exact docs-only VQ marker labels for this evidence ledger are
   `RuntimeAssetWorldObjectAdapter`, `RuntimeAssetWorldObjectRestoreHandoff`, and
-  `payload_window`; next-gate matrix reference `a5aad608` is the read-only scout
-  marker for `NEXT-GATE-MATRIX-READY` and does not by itself promote any
-  implementation lane to VQ-closed;
+  `payload_window`; next-gate matrix reference
+  `13ee55d7-c208-4503-b390-475b4fe82c08` /
+  `NEXT-GATE-MATRIX-READY` routes the next narrow gate to
+  `RTSPINE-RUNTIMEASSETWORLDADAPTER-TARGET-FAMILY-ALIAS-HANDOFF-U64-001` and
+  does not by itself promote that implementation lane to VQ-closed;
 - current canonical HEAD is `3fa4ef7bd42da8f60bd5ebb3a7f863bd76292c84`, adding
   the VQ-closed ModelNode/SkeletonJoint target-family binding evidence above;
 - L0-RES-001 File/VFS loose read/write policy closure is PASS at

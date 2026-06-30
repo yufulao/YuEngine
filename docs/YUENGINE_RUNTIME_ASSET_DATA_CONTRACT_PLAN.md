@@ -548,8 +548,10 @@ Treat that chain as canonical implementation/focused evidence unless a workspace
 VQ result explicitly marks the individual lane COMPLETE-PASS. Direct
 WorldObject/editor binding and broader Resource/File/VFS expansion still need
 their own gates. Current docs-only VQ marker repair also records next-gate matrix
-reference `a5aad608` / `NEXT-GATE-MATRIX-READY`; this is a routing marker, not a
-new implementation acceptance result.
+reference `13ee55d7-c208-4503-b390-475b4fe82c08` /
+`NEXT-GATE-MATRIX-READY` routing to
+`RTSPINE-RUNTIMEASSETWORLDADAPTER-TARGET-FAMILY-ALIAS-HANDOFF-U64-001`; this is
+a routing marker, not a new implementation acceptance result.
 RTSPINE-RUNTIMEASSET-MODEL-SKELETON-TARGET-BINDING-U64-001 is VQ-closed at
 `3fa4ef7bd42da8f60bd5ebb3a7f863bd76292c84`: implementation task
 `06724fe5-b2e4-410e-97e7-2b41c195c3a0` reports COMPLETE-PASS / committed and VQ

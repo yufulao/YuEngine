@@ -16,8 +16,10 @@ Earlier RTSPINE-004 implementation
 `ebe9ea35f531aa40133262b701e5e751f8ed9ccf` plus focused QA workspace task
 `2e2d5a4e-0bb0-4cf4-bd1b-ab3a87987b7f` remains COMPLETE-PASS; later lanes
 should cite their own workspace VQ before being called VQ-closed.
-Next-gate matrix reference `a5aad608` / `NEXT-GATE-MATRIX-READY` is docs-only VQ
-routing evidence.
+Next-gate matrix reference `13ee55d7-c208-4503-b390-475b4fe82c08` /
+`NEXT-GATE-MATRIX-READY` routes to
+`RTSPINE-RUNTIMEASSETWORLDADAPTER-TARGET-FAMILY-ALIAS-HANDOFF-U64-001` as
+docs-only VQ routing evidence, not implementation closure.
 Production-gap closure: `docs/YUENGINE_RUNTIME_ASSET_V0_PRODUCTION_GAP_CLOSURE_PLAN.md`
 Format policy and validator vocabulary: `docs/YUENGINE_RUNTIME_ASSET_V0_FORMAT_POLICY_AND_VALIDATOR_VOCABULARY.md`
 Loader transaction plan: `docs/YUENGINE_RUNTIME_ASSET_V0_LOADER_TRANSACTION_PLAN.md`
@@ -425,7 +427,8 @@ This gate records these mainline implementation slices:
 | RAV1-V | RuntimeAsset packaged validation bridge | PASS; RuntimeAsset validates packaged archive byte ranges, payload hashes, dependency/load-plan records, duplicate load-plan records, and ProductRun packaged validation failure status before graph mutation; focused QA task `35fdc7a2-c09d-416a-95aa-b4aabdb05d0f` reports exact RTSPINE-008G rows `5/5` PASS, adjacent packaged/product rows `8/8` PASS, `git diff --check` PASS, exact committed scope, and no broad/full CTest |
 | RAV1-W | RuntimeAsset transaction rollback/proof | PASS; RuntimeAsset rolls back graph-load commit failures by restoring RuntimeAsset records plus Resource/Asset snapshots and reporting rollback proof fields without output mutation; focused QA task `1ec65e79-70f2-4fe5-8f08-6fb0ba2371fd` reports exact transaction rollback row `1/1` PASS, rollback/commit/adjacent packaged/product set `19/19` PASS, `git diff --check` PASS, exact committed scope, and no broad/full CTest |
 | RAV1-X | ModelNode/SkeletonJoint target-family binding | PASS; `origin/main@3fa4ef7bd42da8f60bd5ebb3a7f863bd76292c84` supports RuntimeAsset ModelNode/SkeletonJoint target-family binding; implementation task `06724fe5-b2e4-410e-97e7-2b41c195c3a0` and VQ task `04e2a7a6-eac5-41d2-9624-6e5e952859c4` are COMPLETE-PASS, focused discovery found `17` rows including `RuntimeAssetData_AnimationTrackTargetBindingResolvesModelAndSkeletonTargetFamilies`, `RuntimeAssetData_RuntimeInstanceMappingBuildsTargetFamilyRows`, and `RuntimeAssetData_RuntimeInstanceMappingResolvesModelAndSkeletonFamilies`, focused execution `17/17` PASS, and old unsupported target-family labels are absent |
-| Next slice | WorldObject-facing mapping / broader Resource/File/VFS follow-through | keep direct WorldObject/editor mapping outside RTSPINE-007 and keep broader Resource/File/VFS follow-through outside RTSPINE-008H until their own gates |
+| Next slice | RuntimeAssetWorldAdapter target-family alias handoff | route next implementation through `RTSPINE-RUNTIMEASSETWORLDADAPTER-TARGET-FAMILY-ALIAS-HANDOFF-U64-001` using matrix scout `13ee55d7-c208-4503-b390-475b4fe82c08`; keep this as routing evidence only and require a later task result before treating the lane as accepted |
+| Later slice | WorldObject-facing mapping / broader Resource/File/VFS follow-through | keep direct WorldObject/editor mapping outside RTSPINE-007 and keep broader Resource/File/VFS follow-through outside RTSPINE-008H until their own gates |
 
 The slice may split implementation tasks later, but those tasks must stay
 parallelizable by file family or stage and must not authorize upper-layer
