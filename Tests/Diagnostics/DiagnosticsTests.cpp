@@ -392,6 +392,10 @@ int DiagnosticsDisabledChannelDoesNotChangeBehavior() {
         return Fail("disabled diagnostics channel accepted a counter update");
     }
 
+    if (snapshot.last_status != DiagnosticsStatus::Disabled) {
+        return Fail("disabled diagnostics snapshot status was not disabled");
+    }
+
     HostStatus explicit_runtime_status = HostStatus::Success;
     if (explicit_runtime_status != HostStatus::Success) {
         return Fail("disabled diagnostics changed explicit runtime status");
@@ -402,6 +406,24 @@ int DiagnosticsDisabledChannelDoesNotChangeBehavior() {
 
 int DiagnosticsBoundedChannelRecordsEventsAndCounters() {
     BoundedDiagnosticsChannel channel = CreateRegisteredChannel();
+    const auto event_capacity_status = channel.RegisterEventId(DiagnosticsEventId{UNKNOWN_EVENT_ID});
+    if (event_capacity_status != DiagnosticsStatus::CapacityExceeded) {
+        return Fail("bounded diagnostics channel did not report event id capacity");
+    }
+
+    if (channel.Snapshot().last_status != DiagnosticsStatus::CapacityExceeded) {
+        return Fail("event id capacity status was not recorded");
+    }
+
+    const auto counter_capacity_status = channel.RegisterCounterId(DiagnosticsCounterId{UNKNOWN_COUNTER_ID});
+    if (counter_capacity_status != DiagnosticsStatus::CapacityExceeded) {
+        return Fail("bounded diagnostics channel did not report counter id capacity");
+    }
+
+    if (channel.Snapshot().last_status != DiagnosticsStatus::CapacityExceeded) {
+        return Fail("counter id capacity status was not recorded");
+    }
+
     const auto event_status = channel.RecordEvent(DiagnosticsEventId{EVENT_ID}, EVENT_PAYLOAD);
     if (event_status != DiagnosticsStatus::Success) {
         return Fail("bounded diagnostics channel rejected valid event");
@@ -427,6 +449,10 @@ int DiagnosticsBoundedChannelRecordsEventsAndCounters() {
 
     if (snapshot.successful_counter_update_count != 1U) {
         return Fail("bounded diagnostics channel counter update count was wrong");
+    }
+
+    if (snapshot.last_status != DiagnosticsStatus::Success) {
+        return Fail("bounded diagnostics channel success status was not recorded");
     }
 
     return 0;
@@ -456,6 +482,10 @@ int DiagnosticsBoundedChannelDropsWhenFull() {
 
     if (snapshot.dropped_event_count != 1U) {
         return Fail("full diagnostics channel did not count dropped event");
+    }
+
+    if (snapshot.last_status != DiagnosticsStatus::Dropped) {
+        return Fail("full diagnostics channel did not record dropped status");
     }
 
     return 0;
@@ -490,6 +520,10 @@ int DiagnosticsChannelSnapshotReportsAcceptedDroppedAndCounters() {
         return Fail("snapshot query count was wrong");
     }
 
+    if (snapshot.last_status != DiagnosticsStatus::Success) {
+        return Fail("snapshot last status was not success after counter update");
+    }
+
     return 0;
 }
 
@@ -503,6 +537,10 @@ int DiagnosticsChannelStoppedDoesNotMutateAfterShutdown() {
     }
 
     const DiagnosticsSnapshot before_record = channel.Snapshot();
+    if (before_record.last_status != DiagnosticsStatus::Success) {
+        return Fail("shutdown success status was not recorded");
+    }
+
     const auto event_status = channel.RecordEvent(DiagnosticsEventId{EVENT_ID}, EVENT_PAYLOAD);
     const auto counter_status = channel.IncrementCounter(DiagnosticsCounterId{COUNTER_ID});
     const DiagnosticsSnapshot after_record = channel.Snapshot();
@@ -524,6 +562,10 @@ int DiagnosticsChannelStoppedDoesNotMutateAfterShutdown() {
 
     if (after_record.counters[0U].value != before_record.counters[0U].value) {
         return Fail("stopped diagnostics channel mutated counter value");
+    }
+
+    if (after_record.last_status != DiagnosticsStatus::Stopped) {
+        return Fail("stopped diagnostics channel did not record stopped status");
     }
 
     return 0;
@@ -550,6 +592,10 @@ int DiagnosticsChannelRejectsUnknownIdsWhenValidationEnabled() {
         return Fail("unknown diagnostics counter mutated update count");
     }
 
+    if (snapshot.last_status != DiagnosticsStatus::UnknownCounterId) {
+        return Fail("unknown diagnostics counter status was not recorded");
+    }
+
     return 0;
 }
 
@@ -574,6 +620,10 @@ int DiagnosticsCounterOverflowReturnsExplicitStatusAndDoesNotMutate() {
 
     if (after_overflow.successful_counter_update_count != before_overflow.successful_counter_update_count) {
         return Fail("counter overflow mutated successful update count");
+    }
+
+    if (after_overflow.last_status != DiagnosticsStatus::CounterOverflow) {
+        return Fail("counter overflow status was not recorded");
     }
 
     return 0;
@@ -615,6 +665,10 @@ int DiagnosticsNoHiddenAllocationUsesYuMemorySignal() {
         return Fail("diagnostics channel snapshot did not report enabled state");
     }
 
+    if (snapshot.last_status != DiagnosticsStatus::Success) {
+        return Fail("diagnostics channel snapshot did not report success status");
+    }
+
     return 0;
 }
 
@@ -648,6 +702,10 @@ int DiagnosticsRuntimeCountersRegisterAndRecordBoundedValues() {
 
     if (snapshot.successful_counter_update_count != RUNTIME_DIAGNOSTICS_COUNTER_COUNT) {
         return Fail("runtime diagnostics update count was wrong");
+    }
+
+    if (snapshot.last_status != DiagnosticsStatus::Success) {
+        return Fail("runtime diagnostics update status was not recorded");
     }
 
     if (snapshot.counters[0U].id.value != RUNTIME_FRAME_COUNT_COUNTER_ID.value) {

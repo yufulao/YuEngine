@@ -10,6 +10,7 @@
 #include "YuEngine/Diagnostics/DiagnosticsCounterSnapshot.h"
 #include "YuEngine/Diagnostics/DiagnosticsEvent.h"
 #include "YuEngine/Diagnostics/DiagnosticsLimits.h"
+#include "YuEngine/Diagnostics/DiagnosticsStatus.h"
 #include "YuEngine/Memory/MemoryAccountingStatus.h"
 
 namespace yuengine::diagnostics {
@@ -25,5 +26,6 @@ struct DiagnosticsSnapshot {
     bool enabled;
     bool stopped;
     memory::MemoryAccountingStatus allocation_accounting_status;
+    DiagnosticsStatus last_status = DiagnosticsStatus::Success;
 };
 }

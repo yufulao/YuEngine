@@ -29,56 +29,69 @@ BoundedDiagnosticsChannel::BoundedDiagnosticsChannel(DiagnosticsChannelConfig co
       accepted_counter_ids_{},
       accepted_event_id_count_(0U),
       accepted_counter_id_count_(0U) {
+    snapshot_.last_status = configuration_status_;
 }
 
 DiagnosticsStatus BoundedDiagnosticsChannel::RegisterEventId(DiagnosticsEventId event_id) {
     if (configuration_status_ != DiagnosticsStatus::Success) {
+        snapshot_.last_status = configuration_status_;
         return configuration_status_;
     }
 
     if (snapshot_.stopped) {
+        snapshot_.last_status = DiagnosticsStatus::Stopped;
         return DiagnosticsStatus::Stopped;
     }
 
     if (!event_id.IsValid()) {
+        snapshot_.last_status = DiagnosticsStatus::UnknownEventId;
         return DiagnosticsStatus::UnknownEventId;
     }
 
     if (HasAcceptedEventId(event_id)) {
+        snapshot_.last_status = DiagnosticsStatus::Success;
         return DiagnosticsStatus::Success;
     }
 
     if (accepted_event_id_count_ >= config_.accepted_event_id_capacity) {
+        snapshot_.last_status = DiagnosticsStatus::CapacityExceeded;
         return DiagnosticsStatus::CapacityExceeded;
     }
 
     accepted_event_ids_[accepted_event_id_count_] = event_id;
     ++accepted_event_id_count_;
+    snapshot_.last_status = DiagnosticsStatus::Success;
     return DiagnosticsStatus::Success;
 }
 
 DiagnosticsStatus BoundedDiagnosticsChannel::RegisterCounterId(DiagnosticsCounterId counter_id) {
     if (configuration_status_ != DiagnosticsStatus::Success) {
+        snapshot_.last_status = configuration_status_;
         return configuration_status_;
     }
 
     if (snapshot_.stopped) {
+        snapshot_.last_status = DiagnosticsStatus::Stopped;
         return DiagnosticsStatus::Stopped;
     }
 
     if (!counter_id.IsValid()) {
+        snapshot_.last_status = DiagnosticsStatus::UnknownCounterId;
         return DiagnosticsStatus::UnknownCounterId;
     }
 
     if (HasAcceptedCounterId(counter_id)) {
+        snapshot_.last_status = DiagnosticsStatus::Success;
         return DiagnosticsStatus::Success;
     }
 
     if (accepted_counter_id_count_ >= config_.accepted_counter_id_capacity) {
+        snapshot_.last_status = DiagnosticsStatus::CapacityExceeded;
         return DiagnosticsStatus::CapacityExceeded;
     }
 
     if (snapshot_.counter_count >= config_.counter_capacity) {
+        snapshot_.last_status = DiagnosticsStatus::CapacityExceeded;
         return DiagnosticsStatus::CapacityExceeded;
     }
 
@@ -86,30 +99,36 @@ DiagnosticsStatus BoundedDiagnosticsChannel::RegisterCounterId(DiagnosticsCounte
     ++accepted_counter_id_count_;
     snapshot_.counters[snapshot_.counter_count] = DiagnosticsCounterSnapshot{counter_id, 0U, 0U};
     ++snapshot_.counter_count;
+    snapshot_.last_status = DiagnosticsStatus::Success;
     return DiagnosticsStatus::Success;
 }
 
 DiagnosticsStatus BoundedDiagnosticsChannel::RecordEvent(DiagnosticsEventId event_id, std::uint64_t payload) {
     if (configuration_status_ != DiagnosticsStatus::Success) {
+        snapshot_.last_status = configuration_status_;
         return configuration_status_;
     }
 
     if (snapshot_.stopped) {
+        snapshot_.last_status = DiagnosticsStatus::Stopped;
         return DiagnosticsStatus::Stopped;
     }
 
     if (config_.validate_ids && !HasAcceptedEventId(event_id)) {
+        snapshot_.last_status = DiagnosticsStatus::UnknownEventId;
         return DiagnosticsStatus::UnknownEventId;
     }
 
     if (snapshot_.event_count >= config_.event_capacity) {
         ++snapshot_.dropped_event_count;
+        snapshot_.last_status = DiagnosticsStatus::Dropped;
         return DiagnosticsStatus::Dropped;
     }
 
     snapshot_.events[snapshot_.event_count] = DiagnosticsEvent{event_id, payload};
     ++snapshot_.event_count;
     ++snapshot_.accepted_event_count;
+    snapshot_.last_status = DiagnosticsStatus::Success;
     return DiagnosticsStatus::Success;
 }
 
@@ -119,36 +138,43 @@ DiagnosticsStatus BoundedDiagnosticsChannel::IncrementCounter(DiagnosticsCounter
 
 DiagnosticsStatus BoundedDiagnosticsChannel::AddCounter(DiagnosticsCounterId counter_id, std::uint64_t delta) {
     if (configuration_status_ != DiagnosticsStatus::Success) {
+        snapshot_.last_status = configuration_status_;
         return configuration_status_;
     }
 
     if (snapshot_.stopped) {
+        snapshot_.last_status = DiagnosticsStatus::Stopped;
         return DiagnosticsStatus::Stopped;
     }
 
     const std::size_t counter_index = CounterIndex(counter_id);
     if (counter_index == INVALID_INDEX) {
+        snapshot_.last_status = DiagnosticsStatus::UnknownCounterId;
         return DiagnosticsStatus::UnknownCounterId;
     }
 
     DiagnosticsCounterSnapshot& counter = snapshot_.counters[counter_index];
     const std::uint64_t max_value = std::numeric_limits<std::uint64_t>::max();
     if (counter.value > max_value - delta) {
+        snapshot_.last_status = DiagnosticsStatus::CounterOverflow;
         return DiagnosticsStatus::CounterOverflow;
     }
 
     counter.value += delta;
     ++counter.successful_update_count;
     ++snapshot_.successful_counter_update_count;
+    snapshot_.last_status = DiagnosticsStatus::Success;
     return DiagnosticsStatus::Success;
 }
 
 DiagnosticsStatus BoundedDiagnosticsChannel::Shutdown() {
     if (configuration_status_ != DiagnosticsStatus::Success) {
+        snapshot_.last_status = configuration_status_;
         return configuration_status_;
     }
 
     snapshot_.stopped = true;
+    snapshot_.last_status = DiagnosticsStatus::Success;
     return DiagnosticsStatus::Success;
 }
 

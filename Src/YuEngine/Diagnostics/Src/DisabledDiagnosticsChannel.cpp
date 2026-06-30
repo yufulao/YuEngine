@@ -47,6 +47,7 @@ DiagnosticsSnapshot DisabledDiagnosticsChannel::Snapshot() const {
         0U,
         false,
         false,
-        memory::MemoryAccountingStatus::ExplicitlyTrackedOnly};
+        memory::MemoryAccountingStatus::ExplicitlyTrackedOnly,
+        DiagnosticsStatus::Disabled};
 }
 }
