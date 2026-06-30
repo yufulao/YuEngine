@@ -55,6 +55,8 @@ constexpr const char* TEST_ASYNC_CAPACITY = "File_AsyncReadQueue_RejectsCapacity
 constexpr const char* TEST_ASYNC_FAILURE = "File_AsyncReadQueue_ReportsReadFailureCompletion";
 constexpr const char* TEST_ASYNC_SMALL_OUTPUT = "File_AsyncReadQueue_RejectsSmallOutputWithoutOverrun";
 constexpr const char* TEST_ASYNC_RANGE_SMALL_OUTPUT = "File_AsyncReadQueue_RangedOutputTooSmallDoesNotCopyPartialBytes";
+constexpr const char* TEST_ASYNC_INITIALIZED_FAILURE_LAST_STATUS =
+    "File_AsyncReadQueue_InitializedFailuresUpdateLastStatus";
 constexpr const char* TEST_ASYNC_SHUTDOWN = "File_AsyncReadQueue_ShutdownRejectsSubmission";
 constexpr const char* TEST_ASYNC_SNAPSHOT = "File_AsyncReadQueue_SnapshotReportsBoundedCounters";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
@@ -893,6 +895,122 @@ int FileAsyncReadQueueRangedOutputTooSmallDoesNotCopyPartialBytes() {
     return 0;
 }
 
+int FileAsyncReadQueueInitializedFailuresUpdateLastStatus() {
+    AsyncFileReadQueue uninitialized_queue;
+    const auto uninitialized_snapshot = uninitialized_queue.Snapshot();
+    if (uninitialized_snapshot.last_status != AsyncFileReadStatus::NotInitialized) {
+        return Fail("uninitialized async queue snapshot status changed");
+    }
+
+    MountTable table = CreateMountedTable();
+    AsyncFileReadQueue queue;
+    if (queue.Initialize(2U, 2U) != AsyncFileReadStatus::Success) {
+        return Fail("async queue initialize failed");
+    }
+
+    if (queue.Start() != AsyncFileReadStatus::Success) {
+        return Fail("async queue start failed");
+    }
+
+    std::array<std::uint8_t, ASYNC_OUTPUT_CAPACITY> output_bytes{};
+    AsyncFileReadRequest invalid_mount_request = CreateAsyncRequest(
+        table,
+        11U,
+        NORMALIZED_PATH,
+        output_bytes.data(),
+        output_bytes.size());
+    invalid_mount_request.mount_table = nullptr;
+    const AsyncFileReadStatus invalid_mount_status = queue.Submit(invalid_mount_request);
+    if (invalid_mount_status != AsyncFileReadStatus::InvalidArgument) {
+        return Fail("async invalid mount did not return invalid argument");
+    }
+
+    const auto invalid_mount_snapshot = queue.Snapshot();
+    if (invalid_mount_snapshot.last_status != AsyncFileReadStatus::InvalidArgument) {
+        return Fail("async invalid mount did not update last status");
+    }
+
+    AsyncFileReadRequest null_output_request = CreateAsyncRequest(
+        table,
+        12U,
+        NORMALIZED_PATH,
+        nullptr,
+        1U);
+    const AsyncFileReadStatus null_output_status = queue.Submit(null_output_request);
+    if (null_output_status != AsyncFileReadStatus::InvalidArgument) {
+        return Fail("async null output did not return invalid argument");
+    }
+
+    const auto null_output_snapshot = queue.Snapshot();
+    if (null_output_snapshot.last_status != AsyncFileReadStatus::InvalidArgument) {
+        return Fail("async null output did not update last status");
+    }
+
+    std::size_t written_count = 1U;
+    const AsyncFileReadStatus null_written_status = queue.DrainCompletions(nullptr, 0U, nullptr);
+    if (null_written_status != AsyncFileReadStatus::InvalidArgument) {
+        return Fail("async null written count did not return invalid argument");
+    }
+
+    const auto null_written_snapshot = queue.Snapshot();
+    if (null_written_snapshot.last_status != AsyncFileReadStatus::InvalidArgument) {
+        return Fail("async null written count did not update last status");
+    }
+
+    std::array<AsyncFileReadResult, 1U> results{};
+    written_count = 1U;
+    const AsyncFileReadStatus null_results_status = queue.DrainCompletions(nullptr, 1U, &written_count);
+    if (null_results_status != AsyncFileReadStatus::InvalidArgument) {
+        return Fail("async null completion output did not return invalid argument");
+    }
+
+    const auto null_results_snapshot = queue.Snapshot();
+    if (null_results_snapshot.last_status != AsyncFileReadStatus::InvalidArgument) {
+        return Fail("async null completion output did not update last status");
+    }
+
+    const AsyncFileReadStatus recovery_drain_status = queue.DrainCompletions(results.data(), 1U, &written_count);
+    if (recovery_drain_status != AsyncFileReadStatus::Success) {
+        return Fail("async empty drain did not recover after invalid argument");
+    }
+
+    AsyncFileReadRequest valid_request = CreateAsyncRequest(
+        table,
+        13U,
+        NORMALIZED_PATH,
+        output_bytes.data(),
+        output_bytes.size());
+    if (queue.Submit(valid_request) != AsyncFileReadStatus::Queued) {
+        return Fail("async valid request was not queued");
+    }
+
+    if (queue.Shutdown(false) != AsyncFileReadStatus::ShutdownComplete) {
+        return Fail("async queue shutdown failed");
+    }
+
+    written_count = 1U;
+    const AsyncFileReadStatus zero_capacity_status = queue.DrainCompletions(results.data(), 0U, &written_count);
+    if (zero_capacity_status != AsyncFileReadStatus::CompletionQueueFull) {
+        return Fail("async zero output capacity did not report completion queue full");
+    }
+
+    if (written_count != 0U) {
+        return Fail("async zero output capacity wrote completions");
+    }
+
+    const auto zero_capacity_snapshot = queue.Snapshot();
+    if (zero_capacity_snapshot.last_status != AsyncFileReadStatus::CompletionQueueFull) {
+        return Fail("async zero output capacity did not update last status");
+    }
+
+    const AsyncFileReadStatus final_drain_status = queue.DrainCompletions(results.data(), results.size(), &written_count);
+    if (final_drain_status != AsyncFileReadStatus::Success) {
+        return Fail("async final drain after zero capacity failed");
+    }
+
+    return 0;
+}
+
 int FileAsyncReadQueueShutdownRejectsSubmission() {
     MountTable table = CreateMountedTable();
     AsyncFileReadQueue queue;
@@ -996,6 +1114,7 @@ int main(int argc, char** argv) {
         {TEST_ASYNC_FAILURE, FileAsyncReadQueueReportsReadFailureCompletion},
         {TEST_ASYNC_SMALL_OUTPUT, FileAsyncReadQueueRejectsSmallOutputWithoutOverrun},
         {TEST_ASYNC_RANGE_SMALL_OUTPUT, FileAsyncReadQueueRangedOutputTooSmallDoesNotCopyPartialBytes},
+        {TEST_ASYNC_INITIALIZED_FAILURE_LAST_STATUS, FileAsyncReadQueueInitializedFailuresUpdateLastStatus},
         {TEST_ASYNC_SHUTDOWN, FileAsyncReadQueueShutdownRejectsSubmission},
         {TEST_ASYNC_SNAPSHOT, FileAsyncReadQueueSnapshotReportsBoundedCounters}};
 

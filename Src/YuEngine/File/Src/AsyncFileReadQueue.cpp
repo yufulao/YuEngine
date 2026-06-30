@@ -325,10 +325,12 @@ AsyncFileReadStatus AsyncFileReadQueue::Submit(const AsyncFileReadRequest& reque
     }
 
     if (request.mount_table == nullptr) {
+        RecordRejectedSubmit(*state_, AsyncFileReadStatus::InvalidArgument);
         return AsyncFileReadStatus::InvalidArgument;
     }
 
     if (request.output_capacity > 0U && request.output_bytes == nullptr) {
+        RecordRejectedSubmit(*state_, AsyncFileReadStatus::InvalidArgument);
         return AsyncFileReadStatus::InvalidArgument;
     }
 
@@ -417,6 +419,10 @@ AsyncFileReadStatus AsyncFileReadQueue::DrainCompletions(
     std::size_t output_capacity,
     std::size_t* written_count) {
     if (written_count == nullptr) {
+        if (state_ != nullptr) {
+            SetLastStatus(*state_, AsyncFileReadStatus::InvalidArgument);
+        }
+
         return AsyncFileReadStatus::InvalidArgument;
     }
 
@@ -427,11 +433,13 @@ AsyncFileReadStatus AsyncFileReadQueue::DrainCompletions(
     }
 
     if (output_capacity > 0U && output_results == nullptr) {
+        SetLastStatus(*state_, AsyncFileReadStatus::InvalidArgument);
         return AsyncFileReadStatus::InvalidArgument;
     }
 
     const ThreadWorkerSnapshot worker_snapshot = state_->worker.Snapshot();
     if (worker_snapshot.completion_pending_count > 0U && output_capacity == 0U) {
+        SetLastStatus(*state_, AsyncFileReadStatus::CompletionQueueFull);
         return AsyncFileReadStatus::CompletionQueueFull;
     }
 
