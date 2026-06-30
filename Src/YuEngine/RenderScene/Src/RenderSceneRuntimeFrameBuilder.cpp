@@ -122,6 +122,7 @@ RenderSceneRuntimeFrameStatus RenderSceneRuntimeFrameBuilder::ValidateRequest(
     }
 
     std::size_t visible_entity_count = 0U;
+    std::uint32_t capacity_failed_entity_index = RENDER_SCENE_RUNTIME_FRAME_INVALID_INDEX;
     for (std::size_t index = 0U; index < request.entities.size(); ++index) {
         const RenderSceneRuntimeFrameEntityRequest &entity = request.entities[index];
         if (!IsActiveEntity(entity)) {
@@ -153,6 +154,11 @@ RenderSceneRuntimeFrameStatus RenderSceneRuntimeFrameBuilder::ValidateRequest(
             return RenderSceneRuntimeFrameStatus::DuplicateTransform;
         }
 
+        if (visible_entity_count >= out_draws.size() &&
+            capacity_failed_entity_index == RENDER_SCENE_RUNTIME_FRAME_INVALID_INDEX) {
+            capacity_failed_entity_index = entity_index;
+        }
+
         ++visible_entity_count;
     }
 
@@ -166,10 +172,11 @@ RenderSceneRuntimeFrameStatus RenderSceneRuntimeFrameBuilder::ValidateRequest(
     }
 
     if (visible_entity_count > out_draws.size()) {
+        out_result->submitted_entity_count = visible_entity_count;
         SetFrameFailure(
             out_result,
             RenderSceneRuntimeFrameStatus::OutputCapacityExceeded,
-            RENDER_SCENE_RUNTIME_FRAME_INVALID_INDEX,
+            capacity_failed_entity_index,
             RENDER_SCENE_RUNTIME_FRAME_INVALID_INDEX);
         return RenderSceneRuntimeFrameStatus::OutputCapacityExceeded;
     }

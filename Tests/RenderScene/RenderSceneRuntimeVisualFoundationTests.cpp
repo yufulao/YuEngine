@@ -2918,11 +2918,15 @@ int RenderSceneRuntimeFrameRejectsDuplicateTransforms() {
 int RenderSceneRuntimeFrameRejectsSmallOutputCapacity() {
     const RenderSceneCameraBindingResult camera = MakeCameraBinding();
     const RenderSceneRuntimeMaterialRecord material = MakeRuntimeMaterialRecord();
-    const std::array<RenderSceneRuntimeFrameEntityRequest, 3U> entities{
+    std::array<RenderSceneRuntimeFrameEntityRequest, 4U> entities{
         MakeRuntimeFrameEntity(101U, MakeTransform(-2.0F, 0.0F, 0.0F), RenderScenePrimitiveGeometryKind::Cube),
         MakeRuntimeFrameEntity(102U, MakeTransform(0.0F, 1.0F, 0.0F), RenderScenePrimitiveGeometryKind::Cylinder),
-        MakeRuntimeFrameEntity(103U, MakeTransform(2.0F, 0.0F, 1.0F), RenderScenePrimitiveGeometryKind::Cone)};
+        MakeRuntimeFrameEntity(103U, MakeTransform(2.0F, 0.0F, 1.0F), RenderScenePrimitiveGeometryKind::Cone),
+        MakeRuntimeFrameEntity(104U, MakeTransform(4.0F, 0.0F, 1.0F), RenderScenePrimitiveGeometryKind::Cube)};
+    entities[1U].is_visible = false;
     std::array<RenderSceneRuntimeFrameDrawRecord, 2U> draws{};
+    draws[0U].draw.material_id = MATERIAL_ID + 41U;
+    draws[1U].draw.material_id = MATERIAL_ID + 42U;
     RenderSceneRuntimeFrameResult result{};
 
     RenderSceneRuntimeFrameBuilder builder;
@@ -2930,6 +2934,19 @@ int RenderSceneRuntimeFrameRejectsSmallOutputCapacity() {
         builder.Build(MakeRuntimeFrameRequest(camera, material, entities), draws, &result);
     if (status != RenderSceneRuntimeFrameStatus::OutputCapacityExceeded) {
         return Fail("runtime frame did not report output capacity");
+    }
+
+    if (result.status != RenderSceneRuntimeFrameStatus::OutputCapacityExceeded ||
+        result.submitted_entity_count != 3U ||
+        result.output_draw_count != 0U ||
+        result.first_failed_entity_index != 3U ||
+        result.first_failed_material_index != 0xFFFFFFFFU) {
+        return Fail("runtime frame output capacity diagnostics changed");
+    }
+
+    if (draws[0U].draw.material_id != MATERIAL_ID + 41U ||
+        draws[1U].draw.material_id != MATERIAL_ID + 42U) {
+        return Fail("runtime frame output capacity mutated draw records");
     }
 
     return 0;
