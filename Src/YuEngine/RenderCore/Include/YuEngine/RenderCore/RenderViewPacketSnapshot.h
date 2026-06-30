@@ -29,6 +29,7 @@ struct RenderViewPacketSnapshot final {
     std::uint32_t last_material_id = 0U;
     std::uint32_t last_draw_id = 0U;
     std::uint32_t last_index_count = 0U;
+    std::size_t last_required_view_record_count = 0U;
     std::size_t last_constant_byte_count = 0U;
     std::size_t last_capture_byte_budget = 0U;
     RenderViewPacketStatus last_status = RenderViewPacketStatus::Success;

@@ -24,6 +24,7 @@ struct RenderViewPacketResult final {
     std::uint32_t material_id = 0U;
     std::uint32_t draw_id = 0U;
     std::uint32_t index_count = 0U;
+    std::size_t required_view_record_count = 0U;
     std::size_t constant_byte_count = 0U;
     std::size_t capture_byte_budget = 0U;
 };

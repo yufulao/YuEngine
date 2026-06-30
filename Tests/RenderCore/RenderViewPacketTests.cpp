@@ -340,8 +340,17 @@ int RenderCoreViewPacketRejectsCapacityExceeded() {
         return Fail("view packet accepted capacity overflow");
     }
 
+    if (result.required_view_record_count != 2U) {
+        return Fail("view packet capacity required count mismatch");
+    }
+
     if (!PassRequestMatchesSentinel(rejected_request)) {
         return Fail("view packet mutated output after capacity overflow");
+    }
+
+    const auto snapshot = packet.Snapshot();
+    if (snapshot.last_required_view_record_count != 2U) {
+        return Fail("view packet snapshot required count mismatch");
     }
 
     return 0;

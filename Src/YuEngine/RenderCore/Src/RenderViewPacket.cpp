@@ -310,6 +310,7 @@ RenderViewPacketResult RenderViewPacket::BuildPassRequest(
         return result;
     }
 
+    result.required_view_record_count = snapshot_.view_record_count + 1U;
     if (!HasRecordCapacity()) {
         result.status = RenderViewPacketStatus::ViewCapacityExceeded;
         RecordRejectedView(result);
@@ -434,6 +435,7 @@ void RenderViewPacket::RecordAcceptedView(RenderViewPacketResult *result) {
     snapshot_.last_material_id = result->material_id;
     snapshot_.last_draw_id = result->draw_id;
     snapshot_.last_index_count = result->index_count;
+    snapshot_.last_required_view_record_count = result->required_view_record_count;
     snapshot_.last_constant_byte_count = result->constant_byte_count;
     snapshot_.last_capture_byte_budget = result->capture_byte_budget;
     snapshot_.last_status = RenderViewPacketStatus::Success;
@@ -450,6 +452,7 @@ void RenderViewPacket::RecordRejectedView(const RenderViewPacketResult &result) 
     snapshot_.last_material_id = result.material_id;
     snapshot_.last_draw_id = result.draw_id;
     snapshot_.last_index_count = result.index_count;
+    snapshot_.last_required_view_record_count = result.required_view_record_count;
     snapshot_.last_constant_byte_count = result.constant_byte_count;
     snapshot_.last_capture_byte_budget = result.capture_byte_budget;
     snapshot_.last_status = result.status;
