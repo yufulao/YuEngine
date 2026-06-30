@@ -14,6 +14,7 @@ RhiCommandList::RhiCommandList(std::size_t capacity)
       sampler_bind_command_count_(0U),
       constant_buffer_bind_command_count_(0U),
       blend_state_bind_command_count_(0U),
+      last_status_(RhiStatus::Success),
       is_recording_(false),
       is_complete_(false) {
 }
@@ -29,16 +30,16 @@ RhiStatus RhiCommandList::Reset() {
     blend_state_bind_command_count_ = 0U;
     is_recording_ = false;
     is_complete_ = false;
-    return RhiStatus::Success;
+    return RecordSuccess();
 }
 
 RhiStatus RhiCommandList::BeginFrame(RhiTextureHandle target) {
     if (is_recording_) {
-        return RhiStatus::InvalidLifecycle;
+        return RecordFailure(RhiStatus::InvalidLifecycle);
     }
 
     if (is_complete_) {
-        return RhiStatus::InvalidLifecycle;
+        return RecordFailure(RhiStatus::InvalidLifecycle);
     }
 
     const RhiStatus append_status = Append(RhiCommandRecord{RhiCommandType::BeginFrame, target, RhiColor{}});
@@ -48,16 +49,16 @@ RhiStatus RhiCommandList::BeginFrame(RhiTextureHandle target) {
 
     target_handle_ = target;
     is_recording_ = true;
-    return RhiStatus::Success;
+    return RecordSuccess();
 }
 
 RhiStatus RhiCommandList::RecordClear(RhiTextureHandle target, RhiColor color) {
     if (!is_recording_) {
-        return RhiStatus::InvalidLifecycle;
+        return RecordFailure(RhiStatus::InvalidLifecycle);
     }
 
     if (is_complete_) {
-        return RhiStatus::InvalidLifecycle;
+        return RecordFailure(RhiStatus::InvalidLifecycle);
     }
 
     return Append(RhiCommandRecord{RhiCommandType::ClearColor, target, color});
@@ -65,11 +66,11 @@ RhiStatus RhiCommandList::RecordClear(RhiTextureHandle target, RhiColor color) {
 
 RhiStatus RhiCommandList::RecordBindPipeline(RhiPipelineHandle pipeline) {
     if (!is_recording_) {
-        return RhiStatus::InvalidLifecycle;
+        return RecordFailure(RhiStatus::InvalidLifecycle);
     }
 
     if (is_complete_) {
-        return RhiStatus::InvalidLifecycle;
+        return RecordFailure(RhiStatus::InvalidLifecycle);
     }
 
     RhiCommandRecord record{};
@@ -81,11 +82,11 @@ RhiStatus RhiCommandList::RecordBindPipeline(RhiPipelineHandle pipeline) {
 
 RhiStatus RhiCommandList::RecordBindVertexBuffer(const RhiVertexBufferView &vertex_buffer) {
     if (!is_recording_) {
-        return RhiStatus::InvalidLifecycle;
+        return RecordFailure(RhiStatus::InvalidLifecycle);
     }
 
     if (is_complete_) {
-        return RhiStatus::InvalidLifecycle;
+        return RecordFailure(RhiStatus::InvalidLifecycle);
     }
 
     RhiCommandRecord record{};
@@ -97,11 +98,11 @@ RhiStatus RhiCommandList::RecordBindVertexBuffer(const RhiVertexBufferView &vert
 
 RhiStatus RhiCommandList::RecordBindIndexBuffer(const RhiIndexBufferView &index_buffer) {
     if (!is_recording_) {
-        return RhiStatus::InvalidLifecycle;
+        return RecordFailure(RhiStatus::InvalidLifecycle);
     }
 
     if (is_complete_) {
-        return RhiStatus::InvalidLifecycle;
+        return RecordFailure(RhiStatus::InvalidLifecycle);
     }
 
     RhiCommandRecord record{};
@@ -113,11 +114,11 @@ RhiStatus RhiCommandList::RecordBindIndexBuffer(const RhiIndexBufferView &index_
 
 RhiStatus RhiCommandList::RecordBindSampledTexture(const RhiSampledTextureBinding &binding) {
     if (!is_recording_) {
-        return RhiStatus::InvalidLifecycle;
+        return RecordFailure(RhiStatus::InvalidLifecycle);
     }
 
     if (is_complete_) {
-        return RhiStatus::InvalidLifecycle;
+        return RecordFailure(RhiStatus::InvalidLifecycle);
     }
 
     RhiCommandRecord record{};
@@ -130,16 +131,16 @@ RhiStatus RhiCommandList::RecordBindSampledTexture(const RhiSampledTextureBindin
     }
 
     ++sampled_texture_bind_command_count_;
-    return RhiStatus::Success;
+    return RecordSuccess();
 }
 
 RhiStatus RhiCommandList::RecordBindSampler(const RhiSamplerBinding &binding) {
     if (!is_recording_) {
-        return RhiStatus::InvalidLifecycle;
+        return RecordFailure(RhiStatus::InvalidLifecycle);
     }
 
     if (is_complete_) {
-        return RhiStatus::InvalidLifecycle;
+        return RecordFailure(RhiStatus::InvalidLifecycle);
     }
 
     RhiCommandRecord record{};
@@ -152,16 +153,16 @@ RhiStatus RhiCommandList::RecordBindSampler(const RhiSamplerBinding &binding) {
     }
 
     ++sampler_bind_command_count_;
-    return RhiStatus::Success;
+    return RecordSuccess();
 }
 
 RhiStatus RhiCommandList::RecordBindConstantBuffer(const RhiConstantBufferBinding &binding) {
     if (!is_recording_) {
-        return RhiStatus::InvalidLifecycle;
+        return RecordFailure(RhiStatus::InvalidLifecycle);
     }
 
     if (is_complete_) {
-        return RhiStatus::InvalidLifecycle;
+        return RecordFailure(RhiStatus::InvalidLifecycle);
     }
 
     RhiCommandRecord record{};
@@ -174,16 +175,16 @@ RhiStatus RhiCommandList::RecordBindConstantBuffer(const RhiConstantBufferBindin
     }
 
     ++constant_buffer_bind_command_count_;
-    return RhiStatus::Success;
+    return RecordSuccess();
 }
 
 RhiStatus RhiCommandList::RecordBindBlendState(const RhiBlendStateDesc &desc) {
     if (!is_recording_) {
-        return RhiStatus::InvalidLifecycle;
+        return RecordFailure(RhiStatus::InvalidLifecycle);
     }
 
     if (is_complete_) {
-        return RhiStatus::InvalidLifecycle;
+        return RecordFailure(RhiStatus::InvalidLifecycle);
     }
 
     RhiCommandRecord record{};
@@ -196,16 +197,16 @@ RhiStatus RhiCommandList::RecordBindBlendState(const RhiBlendStateDesc &desc) {
     }
 
     ++blend_state_bind_command_count_;
-    return RhiStatus::Success;
+    return RecordSuccess();
 }
 
 RhiStatus RhiCommandList::RecordDraw(const RhiDrawDesc &desc) {
     if (!is_recording_) {
-        return RhiStatus::InvalidLifecycle;
+        return RecordFailure(RhiStatus::InvalidLifecycle);
     }
 
     if (is_complete_) {
-        return RhiStatus::InvalidLifecycle;
+        return RecordFailure(RhiStatus::InvalidLifecycle);
     }
 
     RhiCommandRecord record{};
@@ -218,16 +219,16 @@ RhiStatus RhiCommandList::RecordDraw(const RhiDrawDesc &desc) {
     }
 
     ++draw_command_count_;
-    return RhiStatus::Success;
+    return RecordSuccess();
 }
 
 RhiStatus RhiCommandList::RecordDrawIndexed(const RhiDrawIndexedDesc &desc) {
     if (!is_recording_) {
-        return RhiStatus::InvalidLifecycle;
+        return RecordFailure(RhiStatus::InvalidLifecycle);
     }
 
     if (is_complete_) {
-        return RhiStatus::InvalidLifecycle;
+        return RecordFailure(RhiStatus::InvalidLifecycle);
     }
 
     RhiCommandRecord record{};
@@ -240,16 +241,16 @@ RhiStatus RhiCommandList::RecordDrawIndexed(const RhiDrawIndexedDesc &desc) {
     }
 
     ++indexed_draw_command_count_;
-    return RhiStatus::Success;
+    return RecordSuccess();
 }
 
 RhiStatus RhiCommandList::EndFrame() {
     if (!is_recording_) {
-        return RhiStatus::InvalidLifecycle;
+        return RecordFailure(RhiStatus::InvalidLifecycle);
     }
 
     if (is_complete_) {
-        return RhiStatus::InvalidLifecycle;
+        return RecordFailure(RhiStatus::InvalidLifecycle);
     }
 
     const RhiStatus append_status = Append(RhiCommandRecord{RhiCommandType::EndFrame, target_handle_, RhiColor{}});
@@ -259,7 +260,7 @@ RhiStatus RhiCommandList::EndFrame() {
 
     is_recording_ = false;
     is_complete_ = true;
-    return RhiStatus::Success;
+    return RecordSuccess();
 }
 
 RhiCommandListSnapshot RhiCommandList::Snapshot() const {
@@ -273,7 +274,8 @@ RhiCommandListSnapshot RhiCommandList::Snapshot() const {
         constant_buffer_bind_command_count_,
         blend_state_bind_command_count_,
         is_recording_,
-        is_complete_};
+        is_complete_,
+        last_status_};
 }
 
 const RhiCommandRecord& RhiCommandList::CommandAt(std::size_t index) const {
@@ -298,11 +300,21 @@ bool RhiCommandList::IsComplete() const {
 
 RhiStatus RhiCommandList::Append(RhiCommandRecord record) {
     if (command_count_ >= records_.size()) {
-        return RhiStatus::CapacityExceeded;
+        return RecordFailure(RhiStatus::CapacityExceeded);
     }
 
     records_[command_count_] = record;
     ++command_count_;
+    return RecordSuccess();
+}
+
+RhiStatus RhiCommandList::RecordSuccess() {
+    last_status_ = RhiStatus::Success;
     return RhiStatus::Success;
+}
+
+RhiStatus RhiCommandList::RecordFailure(RhiStatus status) {
+    last_status_ = status;
+    return status;
 }
 }

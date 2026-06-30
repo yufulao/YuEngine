@@ -127,6 +127,7 @@ constexpr const char* TEST_DESTROY_STALE = "RHI_DestroyTarget_InvalidatesStaleHa
 constexpr const char* TEST_REINITIALIZE_STALE_TARGET = "RHI_Reinitialize_InvalidatesPriorTargetHandle";
 constexpr const char* TEST_RECORD_CLEAR = "RHI_CommandList_RecordsClearWithinCapacity";
 constexpr const char* TEST_COMMAND_CAPACITY = "RHI_CommandListCapacityOverflow_DoesNotMutate";
+constexpr const char* TEST_COMMAND_LIST_LAST_STATUS = "RHI_CommandListLastStatus_TracksLifecycleAndCapacity";
 constexpr const char* TEST_SUBMIT_OVERSIZE_COMMAND_LIST = "RHI_SubmitRejectsOversizedCommandListWithoutMutation";
 constexpr const char* TEST_INVALID_CLEAR_TARGET = "RHI_RecordClear_RejectsInvalidTargetHandle";
 constexpr const char* TEST_INCOMPLETE_SUBMIT = "RHI_SubmitRejectsIncompleteCommandListWithoutMutation";
@@ -1620,6 +1621,11 @@ int RhiCommandListRecordsClearWithinCapacity() {
         return Fail("clear command list count was wrong");
     }
 
+    const auto snapshot = command_list.Snapshot();
+    if (snapshot.last_status != RhiStatus::Success) {
+        return Fail("clear command list did not record success status");
+    }
+
     return 0;
 }
 
@@ -1647,6 +1653,108 @@ int RhiCommandListCapacityOverflowDoesNotMutate() {
 
     if (command_list.CommandCount() != count_before) {
         return Fail("command capacity overflow mutated command count");
+    }
+
+    return 0;
+}
+
+int RhiCommandListLastStatusTracksLifecycleAndCapacity() {
+    NullRhiDevice device = CreateInitializedDevice();
+    RhiTextureHandle handle{};
+    if (!CreateTarget(device, handle)) {
+        return Fail("target creation failed");
+    }
+
+    RhiCommandList command_list(2U);
+    RhiColor clear_color{1U, 2U, 3U, 4U};
+    RhiStatus status = command_list.RecordClear(handle, clear_color);
+    if (status != RhiStatus::InvalidLifecycle) {
+        return Fail("record clear before begin did not return invalid lifecycle");
+    }
+
+    auto snapshot = command_list.Snapshot();
+    if (snapshot.last_status != RhiStatus::InvalidLifecycle) {
+        return Fail("record clear before begin did not record last status");
+    }
+
+    status = command_list.Reset();
+    if (status != RhiStatus::Success) {
+        return Fail("command list reset after record failure failed");
+    }
+
+    snapshot = command_list.Snapshot();
+    if (snapshot.last_status != RhiStatus::Success) {
+        return Fail("command list reset did not clear last status");
+    }
+
+    status = command_list.EndFrame();
+    if (status != RhiStatus::InvalidLifecycle) {
+        return Fail("end frame before begin did not return invalid lifecycle");
+    }
+
+    snapshot = command_list.Snapshot();
+    if (snapshot.last_status != RhiStatus::InvalidLifecycle) {
+        return Fail("end frame before begin did not record last status");
+    }
+
+    status = command_list.Reset();
+    if (status != RhiStatus::Success) {
+        return Fail("command list reset after end frame failure failed");
+    }
+
+    status = command_list.BeginFrame(handle);
+    if (status != RhiStatus::Success) {
+        return Fail("begin frame for last status matrix failed");
+    }
+
+    status = command_list.BeginFrame(handle);
+    if (status != RhiStatus::InvalidLifecycle) {
+        return Fail("second begin frame did not return invalid lifecycle");
+    }
+
+    snapshot = command_list.Snapshot();
+    if (snapshot.last_status != RhiStatus::InvalidLifecycle) {
+        return Fail("second begin frame did not record last status");
+    }
+
+    status = command_list.Reset();
+    if (status != RhiStatus::Success) {
+        return Fail("command list reset after begin failure failed");
+    }
+
+    status = command_list.BeginFrame(handle);
+    if (status != RhiStatus::Success) {
+        return Fail("begin frame before capacity failure failed");
+    }
+
+    status = command_list.RecordClear(handle, clear_color);
+    if (status != RhiStatus::Success) {
+        return Fail("record clear before capacity failure failed");
+    }
+
+    const std::size_t count_before = command_list.CommandCount();
+    status = command_list.EndFrame();
+    if (status != RhiStatus::CapacityExceeded) {
+        return Fail("end frame capacity failure did not return capacity exceeded");
+    }
+
+    snapshot = command_list.Snapshot();
+    if (snapshot.command_count != count_before) {
+        return Fail("end frame capacity failure changed command count");
+    }
+
+    if (snapshot.last_status != RhiStatus::CapacityExceeded) {
+        return Fail("end frame capacity failure did not record last status");
+    }
+
+    status = command_list.Reset();
+    if (status != RhiStatus::Success) {
+        return Fail("command list reset after capacity failure failed");
+    }
+
+    snapshot = command_list.Snapshot();
+    if (snapshot.last_status != RhiStatus::Success) {
+        return Fail("command list reset after capacity failure did not clear last status");
     }
 
     return 0;
@@ -3269,6 +3377,10 @@ int RhiCommandListRecordsVisibleTriangleCommandsWithinCapacity() {
         return Fail("triangle draw command was not tracked");
     }
 
+    if (snapshot.last_status != RhiStatus::Success) {
+        return Fail("triangle draw command recording did not record success status");
+    }
+
     if (command_list.Capacity() != capacity_before) {
         return Fail("triangle draw command recording grew storage");
     }
@@ -4566,6 +4678,7 @@ int main(int argc, char** argv) {
         {TEST_REINITIALIZE_STALE_TARGET, RhiReinitializeInvalidatesPriorTargetHandle},
         {TEST_RECORD_CLEAR, RhiCommandListRecordsClearWithinCapacity},
         {TEST_COMMAND_CAPACITY, RhiCommandListCapacityOverflowDoesNotMutate},
+        {TEST_COMMAND_LIST_LAST_STATUS, RhiCommandListLastStatusTracksLifecycleAndCapacity},
         {TEST_SUBMIT_OVERSIZE_COMMAND_LIST, RhiSubmitRejectsOversizedCommandListWithoutMutation},
         {TEST_INVALID_CLEAR_TARGET, RhiRecordClearRejectsInvalidTargetHandle},
         {TEST_MISMATCHED_SUBMIT_TARGET, RhiSubmitRejectsMismatchedRecordedTargetWithoutMutation},

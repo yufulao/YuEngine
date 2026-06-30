@@ -141,6 +141,8 @@ public:
 
 private:
     RhiStatus Append(RhiCommandRecord record);
+    RhiStatus RecordSuccess();
+    RhiStatus RecordFailure(RhiStatus status);
 
     std::vector<RhiCommandRecord> records_;
     RhiTextureHandle target_handle_;
@@ -151,6 +153,7 @@ private:
     std::size_t sampler_bind_command_count_;
     std::size_t constant_buffer_bind_command_count_;
     std::size_t blend_state_bind_command_count_;
+    RhiStatus last_status_;
     bool is_recording_;
     bool is_complete_;
 };
