@@ -342,7 +342,16 @@ RenderGraphExecutionPlanStatus RenderGraphExecutionPlan::ValidateRequest(
         return RenderGraphExecutionPlanStatus::FramePacketCapacityExceeded;
     }
 
-    if (pass_count > RemainingSubmissionRecordCapacity(*request.submission_batch)) {
+    const std::size_t remaining_submission_record_capacity =
+        RemainingSubmissionRecordCapacity(*request.submission_batch);
+    if (pass_count > remaining_submission_record_capacity) {
+        const RenderFixturePassRequest &failed_request =
+            batch_request.pass_requests[remaining_submission_record_capacity];
+        result->batch_status = RenderSubmissionBatchFixtureStatus::BatchCapacityExceeded;
+        result->failed_entry_index = remaining_submission_record_capacity;
+        result->failed_entry_count = pass_count - remaining_submission_record_capacity;
+        result->pass_id = failed_request.pass_id;
+        result->material_id = failed_request.material_id;
         return RenderGraphExecutionPlanStatus::SubmissionBatchCapacityExceeded;
     }
 

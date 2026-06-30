@@ -31,6 +31,7 @@
 #include "YuEngine/RenderCore/RenderGraphSkeletonSnapshot.h"
 #include "YuEngine/RenderCore/RenderGraphSkeletonStatus.h"
 #include "YuEngine/RenderCore/RenderSubmissionBatchFixture.h"
+#include "YuEngine/RenderCore/RenderSubmissionBatchFixtureDesc.h"
 #include "YuEngine/RenderCore/RenderSubmissionBatchFixtureSnapshot.h"
 #include "YuEngine/RenderCore/RenderSubmissionBatchFixtureStatus.h"
 #include "YuEngine/Rhi/IRhiDevice.h"
@@ -82,6 +83,7 @@ using RenderGraphSkeletonResult = yuengine::rendercore::RenderGraphSkeletonResul
 using RenderGraphSkeletonSnapshot = yuengine::rendercore::RenderGraphSkeletonSnapshot;
 using yuengine::rendercore::RenderGraphSkeletonStatus;
 using RenderSubmissionBatchFixture = yuengine::rendercore::RenderSubmissionBatchFixture;
+using RenderSubmissionBatchFixtureDesc = yuengine::rendercore::RenderSubmissionBatchFixtureDesc;
 using RenderSubmissionBatchFixtureSnapshot = yuengine::rendercore::RenderSubmissionBatchFixtureSnapshot;
 using yuengine::rendercore::RenderSubmissionBatchFixtureStatus;
 using IRhiDevice = yuengine::rhi::IRhiDevice;
@@ -679,11 +681,78 @@ int RenderCoreGraphExecutionPlanRejectsPlanCapacityOverflowWithoutMutation() {
         return Fail("first capacity execution failed");
     }
 
-    return ExpectPlanValidationFailure(
+    const int plan_capacity_result = ExpectPlanValidationFailure(
         RenderGraphExecutionPlanStatus::PlanCapacityExceeded,
         plan,
         second_fixture,
         ExecutionRequestFrom(second_fixture, NEXT_PLAN_ID, NEXT_FRAME_ID));
+    if (plan_capacity_result != 0) {
+        return plan_capacity_result;
+    }
+
+    PreparedGraphFixture submission_fixture;
+    if (!PrepareFixture(submission_fixture, NEXT_GRAPH_ID)) {
+        return Fail("submission capacity setup failed");
+    }
+
+    RenderSubmissionBatchFixtureDesc batch_desc{};
+    batch_desc.submission_record_capacity = 1U;
+    RenderSubmissionBatchFixture limited_submission_batch(batch_desc);
+    RenderGraphExecutionPlanRequest submission_request =
+        ExecutionRequestFrom(submission_fixture, NEXT_PLAN_ID, NEXT_FRAME_ID);
+    submission_request.submission_batch = &limited_submission_batch;
+
+    RenderGraphExecutionPlan submission_plan;
+    const DependencySnapshots before = CaptureDependencySnapshots(submission_fixture);
+    const RenderSubmissionBatchFixtureSnapshot before_batch = limited_submission_batch.Snapshot();
+    const auto submission_result = submission_plan.Execute(submission_request);
+    if (submission_result.status != RenderGraphExecutionPlanStatus::SubmissionBatchCapacityExceeded) {
+        return Fail("execution plan did not reject submission capacity");
+    }
+
+    if (submission_result.batch_status != RenderSubmissionBatchFixtureStatus::BatchCapacityExceeded) {
+        return Fail("execution plan did not preserve submission capacity status");
+    }
+
+    if (submission_result.failed_entry_index != 1U || submission_result.failed_entry_count != 1U) {
+        return Fail("execution plan submission capacity failed entry mismatch");
+    }
+
+    if (submission_result.pass_id != SECOND_PASS_ID || submission_result.material_id != SECOND_MATERIAL_ID) {
+        return Fail("execution plan submission capacity failed pass mismatch");
+    }
+
+    const DependencySnapshots after = CaptureDependencySnapshots(submission_fixture);
+    if (!DependencySnapshotsMatch(before, after)) {
+        return Fail("submission capacity validation mutated dependency state");
+    }
+
+    const RenderSubmissionBatchFixtureSnapshot after_batch = limited_submission_batch.Snapshot();
+    if (after_batch.submission_record_count != before_batch.submission_record_count ||
+        after_batch.batch_capacity_rejected_count != before_batch.batch_capacity_rejected_count ||
+        after_batch.last_status != before_batch.last_status) {
+        return Fail("submission capacity validation mutated submission batch state");
+    }
+
+    const auto snapshot = submission_plan.Snapshot();
+    if (snapshot.plan_record_count != 0U || snapshot.submission_capacity_rejected_count != 1U) {
+        return Fail("execution plan submission capacity snapshot counter mismatch");
+    }
+
+    if (snapshot.last_failed_entry_index != 1U || snapshot.last_failed_entry_count != 1U) {
+        return Fail("execution plan submission capacity snapshot entry mismatch");
+    }
+
+    if (snapshot.last_pass_id != SECOND_PASS_ID || snapshot.last_material_id != SECOND_MATERIAL_ID) {
+        return Fail("execution plan submission capacity snapshot pass mismatch");
+    }
+
+    if (snapshot.last_status != RenderGraphExecutionPlanStatus::SubmissionBatchCapacityExceeded ||
+        snapshot.last_batch_status != RenderSubmissionBatchFixtureStatus::BatchCapacityExceeded) {
+        return Fail("execution plan submission capacity snapshot status mismatch");
+    }
+
+    return 0;
 }
 
 int RenderCoreGraphExecutionPlanPropagatesFramePacketFailure() {
