@@ -342,10 +342,19 @@ RenderGraphSkeletonStatus RenderGraphSkeleton::ValidateRequest(
     }
 
     if (request.pass_declarations.size() > desc_.pass_record_capacity) {
+        const std::size_t failed_index = desc_.pass_record_capacity;
+        const RenderGraphSkeletonPassDeclaration &declaration = request.pass_declarations[failed_index];
+        result->failed_pass_index = failed_index;
+        result->pass_id = declaration.pass_id;
         return RenderGraphSkeletonStatus::PassCapacityExceeded;
     }
 
     if (request.dependency_declarations.size() > desc_.dependency_record_capacity) {
+        const std::size_t failed_index = desc_.dependency_record_capacity;
+        const RenderGraphSkeletonDependencyDeclaration &dependency = request.dependency_declarations[failed_index];
+        result->failed_dependency_index = failed_index;
+        result->dependency_before_pass_id = dependency.before_pass_id;
+        result->dependency_after_pass_id = dependency.after_pass_id;
         return RenderGraphSkeletonStatus::DependencyCapacityExceeded;
     }
 

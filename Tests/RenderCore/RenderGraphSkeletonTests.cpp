@@ -784,8 +784,19 @@ int RenderCoreGraphSkeletonRejectsPassCapacityOverflowWithoutMutation() {
         return Fail("graph skeleton accepted pass capacity overflow");
     }
 
+    if (result.failed_pass_index != 1U || result.pass_id != SECOND_PASS_ID) {
+        return Fail("pass capacity overflow did not report first overflowing pass");
+    }
+
     if (!PreparedSentinelUnchanged(std::span<const RenderFixturePassRequest>(prepared_requests.data(), prepared_requests.size()))) {
         return Fail("pass capacity overflow mutated prepared requests");
+    }
+
+    const auto snapshot = graph.Snapshot();
+    if (snapshot.last_failed_pass_index != 1U ||
+        snapshot.last_pass_id != SECOND_PASS_ID ||
+        snapshot.pass_capacity_rejected_count != 1U) {
+        return Fail("pass capacity overflow snapshot mismatch");
     }
 
     return 0;
@@ -821,8 +832,22 @@ int RenderCoreGraphSkeletonRejectsDependencyCapacityOverflowWithoutMutation() {
         return Fail("graph skeleton accepted dependency capacity overflow");
     }
 
+    if (result.failed_dependency_index != 0U ||
+        result.dependency_before_pass_id != FIRST_PASS_ID ||
+        result.dependency_after_pass_id != SECOND_PASS_ID) {
+        return Fail("dependency capacity overflow did not report first overflowing dependency");
+    }
+
     if (!PreparedSentinelUnchanged(std::span<const RenderFixturePassRequest>(prepared_requests.data(), prepared_requests.size()))) {
         return Fail("dependency capacity overflow mutated prepared requests");
+    }
+
+    const auto snapshot = graph.Snapshot();
+    if (snapshot.last_failed_dependency_index != 0U ||
+        snapshot.last_dependency_before_pass_id != FIRST_PASS_ID ||
+        snapshot.last_dependency_after_pass_id != SECOND_PASS_ID ||
+        snapshot.dependency_capacity_rejected_count != 1U) {
+        return Fail("dependency capacity overflow snapshot mismatch");
     }
 
     return 0;
