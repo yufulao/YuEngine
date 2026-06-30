@@ -69,6 +69,7 @@ constexpr const char* TEST_DISABLED_DIAGNOSTICS = "Serialize_DisabledDiagnostics
 constexpr const char* TEST_NO_FORBIDDEN_DEPENDENCY = "Serialize_NoFilePackageResourceObjectOrGameAdapterDependency";
 constexpr const char* TEST_NO_HIDDEN_ALLOCATION = "Serialize_NoHiddenAllocationInReadWritePath";
 constexpr const char* TEST_SNAPSHOT = "Serialize_SnapshotReportsCountsAndLastStatus";
+constexpr const char* TEST_SUCCESS_LAST_STATUS = "Serialize_SuccessClearsLastStatusAfterFailure";
 constexpr const char *TEST_RUNTIME_CONFIG_ROUNDTRIP =
     "Serialize_RuntimeConfigStream_RoundTripsCallerOwnedConfigBoundary";
 constexpr const char *TEST_RUNTIME_CONFIG_UNSUPPORTED =
@@ -1060,6 +1061,105 @@ int SerializeSnapshotReportsCountsAndLastStatus() {
     return 0;
 }
 
+int SerializeSuccessClearsLastStatusAfterFailure() {
+    std::array<std::uint8_t, MAX_STREAM_BYTE_COUNT> buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (writer.BeginRecord(RECORD_MAIN) != SerializeStatus::InvalidHeader) {
+        return Fail("writer pre-stream record did not fail");
+    }
+
+    SerializeSnapshot writer_snapshot = writer.Snapshot();
+    if (writer_snapshot.last_status != SerializeStatus::InvalidHeader || writer_snapshot.failed_operation_count != 1U) {
+        return Fail("writer did not record initial failure status");
+    }
+
+    if (writer.BeginStream() != SerializeStatus::Success) {
+        return Fail("writer success did not recover after failure");
+    }
+
+    writer_snapshot = writer.Snapshot();
+    if (writer_snapshot.last_status != SerializeStatus::Success || writer_snapshot.failed_operation_count != 1U) {
+        return Fail("writer begin stream did not clear last failure status");
+    }
+
+    if (writer.BeginRecord(RECORD_MAIN) != SerializeStatus::Success) {
+        return Fail("writer begin record failed");
+    }
+
+    if (writer.WriteUInt32(FIELD_U32, 1U) != SerializeStatus::Success) {
+        return Fail("writer first field failed");
+    }
+
+    if (writer.WriteUInt32(FIELD_U32, 2U) != SerializeStatus::DuplicateField) {
+        return Fail("writer duplicate field did not fail");
+    }
+
+    writer_snapshot = writer.Snapshot();
+    if (writer_snapshot.last_status != SerializeStatus::DuplicateField || writer_snapshot.failed_operation_count != 2U) {
+        return Fail("writer did not preserve duplicate field failure");
+    }
+
+    if (writer.WriteInt32(FIELD_I32, -2) != SerializeStatus::Success) {
+        return Fail("writer second field did not recover after failure");
+    }
+
+    writer_snapshot = writer.Snapshot();
+    if (writer_snapshot.last_status != SerializeStatus::Success || writer_snapshot.failed_operation_count != 2U) {
+        return Fail("writer field success did not clear last failure status");
+    }
+
+    StreamFixture fixture;
+    if (BuildRoundTripFixture(fixture) != 0) {
+        return 1;
+    }
+
+    SerializeReader reader(fixture.buffer.data(), fixture.byte_count);
+    std::uint32_t value = 77U;
+    if (reader.ReadUInt32(RECORD_MAIN, FIELD_U32, value) != SerializeStatus::InvalidHeader) {
+        return Fail("reader pre-open read did not fail");
+    }
+
+    SerializeSnapshot reader_snapshot = reader.Snapshot();
+    if (reader_snapshot.last_status != SerializeStatus::InvalidHeader || reader_snapshot.failed_operation_count != 1U) {
+        return Fail("reader did not record initial failure status");
+    }
+
+    if (reader.OpenStream() != SerializeStatus::Success) {
+        return Fail("reader open did not recover after failure");
+    }
+
+    reader_snapshot = reader.Snapshot();
+    if (reader_snapshot.last_status != SerializeStatus::Success || reader_snapshot.failed_operation_count != 1U) {
+        return Fail("reader open did not clear last failure status");
+    }
+
+    std::int32_t signed_value = -77;
+    if (reader.ReadInt32(RECORD_MAIN, FIELD_U32, signed_value) != SerializeStatus::TypeMismatch) {
+        return Fail("reader type mismatch did not fail");
+    }
+
+    reader_snapshot = reader.Snapshot();
+    if (reader_snapshot.last_status != SerializeStatus::TypeMismatch || reader_snapshot.failed_operation_count != 2U) {
+        return Fail("reader did not preserve type mismatch failure");
+    }
+
+    value = 0U;
+    if (reader.ReadUInt32(RECORD_MAIN, FIELD_U32, value) != SerializeStatus::Success) {
+        return Fail("reader successful read did not recover after failure");
+    }
+
+    if (value != 0xAABBCCDDU) {
+        return Fail("reader recovered read returned unexpected value");
+    }
+
+    reader_snapshot = reader.Snapshot();
+    if (reader_snapshot.last_status != SerializeStatus::Success || reader_snapshot.failed_operation_count != 2U) {
+        return Fail("reader read success did not clear last failure status");
+    }
+
+    return 0;
+}
+
 int SerializeRuntimeConfigStreamRoundTripsCallerOwnedConfigBoundary() {
     RuntimeConfigStream stream;
     RuntimeConfigRecord input_config = BuildRuntimeConfigRecord();
@@ -1202,6 +1302,7 @@ int main(int argc, char** argv) {
         {TEST_NO_FORBIDDEN_DEPENDENCY, SerializeNoFilePackageResourceObjectOrGameAdapterDependency},
         {TEST_NO_HIDDEN_ALLOCATION, SerializeNoHiddenAllocationInReadWritePath},
         {TEST_SNAPSHOT, SerializeSnapshotReportsCountsAndLastStatus},
+        {TEST_SUCCESS_LAST_STATUS, SerializeSuccessClearsLastStatusAfterFailure},
         {TEST_RUNTIME_CONFIG_ROUNDTRIP, SerializeRuntimeConfigStreamRoundTripsCallerOwnedConfigBoundary},
         {TEST_RUNTIME_CONFIG_UNSUPPORTED, SerializeRuntimeConfigStreamRejectsUnsupportedVersionWithoutMutation},
         {TEST_RUNTIME_CONFIG_BOUNDARY, SerializeRuntimeConfigStreamKeepsPersistencePolicyOutsideCore}};

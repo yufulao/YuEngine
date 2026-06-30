@@ -63,6 +63,7 @@ SerializeStatus SerializeWriter::BeginStream() {
         return RecordFailure(SerializeStatus::BufferTooSmall);
     }
 
+    const std::uint32_t previous_failed_operation_count = snapshot_.failed_operation_count;
     snapshot_ = SerializeSnapshot{
         STREAM_MAJOR_VERSION,
         STREAM_MINOR_VERSION,
@@ -70,7 +71,7 @@ SerializeStatus SerializeWriter::BeginStream() {
         0U,
         0U,
         0U,
-        0U,
+        previous_failed_operation_count,
         MemoryAccountingStatus::ExplicitlyTrackedOnly,
         SerializeStatus::Success};
     active_record_offset_ = 0U;
