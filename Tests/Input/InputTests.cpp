@@ -341,6 +341,14 @@ int InputRegisterActionBindingReturnsStableActionId() {
         return Fail("binding count did not update");
     }
 
+    if (snapshot.last_status != InputStatus::Success) {
+        return Fail("binding registration did not record success status");
+    }
+
+    if (snapshot.last_apply_status != InputStatus::Success) {
+        return Fail("binding registration changed apply status");
+    }
+
     return 0;
 }
 
@@ -363,6 +371,14 @@ int InputRegisterControlAlreadyBoundReturnsDuplicateStatus() {
 
     if (after_snapshot.action_count != before_snapshot.action_count) {
         return Fail("duplicate control mutated action count");
+    }
+
+    if (after_snapshot.last_status != InputStatus::DuplicateBinding) {
+        return Fail("duplicate control did not record last status");
+    }
+
+    if (after_snapshot.last_apply_status != before_snapshot.last_apply_status) {
+        return Fail("duplicate control changed apply status");
     }
 
     return 0;
@@ -415,8 +431,17 @@ int InputBindingCapacityOverflowDoesNotMutate() {
         return Fail("binding overflow did not return capacity status");
     }
 
-    if (replay.Snapshot().binding_count != before_snapshot.binding_count) {
+    const auto after_snapshot = replay.Snapshot();
+    if (after_snapshot.binding_count != before_snapshot.binding_count) {
         return Fail("binding overflow mutated binding count");
+    }
+
+    if (after_snapshot.last_status != InputStatus::CapacityExceeded) {
+        return Fail("binding overflow did not record last status");
+    }
+
+    if (after_snapshot.last_apply_status != before_snapshot.last_apply_status) {
+        return Fail("binding overflow changed apply status");
     }
 
     return 0;
@@ -428,8 +453,23 @@ int InputReplayFrameAppliesButtonPressAndRelease() {
         return Fail("binding failed");
     }
 
-    replay.RecordReplayEvent(0U, ButtonPress(DEVICE_A, CONTROL_A));
-    replay.RecordReplayEvent(1U, ButtonRelease(DEVICE_A, CONTROL_A));
+    if (replay.RecordReplayEvent(0U, ButtonPress(DEVICE_A, CONTROL_A)) != InputStatus::Success) {
+        return Fail("button press event record failed");
+    }
+
+    const auto event_snapshot = replay.Snapshot();
+    if (event_snapshot.last_status != InputStatus::Success) {
+        return Fail("event record did not record success status");
+    }
+
+    if (event_snapshot.last_apply_status != InputStatus::Success) {
+        return Fail("event record changed apply status");
+    }
+
+    if (replay.RecordReplayEvent(1U, ButtonRelease(DEVICE_A, CONTROL_A)) != InputStatus::Success) {
+        return Fail("button release event record failed");
+    }
+
     replay.ApplyNextFrame();
     if (!replay.QueryAction(ACTION_A).state.is_pressed) {
         return Fail("button press did not set pressed state");
@@ -546,8 +586,17 @@ int InputInvalidAxisValueReturnsExplicitStatusWithoutMutation() {
         return Fail("invalid axis mutated replay frame");
     }
 
-    if (replay.Snapshot().accepted_event_count != before_snapshot.accepted_event_count) {
+    const auto after_snapshot = replay.Snapshot();
+    if (after_snapshot.accepted_event_count != before_snapshot.accepted_event_count) {
         return Fail("invalid axis mutated accepted event count");
+    }
+
+    if (after_snapshot.last_status != InputStatus::InvalidAxisValue) {
+        return Fail("invalid axis did not record last status");
+    }
+
+    if (after_snapshot.last_apply_status != before_snapshot.last_apply_status) {
+        return Fail("invalid axis changed apply status");
     }
 
     if (replay.QueryAction(ACTION_A).state.axis_value != 0) {
@@ -573,8 +622,17 @@ int InputInvalidEventDoesNotMutateReplayOrSnapshot() {
         return Fail("invalid event mutated replay storage");
     }
 
-    if (replay.Snapshot().accepted_event_count != before_snapshot.accepted_event_count) {
+    const auto after_snapshot = replay.Snapshot();
+    if (after_snapshot.accepted_event_count != before_snapshot.accepted_event_count) {
         return Fail("invalid event mutated accepted count");
+    }
+
+    if (after_snapshot.last_status != InputStatus::InvalidEvent) {
+        return Fail("invalid event did not record last status");
+    }
+
+    if (after_snapshot.last_apply_status != before_snapshot.last_apply_status) {
+        return Fail("invalid event changed apply status");
     }
 
     if (replay.QueryAction(ACTION_A).state.changed_this_frame) {
@@ -590,16 +648,43 @@ int InputUnknownDeviceControlOrActionReturnsExplicitStatus() {
         return Fail("unknown device did not return explicit status");
     }
 
+    const auto unknown_device_snapshot = replay.Snapshot();
+    if (unknown_device_snapshot.last_status != InputStatus::UnknownDeviceControl) {
+        return Fail("unknown device did not record last status");
+    }
+
+    if (unknown_device_snapshot.last_apply_status != InputStatus::Success) {
+        return Fail("unknown device changed apply status");
+    }
+
     if (!RegisterPrimaryBinding(replay)) {
         return Fail("binding failed");
+    }
+
+    const auto binding_snapshot = replay.Snapshot();
+    if (binding_snapshot.last_status != InputStatus::Success) {
+        return Fail("binding did not restore success status");
     }
 
     if (replay.RecordReplayEvent(0U, ButtonPress(DEVICE_A, UNKNOWN_CONTROL)) != InputStatus::UnknownDeviceControl) {
         return Fail("unknown control did not return explicit status");
     }
 
+    const auto unknown_control_snapshot = replay.Snapshot();
+    if (unknown_control_snapshot.last_status != InputStatus::UnknownDeviceControl) {
+        return Fail("unknown control did not record last status");
+    }
+
+    if (unknown_control_snapshot.last_apply_status != binding_snapshot.last_apply_status) {
+        return Fail("unknown control changed apply status");
+    }
+
     if (replay.QueryAction(UNKNOWN_ACTION).status != InputStatus::UnknownAction) {
         return Fail("unknown action did not return explicit status");
+    }
+
+    if (replay.Snapshot().last_status != unknown_control_snapshot.last_status) {
+        return Fail("action query changed replay last status");
     }
 
     return 0;
@@ -626,8 +711,17 @@ int InputEventCapacityOverflowDoesNotMutateReplay() {
         return Fail("event overflow mutated frame event count");
     }
 
-    if (replay.Snapshot().accepted_event_count != before_snapshot.accepted_event_count) {
+    const auto after_snapshot = replay.Snapshot();
+    if (after_snapshot.accepted_event_count != before_snapshot.accepted_event_count) {
         return Fail("event overflow mutated accepted event count");
+    }
+
+    if (after_snapshot.last_status != InputStatus::CapacityExceeded) {
+        return Fail("event overflow did not record last status");
+    }
+
+    if (after_snapshot.last_apply_status != before_snapshot.last_apply_status) {
+        return Fail("event overflow changed apply status");
     }
 
     return 0;
@@ -676,7 +770,10 @@ int InputResetClearsChangedStateWithoutClearingPressedState() {
         return Fail("apply did not set changed state");
     }
 
-    replay.ResetFrameState();
+    if (replay.ResetFrameState() != InputStatus::Success) {
+        return Fail("reset did not return success");
+    }
+
     const auto state = replay.QueryAction(ACTION_A).state;
     if (!state.is_pressed) {
         return Fail("reset cleared pressed state");
@@ -684,6 +781,15 @@ int InputResetClearsChangedStateWithoutClearingPressedState() {
 
     if (state.changed_this_frame) {
         return Fail("reset did not clear changed state");
+    }
+
+    const auto reset_snapshot = replay.Snapshot();
+    if (reset_snapshot.last_status != InputStatus::Success) {
+        return Fail("reset did not record success status");
+    }
+
+    if (reset_snapshot.last_apply_status != InputStatus::Success) {
+        return Fail("reset changed apply status");
     }
 
     return 0;

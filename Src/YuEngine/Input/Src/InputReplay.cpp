@@ -48,6 +48,7 @@ InputBindingResult InputReplay::RegisterActionBinding(InputDeviceId device, Inpu
         ++snapshot_.action_count;
     }
 
+    snapshot_.last_status = InputStatus::Success;
     return InputBindingResult{InputStatus::Success, action};
 }
 
@@ -84,13 +85,15 @@ InputStatus InputReplay::RecordReplayEvent(std::size_t frame_index, InputEvent e
         recorded_frame_count_ = recorded_frame_count;
     }
 
+    snapshot_.last_status = InputStatus::Success;
     return InputStatus::Success;
 }
 
 InputApplyResult InputReplay::ApplyNextFrame() {
     if (next_frame_index_ >= recorded_frame_count_) {
-        snapshot_.last_apply_status = InputStatus::EndOfReplay;
-        return InputApplyResult{RecordFailure(InputStatus::EndOfReplay), next_frame_index_};
+        const InputStatus status = RecordFailure(InputStatus::EndOfReplay);
+        snapshot_.last_apply_status = status;
+        return InputApplyResult{status, next_frame_index_};
     }
 
     ResetFrameState();
@@ -137,6 +140,7 @@ InputApplyResult InputReplay::ApplyNextFrame() {
 
     const std::size_t applied_frame_index = next_frame_index_;
     ++next_frame_index_;
+    snapshot_.last_status = frame_status;
     return InputApplyResult{frame_status, applied_frame_index};
 }
 
@@ -147,6 +151,7 @@ InputStatus InputReplay::ResetFrameState() {
 
     snapshot_.changed_action_count = 0U;
     ++snapshot_.reset_count;
+    snapshot_.last_status = InputStatus::Success;
     return InputStatus::Success;
 }
 
@@ -176,6 +181,7 @@ std::size_t InputReplay::EventCountForFrame(std::size_t frame_index) const {
 
 InputStatus InputReplay::RecordFailure(InputStatus status) {
     ++snapshot_.failed_operation_count;
+    snapshot_.last_status = status;
     return status;
 }
 

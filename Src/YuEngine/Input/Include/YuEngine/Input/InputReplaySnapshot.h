@@ -26,6 +26,7 @@ struct InputReplaySnapshot final {
     std::uint64_t apply_count = 0U;
     std::uint64_t reset_count = 0U;
     std::uint64_t failed_operation_count = 0U;
+    InputStatus last_status = InputStatus::Success;
     InputStatus last_apply_status = InputStatus::Success;
     InputAccountingStatus allocation_accounting_status = InputAccountingStatus::DeferredUntilYuMemoryIntegration;
 };
