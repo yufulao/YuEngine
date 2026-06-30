@@ -141,6 +141,7 @@ MaterialBindingFixtureResult MaterialBindingFixture::Bind(
         return result;
     }
 
+    result.required_binding_record_count = snapshot_.binding_record_count + 1U;
     if (!HasRecordCapacity()) {
         result.status = MaterialBindingFixtureStatus::BindingCapacityExceeded;
         RecordRejectedBinding(result);
@@ -189,6 +190,7 @@ void MaterialBindingFixture::Reset() {
     records_ = {};
     snapshot_ = {};
     snapshot_.binding_record_capacity = desc_.binding_record_capacity;
+    snapshot_.required_binding_record_count = 1U;
 }
 
 MaterialBindingFixtureStatus MaterialBindingFixture::ValidateRequest(
@@ -295,6 +297,7 @@ void MaterialBindingFixture::RecordAcceptedBinding(
 
     ++snapshot_.binding_record_count;
     ++snapshot_.accepted_binding_count;
+    snapshot_.required_binding_record_count = result->required_binding_record_count;
     snapshot_.last_material_id = request.material_id;
     snapshot_.last_pass_id = request.pass_id;
     snapshot_.last_constant_byte_count = request.constant_bytes.size();
@@ -308,6 +311,9 @@ void MaterialBindingFixture::RecordAcceptedBinding(
 void MaterialBindingFixture::RecordRejectedBinding(const MaterialBindingFixtureResult &result) {
     snapshot_.last_material_id = result.material_id;
     snapshot_.last_pass_id = result.pass_id;
+    if (result.required_binding_record_count > 0U) {
+        snapshot_.required_binding_record_count = result.required_binding_record_count;
+    }
     snapshot_.last_constant_byte_count = result.constant_byte_count;
     snapshot_.last_status = result.status;
     snapshot_.last_pass_status = result.pass_status;

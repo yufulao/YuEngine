@@ -17,6 +17,7 @@ namespace yuengine::rendercore {
 struct MaterialBindingFixtureSnapshot final {
     std::size_t binding_record_capacity = 0U;
     std::size_t binding_record_count = 0U;
+    std::size_t required_binding_record_count = 0U;
     std::uint64_t accepted_binding_count = 0U;
     std::uint64_t failed_validation_count = 0U;
     std::uint64_t duplicate_material_id_count = 0U;

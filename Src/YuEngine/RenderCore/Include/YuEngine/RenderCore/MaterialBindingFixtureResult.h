@@ -20,6 +20,7 @@ struct MaterialBindingFixtureResult final {
     yuengine::rhi::RhiStatus rhi_status = yuengine::rhi::RhiStatus::InvalidLifecycle;
     std::uint32_t material_id = 0U;
     std::uint32_t pass_id = 0U;
+    std::size_t required_binding_record_count = 0U;
     std::size_t constant_byte_count = 0U;
 };
 }

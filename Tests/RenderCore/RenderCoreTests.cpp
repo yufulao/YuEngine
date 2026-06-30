@@ -1331,12 +1331,18 @@ int MaterialBindingFixtureRejectsCapacityOverflowWithoutMutation() {
         return Fail("material binding fixture accepted capacity overflow");
     }
 
+    const auto snapshot = fixture.Snapshot();
+    if (result.required_binding_record_count != 2U ||
+        snapshot.required_binding_record_count != 2U ||
+        snapshot.binding_capacity_rejected_count != 1U) {
+        return Fail("capacity overflow did not expose required binding count");
+    }
+
     if (!MaterialPassFieldsMatch(before, second_pass_request)) {
         return Fail("capacity overflow mutated pass request");
     }
 
-    const auto snapshot = fixture.Snapshot();
-    if (snapshot.binding_record_count != 1U || snapshot.binding_capacity_rejected_count != 1U) {
+    if (snapshot.binding_record_count != 1U) {
         return Fail("capacity overflow counters were not updated");
     }
 
