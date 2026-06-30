@@ -40,6 +40,7 @@ constexpr const char* TEST_EMPTY_ABSOLUTE = "File_PathNormalize_RejectsEmptyAndA
 constexpr const char* TEST_DUPLICATE_MOUNT = "File_MountTable_RejectsDuplicateMount";
 constexpr const char* TEST_PRIORITY_ORDER = "File_MountTable_UsesDeterministicPriorityOrder";
 constexpr const char* TEST_MISSING = "File_MountTable_ReportsMissingMountOrFile";
+constexpr const char* TEST_MOUNT_LAST_STATUS = "File_MountTable_RecordsAggregateLastStatus";
 constexpr const char* TEST_READ = "File_LooseFixtureRead_ReturnsExactBytes";
 constexpr const char* TEST_RANGE_READ = "File_RangedRead_ReturnsExactWindowAndSnapshotBytes";
 constexpr const char* TEST_RANGE_INVALID = "File_RangedRead_RejectsInvalidRangeWithoutSnapshotMutation";
@@ -280,6 +281,160 @@ int FileMountTableReportsMissingMountOrFile() {
         return Fail("missing file did not return explicit status");
     }
 
+    return 0;
+}
+
+int FileMountTableRecordsAggregateLastStatus() {
+    const std::filesystem::path write_root = WritableFixtureRoot() / "MountLastStatus";
+    std::filesystem::remove_all(write_root);
+
+    MountTable table;
+    const auto initial_snapshot = table.Snapshot();
+    if (initial_snapshot.last_status != FileStatus::Success) {
+        return Fail("mount table initial aggregate status changed");
+    }
+
+    const auto invalid_path_result = table.Normalize(VirtualPath("../FixtureFile.txt"));
+    if (invalid_path_result.status != FileStatus::PathEscape) {
+        return Fail("mount table invalid path status changed");
+    }
+
+    const auto invalid_path_snapshot = table.Snapshot();
+    if (invalid_path_snapshot.last_status != FileStatus::PathEscape) {
+        return Fail("mount table invalid path did not update aggregate status");
+    }
+
+    const auto valid_path_result = table.Normalize(VirtualPath("Nested//./FixtureFile.txt"));
+    if (!valid_path_result.Succeeded()) {
+        return Fail("mount table valid path did not recover from invalid status");
+    }
+
+    const auto valid_path_snapshot = table.Snapshot();
+    if (valid_path_snapshot.last_status != FileStatus::Success) {
+        return Fail("mount table valid path did not clear aggregate status");
+    }
+
+    const FileStatus invalid_mount_status = table.RegisterLooseMount(MountId(), write_root / "Invalid");
+    if (invalid_mount_status != FileStatus::InvalidMount) {
+        return Fail("mount table invalid mount status changed");
+    }
+
+    const auto invalid_mount_snapshot = table.Snapshot();
+    if (invalid_mount_snapshot.last_status != FileStatus::InvalidMount) {
+        return Fail("mount table invalid mount did not update aggregate status");
+    }
+
+    const FileStatus primary_status = table.RegisterLooseMount(MountId(PRIMARY_MOUNT), write_root / "Primary");
+    if (primary_status != FileStatus::Success) {
+        return Fail("mount table primary mount setup failed");
+    }
+
+    const auto primary_snapshot = table.Snapshot();
+    if (primary_snapshot.last_status != FileStatus::Success) {
+        return Fail("mount table valid mount did not clear aggregate status");
+    }
+
+    const FileStatus duplicate_status = table.RegisterLooseMount(MountId(PRIMARY_MOUNT), write_root / "Duplicate");
+    if (duplicate_status != FileStatus::DuplicateMount) {
+        return Fail("mount table duplicate mount status changed");
+    }
+
+    const auto duplicate_snapshot = table.Snapshot();
+    if (duplicate_snapshot.last_status != FileStatus::DuplicateMount) {
+        return Fail("mount table duplicate mount did not update aggregate status");
+    }
+
+    const FileStatus secondary_status = table.RegisterLooseMount(MountId(SECONDARY_MOUNT), write_root / "Secondary");
+    const FileStatus third_status = table.RegisterLooseMount(MountId(THIRD_MOUNT), write_root / "Third");
+    const FileStatus fourth_status = table.RegisterLooseMount(MountId(FOURTH_MOUNT), write_root / "Fourth");
+    const bool capacity_setup_succeeded =
+        secondary_status == FileStatus::Success &&
+        third_status == FileStatus::Success &&
+        fourth_status == FileStatus::Success;
+    if (!capacity_setup_succeeded) {
+        return Fail("mount table capacity setup failed");
+    }
+
+    const FileStatus overflow_status = table.RegisterLooseMount(MountId(OVERFLOW_MOUNT), write_root / "Overflow");
+    if (overflow_status != FileStatus::MountTableFull) {
+        return Fail("mount table overflow status changed");
+    }
+
+    const auto overflow_snapshot = table.Snapshot();
+    if (overflow_snapshot.last_status != FileStatus::MountTableFull) {
+        return Fail("mount table overflow did not update aggregate status");
+    }
+
+    MountTable io_table;
+    const FileStatus io_mount_status = io_table.RegisterLooseMount(MountId(PRIMARY_MOUNT), write_root / "IoMount");
+    if (io_mount_status != FileStatus::Success) {
+        return Fail("mount table io mount setup failed");
+    }
+
+    const auto missing_read_result = io_table.Read({MountId(MISSING_MOUNT), VirtualPath(SOURCE_FIXTURE_PATH)});
+    if (missing_read_result.status != FileStatus::MountNotFound) {
+        return Fail("mount table missing read status changed");
+    }
+
+    const auto missing_read_snapshot = io_table.Snapshot();
+    if (missing_read_snapshot.last_status != FileStatus::MountNotFound) {
+        return Fail("mount table missing read did not update aggregate status");
+    }
+
+    if (missing_read_snapshot.last_read_status != FileStatus::MountNotFound) {
+        return Fail("mount table missing read did not preserve read status");
+    }
+
+    const std::array<std::uint8_t, 3U> bytes{3U, 4U, 5U};
+    const auto write_result = io_table.Write(
+        {MountId(PRIMARY_MOUNT), VirtualPath(SOURCE_FIXTURE_PATH), bytes.data(), bytes.size()});
+    if (!write_result.Succeeded()) {
+        return Fail("mount table aggregate write setup failed");
+    }
+
+    const auto write_snapshot = io_table.Snapshot();
+    if (write_snapshot.last_status != FileStatus::Success) {
+        return Fail("mount table write success did not clear aggregate status");
+    }
+
+    if (write_snapshot.last_read_status != FileStatus::MountNotFound) {
+        return Fail("mount table write success changed read status");
+    }
+
+    const auto read_result = io_table.Read({MountId(PRIMARY_MOUNT), VirtualPath(SOURCE_FIXTURE_PATH)});
+    if (!read_result.Succeeded()) {
+        return Fail("mount table aggregate read setup failed");
+    }
+
+    const auto read_snapshot = io_table.Snapshot();
+    if (read_snapshot.last_status != FileStatus::Success) {
+        return Fail("mount table read success did not update aggregate status");
+    }
+
+    if (read_snapshot.last_write_status != FileStatus::Success) {
+        return Fail("mount table read success changed write status");
+    }
+
+    const auto missing_write_result = io_table.Write(
+        {MountId(MISSING_MOUNT), VirtualPath(COOKED_FIXTURE_PATH), bytes.data(), bytes.size()});
+    if (missing_write_result.status != FileStatus::MountNotFound) {
+        return Fail("mount table missing write status changed");
+    }
+
+    const auto missing_write_snapshot = io_table.Snapshot();
+    if (missing_write_snapshot.last_status != FileStatus::MountNotFound) {
+        return Fail("mount table missing write did not update aggregate status");
+    }
+
+    if (missing_write_snapshot.last_write_status != FileStatus::MountNotFound) {
+        return Fail("mount table missing write did not preserve write status");
+    }
+
+    if (missing_write_snapshot.last_read_status != FileStatus::Success) {
+        return Fail("mount table missing write changed read status");
+    }
+
+    std::filesystem::remove_all(write_root);
     return 0;
 }
 
@@ -1099,6 +1254,7 @@ int main(int argc, char** argv) {
         {TEST_DUPLICATE_MOUNT, FileMountTableRejectsDuplicateMount},
         {TEST_PRIORITY_ORDER, FileMountTableUsesDeterministicPriorityOrder},
         {TEST_MISSING, FileMountTableReportsMissingMountOrFile},
+        {TEST_MOUNT_LAST_STATUS, FileMountTableRecordsAggregateLastStatus},
         {TEST_READ, FileLooseFixtureReadReturnsExactBytes},
         {TEST_RANGE_READ, FileRangedReadReturnsExactWindowAndSnapshotBytes},
         {TEST_RANGE_INVALID, FileRangedReadRejectsInvalidRangeWithoutSnapshotMutation},

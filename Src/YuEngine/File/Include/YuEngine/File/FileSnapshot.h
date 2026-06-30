@@ -19,6 +19,7 @@ struct FileSnapshot {
     std::uint64_t write_byte_count;
     std::size_t max_fixture_path_length;
     yuengine::memory::MemoryAccountingStatus allocation_accounting_status;
+    FileStatus last_status;
     FileStatus last_read_status;
     FileStatus last_write_status;
 };

@@ -150,25 +150,30 @@ MountTable::MountTable()
           0U,
           yuengine::memory::MemoryAccountingStatus::ExplicitlyTrackedOnly,
           FileStatus::Success,
+          FileStatus::Success,
           FileStatus::Success} {
 }
 
 FileStatus MountTable::RegisterLooseMount(MountId mount_id, std::filesystem::path root_path) {
     if (!mount_id.IsValid()) {
+        RecordLastStatus(FileStatus::InvalidMount);
         return FileStatus::InvalidMount;
     }
 
     if (FindMountIndex(mount_id).has_value()) {
+        RecordLastStatus(FileStatus::DuplicateMount);
         return FileStatus::DuplicateMount;
     }
 
     if (mount_count_ >= MAX_MOUNT_COUNT) {
+        RecordLastStatus(FileStatus::MountTableFull);
         return FileStatus::MountTableFull;
     }
 
     mounts_[mount_count_] = MountPoint(std::move(mount_id), LooseFileSource(std::move(root_path)));
     ++mount_count_;
     snapshot_.mount_count = mount_count_;
+    RecordLastStatus(FileStatus::Success);
     return FileStatus::Success;
 }
 
@@ -179,6 +184,7 @@ PathNormalizationResult MountTable::Normalize(VirtualPath path) {
         RecordRejectedPath();
     }
 
+    RecordLastStatus(result.status);
     return result;
 }
 
@@ -297,11 +303,17 @@ void MountTable::RecordRejectedPath() {
     ++snapshot_.rejected_path_count;
 }
 
+void MountTable::RecordLastStatus(FileStatus status) {
+    snapshot_.last_status = status;
+}
+
 void MountTable::RecordLastReadStatus(FileStatus status) {
+    RecordLastStatus(status);
     snapshot_.last_read_status = status;
 }
 
 void MountTable::RecordLastWriteStatus(FileStatus status) {
+    RecordLastStatus(status);
     snapshot_.last_write_status = status;
 }
 }

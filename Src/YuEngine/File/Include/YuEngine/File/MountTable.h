@@ -64,6 +64,7 @@ public:
 private:
     std::optional<std::size_t> FindMountIndex(MountId mount_id) const;
     void RecordRejectedPath();
+    void RecordLastStatus(FileStatus status);
     void RecordLastReadStatus(FileStatus status);
     void RecordLastWriteStatus(FileStatus status);
 
