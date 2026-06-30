@@ -1115,7 +1115,10 @@ constexpr const char *TEST_QUERY_NULL_SOURCE = "WorldComponentQueryBridge_QueryR
 constexpr const char *TEST_QUERY_INVALID_TYPE = "WorldComponentQueryBridge_QueryRejectsInvalidComponentTypeWithoutMutation";
 constexpr const char *TEST_QUERY_INVALID_WORLD = "WorldComponentQueryBridge_QueryRejectsInvalidWorldIdWithoutMutation";
 constexpr const char *TEST_QUERY_NULL_OUTPUT = "WorldComponentQueryBridge_QueryRejectsNullOutputWhenCapacityNonZero";
-constexpr const char *TEST_QUERY_OUTPUT_OVERFLOW = "WorldComponentQueryBridge_QueryRejectsOutputOverflowWithoutOverrun";
+constexpr const char *TEST_QUERY_TYPE_OUTPUT_OVERFLOW =
+    "WorldComponentQueryBridge_QueryTypeRejectsOutputOverflowWithoutMutation";
+constexpr const char *TEST_QUERY_OBJECT_OUTPUT_OVERFLOW =
+    "WorldComponentQueryBridge_QueryObjectRejectsOutputOverflowWithoutMutation";
 constexpr const char *TEST_QUERY_READ_ONLY = "WorldComponentQueryBridge_QueryIsReadOnlyForAttachmentStorage";
 constexpr const char *TEST_QUERY_UPDATE_PATH = "WorldComponentQueryBridge_QueryPathDoesNotGrowStorage";
 constexpr const char *TEST_QUERY_SNAPSHOT = "WorldComponentQueryBridge_SnapshotReportsCountsAndLastStatus";
@@ -20404,18 +20407,18 @@ int WorldComponentQueryBridgeQueryRejectsNullOutputWhenCapacityNonZero() {
     return 0;
 }
 
-int WorldComponentQueryBridgeQueryRejectsOutputOverflowWithoutOverrun() {
+int WorldComponentQueryBridgeQueryTypeRejectsOutputOverflowWithoutMutation() {
     WorldComponentAttachmentBridge source_bridge;
     if (!source_bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
-        return Fail("component query overflow first add failed");
+        return Fail("component query type overflow first add failed");
     }
 
     if (!source_bridge.Add(OBJECT_EFFECT, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_SECONDARY).Succeeded()) {
-        return Fail("component query overflow second add failed");
+        return Fail("component query type overflow second add failed");
     }
 
     WorldComponentQueryBridge bridge;
-    std::array<WorldObjectId, 2U> output_world_object_ids{WorldObjectId{}, OBJECT_CAMERA};
+    std::array<WorldObjectId, 1U> output_world_object_ids{OBJECT_CAMERA};
     WorldComponentQueryTypeDesc desc{};
     desc.source_bridge = &source_bridge;
     desc.component_type_id = COMPONENT_TYPE_PRIMARY;
@@ -20424,23 +20427,75 @@ int WorldComponentQueryBridgeQueryRejectsOutputOverflowWithoutOverrun() {
 
     const WorldComponentQueryResult result = bridge.QueryType(desc);
     if (result.status != WorldComponentQueryStatus::OutputCapacityExceeded) {
-        return Fail("component query overflow status wrong");
+        return Fail("component query type overflow status wrong");
     }
 
     if (result.matched_record_count != 2U) {
-        return Fail("component query overflow matched count wrong");
+        return Fail("component query type overflow matched count wrong");
     }
 
-    if (result.written_record_count != 1U) {
-        return Fail("component query overflow written count wrong");
+    if (result.written_record_count != 0U) {
+        return Fail("component query type overflow written count wrong");
     }
 
-    if (output_world_object_ids[0].value != OBJECT_PLAYER.value) {
-        return Fail("component query overflow first output wrong");
+    if (output_world_object_ids[0].value != OBJECT_CAMERA.value) {
+        return Fail("component query type overflow mutated output");
     }
 
-    if (output_world_object_ids[1].value != OBJECT_CAMERA.value) {
-        return Fail("component query overflow overran output");
+    return 0;
+}
+
+int WorldComponentQueryBridgeQueryObjectRejectsOutputOverflowWithoutMutation() {
+    WorldComponentAttachmentBridge source_bridge;
+    if (!source_bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component query object overflow first add failed");
+    }
+
+    if (!source_bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_SECONDARY, COMPONENT_SLOT_SECONDARY).Succeeded()) {
+        return Fail("component query object overflow second add failed");
+    }
+
+    WorldComponentAttachment output_attachment{};
+    output_attachment.world_object_id = OBJECT_CAMERA;
+    output_attachment.component_type_id = COMPONENT_TYPE_TERTIARY;
+    output_attachment.component_slot_id = COMPONENT_SLOT_TERTIARY;
+    output_attachment.is_attached = true;
+
+    WorldComponentQueryBridge bridge;
+    std::array<WorldComponentAttachment, 1U> output_attachments{output_attachment};
+    WorldComponentQueryObjectDesc desc{};
+    desc.source_bridge = &source_bridge;
+    desc.world_object_id = OBJECT_PLAYER;
+    desc.output_attachments = output_attachments.data();
+    desc.output_capacity = static_cast<std::uint32_t>(output_attachments.size());
+
+    const WorldComponentQueryResult result = bridge.QueryObject(desc);
+    if (result.status != WorldComponentQueryStatus::OutputCapacityExceeded) {
+        return Fail("component query object overflow status wrong");
+    }
+
+    if (result.matched_record_count != 2U) {
+        return Fail("component query object overflow matched count wrong");
+    }
+
+    if (result.written_record_count != 0U) {
+        return Fail("component query object overflow written count wrong");
+    }
+
+    if (output_attachments[0].world_object_id.value != OBJECT_CAMERA.value) {
+        return Fail("component query object overflow mutated world id");
+    }
+
+    if (output_attachments[0].component_type_id.value != COMPONENT_TYPE_TERTIARY.value) {
+        return Fail("component query object overflow mutated component type");
+    }
+
+    if (output_attachments[0].component_slot_id.value != COMPONENT_SLOT_TERTIARY.value) {
+        return Fail("component query object overflow mutated component slot");
+    }
+
+    if (!output_attachments[0].is_attached) {
+        return Fail("component query object overflow mutated attachment flag");
     }
 
     return 0;
@@ -22364,7 +22419,8 @@ int main(int argc, char **argv) {
         {TEST_QUERY_INVALID_TYPE, WorldComponentQueryBridgeQueryRejectsInvalidComponentTypeWithoutMutation},
         {TEST_QUERY_INVALID_WORLD, WorldComponentQueryBridgeQueryRejectsInvalidWorldIdWithoutMutation},
         {TEST_QUERY_NULL_OUTPUT, WorldComponentQueryBridgeQueryRejectsNullOutputWhenCapacityNonZero},
-        {TEST_QUERY_OUTPUT_OVERFLOW, WorldComponentQueryBridgeQueryRejectsOutputOverflowWithoutOverrun},
+        {TEST_QUERY_TYPE_OUTPUT_OVERFLOW, WorldComponentQueryBridgeQueryTypeRejectsOutputOverflowWithoutMutation},
+        {TEST_QUERY_OBJECT_OUTPUT_OVERFLOW, WorldComponentQueryBridgeQueryObjectRejectsOutputOverflowWithoutMutation},
         {TEST_QUERY_READ_ONLY, WorldComponentQueryBridgeQueryIsReadOnlyForAttachmentStorage},
         {TEST_QUERY_UPDATE_PATH, WorldComponentQueryBridgeQueryPathDoesNotGrowStorage},
         {TEST_QUERY_SNAPSHOT, WorldComponentQueryBridgeSnapshotReportsCountsAndLastStatus},
