@@ -1556,7 +1556,7 @@ RhiStatus D3D11RhiDevice::DrainPrimitiveRetirements(
 
     out_result.pending_count = snapshot_.resources.primitive_retirement.pending_count;
     if (out_result.rejected_count > 0U && out_result.drained_count == 0U) {
-        out_result.status = RhiStatus::InvalidLifecycle;
+        out_result.status = RecordFailure(RhiStatus::InvalidLifecycle);
         return out_result.status;
     }
 

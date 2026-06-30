@@ -3111,13 +3111,24 @@ int RhiPrimitiveRetirementFenceNotReadyDrainKeepsPending() {
 
     RhiPrimitiveRetirementDrainRequest drain_request{};
     drain_request.max_retirements = 1U;
+    const RhiDeviceSnapshot before_fence_reject_snapshot = device.Snapshot();
     RhiPrimitiveRetirementDrainResult first_result{};
     if (device.DrainPrimitiveRetirements(drain_request, first_result) != RhiStatus::InvalidLifecycle) {
         return Fail("not-ready retirement drain was not rejected");
     }
 
+    if (first_result.status != RhiStatus::InvalidLifecycle) {
+        return Fail("not-ready retirement drain result status changed");
+    }
+
     if (first_result.pending_count != 1U) {
         return Fail("not-ready retirement did not stay pending");
+    }
+
+    const RhiDeviceSnapshot after_fence_reject_snapshot = device.Snapshot();
+    if (after_fence_reject_snapshot.failed_operation_count !=
+        before_fence_reject_snapshot.failed_operation_count + 1U) {
+        return Fail("not-ready retirement drain failure was not counted");
     }
 
     const std::array<std::uint8_t, 1U> update_bytes{1U};
@@ -3137,6 +3148,10 @@ int RhiPrimitiveRetirementFenceNotReadyDrainKeepsPending() {
     }
 
     const auto snapshot = device.Snapshot();
+    if (snapshot.failed_operation_count != after_fence_reject_snapshot.failed_operation_count) {
+        return Fail("ready retirement drain changed failure count");
+    }
+
     if (snapshot.resources.primitive_retirement.fence_not_ready_count != 1U) {
         return Fail("fence not ready count was not tracked");
     }
