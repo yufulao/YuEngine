@@ -2650,6 +2650,11 @@ int AudioCallbackDeviceControlledBackendCallbackErrorReportsFailure() {
         return FailAfterShutdown(device, "controlled callback error completion count changed");
     }
 
+    const AudioCallbackSnapshot drain_snapshot = device.Snapshot();
+    if (drain_snapshot.last_status != AudioStatus::CallbackFailed) {
+        return FailAfterShutdown(device, "controlled callback error drain last status changed");
+    }
+
     if (device.Shutdown() != AudioStatus::ShutdownComplete) {
         return Fail("controlled callback error shutdown failed");
     }

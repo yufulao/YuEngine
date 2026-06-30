@@ -615,6 +615,10 @@ AudioStatus AudioCallbackDevice::DrainCompletions(AudioCallbackCompletion *compl
 
     state_->completion_count = remaining_count;
     if (state_->completion_count == 0U) {
+        if (write_count == 0U) {
+            return AudioStatus::Success;
+        }
+
         return state_->SetLastStatus(AudioStatus::Success);
     }
 
