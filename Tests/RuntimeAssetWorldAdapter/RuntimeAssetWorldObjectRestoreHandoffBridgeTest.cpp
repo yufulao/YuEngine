@@ -95,6 +95,8 @@ constexpr std::uint32_t SCRATCH_RECORD_COUNT = 8U;
 constexpr std::uint32_t EMPTY_RECORD_COUNT = 1U;
 constexpr const char *TEST_APPLY_RESTORE =
     "RuntimeAssetWorldObjectRestoreHandoff_AppliesAdapterRecordsThroughWorldRestoreBridge";
+constexpr const char *TEST_APPLY_TARGET_FAMILY_ALIASES =
+    "RuntimeAssetWorldObjectRestoreHandoff_AppliesModelAndSkeletonTargetFamilyAliases";
 constexpr const char *TEST_REJECT_ADAPTER_PREFLIGHT =
     "RuntimeAssetWorldObjectRestoreHandoff_RejectsAdapterPreflightWithoutWorldMutation";
 constexpr const char *TEST_REJECT_WORLD_GATE =
@@ -465,6 +467,14 @@ bool TransformsMatch(WorldTransformState left, WorldTransformState right) {
     return left.scale_z == right.scale_z;
 }
 
+bool ObjectHandlesMatch(ObjectHandle left, ObjectHandle right) {
+    if (left.slot != right.slot) {
+        return false;
+    }
+
+    return left.generation == right.generation;
+}
+
 bool OutputRecordsHaveSentinelValues(const HandoffFixture &fixture) {
     std::uint32_t index = 0U;
     while (index < OUTPUT_RECORD_COUNT) {
@@ -562,9 +572,139 @@ int TestApplyRestore() {
     return 0;
 }
 
-int TestRejectAdapterPreflight() {
+int TestApplyTargetFamilyAliases() {
     HandoffFixture fixture = MakeFixture();
     fixture.mappings[0U].target_kind = RuntimeAssetTargetIdentityKind::ModelNode;
+    fixture.mappings[1U].target_kind = RuntimeAssetTargetIdentityKind::SkeletonJoint;
+
+    WorldInstance world = MakeWorld();
+    ObjectRegistry object_registry = MakeObjectRegistry();
+    if (PrepareWorldAndObjects(&world, &object_registry, &fixture, true) != 0) {
+        return 1;
+    }
+
+    ResourceRegistry resource_registry{};
+    WorldObjectIdentityBridge identity_destination(world, object_registry);
+    WorldTransformBridge transform_destination(world);
+    WorldComponentAttachmentBridge attachment_destination{};
+    WorldComponentResourceBindingBridge binding_destination{};
+    RuntimeAssetWorldObjectAdapterRequest adapter_request = MakeAdapterRequest(&fixture);
+    RuntimeAssetWorldObjectRestoreHandoffRequest handoff_request = MakeHandoffRequest(
+        &fixture,
+        &adapter_request,
+        &world,
+        &object_registry,
+        &resource_registry,
+        &identity_destination,
+        &transform_destination,
+        &attachment_destination,
+        &binding_destination);
+
+    RuntimeAssetWorldObjectRestoreHandoffBridge bridge{};
+    const RuntimeAssetWorldObjectRestoreHandoffResult result = bridge.ApplyRestore(handoff_request);
+    if (!result.Succeeded()) {
+        return Fail("target family handoff apply failed");
+    }
+
+    if (result.state.input_mapping_count != OUTPUT_RECORD_COUNT) {
+        return Fail("target family handoff input count mismatch");
+    }
+
+    if (result.state.output_identity_count != OUTPUT_RECORD_COUNT) {
+        return Fail("target family handoff identity count mismatch");
+    }
+
+    if (result.state.output_transform_count != OUTPUT_RECORD_COUNT) {
+        return Fail("target family handoff transform count mismatch");
+    }
+
+    if (result.state.gate_record_count != OUTPUT_RECORD_COUNT + OUTPUT_RECORD_COUNT) {
+        return Fail("target family handoff gate count mismatch");
+    }
+
+    if (result.state.restored_identity_count != OUTPUT_RECORD_COUNT) {
+        return Fail("target family handoff restored identity count mismatch");
+    }
+
+    if (result.state.restored_transform_count != OUTPUT_RECORD_COUNT) {
+        return Fail("target family handoff restored transform count mismatch");
+    }
+
+    if (fixture.output_identities[0U].world_object_id.value != WORLD_OBJECT_A.value) {
+        return Fail("model node handoff identity world object mismatch");
+    }
+
+    if (fixture.output_identities[1U].world_object_id.value != WORLD_OBJECT_B.value) {
+        return Fail("skeleton joint handoff identity world object mismatch");
+    }
+
+    if (!ObjectHandlesMatch(fixture.output_identities[0U].object_handle, fixture.identity_records[0U].object_handle)) {
+        return Fail("model node handoff object handle mismatch");
+    }
+
+    if (!ObjectHandlesMatch(fixture.output_identities[1U].object_handle, fixture.identity_records[1U].object_handle)) {
+        return Fail("skeleton joint handoff object handle mismatch");
+    }
+
+    if (fixture.output_transforms[0U].world_object_id.value != WORLD_OBJECT_A.value) {
+        return Fail("model node handoff transform world object mismatch");
+    }
+
+    if (fixture.output_transforms[1U].world_object_id.value != WORLD_OBJECT_B.value) {
+        return Fail("skeleton joint handoff transform world object mismatch");
+    }
+
+    if (!TransformsMatch(fixture.output_transforms[0U].transform_state, fixture.scene_transforms[0U].transform)) {
+        return Fail("model node handoff transform state mismatch");
+    }
+
+    if (!TransformsMatch(fixture.output_transforms[1U].transform_state, fixture.scene_transforms[1U].transform)) {
+        return Fail("skeleton joint handoff transform state mismatch");
+    }
+
+    const WorldObjectIdentitySnapshot identity_snapshot = identity_destination.Snapshot();
+    if (identity_snapshot.binding_count != OUTPUT_RECORD_COUNT) {
+        return Fail("target family handoff identity destination count mismatch");
+    }
+
+    const WorldTransformSnapshot transform_snapshot = transform_destination.Snapshot();
+    if (transform_snapshot.record_count != OUTPUT_RECORD_COUNT) {
+        return Fail("target family handoff transform destination count mismatch");
+    }
+
+    const WorldTransformResult model_transform_result = transform_destination.Query(WORLD_OBJECT_A);
+    if (!model_transform_result.Succeeded()) {
+        return Fail("model node handoff transform query failed");
+    }
+
+    if (!TransformsMatch(model_transform_result.transform_state, fixture.scene_transforms[0U].transform)) {
+        return Fail("model node handoff restored transform mismatch");
+    }
+
+    const WorldTransformResult skeleton_transform_result = transform_destination.Query(WORLD_OBJECT_B);
+    if (!skeleton_transform_result.Succeeded()) {
+        return Fail("skeleton joint handoff transform query failed");
+    }
+
+    if (!TransformsMatch(skeleton_transform_result.transform_state, fixture.scene_transforms[1U].transform)) {
+        return Fail("skeleton joint handoff restored transform mismatch");
+    }
+
+    const RuntimeAssetWorldObjectRestoreHandoffSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.accepted_handoff_count != 1U) {
+        return Fail("target family handoff snapshot accepted count mismatch");
+    }
+
+    if (snapshot.restored_identity_count != OUTPUT_RECORD_COUNT) {
+        return Fail("target family handoff snapshot restored identity count mismatch");
+    }
+
+    return 0;
+}
+
+int TestRejectAdapterPreflight() {
+    HandoffFixture fixture = MakeFixture();
+    fixture.mappings[0U].target_kind = RuntimeAssetTargetIdentityKind::Unknown;
     WorldInstance world = MakeWorld();
     ObjectRegistry object_registry = MakeObjectRegistry();
     if (PrepareWorldAndObjects(&world, &object_registry, &fixture, true) != 0) {
@@ -715,8 +855,9 @@ int TestRejectNullAdapterRequest() {
 }
 
 int RunTest(std::string_view test_name) {
-    constexpr std::array<TestCase, 4U> TESTS{{
+    constexpr std::array<TestCase, 5U> TESTS{{
         {TEST_APPLY_RESTORE, TestApplyRestore},
+        {TEST_APPLY_TARGET_FAMILY_ALIASES, TestApplyTargetFamilyAliases},
         {TEST_REJECT_ADAPTER_PREFLIGHT, TestRejectAdapterPreflight},
         {TEST_REJECT_WORLD_GATE, TestRejectWorldGate},
         {TEST_REJECT_NULL_ADAPTER, TestRejectNullAdapterRequest},
