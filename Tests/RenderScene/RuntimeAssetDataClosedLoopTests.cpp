@@ -520,6 +520,8 @@ constexpr const char *TEST_RUNTIME_INSTANCE_MAPPING =
     "RuntimeAssetData_RuntimeInstanceMappingBuildsTargetFamilyRows";
 constexpr const char *TEST_RUNTIME_INSTANCE_MAPPING_FEEDS_TARGET_BINDING =
     "RuntimeAssetData_RuntimeInstanceMappingFeedsAnimationTargetBinding";
+constexpr const char *TEST_RUNTIME_INSTANCE_MAPPING_APPLIES_WORLD_TRANSFORM =
+    "RuntimeAssetData_RuntimeInstanceMappingAppliesSampledTransformToWorldObject";
 constexpr const char *TEST_RUNTIME_INSTANCE_MAPPING_MISSING_ENTITY =
     "RuntimeAssetData_RuntimeInstanceMappingRejectsMissingSceneEntityWithoutMutation";
 constexpr const char *TEST_RUNTIME_INSTANCE_MAPPING_CAPACITY =
@@ -11524,6 +11526,153 @@ int RuntimeAssetDataRuntimeInstanceMappingFeedsAnimationTargetBinding() {
     return 0;
 }
 
+int RuntimeAssetDataRuntimeInstanceMappingAppliesSampledTransformToWorldObject() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("BoundedRuntimeInstanceMappingWorldApply"), &table)) {
+        return Fail("mount setup failed");
+    }
+
+    if (!WriteBoundedFixture(table)) {
+        return Fail("bounded fixture write failed");
+    }
+
+    if (!WriteBytes(table, "Animation/Spin.yuanim", BytesFromString(BoundedTargetBindingAnimationBytes()))) {
+        return Fail("bounded target binding animation write failed");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    BoundedLoadedGraph graph{};
+    if (!LoadBoundedRuntimeAssetRecords(table, registry, manager, &graph)) {
+        return Fail("bounded world apply runtime asset records failed");
+    }
+
+    if (!BoundedRuntimeInstanceMappingOutputTableMatches(graph)) {
+        return Fail("bounded world apply runtime instance mapping changed");
+    }
+
+    if (!BoundedAnimationTargetBindingOutputTableMatches(graph)) {
+        return Fail("bounded world apply target binding changed");
+    }
+
+    const RuntimeAssetRuntimeInstanceMappingRecord &mapping = graph.runtime_instance_mappings[0U];
+    const RuntimeAssetSceneEntityRecord &target_entity = graph.scene_entities[mapping.scene_entity_index];
+    if (target_entity.world_object_id.value != 101U) {
+        return Fail("bounded world apply target entity changed");
+    }
+
+    WorldInstance world;
+    WorldTransformBridge bridge(world, WorldTransformBridgeDesc{graph.scene_output.entity_count});
+    for (std::uint32_t index = 0U; index < graph.scene_output.entity_count; ++index) {
+        const RuntimeAssetSceneEntityRecord &entity = graph.scene_entities[index];
+        const WorldRegistrationResult registration =
+            world.RegisterObject(WorldObjectDesc{entity.world_object_id, entity.is_active});
+        if (!registration.Succeeded()) {
+            return Fail("bounded world apply registration failed");
+        }
+
+        WorldTransformState initial_transform = entity.transform;
+        if (entity.world_object_id.value == target_entity.world_object_id.value) {
+            initial_transform = Transform(-9.0F, -8.0F, -7.0F);
+            initial_transform.rotation_y = -6.0F;
+        }
+
+        const WorldTransformResult register_result =
+            bridge.Register(entity.world_object_id, initial_transform);
+        if (register_result.status != WorldTransformStatus::Success) {
+            return Fail("bounded world apply transform register failed");
+        }
+    }
+
+    RuntimeFrameContext frame_context{};
+    frame_context.frame_index = 2U;
+    frame_context.delta_time_nanoseconds = HALF_SECOND_NANOSECONDS;
+    frame_context.fixed_time_nanoseconds = HALF_SECOND_NANOSECONDS;
+    frame_context.phase = RuntimeFramePhase::UpdateWorld;
+
+    AnimationRuntimeSampleRequest sample_request{};
+    sample_request.clip_id = graph.animation_clips[0U].clip_id;
+    sample_request.clips = std::span<const AnimationRuntimeClipRecord>(
+        graph.animation_clips.data(),
+        graph.scene_output.animation_clip_count);
+    sample_request.tracks = std::span<const AnimationRuntimeTrackRecord>(
+        graph.animation_tracks.data(),
+        graph.scene_output.animation_track_count);
+    sample_request.keyframes = std::span<const AnimationRuntimeKeyframeRecord>(
+        graph.animation_keyframes.data(),
+        graph.scene_output.animation_keyframe_count);
+    sample_request.frame_context = frame_context;
+
+    std::array<AnimationRuntimeSampledValue, 2U> sampled_values{};
+    AnimationRuntimeSampleResult sample_result{};
+    AnimationRuntimeSampler sampler;
+    const AnimationRuntimeStatus sample_status =
+        sampler.Sample(
+            sample_request,
+            std::span<AnimationRuntimeSampledValue>(sampled_values.data(), sampled_values.size()),
+            &sample_result);
+    if (sample_status != AnimationRuntimeStatus::Success ||
+        sample_result.status != AnimationRuntimeStatus::Success ||
+        sample_result.sampled_value_count != 2U) {
+        return Fail("bounded world apply sample failed");
+    }
+
+    if (sampled_values[0U].target.value != target_entity.world_object_id.value ||
+        sampled_values[1U].target.value != target_entity.world_object_id.value ||
+        sampled_values[0U].channel != AnimationRuntimeChannel::RotationY ||
+        sampled_values[1U].channel != AnimationRuntimeChannel::TranslationY) {
+        return Fail("bounded world apply target binding did not feed sampled values");
+    }
+
+    AnimationRuntimeTransformApplyRequest apply_request{};
+    apply_request.transform_bridge = &bridge;
+    apply_request.sampled_values = std::span<const AnimationRuntimeSampledValue>(
+        sampled_values.data(),
+        sample_result.sampled_value_count);
+    AnimationRuntimeTransformApplyResult apply_result{};
+    const AnimationRuntimeStatus apply_status =
+        sampler.ApplySampledTransform(apply_request, &apply_result);
+    if (apply_status != AnimationRuntimeStatus::Success ||
+        apply_result.status != AnimationRuntimeStatus::Success ||
+        apply_result.applied_value_count != 2U ||
+        apply_result.updated_object_count != 1U) {
+        return Fail("bounded world apply failed");
+    }
+
+    const WorldTransformResult target_result = bridge.Query(target_entity.world_object_id);
+    if (target_result.status != WorldTransformStatus::Success) {
+        return Fail("bounded world apply target query failed");
+    }
+
+    const WorldTransformState &target_transform = target_result.transform_state;
+    if (!Approx(target_transform.rotation_y, 0.5F) ||
+        !Approx(target_transform.translation_y, 2.0F) ||
+        !Approx(target_transform.translation_x, -9.0F) ||
+        !Approx(target_transform.translation_z, -7.0F)) {
+        return Fail("bounded world apply did not update caller owned transform");
+    }
+
+    const RuntimeAssetSceneEntityRecord &other_entity = graph.scene_entities[0U];
+    if (other_entity.world_object_id.value == target_entity.world_object_id.value) {
+        return Fail("bounded world apply non target fixture changed");
+    }
+
+    const WorldTransformResult other_result = bridge.Query(other_entity.world_object_id);
+    if (other_result.status != WorldTransformStatus::Success) {
+        return Fail("bounded world apply non target query failed");
+    }
+
+    const WorldTransformState &other_transform = other_result.transform_state;
+    if (!Approx(other_transform.translation_x, other_entity.transform.translation_x) ||
+        !Approx(other_transform.translation_y, other_entity.transform.translation_y) ||
+        !Approx(other_transform.translation_z, other_entity.transform.translation_z) ||
+        !Approx(other_transform.rotation_y, other_entity.transform.rotation_y)) {
+        return Fail("bounded world apply mutated non target transform");
+    }
+
+    return 0;
+}
+
 int RuntimeAssetDataRuntimeInstanceMappingRejectsMissingSceneEntityWithoutMutation() {
     const std::string scene =
         ReplaceFirst(BoundedSceneBytes(), "scene_entity=1", "scene_entity=99");
@@ -14955,6 +15104,8 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
      RuntimeAssetDataRuntimeInstanceMappingBuildsTargetFamilyRows},
     {TEST_RUNTIME_INSTANCE_MAPPING_FEEDS_TARGET_BINDING,
      RuntimeAssetDataRuntimeInstanceMappingFeedsAnimationTargetBinding},
+    {TEST_RUNTIME_INSTANCE_MAPPING_APPLIES_WORLD_TRANSFORM,
+     RuntimeAssetDataRuntimeInstanceMappingAppliesSampledTransformToWorldObject},
     {TEST_RUNTIME_INSTANCE_MAPPING_MISSING_ENTITY,
      RuntimeAssetDataRuntimeInstanceMappingRejectsMissingSceneEntityWithoutMutation},
     {TEST_RUNTIME_INSTANCE_MAPPING_CAPACITY,
