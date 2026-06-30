@@ -630,6 +630,8 @@ constexpr const char *TEST_PREVIEW_HOST_RESOURCE_BROWSER_DECISION =
     "PreviewHost_UsesResourceBrowserDiagnosticsForPreviewDecision";
 constexpr const char *TEST_PREVIEW_HOST_STALE_SESSION =
     "PreviewHost_RejectsStaleSessionWithoutMutation";
+constexpr const char *TEST_PREVIEW_HOST_INVALID_FRAME_ID =
+    "PreviewHost_RejectsInvalidFrameIdWithInvalidArgumentDiagnostic";
 constexpr const char *TEST_PREVIEW_HOST_NOT_COOKED =
     "PreviewHost_ReportsNotCookedRuntimeAssetRef";
 constexpr const char *TEST_PREVIEW_HOST_VIEWPORT_SURFACE =
@@ -14114,6 +14116,54 @@ int PreviewHostRejectsStaleSessionWithoutMutation() {
     return 0;
 }
 
+int PreviewHostRejectsInvalidFrameIdWithInvalidArgumentDiagnostic() {
+    PreviewHost host;
+    PreviewHostSessionResult start_result{};
+    if (host.StartSession(PreviewHostSessionDesc{PreviewHostDocumentKind::Scene}, &start_result) !=
+        PreviewHostStatus::Success) {
+        return Fail("preview invalid frame session start failed");
+    }
+
+    std::array<PreviewHostDiagnostic, 1U> diagnostics{};
+    std::array<PreviewHostHitRecord, 1U> hits{};
+    std::array<PreviewHostSelectionRecord, 1U> selections{};
+    std::array<PreviewHostTransformFeedback, 1U> transforms{};
+    hits[0U].entity_index = 77U;
+    selections[0U].entity_index = 88U;
+    transforms[0U].transform_available = true;
+
+    PreviewHostFrameRequest request{};
+    request.session = start_result.session;
+    request.document_kind = PreviewHostDocumentKind::Scene;
+    request.frame.frame_id = 0U;
+    request.diagnostics = std::span<PreviewHostDiagnostic>(diagnostics.data(), diagnostics.size());
+    request.hit_records = std::span<PreviewHostHitRecord>(hits.data(), hits.size());
+    request.selection_records = std::span<PreviewHostSelectionRecord>(selections.data(), selections.size());
+    request.transform_feedback = std::span<PreviewHostTransformFeedback>(transforms.data(), transforms.size());
+
+    PreviewHostFrameResult frame_result{};
+    if (host.BuildFrame(request, &frame_result) != PreviewHostStatus::InvalidArgument) {
+        return Fail("preview host did not reject invalid frame id");
+    }
+
+    if (frame_result.diagnostic_count != 1U ||
+        diagnostics[0U].code != PreviewHostDiagnosticCode::InvalidArgument ||
+        diagnostics[0U].status != PreviewHostStatus::InvalidArgument ||
+        diagnostics[0U].runtime_asset_status != RuntimeAssetDataStatus::InvalidArgument ||
+        diagnostics[0U].frame_status != RenderSceneRuntimeFrameStatus::InvalidFrameId ||
+        frame_result.render_frame.status != RenderSceneRuntimeFrameStatus::InvalidFrameId) {
+        return Fail("preview invalid frame diagnostic changed");
+    }
+
+    if (hits[0U].entity_index != 77U ||
+        selections[0U].entity_index != 88U ||
+        !transforms[0U].transform_available) {
+        return Fail("preview invalid frame mutated feedback output");
+    }
+
+    return 0;
+}
+
 int PreviewHostReportsNotCookedRuntimeAssetRef() {
     MountTable table;
     if (!CreateMountedTable(TestRoot("PreviewHostNotCooked"), &table)) {
@@ -15214,6 +15264,7 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_PREVIEW_HOST_DIAGNOSTICS, PreviewHostReportsBoundedResourceDiagnostics},
     {TEST_PREVIEW_HOST_RESOURCE_BROWSER_DECISION, PreviewHostUsesResourceBrowserDiagnosticsForPreviewDecision},
     {TEST_PREVIEW_HOST_STALE_SESSION, PreviewHostRejectsStaleSessionWithoutMutation},
+    {TEST_PREVIEW_HOST_INVALID_FRAME_ID, PreviewHostRejectsInvalidFrameIdWithInvalidArgumentDiagnostic},
     {TEST_PREVIEW_HOST_NOT_COOKED, PreviewHostReportsNotCookedRuntimeAssetRef},
     {TEST_PREVIEW_HOST_VIEWPORT_SURFACE, PreviewHostBuildsViewportSessionSurfaceFromResourceBrowserSelection},
     {TEST_PREVIEW_HOST_IMPORTER_COMMIT_VIEWPORT, PreviewHostConsumesResourceBrowserImporterCommitOutputs},

@@ -1507,7 +1507,7 @@ PreviewHostStatus PreviewHost::BuildFrame(
             request,
             &result,
             PreviewHostStatus::InvalidArgument,
-            PreviewHostDiagnosticCode::OutputCapacityExceeded,
+            PreviewHostDiagnosticCode::InvalidArgument,
             RuntimeAssetDataStatus::InvalidArgument,
             RenderSceneRuntimeFrameStatus::InvalidFrameId,
             RenderSceneThreePrimitiveCaptureMissingLayer::None,

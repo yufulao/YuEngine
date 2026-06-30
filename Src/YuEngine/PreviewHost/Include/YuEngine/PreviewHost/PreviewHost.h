@@ -88,6 +88,7 @@ enum class PreviewHostViewportInteractionBlockedLayer {
 
 enum class PreviewHostDiagnosticCode {
     None,
+    InvalidArgument,
     MissingRuntimeAssetGraph,
     StaleSession,
     RuntimeAssetStatusFailed,
