@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 #include "YuEngine/RenderCore/RenderShaderProgramStatus.h"
@@ -14,5 +15,6 @@ namespace yuengine::rendercore {
 struct RenderShaderProgramResult final {
     RenderShaderProgramStatus status = RenderShaderProgramStatus::InvalidArgument;
     std::uint32_t program_id = 0U;
+    std::size_t required_program_record_count = 0U;
 };
 }

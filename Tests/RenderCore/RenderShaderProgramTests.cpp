@@ -195,8 +195,17 @@ int RenderCoreShaderProgramRejectsCapacityExceeded() {
         return Fail("shader program accepted capacity overflow");
     }
 
+    if (result.required_program_record_count != 2U) {
+        return Fail("shader program capacity required count mismatch");
+    }
+
     if (!PipelineDescMatchesSentinel(rejected_desc)) {
         return Fail("shader program mutated output after capacity overflow");
+    }
+
+    const auto snapshot = program.Snapshot();
+    if (snapshot.last_required_program_record_count != 2U) {
+        return Fail("shader program snapshot required count mismatch");
     }
 
     return 0;

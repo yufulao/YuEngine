@@ -112,6 +112,7 @@ RenderShaderProgramResult RenderShaderProgram::BuildPipelineDesc(
         return result;
     }
 
+    result.required_program_record_count = snapshot_.program_record_count + 1U;
     if (!HasRecordCapacity()) {
         result.status = RenderShaderProgramStatus::ProgramCapacityExceeded;
         RecordRejectedProgram(result);
@@ -197,6 +198,7 @@ void RenderShaderProgram::RecordAcceptedProgram(
     ++snapshot_.program_record_count;
     ++snapshot_.accepted_program_count;
     snapshot_.last_program_id = request.program_id;
+    snapshot_.last_required_program_record_count = result->required_program_record_count;
     snapshot_.last_status = RenderShaderProgramStatus::Success;
 
     result->status = RenderShaderProgramStatus::Success;
@@ -204,6 +206,7 @@ void RenderShaderProgram::RecordAcceptedProgram(
 
 void RenderShaderProgram::RecordRejectedProgram(const RenderShaderProgramResult &result) {
     snapshot_.last_program_id = result.program_id;
+    snapshot_.last_required_program_record_count = result.required_program_record_count;
     snapshot_.last_status = result.status;
 
     if (result.status == RenderShaderProgramStatus::DuplicateProgramId) {
