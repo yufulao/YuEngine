@@ -1868,6 +1868,7 @@ PreviewHostStatus PreviewHost::BuildEditorViewportInteractionSurface(
     if (request.ledger_output.empty()) {
         result.status = PreviewHostStatus::OutputCapacityExceeded;
         result.blocked_layer = PreviewHostViewportInteractionBlockedLayer::Output;
+        result.ledger_record_count = 1U;
         *out_result = result;
         return result.status;
     }
@@ -1916,6 +1917,10 @@ PreviewHostStatus PreviewHost::BuildEditorViewportInteractionSurface(
             request.transform_feedback_output.empty()) {
             result.status = PreviewHostStatus::OutputCapacityExceeded;
             result.blocked_layer = PreviewHostViewportInteractionBlockedLayer::Output;
+            result.hit_record_count = 1U;
+            result.selection_record_count = 1U;
+            result.transform_feedback_count = 1U;
+            result.ledger_record_count = 1U;
             *out_result = result;
             return result.status;
         }

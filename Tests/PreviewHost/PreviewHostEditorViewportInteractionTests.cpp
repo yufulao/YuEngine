@@ -33,6 +33,8 @@ constexpr const char *TEST_SELECT =
     "PreviewHostEditorViewportInteraction_SelectCommandEmitsFeedback";
 constexpr const char *TEST_REJECT =
     "PreviewHostEditorViewportInteraction_RejectsInvalidSessionWithoutMutation";
+constexpr const char *TEST_CAPACITY =
+    "PreviewHostEditorViewportInteraction_OutputCapacityPreservesRequiredCounts";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr float TOLERANCE = 0.0001F;
@@ -277,6 +279,101 @@ int PreviewHostEditorViewportInteractionRejectsInvalidSessionWithoutMutation() {
     return 0;
 }
 
+int PreviewHostEditorViewportInteractionOutputCapacityPreservesRequiredCounts() {
+    const PreviewHostViewportSessionResult session = BuiltViewportSession();
+
+    PreviewHostViewportInteractionCommand orbit_command{};
+    orbit_command.kind = PreviewHostViewportInteractionKind::Orbit;
+    orbit_command.orbit_delta_radians = 0.25F;
+
+    PreviewHostEditorViewportInteractionRequest orbit_request{};
+    orbit_request.viewport_session = &session;
+    orbit_request.command = orbit_command;
+    orbit_request.command_sequence = 13U;
+
+    PreviewHost host;
+    PreviewHostEditorViewportInteractionResult orbit_result{};
+    const PreviewHostStatus orbit_status =
+        host.BuildEditorViewportInteractionSurface(orbit_request, &orbit_result);
+    if (orbit_status != PreviewHostStatus::OutputCapacityExceeded) {
+        return Fail("preview host viewport ledger capacity status mismatch");
+    }
+
+    if (orbit_result.ledger_record_count != 1U ||
+        orbit_result.hit_record_count != 0U ||
+        orbit_result.selection_record_count != 0U ||
+        orbit_result.transform_feedback_count != 0U) {
+        return Fail("preview host viewport ledger capacity required counts mismatch");
+    }
+
+    if (orbit_result.blocked_layer != PreviewHostViewportInteractionBlockedLayer::Output ||
+        orbit_result.emitted_interaction_ledger) {
+        return Fail("preview host viewport ledger capacity result mismatch");
+    }
+
+    const std::array<RuntimeAssetSceneEntityRecord, 2U> scene_entities{
+        Entity(1U, 41U, 1.5F),
+        Entity(2U, 42U, 2.5F)};
+    std::array<PreviewHostHitRecord, 1U> hits{};
+    hits[0U].entity_index = 9003U;
+    hits[0U].hit_available = false;
+    std::array<PreviewHostTransformFeedback, 1U> transforms{};
+    transforms[0U].world_object_id = WorldObjectId{9005U};
+    transforms[0U].transform_available = false;
+    std::array<PreviewHostViewportInteractionLedgerRecord, 1U> ledger{};
+    ledger[0U].frame_id = 9001U;
+    ledger[0U].command_sequence = 9002U;
+    ledger[0U].kind = PreviewHostViewportInteractionKind::Zoom;
+
+    PreviewHostViewportInteractionCommand select_command{};
+    select_command.kind = PreviewHostViewportInteractionKind::SelectEntity;
+    select_command.target_entity_index = 1U;
+
+    PreviewHostEditorViewportInteractionRequest select_request{};
+    select_request.viewport_session = &session;
+    select_request.command = select_command;
+    select_request.command_sequence = 14U;
+    select_request.scene_entities =
+        std::span<const RuntimeAssetSceneEntityRecord>(
+            scene_entities.data(),
+            scene_entities.size());
+    select_request.hit_output = std::span<PreviewHostHitRecord>(hits.data(), hits.size());
+    select_request.transform_feedback_output =
+        std::span<PreviewHostTransformFeedback>(transforms.data(), transforms.size());
+    select_request.ledger_output =
+        std::span<PreviewHostViewportInteractionLedgerRecord>(ledger.data(), ledger.size());
+
+    PreviewHostEditorViewportInteractionResult select_result{};
+    const PreviewHostStatus select_status =
+        host.BuildEditorViewportInteractionSurface(select_request, &select_result);
+    if (select_status != PreviewHostStatus::OutputCapacityExceeded) {
+        return Fail("preview host viewport feedback capacity status mismatch");
+    }
+
+    if (select_result.hit_record_count != 1U ||
+        select_result.selection_record_count != 1U ||
+        select_result.transform_feedback_count != 1U ||
+        select_result.ledger_record_count != 1U) {
+        return Fail("preview host viewport feedback capacity required counts mismatch");
+    }
+
+    if (select_result.blocked_layer != PreviewHostViewportInteractionBlockedLayer::Output ||
+        select_result.emitted_hit_feedback ||
+        select_result.emitted_selection_feedback ||
+        select_result.emitted_transform_feedback ||
+        select_result.emitted_interaction_ledger) {
+        return Fail("preview host viewport feedback capacity result mismatch");
+    }
+
+    if (!SentinelLedgerUnchanged(ledger[0U]) ||
+        !SentinelHitUnchanged(hits[0U]) ||
+        !SentinelTransformUnchanged(transforms[0U])) {
+        return Fail("preview host viewport feedback capacity mutated output");
+    }
+
+    return 0;
+}
+
 int RunNamedTest(std::string_view name) {
     if (name == TEST_ORBIT) {
         return PreviewHostEditorViewportInteractionOrbitCommandUpdatesCameraLedger();
@@ -288,6 +385,10 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_REJECT) {
         return PreviewHostEditorViewportInteractionRejectsInvalidSessionWithoutMutation();
+    }
+
+    if (name == TEST_CAPACITY) {
+        return PreviewHostEditorViewportInteractionOutputCapacityPreservesRequiredCounts();
     }
 
     return Fail(ERROR_UNKNOWN_TEST_NAME);
