@@ -162,36 +162,36 @@ destination range consumer. This is a HEAD evidence ledger, not a blanket
 stage-close VQ: each later lane must cite its own workspace VQ before being
 called VQ-closed.
 
-Current HEAD `f967001c39a53717226127ff67c316c8a3bf2a4a` records VQ-closed
-WorldSceneAuthoring dependency export to caller-owned Resource edge handoff for
-`RTSPINE-WORLDSCENEAUTHORING-DEPENDENCY-EXPORT-TO-RESOURCE-EDGE-HANDOFF-U64-001`.
-Implementation task `0c9911ab` is COMPLETE-PASS / committed and VQ task
-`86ce7cfd-627c-445a-ae03-f639d47cec13` is COMPLETE-PASS / VQ-READY. The commit
+Current HEAD `58021419256fc68cd7a84692fd42dbc7a3d0f08e` records VQ-closed
+WorldSceneAuthoring dependency export to caller-owned Asset edge handoff for
+`RTSPINE-WORLDSCENEAUTHORING-DEPENDENCY-EXPORT-TO-ASSET-EDGE-HANDOFF-U64-001`.
+Implementation task `56ab9999` is COMPLETE-PASS / committed and VQ task
+`b75a7379-ecb4-4024-ad57-1512833b2c5e` is COMPLETE-PASS / VQ-READY. The commit
 touched only `CMakeLists.txt` and
 `RuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTest.cpp`; no docs
-or production RuntimeAsset, RuntimeAssetWorldAdapter, World, Resource, editor,
-GameAdapter, UI, gameplay, broad File/VFS, or Asset Manager paths changed.
-Focused build `YuRuntimeAssetWorldAdapterHandoffTests` PASS, new Resource edge
-row
-`RuntimeAssetWorldObjectAuthoringRuntimeExportHandoff_CommitsExportedDependencyAsCallerOwnedResourceEdge`
-is `1/1` PASS, authoring handoff rows pass `3/3`, WorldSceneAuthoringDocument
-rows pass `9/9`, and Resource plus RuntimeAssetData dependency baseline rows
-pass `4/4`. The fixture commits exported
-`WorldSceneAuthoringDependencyRecord.resource_handle` values as caller-owned
-`ResourceRegistry` dependency edges with caller-owned dependent and exported
-dependency `ResourceHandle` values. `stable_resource_id`-only inference is
-rejected, and RuntimeAssetWorldAdapter restore handoff remains non-mutating for
-Resource dependency edges. Direct WorldObject/editor/GameAdapter/UI/gameplay,
-broad Resource/File/VFS loading/decoding/dependency traversal, and Asset Manager
-dependency-edge follow-through remain closed. Read-only scout
-`a147ec58-05cb-4957-b1c6-c8f43bb5d756` reports COMPLETE-PASS /
-`RTSPINE-CANONICAL-DOCS-HEAD-RECONCILE-F967001-001-NEXT-GATE-MATRIX-READY` and
+or production RuntimeAsset, RuntimeAssetWorldAdapter, World, Resource, Asset,
+editor, GameAdapter, UI, gameplay, broad File/VFS, or Asset auto-lookup paths
+changed. Focused build `YuRuntimeAssetWorldAdapterHandoffTests` PASS, focused
+matrix rows pass `23/23`, new Asset edge row
+`RuntimeAssetWorldObjectAuthoringRuntimeExportHandoff_CommitsExportedDependencyAsCallerOwnedAssetEdge`
+is `1/1` PASS, authoring handoff rows pass `4/4`, Asset baseline rows pass
+`9/9`, and RuntimeAssetData dependency/resource-asset edge rows pass `10/10`.
+The fixture commits exported WorldSceneAuthoring dependency rows as
+caller-owned `AssetManager` dependency edges with explicit caller-owned
+`AssetHandle` scene/document and dependency records. Stable-id-only/default-handle
+inference is rejected without mutation, exactly one explicit Asset dependency
+edge is committed and traversable, and RuntimeAssetWorldAdapter restore handoff
+remains non-mutating for Asset dependency edges. Direct WorldObject/editor,
+GameAdapter/UI/gameplay, broad Resource/File/VFS, Asset auto-lookup, and
+production Asset Manager dependency-edge follow-through remain closed.
+Read-only scout `36f4b49f-a44c-4e5a-ae41-d8f131ab0f05` reports COMPLETE-PASS /
+`RTSPINE-CANONICAL-DOCS-HEAD-RECONCILE-5802141-001-NEXT-GATE-MATRIX-READY` and
 selects
-`RTSPINE-WORLDSCENEAUTHORING-DEPENDENCY-EXPORT-TO-ASSET-EDGE-HANDOFF-U64-001`
-as the next narrow tests-only gate. The recommended proof uses explicit
-caller-owned `AssetHandle` scene/document and dependency records, rejects
-stable-id-only/default-handle inference, and keeps RuntimeAssetWorldAdapter
-restore handoff non-mutating for Asset dependency edges.
+`RTSPINE-WORLDSCENEAUTHORING-ASSET-EDGE-WORLDOBJECT-SNAPSHOT-HANDOFF-U64-001`
+as the next narrow tests-only gate, now released separately as implementation
+task `e5b2a316-da0b-438f-8073-9315b362d304` with scope limited to
+`CMakeLists.txt` and
+`RuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTest.cpp`.
 
 The `296100b3bda25e962c3a3a503f9f78f0160083ce` evidence records VQ-closed
 RuntimeAssetWorldAdapter target-family alias handoff for

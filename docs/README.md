@@ -2,7 +2,7 @@
 
 Status: canonical documentation handoff
 Owner: Architect
-Last major planning sync: `origin/main@f967001c39a53717226127ff67c316c8a3bf2a4a`
+Last major planning sync: `origin/main@58021419256fc68cd7a84692fd42dbc7a3d0f08e`
 
 ## 1. Read This First
 
@@ -64,9 +64,8 @@ At the latest handoff:
   returned `1167 / ERROR_DEVICE_NOT_CONNECTED` until DualSenseX exposed an
   XInput controller;
 - the current repo baseline is clean:
-  `HEAD == origin/main == f967001c39a53717226127ff67c316c8a3bf2a4a`
-  after WorldSceneAuthoring dependency export to caller-owned Resource edge
-  handoff;
+  `HEAD == origin/main == 58021419256fc68cd7a84692fd42dbc7a3d0f08e`
+  after WorldSceneAuthoring dependency export to caller-owned Asset edge handoff;
 - active workspace tasks, timers, and coordinator goals were empty at the final
   L0/L1 handoff;
 - the next mainline is RuntimeAsset production spine continuation, starting from
@@ -324,6 +323,27 @@ At the latest handoff:
   restore handoff remains non-mutating for Resource dependency edges, and no
   Resource/File/VFS loading, dependency graph traversal, or Asset Manager
   dependency-edge follow-through is opened;
+- RTSPINE-WORLDSCENEAUTHORING-DEPENDENCY-EXPORT-TO-ASSET-EDGE-HANDOFF-U64-001
+  is VQ-closed at `58021419256fc68cd7a84692fd42dbc7a3d0f08e`;
+  implementation task `56ab9999` reports committed completion and VQ task
+  `b75a7379-ecb4-4024-ad57-1512833b2c5e` reports
+  `COMPLETE-PASS / RTSPINE-WORLDSCENEAUTHORING-DEPENDENCY-EXPORT-TO-ASSET-EDGE-HANDOFF-U64-001-VQ-READY`;
+  exact implementation scope was `CMakeLists.txt` and
+  `Tests/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTest.cpp`;
+  no docs or production RuntimeAsset, RuntimeAssetWorldAdapter, World,
+  Resource, Asset, editor, GameAdapter, UI, gameplay, broad File/VFS, or Asset
+  auto-lookup paths changed; focused build
+  `YuRuntimeAssetWorldAdapterHandoffTests` PASS; focused matrix rows pass
+  `23/23`; new Asset edge row
+  `RuntimeAssetWorldObjectAuthoringRuntimeExportHandoff_CommitsExportedDependencyAsCallerOwnedAssetEdge`
+  passes `1/1`; authoring handoff rows pass `4/4`; Asset baseline rows pass
+  `9/9`; RuntimeAssetData dependency/resource-asset edge rows pass `10/10`;
+  the fixture proves exported WorldSceneAuthoring dependency rows can be
+  committed to `AssetManager` as caller-owned dependency edges using explicit
+  caller-owned `AssetHandle` scene/document and dependency records;
+  stable-id-only/default-handle inference is rejected, exactly one explicit
+  Asset dependency edge is committed/traversable, and RuntimeAssetWorldAdapter
+  restore handoff remains non-mutating for Asset dependency edges;
 - direct WorldObject/editor object binding remains unopened; the later
   RuntimeAssetWorldAdapter alias/handoff/sidecar gates reuse existing scene
   entity, scene transform, identity-record handoff, and World active restore
@@ -394,19 +414,18 @@ At the latest handoff:
 - exact docs-only VQ marker labels for the `50ff335` evidence ledger are
   `RuntimeAssetWorldObjectAdapter`, `RuntimeAssetWorldObjectRestoreHandoff`, and
   `payload_window`;
-- current canonical HEAD is `f967001c39a53717226127ff67c316c8a3bf2a4a`,
+- current canonical HEAD is `58021419256fc68cd7a84692fd42dbc7a3d0f08e`,
   adding the VQ-closed WorldSceneAuthoring dependency export to caller-owned
-  Resource edge handoff evidence above; read-only scout
-  `a147ec58-05cb-4957-b1c6-c8f43bb5d756` reports COMPLETE-PASS /
-  `RTSPINE-CANONICAL-DOCS-HEAD-RECONCILE-F967001-001-NEXT-GATE-MATRIX-READY`
+  Asset edge handoff evidence above; read-only scout
+  `36f4b49f-a44c-4e5a-ae41-d8f131ab0f05` reports COMPLETE-PASS /
+  `RTSPINE-CANONICAL-DOCS-HEAD-RECONCILE-5802141-001-NEXT-GATE-MATRIX-READY`
   and selects
-  `RTSPINE-WORLDSCENEAUTHORING-DEPENDENCY-EXPORT-TO-ASSET-EDGE-HANDOFF-U64-001`
-  as the next narrow tests-only gate; it should use explicit caller-owned
-  `AssetHandle` scene/document and dependency records, reject stable-id-only or
-  default-handle inference, keep RuntimeAssetWorldAdapter restore handoff
-  non-mutating for Asset dependency edges, and avoid direct
+  `RTSPINE-WORLDSCENEAUTHORING-ASSET-EDGE-WORLDOBJECT-SNAPSHOT-HANDOFF-U64-001`
+  as the next narrow tests-only gate, now released separately as implementation
+  task `e5b2a316-da0b-438f-8073-9315b362d304`; direct
   WorldObject/editor/GameAdapter/UI/gameplay, broad Resource/File/VFS, Asset
-  auto-lookup, or production Asset Manager dependency-edge follow-through;
+  auto-lookup, production Asset Manager dependency-edge follow-through, and
+  production module gates remain separate from this docs sync;
 - L0-RES-001 File/VFS loose read/write policy closure is PASS at
   `43cfc18fec4c4c5a5135e4ed15da64c8308247ff`; focused QA task
   `5020f3d6-a492-4138-b81f-c5e80cdd92e2` reports test-only
@@ -596,9 +615,11 @@ RuntimeAsset container and family identity
 -> WorldSceneAuthoring runtime export to RuntimeAssetWorldAdapter handoff VQ-closed at `f8ef490`
 -> WorldSceneAuthoring attachment/binding/dependency export handoff VQ-closed at `318daee`
 -> WorldSceneAuthoring dependency export to Resource edge handoff VQ-closed at `f967001`
+-> WorldSceneAuthoring dependency export to Asset edge handoff VQ-closed at `5802141`
 -> Resource/Streaming payload-window follow-through as narrow evidence already
    landed through `50ff335`
--> WorldSceneAuthoring dependency export to Asset edge handoff selected by scout `a147ec58`
+-> WorldSceneAuthoring Asset-edge WorldObject snapshot handoff selected by scout
+   `36f4b49f` and released as separate implementation task `e5b2a316`
 -> direct WorldObject/editor/GameAdapter binding or broader Resource/File/VFS expansion only
    after their own gates are released
 -> editor/importer authoring surfaces after runtime contracts pass

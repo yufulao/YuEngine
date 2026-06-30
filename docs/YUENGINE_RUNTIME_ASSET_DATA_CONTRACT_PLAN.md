@@ -449,6 +449,7 @@ C++ in-memory construction alone.
 | WorldSceneAuthoring runtime export to RuntimeAssetWorldAdapter handoff | PASS | `origin/main@f8ef490493f43a97d2958d6a604e598b68f1fcab` closes `RTSPINE-WORLDSCENEAUTHORING-RUNTIME-EXPORT-TO-RUNTIMEASSETWORLDADAPTER-HANDOFF-U64-001`; implementation task `c1a469a8` reports COMPLETE-PASS / committed and VQ task `5c536c0b-7849-436b-a695-e323f8afd339` reports COMPLETE-PASS / VQ-READY; exact scope is `CMakeLists.txt`, `RuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTest.cpp`, and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`; no docs or production RuntimeAsset/RuntimeAssetWorldAdapter/World/Resource paths changed; focused `YuRuntimeAssetWorldAdapterHandoffTests` build PASS; new authoring runtime export handoff row reports `1/1` PASS; RuntimeAssetWorldObject handoff label set reports `24/24` PASS; WorldSceneAuthoringDocument rows report `9/9` PASS; WorldScene stream/decoded-plan/proof rows report `143/143` PASS; WorldSceneActiveRestoreGate rows report `4/4` PASS; `WorldSceneAuthoringDocumentValidator::ValidateAndExport` runtime export records feed existing WorldScene record-stream, decoded-plan, proof, active-gate, and RuntimeAssetWorldAdapter restore handoff plumbing without opening direct WorldObject/editor/GameAdapter/UI/gameplay or broader Resource/File/VFS |
 | WorldSceneAuthoring attachment/binding/dependency export to RuntimeAssetWorldAdapter handoff | PASS | `origin/main@318daeecef8905554bef459e998bd791eafa08bd` closes `RTSPINE-WORLDSCENEAUTHORING-ATTACHMENT-BINDING-DEPENDENCY-EXPORT-TO-RUNTIMEASSETWORLDADAPTER-HANDOFF-U64-001`; implementation task `9184605b` reports COMPLETE-PASS / committed and VQ task `97628142-20ed-4e09-ae05-be61f0226c44` reports COMPLETE-PASS / VQ-READY; exact scope is `CMakeLists.txt` and `RuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTest.cpp`; no docs or production RuntimeAsset/RuntimeAssetWorldAdapter/World/Resource paths changed; focused `YuRuntimeAssetWorldAdapterHandoffTests` build PASS; new sidecar authoring handoff row reports `1/1` PASS; authoring handoff rows report `2/2` PASS; RuntimeAssetWorldObject handoff rows report `12/12` PASS; WorldSceneAuthoringDocument rows report `9/9` PASS; WorldScene stream/plan/proof/gate rows report `88/88` PASS; attachment and binding reach RuntimeAssetWorldAdapter sidecar destinations through existing WorldScene record-stream and handoff plumbing; dependency remains exported data only with no Resource/File/VFS loading or dependency graph traversal |
 | WorldSceneAuthoring dependency export to Resource edge handoff | PASS | `origin/main@f967001c39a53717226127ff67c316c8a3bf2a4a` closes `RTSPINE-WORLDSCENEAUTHORING-DEPENDENCY-EXPORT-TO-RESOURCE-EDGE-HANDOFF-U64-001`; implementation task `0c9911ab` reports COMPLETE-PASS / committed and VQ task `86ce7cfd-627c-445a-ae03-f639d47cec13` reports COMPLETE-PASS / VQ-READY; exact scope is `CMakeLists.txt` and `RuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTest.cpp`; no docs or production RuntimeAsset/RuntimeAssetWorldAdapter/World/Resource paths changed; focused `YuRuntimeAssetWorldAdapterHandoffTests` build PASS; new Resource edge row reports `1/1` PASS; authoring handoff rows report `3/3` PASS; WorldSceneAuthoringDocument rows report `9/9` PASS; Resource and RuntimeAssetData dependency baseline rows report `4/4` PASS; exported `WorldSceneAuthoringDependencyRecord.resource_handle` can be committed as a caller-owned `ResourceRegistry` dependency edge using a caller-owned dependent `ResourceHandle` and exported dependency `ResourceHandle`; `stable_resource_id`-only inference is rejected; RuntimeAssetWorldAdapter restore handoff remains non-mutating for Resource dependency edges; no direct WorldObject/editor/GameAdapter/UI/gameplay, broad Resource/File/VFS loading/decoding/dependency traversal, or Asset Manager dependency-edge follow-through gate is opened |
+| WorldSceneAuthoring dependency export to Asset edge handoff | PASS | `origin/main@58021419256fc68cd7a84692fd42dbc7a3d0f08e` closes `RTSPINE-WORLDSCENEAUTHORING-DEPENDENCY-EXPORT-TO-ASSET-EDGE-HANDOFF-U64-001`; implementation task `56ab9999` reports COMPLETE-PASS / committed and VQ task `b75a7379-ecb4-4024-ad57-1512833b2c5e` reports COMPLETE-PASS / VQ-READY; exact scope is `CMakeLists.txt` and `RuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTest.cpp`; no docs or production RuntimeAsset/RuntimeAssetWorldAdapter/World/Resource/Asset paths changed; focused `YuRuntimeAssetWorldAdapterHandoffTests` build PASS; focused matrix rows report `23/23` PASS; new Asset edge row reports `1/1` PASS; authoring handoff rows report `4/4` PASS; Asset baseline rows report `9/9` PASS; RuntimeAssetData dependency/resource-asset edge rows report `10/10` PASS; exported WorldSceneAuthoring dependency rows can be committed to `AssetManager` as caller-owned dependency edges using explicit caller-owned `AssetHandle` scene/document and dependency records; stable-id-only/default-handle inference is rejected; exactly one explicit Asset dependency edge is committed and traversable; RuntimeAssetWorldAdapter restore handoff remains non-mutating for Asset dependency edges; no direct WorldObject/editor/GameAdapter/UI/gameplay, broad Resource/File/VFS, Asset auto-lookup, or production Asset Manager dependency-edge follow-through gate is opened |
 | RenderCore/RHI capture | PASS | `RuntimeAssetData_RenderClosedLoop_CapturesCubeCylinderConeThroughRhi` |
 | CPU oracle guard | PASS | `RuntimeAssetData_CpuPpmOracleDoesNotBypassRhiRenderCore` |
 | Upper-layer dependency guard | PASS | `RuntimeAssetData_DoesNotDependOnEditorUiInputOrGdiViewer` |
@@ -644,31 +645,31 @@ selects
 `RTSPINE-WORLDSCENEAUTHORING-RUNTIME-EXPORT-TO-RUNTIMEASSETWORLDADAPTER-HANDOFF-U64-001`
 as the now-closed tests-only gate, with direct WorldObject/editor/GameAdapter/UI,
 gameplay, and broad Resource/File/VFS still closed.
-RTSPINE-WORLDSCENEAUTHORING-DEPENDENCY-EXPORT-TO-RESOURCE-EDGE-HANDOFF-U64-001
-is now VQ-closed at `f967001c39a53717226127ff67c316c8a3bf2a4a`; it proves
-exported `WorldSceneAuthoringDependencyRecord.resource_handle` values can be
-committed as caller-owned `ResourceRegistry` dependency edges with a
-caller-owned dependent `ResourceHandle` and exported dependency
-`ResourceHandle`. Implementation task `0c9911ab` and VQ task
-`86ce7cfd-627c-445a-ae03-f639d47cec13` report COMPLETE-PASS. Focused build
-`YuRuntimeAssetWorldAdapterHandoffTests` PASS; new Resource edge row
-`RuntimeAssetWorldObjectAuthoringRuntimeExportHandoff_CommitsExportedDependencyAsCallerOwnedResourceEdge`
-passes `1/1`; authoring handoff rows pass `3/3`; WorldSceneAuthoringDocument
-rows pass `9/9`; and Resource plus RuntimeAssetData dependency baseline rows
-pass `4/4`. `stable_resource_id`-only inference is rejected, and
-RuntimeAssetWorldAdapter restore handoff itself remains non-mutating for
-Resource dependency edges. Direct WorldObject/editor/GameAdapter/UI, gameplay,
-broad Resource/File/VFS loading/decoding/dependency traversal, and Asset Manager
+RTSPINE-WORLDSCENEAUTHORING-DEPENDENCY-EXPORT-TO-ASSET-EDGE-HANDOFF-U64-001 is
+now VQ-closed at `58021419256fc68cd7a84692fd42dbc7a3d0f08e`; it proves exported
+WorldSceneAuthoring dependency rows can be committed as caller-owned
+`AssetManager` dependency edges with explicit caller-owned `AssetHandle`
+scene/document and dependency records. Implementation task `56ab9999` and VQ
+task `b75a7379-ecb4-4024-ad57-1512833b2c5e` report COMPLETE-PASS. Focused build
+`YuRuntimeAssetWorldAdapterHandoffTests` PASS; focused matrix rows pass
+`23/23`; new Asset edge row
+`RuntimeAssetWorldObjectAuthoringRuntimeExportHandoff_CommitsExportedDependencyAsCallerOwnedAssetEdge`
+passes `1/1`; authoring handoff rows pass `4/4`; Asset baseline rows pass
+`9/9`; and RuntimeAssetData dependency/resource-asset edge rows pass `10/10`.
+Stable-id-only/default-handle inference is rejected without mutation, exactly
+one explicit Asset dependency edge is committed and traversable, and
+RuntimeAssetWorldAdapter restore handoff itself remains non-mutating for Asset
+dependency edges. Direct WorldObject/editor/GameAdapter/UI, gameplay, broad
+Resource/File/VFS, Asset auto-lookup, and production Asset Manager
 dependency-edge follow-through remain closed. Read-only scout
-`a147ec58-05cb-4957-b1c6-c8f43bb5d756` reports COMPLETE-PASS /
-`RTSPINE-CANONICAL-DOCS-HEAD-RECONCILE-F967001-001-NEXT-GATE-MATRIX-READY` and
+`36f4b49f-a44c-4e5a-ae41-d8f131ab0f05` reports COMPLETE-PASS /
+`RTSPINE-CANONICAL-DOCS-HEAD-RECONCILE-5802141-001-NEXT-GATE-MATRIX-READY` and
 selects
-`RTSPINE-WORLDSCENEAUTHORING-DEPENDENCY-EXPORT-TO-ASSET-EDGE-HANDOFF-U64-001`
-as the next narrow tests-only gate. The recommended scope is `CMakeLists.txt`
-and `RuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTest.cpp`; the
-proof should explicitly commit caller-owned `AssetHandle` dependency edges,
-reject stable-id-only/default-handle inference, and keep RuntimeAssetWorldAdapter
-restore handoff non-mutating for Asset dependency edges.
+`RTSPINE-WORLDSCENEAUTHORING-ASSET-EDGE-WORLDOBJECT-SNAPSHOT-HANDOFF-U64-001`
+as the next narrow tests-only gate, now released separately as implementation
+task `e5b2a316-da0b-438f-8073-9315b362d304` with scope limited to
+`CMakeLists.txt` and
+`RuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTest.cpp`.
 RTSPINE-RUNTIMEASSET-MODEL-SKELETON-TARGET-BINDING-U64-001 is VQ-closed at
 `3fa4ef7bd42da8f60bd5ebb3a7f863bd76292c84`: implementation task
 `06724fe5-b2e4-410e-97e7-2b41c195c3a0` reports COMPLETE-PASS / committed and VQ
