@@ -12,6 +12,8 @@ namespace yuengine::uiruntime {
 struct BaseUiLifecycleSnapshot final {
     BaseUiLifecycleState state = BaseUiLifecycleState::Created;
     BaseUiLifecycleStatus last_status = BaseUiLifecycleStatus::Success;
+    std::uint32_t accepted_operation_count = 0U;
+    std::uint32_t failed_operation_count = 0U;
     std::uint32_t initialize_count = 0U;
     std::uint32_t bind_event_count = 0U;
     std::uint32_t open_count = 0U;

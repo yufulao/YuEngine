@@ -155,6 +155,10 @@ int VerifyInitBindSnapshot(const BaseUiLifecycleSnapshot &snapshot) {
         return Fail("init state mismatch");
     }
 
+    if (snapshot.accepted_operation_count != 2U || snapshot.failed_operation_count != 0U) {
+        return Fail("init operation count mismatch");
+    }
+
     return 0;
 }
 
@@ -215,6 +219,10 @@ int RunOpenClosePerActivationTest() {
         return Fail("open close final state mismatch");
     }
 
+    if (snapshot.accepted_operation_count != 4U || snapshot.failed_operation_count != 0U) {
+        return Fail("open close operation count mismatch");
+    }
+
     if (RequireEvent(controller, 0U, TestLifecycleEvent::Init, "event 0 mismatch") != 0) {
         return 1;
     }
@@ -263,6 +271,11 @@ int RunDestroyClearsOnceTest() {
 
     if (snapshot.state != BaseUiLifecycleState::Destroyed) {
         return Fail("destroy state mismatch");
+    }
+
+    if (snapshot.failed_operation_count != 1U ||
+        snapshot.last_status != BaseUiLifecycleStatus::AlreadyDestroyed) {
+        return Fail("destroy failure count mismatch");
     }
 
     return RequireEvent(controller, 4U, TestLifecycleEvent::Clear, "clear event order mismatch");
@@ -316,7 +329,21 @@ int RunRejectsInvalidLifecycleCallsTest() {
         return 1;
     }
 
-    return RequireStatus(controller.Open(), BaseUiLifecycleStatus::Destroyed, "open after destroy status mismatch");
+    if (RequireStatus(controller.Open(), BaseUiLifecycleStatus::Destroyed, "open after destroy status mismatch") != 0) {
+        return 1;
+    }
+
+    const BaseUiLifecycleSnapshot snapshot = controller.Snapshot();
+    if (snapshot.failed_operation_count != 4U ||
+        snapshot.last_status != BaseUiLifecycleStatus::Destroyed) {
+        return Fail("invalid lifecycle failure count mismatch");
+    }
+
+    if (snapshot.accepted_operation_count != 3U) {
+        return Fail("invalid lifecycle success count mismatch");
+    }
+
+    return 0;
 }
 
 int RunNamedTest(std::string_view test_name) {
