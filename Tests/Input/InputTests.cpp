@@ -61,6 +61,7 @@ using yuengine::input::GAMEPAD_RIGHT_TRIGGER_CONTROL;
 using yuengine::input::MAX_GAMEPAD_DEVICES;
 using yuengine::input::MAX_EVENTS_PER_FRAME;
 using yuengine::input::MAX_INPUT_BINDINGS;
+using yuengine::input::MAX_INPUT_CONTEXTS;
 using yuengine::input::MAX_REPLAY_FRAMES;
 using yuengine::input::internal::InputNativeGamepadPollFunction;
 using yuengine::input::internal::InputNativeGamepadPollStatus;
@@ -107,10 +108,13 @@ constexpr const char *TEST_COMMAND_XINPUT_AXIS = "Input_CommandMapper_XInputStyl
 constexpr const char *TEST_COMMAND_RUNTIME_BOUNDARY = "Input_CommandMapper_KeyboardAndXInputFixturesStayRuntimeOnly";
 constexpr const char *TEST_COMMAND_FOCUS = "Input_CommandMapper_FocusRejectsInputWithoutMutation";
 constexpr const char *TEST_COMMAND_INVALID = "Input_CommandMapper_InvalidEventDoesNotMutateHeldState";
+constexpr const char *TEST_COMMAND_SETUP_REJECTION = "Input_CommandMapper_SetupFailuresDoNotCountRejectedEvents";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 
 constexpr InputContextId CONTEXT_A{0U};
+constexpr InputContextId CONTEXT_B{1U};
+constexpr InputContextId UNKNOWN_CONTEXT{static_cast<std::uint32_t>(MAX_INPUT_CONTEXTS)};
 constexpr InputDeviceId DEVICE_A{0U};
 constexpr InputDeviceId DEVICE_B{1U};
 constexpr InputDeviceId UNKNOWN_DEVICE{99U};
@@ -1653,6 +1657,92 @@ int InputCommandMapperInvalidEventDoesNotMutateHeldState() {
 
     return 0;
 }
+
+int InputCommandMapperSetupFailuresDoNotCountRejectedEvents() {
+    InputCommandMapper mapper;
+    if (mapper.RegisterContext(UNKNOWN_CONTEXT) != InputStatus::UnknownContext) {
+        return Fail("invalid command context did not return explicit status");
+    }
+
+    auto mapper_snapshot = mapper.Snapshot();
+    if (mapper_snapshot.failed_operation_count != 1U) {
+        return Fail("invalid context registration did not count failed operation");
+    }
+
+    if (mapper_snapshot.rejected_event_count != 0U) {
+        return Fail("invalid context registration counted rejected event");
+    }
+
+    if (mapper_snapshot.last_status != InputStatus::UnknownContext) {
+        return Fail("invalid context registration did not update last status");
+    }
+
+    if (mapper.RegisterBinding(ButtonCommandBinding(CONTEXT_A, DEVICE_A, CONTROL_A, ACTION_A)) != InputStatus::UnknownContext) {
+        return Fail("binding without context did not return explicit status");
+    }
+
+    mapper_snapshot = mapper.Snapshot();
+    if (mapper_snapshot.failed_operation_count != 2U) {
+        return Fail("binding setup failure did not count failed operation");
+    }
+
+    if (mapper_snapshot.rejected_event_count != 0U) {
+        return Fail("binding setup failure counted rejected event");
+    }
+
+    if (mapper.RegisterContext(CONTEXT_A) != InputStatus::Success) {
+        return Fail("command context registration failed");
+    }
+
+    if (mapper.SetActiveContext(CONTEXT_B, InputContextFocusMode::AcceptInput) != InputStatus::UnknownContext) {
+        return Fail("unknown active context did not return explicit status");
+    }
+
+    mapper_snapshot = mapper.Snapshot();
+    if (mapper_snapshot.failed_operation_count != 3U) {
+        return Fail("active context setup failure did not count failed operation");
+    }
+
+    if (mapper_snapshot.rejected_event_count != 0U) {
+        return Fail("active context setup failure counted rejected event");
+    }
+
+    if (mapper.SetActiveContext(CONTEXT_A, InputContextFocusMode::AcceptInput) != InputStatus::Success) {
+        return Fail("active context setup failed");
+    }
+
+    if (mapper.RegisterBinding(ButtonCommandBinding(CONTEXT_A, DEVICE_A, CONTROL_A, ACTION_A)) != InputStatus::Success) {
+        return Fail("command binding failed");
+    }
+
+    std::array<InputEvent, 1U> invalid_events{Axis(DEVICE_A, CONTROL_A, AXIS_POSITIVE)};
+    InputCommandSnapshot command_snapshot{};
+    if (mapper.BuildSnapshot(
+            5U,
+            std::span<const InputEvent>(invalid_events.data(), invalid_events.size()),
+            &command_snapshot) != InputStatus::InvalidEvent) {
+        return Fail("invalid command event did not return explicit status");
+    }
+
+    if (command_snapshot.status != InputStatus::InvalidEvent) {
+        return Fail("invalid command event did not set output status");
+    }
+
+    mapper_snapshot = mapper.Snapshot();
+    if (mapper_snapshot.failed_operation_count != 4U) {
+        return Fail("invalid command event did not count failed operation");
+    }
+
+    if (mapper_snapshot.rejected_event_count != 1U) {
+        return Fail("invalid command event did not count rejected event");
+    }
+
+    if (mapper_snapshot.last_status != InputStatus::InvalidEvent) {
+        return Fail("invalid command event did not update last status");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv) {
@@ -1699,7 +1789,8 @@ int main(int argc, char** argv) {
         {TEST_COMMAND_XINPUT_AXIS, InputCommandMapperXInputStyleAxisBuildsCommandSnapshot},
         {TEST_COMMAND_RUNTIME_BOUNDARY, InputCommandMapperKeyboardAndXInputFixturesStayRuntimeOnly},
         {TEST_COMMAND_FOCUS, InputCommandMapperFocusRejectsInputWithoutMutation},
-        {TEST_COMMAND_INVALID, InputCommandMapperInvalidEventDoesNotMutateHeldState}};
+        {TEST_COMMAND_INVALID, InputCommandMapperInvalidEventDoesNotMutateHeldState},
+        {TEST_COMMAND_SETUP_REJECTION, InputCommandMapperSetupFailuresDoNotCountRejectedEvents}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);

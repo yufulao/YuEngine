@@ -68,6 +68,7 @@ public:
 
 private:
     InputStatus RecordStatus(InputStatus status);
+    InputStatus RecordFailure(InputStatus status);
     InputStatus RejectOperation(InputStatus status);
     bool IsContextInRange(InputContextId context) const;
     bool IsActionInRange(InputActionId action) const;

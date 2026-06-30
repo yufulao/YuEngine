@@ -20,15 +20,15 @@ InputCommandMapper::InputCommandMapper()
 
 InputStatus InputCommandMapper::RegisterContext(InputContextId context) {
     if (!IsContextInRange(context)) {
-        return RejectOperation(InputStatus::UnknownContext);
+        return RecordFailure(InputStatus::UnknownContext);
     }
 
     if (HasContext(context)) {
-        return RejectOperation(InputStatus::DuplicateBinding);
+        return RecordFailure(InputStatus::DuplicateBinding);
     }
 
     if (context_count_ >= contexts_.size()) {
-        return RejectOperation(InputStatus::CapacityExceeded);
+        return RecordFailure(InputStatus::CapacityExceeded);
     }
 
     contexts_[context_count_] = context;
@@ -39,7 +39,7 @@ InputStatus InputCommandMapper::RegisterContext(InputContextId context) {
 
 InputStatus InputCommandMapper::SetActiveContext(InputContextId context, InputContextFocusMode focus_mode) {
     if (!HasContext(context)) {
-        return RejectOperation(InputStatus::UnknownContext);
+        return RecordFailure(InputStatus::UnknownContext);
     }
 
     snapshot_.active_context = context;
@@ -51,11 +51,11 @@ InputStatus InputCommandMapper::SetActiveContext(InputContextId context, InputCo
 InputStatus InputCommandMapper::RegisterBinding(InputCommandBinding binding) {
     const InputStatus binding_status = ValidateBinding(binding);
     if (binding_status != InputStatus::Success) {
-        return RejectOperation(binding_status);
+        return RecordFailure(binding_status);
     }
 
     if (binding_count_ >= bindings_.size()) {
-        return RejectOperation(InputStatus::CapacityExceeded);
+        return RecordFailure(InputStatus::CapacityExceeded);
     }
 
     bindings_[binding_count_] = binding;
@@ -121,13 +121,14 @@ InputStatus InputCommandMapper::RecordStatus(InputStatus status) {
     return status;
 }
 
-InputStatus InputCommandMapper::RejectOperation(InputStatus status) {
+InputStatus InputCommandMapper::RecordFailure(InputStatus status) {
     ++snapshot_.failed_operation_count;
-    if (status != InputStatus::Success) {
-        ++snapshot_.rejected_event_count;
-    }
-
     return RecordStatus(status);
+}
+
+InputStatus InputCommandMapper::RejectOperation(InputStatus status) {
+    ++snapshot_.rejected_event_count;
+    return RecordFailure(status);
 }
 
 bool InputCommandMapper::IsContextInRange(InputContextId context) const {
