@@ -234,6 +234,20 @@ void RecordDrainedResult(AsyncFileReadQueueState& state, const AsyncFileReadResu
         ++state.snapshot.canceled_count;
     }
 }
+
+AsyncFileReadStatus SelectDrainedLastStatus(
+    AsyncFileReadStatus current_status,
+    const AsyncFileReadResult& result) {
+    if (result.status == AsyncFileReadStatus::ReadFailure) {
+        return AsyncFileReadStatus::ReadFailure;
+    }
+
+    if (result.status == AsyncFileReadStatus::OutputTooSmall) {
+        return AsyncFileReadStatus::OutputTooSmall;
+    }
+
+    return current_status;
+}
 }
 
 AsyncFileReadQueue::AsyncFileReadQueue()
@@ -421,6 +435,7 @@ AsyncFileReadStatus AsyncFileReadQueue::DrainCompletions(
         return AsyncFileReadStatus::CompletionQueueFull;
     }
 
+    AsyncFileReadStatus drained_last_status = AsyncFileReadStatus::Success;
     while (*written_count < output_capacity) {
         ThreadWorkerCompletion worker_completion;
         std::size_t worker_written_count = 0U;
@@ -451,6 +466,7 @@ AsyncFileReadStatus AsyncFileReadQueue::DrainCompletions(
         output_results[*written_count] = result;
         ++(*written_count);
         RecordDrainedResult(*state_, result);
+        drained_last_status = SelectDrainedLastStatus(drained_last_status, result);
 
         if (worker_status == ThreadWorkerStatus::CompletionQueueFull) {
             SetLastStatus(*state_, AsyncFileReadStatus::CompletionQueueFull);
@@ -470,7 +486,7 @@ AsyncFileReadStatus AsyncFileReadQueue::DrainCompletions(
         return AsyncFileReadStatus::CompletionQueueFull;
     }
 
-    SetLastStatus(*state_, AsyncFileReadStatus::Success);
+    SetLastStatus(*state_, drained_last_status);
     return AsyncFileReadStatus::Success;
 }
 

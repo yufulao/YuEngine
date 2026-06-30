@@ -696,6 +696,11 @@ int FileAsyncReadQueueReadsFixtureIntoCallerStorage() {
         return Fail("async read bytes did not match fixture");
     }
 
+    const auto snapshot = queue.Snapshot();
+    if (snapshot.last_status != AsyncFileReadStatus::Success) {
+        return Fail("successful drain did not preserve success last status");
+    }
+
     return 0;
 }
 
@@ -779,6 +784,11 @@ int FileAsyncReadQueueReportsReadFailureCompletion() {
         return Fail("async failure request index was not preserved");
     }
 
+    const auto snapshot = queue.Snapshot();
+    if (snapshot.last_status != AsyncFileReadStatus::ReadFailure) {
+        return Fail("read failure completion did not preserve last status");
+    }
+
     return 0;
 }
 
@@ -820,6 +830,11 @@ int FileAsyncReadQueueRejectsSmallOutputWithoutOverrun() {
 
     if (output_bytes[3U] != 44U) {
         return Fail("small output buffer tail was overwritten");
+    }
+
+    const auto snapshot = queue.Snapshot();
+    if (snapshot.last_status != AsyncFileReadStatus::OutputTooSmall) {
+        return Fail("small output completion did not preserve last status");
     }
 
     return 0;
@@ -868,6 +883,11 @@ int FileAsyncReadQueueRangedOutputTooSmallDoesNotCopyPartialBytes() {
 
     if (output_bytes[1U] != 66U) {
         return Fail("ranged small output buffer tail was overwritten");
+    }
+
+    const auto snapshot = queue.Snapshot();
+    if (snapshot.last_status != AsyncFileReadStatus::OutputTooSmall) {
+        return Fail("ranged small output completion did not preserve last status");
     }
 
     return 0;
