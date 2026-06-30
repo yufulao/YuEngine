@@ -1273,6 +1273,7 @@ ResourceBrowserVisibleWorkflowStatus BuildResourceBrowserVisibleWorkflowSurface(
     if (!HasVisibleWorkflowOutputCapacity(request)) {
         result.status = ResourceBrowserVisibleWorkflowStatus::OutputCapacityExceeded;
         result.surface_status = ResourceBrowserSurfaceStatus::OutputCapacityExceeded;
+        result.selection_status = ResourceBrowserSurfaceSelectionStatus::Success;
         *out_result = result;
         return result.status;
     }
@@ -1379,6 +1380,7 @@ ResourceBrowserDepthWorkflowStatus BuildResourceBrowserDepthWorkflowSurface(
 
     if (!HasDepthWorkflowOutputCapacity(request)) {
         result.status = ResourceBrowserDepthWorkflowStatus::OutputCapacityExceeded;
+        result.selection_status = ResourceBrowserSurfaceSelectionStatus::Success;
         *out_result = result;
         return result.status;
     }
@@ -1510,6 +1512,9 @@ ResourceBrowserImporterCommitWorkflowStatus BuildResourceBrowserImporterCommitWo
 
     if (!HasImporterCommitOutputCapacity(request)) {
         result.status = ResourceBrowserImporterCommitWorkflowStatus::OutputCapacityExceeded;
+        result.preflight_diagnostics_status = ResourceBrowserDiagnosticsStatus::OutputCapacityExceeded;
+        result.post_commit_diagnostics_status = ResourceBrowserDiagnosticsStatus::OutputCapacityExceeded;
+        result.runtime_status = RuntimeAssetDataStatus::CapacityExceeded;
         *out_result = result;
         return result.status;
     }
@@ -1530,6 +1535,8 @@ ResourceBrowserImporterCommitWorkflowStatus BuildResourceBrowserImporterCommitWo
     result.preflighted_before_mutation = true;
     if (preflight.status != ResourceBrowserDiagnosticsStatus::Success) {
         result.status = ResourceBrowserImporterCommitWorkflowStatus::OutputCapacityExceeded;
+        result.post_commit_diagnostics_status = ResourceBrowserDiagnosticsStatus::OutputCapacityExceeded;
+        result.runtime_status = RuntimeAssetDataStatus::CapacityExceeded;
         *out_result = result;
         return result.status;
     }

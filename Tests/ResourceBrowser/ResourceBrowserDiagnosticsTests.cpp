@@ -207,6 +207,8 @@ constexpr const char *TEST_DEPTH_MISSING_RUNTIME_ASSET =
     "ResourceBrowserDepthWorkflow_ReportsMissingRuntimeAssetLoadAndAssetRecordGaps";
 constexpr const char *TEST_DEPTH_INVALID_SETTING_NO_MUTATION =
     "ResourceBrowserDepthWorkflow_InvalidSettingDoesNotMutateOutputs";
+constexpr const char *TEST_WORKFLOW_CAPACITY_STATUS =
+    "ResourceBrowserWorkflow_CapacityStatusDoesNotReportInvalidArgument";
 constexpr const char *TEST_IMPORTER_COMMIT_EXTERNAL_READY =
     "ResourceBrowserImporterCommitWorkflow_CommitsExternalManifestReadyRuntimeAssetGraph";
 constexpr const char *TEST_IMPORTER_COMMIT_BRIDGE_ROWS =
@@ -2236,6 +2238,112 @@ int ResourceBrowserDepthWorkflowInvalidSettingDoesNotMutateOutputs() {
     return 0;
 }
 
+int ResourceBrowserWorkflowCapacityStatusDoesNotReportInvalidArgument() {
+    MountTable table;
+    ResourceRegistry registry;
+    AssetManager manager;
+    std::array<ResourceBrowserResourceEntry, FIXTURE_FILE_COUNT> entries{};
+    std::array<ResourceBrowserDiagnosticRecord, 16U> diagnostics{};
+    ResourceBrowserDiagnosticsResult diagnostics_result{};
+    if (!BuildCanonicalResourceBrowserInputs(
+            "WorkflowCapacityStatus",
+            &table,
+            &registry,
+            &manager,
+            &entries,
+            &diagnostics,
+            &diagnostics_result)) {
+        return Fail("failed to build workflow capacity inputs");
+    }
+
+    constexpr std::uint32_t SELECTED_TEXTURE = 4U;
+    ResourceBrowserImportSettings import_settings = entries[SELECTED_TEXTURE].import_settings;
+    import_settings.expected_source_hash = entries[SELECTED_TEXTURE].validation.source_hash;
+
+    ResourceBrowserVisibleWorkflowRequest visible_request{};
+    visible_request.entries =
+        std::span<const ResourceBrowserResourceEntry>(entries.data(), entries.size());
+    visible_request.diagnostics =
+        std::span<const ResourceBrowserDiagnosticRecord>(
+            diagnostics.data(),
+            diagnostics_result.diagnostic_count);
+    visible_request.selected_index = SELECTED_TEXTURE;
+    visible_request.import_settings = import_settings;
+    visible_request.validate_import_settings = true;
+    ResourceBrowserVisibleWorkflowResult visible_result{};
+    BuildResourceBrowserVisibleWorkflowSurface(visible_request, &visible_result);
+    if (visible_result.status != ResourceBrowserVisibleWorkflowStatus::OutputCapacityExceeded ||
+        visible_result.surface_status != ResourceBrowserSurfaceStatus::OutputCapacityExceeded ||
+        visible_result.selection_status != ResourceBrowserSurfaceSelectionStatus::Success) {
+        return Fail("visible workflow capacity status fields mismatch");
+    }
+
+    ResourceBrowserDepthWorkflowRequest depth_request{};
+    depth_request.entries =
+        std::span<const ResourceBrowserResourceEntry>(entries.data(), entries.size());
+    depth_request.diagnostics =
+        std::span<const ResourceBrowserDiagnosticRecord>(
+            diagnostics.data(),
+            diagnostics_result.diagnostic_count);
+    depth_request.selected_index = SELECTED_TEXTURE;
+    depth_request.import_settings = import_settings;
+    depth_request.validate_import_settings = true;
+    ResourceBrowserDepthWorkflowResult depth_result{};
+    BuildResourceBrowserDepthWorkflowSurface(depth_request, &depth_result);
+    if (depth_result.status != ResourceBrowserDepthWorkflowStatus::OutputCapacityExceeded ||
+        depth_result.selection_status != ResourceBrowserSurfaceSelectionStatus::Success) {
+        return Fail("depth workflow capacity status fields mismatch");
+    }
+
+    ImportCookFixture fixture{};
+    if (!ExecuteImportCookFixture("WorkflowCapacityImporterCommit", &fixture)) {
+        return Fail("failed to execute workflow capacity import cook fixture");
+    }
+
+    ResourceRegistry import_registry;
+    AssetManager import_manager;
+    RuntimeAssetSceneLoaderOutput scene_output{};
+    ResourceBrowserImporterCommitWorkflowRequest importer_request{};
+    importer_request.mount_table = &fixture.table;
+    importer_request.mount = MountId(MOUNT_ID);
+    importer_request.import_cook_result = &fixture.command;
+    importer_request.scene = fixture.command.fixture.cooked_scene;
+    importer_request.files =
+        std::span<const RuntimeAssetFileDesc>(fixture.cooked_files.data(), fixture.cooked_files.size());
+    importer_request.resource_registry = &import_registry;
+    importer_request.asset_manager = &import_manager;
+    const RuntimeAssetFileDesc &selected_file = fixture.cooked_files[0U];
+    importer_request.import_settings.source_path = "external-import:Capacity/Asset.fbx";
+    importer_request.import_settings.target_kind = selected_file.kind;
+    importer_request.import_settings.resource_type = selected_file.resource_type;
+    importer_request.import_settings.asset_type = selected_file.asset_type;
+    importer_request.import_settings.stable_id = selected_file.stable_id;
+    importer_request.import_settings.importer_version = 1U;
+    importer_request.import_settings.expected_schema_version = 1U;
+    importer_request.selected_index = 0U;
+    importer_request.validate_import_settings = true;
+    importer_request.scene_output = &scene_output;
+
+    const ResourceSnapshot resource_before = import_registry.Snapshot();
+    const AssetSnapshot asset_before = import_manager.Snapshot();
+    ResourceBrowserImporterCommitWorkflowResult importer_result{};
+    BuildResourceBrowserImporterCommitWorkflow(importer_request, &importer_result);
+    if (importer_result.status != ResourceBrowserImporterCommitWorkflowStatus::OutputCapacityExceeded ||
+        importer_result.preflight_diagnostics_status !=
+            ResourceBrowserDiagnosticsStatus::OutputCapacityExceeded ||
+        importer_result.post_commit_diagnostics_status !=
+            ResourceBrowserDiagnosticsStatus::OutputCapacityExceeded ||
+        importer_result.runtime_status != RuntimeAssetDataStatus::CapacityExceeded ||
+        importer_result.mutation_allowed ||
+        importer_result.mutated_runtime_state ||
+        !ResourceSnapshotSame(resource_before, import_registry.Snapshot()) ||
+        !AssetSnapshotSame(asset_before, import_manager.Snapshot())) {
+        return Fail("importer commit workflow capacity status fields mismatch");
+    }
+
+    return 0;
+}
+
 int ResourceBrowserImporterCommitWorkflowCommitsExternalManifestReadyRuntimeAssetGraph() {
     ImportCookFixture fixture{};
     if (!ExecuteImportCookFixture("ImporterCommitExternalReady", &fixture)) {
@@ -2714,6 +2822,7 @@ const std::unordered_map<std::string_view, TestFunction> &Tests() {
         {TEST_DEPTH_EXTERNAL_IMPORT, ResourceBrowserDepthWorkflowBlocksExternalImportBoundary},
         {TEST_DEPTH_MISSING_RUNTIME_ASSET, ResourceBrowserDepthWorkflowReportsMissingRuntimeAssetLoadAndAssetRecordGaps},
         {TEST_DEPTH_INVALID_SETTING_NO_MUTATION, ResourceBrowserDepthWorkflowInvalidSettingDoesNotMutateOutputs},
+        {TEST_WORKFLOW_CAPACITY_STATUS, ResourceBrowserWorkflowCapacityStatusDoesNotReportInvalidArgument},
         {TEST_IMPORTER_COMMIT_EXTERNAL_READY,
          ResourceBrowserImporterCommitWorkflowCommitsExternalManifestReadyRuntimeAssetGraph},
         {TEST_IMPORTER_COMMIT_BRIDGE_ROWS,
