@@ -66,8 +66,8 @@ ResourceStreamingPipelineStatus ResourceStreamingPipeline::CompleteFileRead(
         completions.data(),
         static_cast<std::uint32_t>(completions.size()),
         &written_count);
-    snapshot_.last_staging_status = drain_status;
     if (drain_status != PackageResourceStagingStatus::Success) {
+        snapshot_.last_staging_status = drain_status;
         return RecordFailed(ResourceStreamingPipelineStatus::StagingCompletionMissing);
     }
 
@@ -76,6 +76,7 @@ ResourceStreamingPipelineStatus ResourceStreamingPipeline::CompleteFileRead(
     }
 
     last_staging_completion_ = completions[0U];
+    snapshot_.last_staging_status = last_staging_completion_.status;
     if (staging_status != PackageResourceStagingStatus::Success) {
         return RecordFailed(ResourceStreamingPipelineStatus::FileCompletionFailed);
     }

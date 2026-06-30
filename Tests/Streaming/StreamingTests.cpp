@@ -234,6 +234,8 @@ constexpr const char *TEST_PIPELINE_CACHE_PAYLOAD_STORE_FAILURE =
     "Streaming_ResourceStreamingPipeline_CachePayloadRejectsStoreFailureWithoutMutation";
 constexpr const char *TEST_PIPELINE_PACKAGE_ARTIFACT_CACHE_PAYLOAD =
     "Streaming_ResourceStreamingPipeline_PackageArtifactFeedsCachePayloadU64Window";
+constexpr const char *TEST_PIPELINE_STAGING_FAILURE_SNAPSHOT =
+    "Streaming_ResourceStreamingPipeline_PreservesStagingFailureSnapshot";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char *PRIMARY_MOUNT = "Primary";
@@ -3985,6 +3987,116 @@ int StreamingResourceStreamingPipelineCachePayloadRejectsStoreFailureWithoutMuta
 
     return 0;
 }
+
+int StreamingResourceStreamingPipelinePreservesStagingFailureSnapshot() {
+    MountTable table = CreateMountedTable();
+    AsyncFileReadQueue file_queue;
+    if (file_queue.Initialize(2U, 2U) != AsyncFileReadStatus::Success) {
+        return Fail("pipeline staging failure file queue initialize failed");
+    }
+
+    if (file_queue.Start() != AsyncFileReadStatus::Success) {
+        return Fail("pipeline staging failure file queue start failed");
+    }
+
+    PackageLoadPlanRecord record;
+    if (!BuildPackageRecord(&record, 0U, FixtureByteCount())) {
+        return Fail("pipeline staging failure package record build failed");
+    }
+
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("pipeline staging failure resource registration failed");
+    }
+
+    NullRhiDevice device = CreateInitializedUploadDevice();
+    std::array<std::uint8_t, OUTPUT_CAPACITY> staged_bytes{};
+    RhiBufferHandle output_handle{};
+    ResourceStreamingPipelineRequest request;
+    request.resource_registry = &resource_registry;
+    request.file_queue = &file_queue;
+    request.rhi_device = &device;
+    request.package_record = record;
+    request.resource = resource_result.handle;
+    request.expected_type = TYPE_TEXTURE;
+    request.file_request = BuildFileRequest(table, staged_bytes.data(), staged_bytes.size());
+    request.staged_bytes = std::span<const std::uint8_t>(staged_bytes.data(), staged_bytes.size());
+    request.upload_byte_count = FixtureByteCount();
+    request.upload_kind = ResourceUploadKind::CreateBuffer;
+    request.buffer_desc = UploadBufferDesc(FixtureByteCount());
+    request.output_buffer_handle = &output_handle;
+    request.staging_request_id = REQUEST_ONE;
+    request.upload_id = UPLOAD_ONE;
+    request.commit_id = COMMIT_ONE;
+
+    ResourceStreamingPipeline pipeline;
+    if (pipeline.Submit(request) != ResourceStreamingPipelineStatus::Queued) {
+        return Fail("pipeline staging failure submit did not queue");
+    }
+
+    AsyncFileReadResult file_result;
+    file_result.status = AsyncFileReadStatus::ReadFailure;
+    file_result.file_status = FileStatus::ReadFailure;
+    file_result.request_index = REQUEST_ONE;
+    file_result.byte_count = 0U;
+    const ResourceStreamingPipelineStatus status = pipeline.CompleteFileRead(file_result);
+    if (status != ResourceStreamingPipelineStatus::FileCompletionFailed) {
+        return Fail("pipeline staging failure did not surface file completion failure");
+    }
+
+    if (file_queue.Shutdown(true) != AsyncFileReadStatus::ShutdownComplete) {
+        return Fail("pipeline staging failure file queue shutdown failed");
+    }
+
+    const PackageResourceStagingCompletion staging_completion = pipeline.LastStagingCompletion();
+    if (staging_completion.status != PackageResourceStagingStatus::FileReadFailed) {
+        return Fail("pipeline staging failure completion status changed");
+    }
+
+    if (staging_completion.async_file_status != AsyncFileReadStatus::ReadFailure) {
+        return Fail("pipeline staging failure async status changed");
+    }
+
+    if (staging_completion.file_status != FileStatus::ReadFailure) {
+        return Fail("pipeline staging failure file status changed");
+    }
+
+    if (pipeline.LastUploadCompletion().upload_id != 0U) {
+        return Fail("pipeline staging failure entered upload stage");
+    }
+
+    if (pipeline.LastCommitCompletion().commit_id != 0U) {
+        return Fail("pipeline staging failure entered commit stage");
+    }
+
+    const ResourceStreamingPipelineSnapshot snapshot = pipeline.Snapshot();
+    if (snapshot.failed_count != 1U) {
+        return Fail("pipeline staging failure count changed");
+    }
+
+    if (snapshot.completed_count != 0U) {
+        return Fail("pipeline staging failure completed count changed");
+    }
+
+    if (snapshot.last_status != ResourceStreamingPipelineStatus::FileCompletionFailed) {
+        return Fail("pipeline staging failure pipeline status changed");
+    }
+
+    if (snapshot.last_staging_status != PackageResourceStagingStatus::FileReadFailed) {
+        return Fail("pipeline staging failure snapshot staging status changed");
+    }
+
+    if (snapshot.last_async_file_status != AsyncFileReadStatus::ReadFailure) {
+        return Fail("pipeline staging failure snapshot async status changed");
+    }
+
+    if (snapshot.has_active_request) {
+        return Fail("pipeline staging failure active request was not cleared");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char **argv) {
@@ -4055,7 +4167,9 @@ int main(int argc, char **argv) {
         {TEST_PIPELINE_PACKAGE_ARTIFACT_CACHE_PAYLOAD,
          StreamingResourceStreamingPipelinePackageArtifactFeedsCachePayloadU64Window},
         {TEST_PIPELINE_CACHE_PAYLOAD_STORE_FAILURE,
-         StreamingResourceStreamingPipelineCachePayloadRejectsStoreFailureWithoutMutation}};
+         StreamingResourceStreamingPipelineCachePayloadRejectsStoreFailureWithoutMutation},
+        {TEST_PIPELINE_STAGING_FAILURE_SNAPSHOT,
+         StreamingResourceStreamingPipelinePreservesStagingFailureSnapshot}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);
