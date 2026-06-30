@@ -118,14 +118,19 @@ ResourceUploadCommitStatus ResourceUploadCommitQueue::DrainCompletions(
         return ResourceUploadCommitStatus::CompletionQueueFull;
     }
 
+    ResourceUploadCommitStatus drain_status = ResourceUploadCommitStatus::Success;
     for (std::uint32_t index = 0U; index < snapshot_.completion_count; ++index) {
         output_completions[index] = completions_[index];
+        if (output_completions[index].status != ResourceUploadCommitStatus::Success) {
+            drain_status = output_completions[index].status;
+        }
+
         ++(*written_count);
         completions_[index] = ResourceUploadCommitCompletion{};
     }
 
     snapshot_.completion_count = 0U;
-    snapshot_.last_status = ResourceUploadCommitStatus::Success;
+    snapshot_.last_status = drain_status;
     return ResourceUploadCommitStatus::Success;
 }
 

@@ -208,6 +208,8 @@ constexpr const char *TEST_UPLOAD_COMMIT_SUCCESS =
     "Streaming_ResourceUploadCommit_CommitsSuccessfulUpload";
 constexpr const char *TEST_UPLOAD_COMMIT_FAILED_UPLOAD =
     "Streaming_ResourceUploadCommit_CommitsFailedUpload";
+constexpr const char *TEST_UPLOAD_COMMIT_DRAIN_FAILED_STATUS =
+    "Streaming_ResourceUploadCommit_DrainPreservesResourceCommitFailedStatus";
 constexpr const char *TEST_UPLOAD_COMMIT_INVALID_HANDLE =
     "Streaming_ResourceUploadCommit_RejectsInvalidResourceHandleWithoutMutation";
 constexpr const char *TEST_UPLOAD_COMMIT_TYPE_MISMATCH =
@@ -2810,6 +2812,52 @@ int StreamingResourceUploadCommitRejectsTypeMismatchWithoutMutation() {
     return 0;
 }
 
+int StreamingResourceUploadCommitDrainPreservesResourceCommitFailedStatus() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("resource registration failed");
+    }
+
+    const ResourceUploadCompletion upload_completion = BuildUploadCompletion(
+        ResourceHandle{},
+        TYPE_TEXTURE,
+        ResourceUploadStatus::Success,
+        UPLOAD_ONE,
+        REQUEST_ONE,
+        4U);
+    const ResourceUploadCommitRequest request =
+        BuildUploadCommitRequest(resource_registry, upload_completion, COMMIT_ONE);
+    ResourceUploadCommitQueue queue(ResourceUploadCommitQueueDesc{1U, 1U});
+    if (queue.Submit(request) != ResourceUploadCommitStatus::Queued) {
+        return Fail("failed drain commit request was not queued");
+    }
+
+    if (queue.ProcessNext() != ResourceUploadCommitStatus::ResourceCommitFailed) {
+        return Fail("failed drain commit did not report resource commit failure");
+    }
+
+    ResourceUploadCommitCompletion completion{};
+    if (!DrainOneUploadCommitCompletion(queue, &completion)) {
+        return Fail("failed drain commit completion drain failed");
+    }
+
+    if (completion.status != ResourceUploadCommitStatus::ResourceCommitFailed) {
+        return Fail("failed drain completion status changed");
+    }
+
+    const ResourceUploadCommitSnapshot snapshot = queue.Snapshot();
+    if (snapshot.last_status != ResourceUploadCommitStatus::ResourceCommitFailed) {
+        return Fail("failed drain status was overwritten");
+    }
+
+    if (snapshot.completion_count != 0U) {
+        return Fail("failed drain left completions queued");
+    }
+
+    return 0;
+}
+
 int StreamingResourceUploadCommitRejectsDuplicateCommitId() {
     ResourceRegistry resource_registry;
     const ResourceRegistrationResult first_resource = RegisterResource(resource_registry);
@@ -3986,6 +4034,8 @@ int main(int argc, char **argv) {
         {TEST_UPLOAD_RHI_FAILURE, StreamingResourceUploadReportsRhiFailureWithoutWritingOutput},
         {TEST_UPLOAD_COMMIT_SUCCESS, StreamingResourceUploadCommitCommitsSuccessfulUpload},
         {TEST_UPLOAD_COMMIT_FAILED_UPLOAD, StreamingResourceUploadCommitCommitsFailedUpload},
+        {TEST_UPLOAD_COMMIT_DRAIN_FAILED_STATUS,
+         StreamingResourceUploadCommitDrainPreservesResourceCommitFailedStatus},
         {TEST_UPLOAD_COMMIT_INVALID_HANDLE, StreamingResourceUploadCommitRejectsInvalidResourceHandleWithoutMutation},
         {TEST_UPLOAD_COMMIT_TYPE_MISMATCH, StreamingResourceUploadCommitRejectsTypeMismatchWithoutMutation},
         {TEST_UPLOAD_COMMIT_DUPLICATE_ID, StreamingResourceUploadCommitRejectsDuplicateCommitId},
