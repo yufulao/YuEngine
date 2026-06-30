@@ -2,7 +2,7 @@
 
 Status: canonical documentation handoff
 Owner: Architect
-Last major planning sync: `origin/main@50ff335fe1ddfea77a72ce20f770baa3028df4a2`
+Last major planning sync: `origin/main@3fa4ef7bd42da8f60bd5ebb3a7f863bd76292c84`
 
 ## 1. Read This First
 
@@ -64,7 +64,7 @@ At the latest handoff:
   returned `1167 / ERROR_DEVICE_NOT_CONNECTED` until DualSenseX exposed an
   XInput controller;
 - the current repo baseline is clean:
-  `HEAD == origin/main == 50ff335fe1ddfea77a72ce20f770baa3028df4a2`
+  `HEAD == origin/main == 3fa4ef7bd42da8f60bd5ebb3a7f863bd76292c84`
   after RuntimeAsset/Streaming/RHI/ResourceUpload spine follow-through;
 - active workspace tasks, timers, and coordinator goals were empty at the final
   L0/L1 handoff;
@@ -120,6 +120,21 @@ At the latest handoff:
   discovery/execution `12/12` PASS, exact RuntimeInstanceMapping rows `5/5`
   PASS, commit-level diff/hygiene/boundary PASS, read-only QA with clean final
   repo, and no broad/full CTest;
+- RTSPINE-RUNTIMEASSET-MODEL-SKELETON-TARGET-BINDING-U64-001 is VQ-closed at
+  `3fa4ef7bd42da8f60bd5ebb3a7f863bd76292c84`; implementation task
+  `06724fe5-b2e4-410e-97e7-2b41c195c3a0` reports
+  `COMPLETE-PASS / RTSPINE-RUNTIMEASSET-MODEL-SKELETON-TARGET-BINDING-U64-001-COMMITTED`
+  and VQ task `04e2a7a6-eac5-41d2-9624-6e5e952859c4` reports
+  `COMPLETE-PASS / RTSPINE-RUNTIMEASSET-MODEL-SKELETON-TARGET-BINDING-U64-001-VQ-READY`;
+  exact implementation scope was `CMakeLists.txt`,
+  `Src/YuEngine/RuntimeAsset/Src/RuntimeAssetData.cpp`, and
+  `Tests/RenderScene/RuntimeAssetDataClosedLoopTests.cpp`; focused
+  `YuRuntimeAssetDataClosedLoopTests` build PASS, focused CTest discovery found
+  `17` rows including `RuntimeAssetData_AnimationTrackTargetBindingResolvesModelAndSkeletonTargetFamilies`,
+  `RuntimeAssetData_RuntimeInstanceMappingBuildsTargetFamilyRows`, and
+  `RuntimeAssetData_RuntimeInstanceMappingResolvesModelAndSkeletonFamilies`,
+  focused execution `17/17` PASS, and old unsupported target-family labels are
+  absent;
 - direct WorldObject/editor object binding remains unopened; the later
   `e2e8c3c` and `1658639` commits are RuntimeAssetWorldAdapter bridge/handoff
   implementation evidence only and do not authorize editor/gameplay binding;
@@ -169,8 +184,8 @@ At the latest handoff:
   `19/19` PASS, committed scope limited to `CMakeLists.txt`,
   `RuntimeAssetData.h/.cpp`, and `RuntimeAssetDataClosedLoopTests.cpp`,
   `git diff --check` PASS, and no broad/full CTest;
-- post-008H RuntimeAsset production-spine follow-through is represented at
-  current HEAD `50ff335fe1ddfea77a72ce20f770baa3028df4a2`: `7c41265`
+- post-008H RuntimeAsset production-spine follow-through through `50ff335` is
+  represented by `7c41265`
   RTSPINE-008I package archive range to RuntimeAsset Resource payload window
   handoff, `e2e8c3c`/`1658639` RuntimeAssetWorldAdapter bridge/handoff,
   `0d2021c` Streaming U64 staging window contract, `bc6d0ee` Resource U64
@@ -191,6 +206,8 @@ At the latest handoff:
   `payload_window`; next-gate matrix reference `a5aad608` is the read-only scout
   marker for `NEXT-GATE-MATRIX-READY` and does not by itself promote any
   implementation lane to VQ-closed;
+- current canonical HEAD is `3fa4ef7bd42da8f60bd5ebb3a7f863bd76292c84`, adding
+  the VQ-closed ModelNode/SkeletonJoint target-family binding evidence above;
 - L0-RES-001 File/VFS loose read/write policy closure is PASS at
   `43cfc18fec4c4c5a5135e4ed15da64c8308247ff`; focused QA task
   `5020f3d6-a492-4138-b81f-c5e80cdd92e2` reports test-only
@@ -368,6 +385,7 @@ RuntimeAsset container and family identity
 -> animation track/channel binding to target plus property
 -> Step/Linear interpolation
 -> sampled transform application to runtime instance records
+-> ModelNode/SkeletonJoint target-family binding VQ-closed at `3fa4ef7`
 -> RuntimeAssetWorldAdapter bridge/handoff and Resource/Streaming payload-window
    follow-through as narrow evidence already landed through `50ff335`
 -> direct WorldObject/editor binding or broader Resource/File/VFS expansion only

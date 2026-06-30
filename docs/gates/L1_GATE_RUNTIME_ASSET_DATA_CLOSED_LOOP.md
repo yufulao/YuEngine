@@ -7,7 +7,8 @@ Owner: Architecture
 Task: #73 baseline; #50 RAV1 production contract amendment
 Related plan: `docs/YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md`
 Latest RuntimeAsset spine evidence: current `origin/main` HEAD
-`50ff335fe1ddfea77a72ce20f770baa3028df4a2` records the post-008H
+`3fa4ef7bd42da8f60bd5ebb3a7f863bd76292c84` records VQ-closed
+ModelNode/SkeletonJoint target-family binding after the post-008H
 RuntimeAsset/Streaming/RHI/ResourceUpload `payload_window` and destination-range
 implementation ledger, including exact marker labels
 `RuntimeAssetWorldObjectAdapter` and `RuntimeAssetWorldObjectRestoreHandoff`.
@@ -420,9 +421,10 @@ This gate records these mainline implementation slices:
 | RAV1-R | Animation track target/property binding | PASS; RuntimeAsset writes caller-owned SceneNode target binding records for animation tracks keyed by `target_id` plus property, and rejects missing target, unsupported property, and output capacity overflow without mutation; focused QA reports `17/17` PASS without broad/full CTest |
 | RAV1-S | Minimal interpolation | PASS; RuntimeAsset samples Step and Linear animation tracks at fixed times and rejects unsupported interpolation plus sample output capacity failures without mutation; focused QA reports exact interpolation `3/3` PASS and non-Package RuntimeAsset animation whitelist `23/23` PASS without broad/full CTest |
 | RAV1-T | Animation invalid-target failure model | PASS; RuntimeAsset rejects target-family mismatch and reports sample failure diagnostics without output mutation; focused QA task `6d02c260-936a-456b-917b-5c2802bbb666` reports focused RuntimeAsset regex `8/8` PASS and exact new rows `2/2` PASS without broad/full CTest |
-| RAV1-U | Runtime instance mapping | PASS; RuntimeAsset writes caller-owned runtime instance mapping records for asset targets and scene entities, feeds SceneNode target binding through that mapping, and rejects missing scene entities, capacity overflow, and unsupported ModelNode/SkeletonJoint mappings without mutation; focused QA task `6b6baf5f-2381-4b9c-89b1-4411fba53d23` reports exact RuntimeInstanceMapping rows `5/5` PASS without broad/full CTest |
+| RAV1-U | Runtime instance mapping | PASS; RuntimeAsset writes caller-owned runtime instance mapping records for asset targets and scene entities, feeds SceneNode target binding through that mapping, and rejects missing scene entities plus capacity overflow without mutation; the older ModelNode/SkeletonJoint rejection path is superseded by VQ-closed `3fa4ef7` target-family binding evidence; focused QA task `6b6baf5f-2381-4b9c-89b1-4411fba53d23` reports exact RuntimeInstanceMapping rows `5/5` PASS without broad/full CTest |
 | RAV1-V | RuntimeAsset packaged validation bridge | PASS; RuntimeAsset validates packaged archive byte ranges, payload hashes, dependency/load-plan records, duplicate load-plan records, and ProductRun packaged validation failure status before graph mutation; focused QA task `35fdc7a2-c09d-416a-95aa-b4aabdb05d0f` reports exact RTSPINE-008G rows `5/5` PASS, adjacent packaged/product rows `8/8` PASS, `git diff --check` PASS, exact committed scope, and no broad/full CTest |
 | RAV1-W | RuntimeAsset transaction rollback/proof | PASS; RuntimeAsset rolls back graph-load commit failures by restoring RuntimeAsset records plus Resource/Asset snapshots and reporting rollback proof fields without output mutation; focused QA task `1ec65e79-70f2-4fe5-8f08-6fb0ba2371fd` reports exact transaction rollback row `1/1` PASS, rollback/commit/adjacent packaged/product set `19/19` PASS, `git diff --check` PASS, exact committed scope, and no broad/full CTest |
+| RAV1-X | ModelNode/SkeletonJoint target-family binding | PASS; `origin/main@3fa4ef7bd42da8f60bd5ebb3a7f863bd76292c84` supports RuntimeAsset ModelNode/SkeletonJoint target-family binding; implementation task `06724fe5-b2e4-410e-97e7-2b41c195c3a0` and VQ task `04e2a7a6-eac5-41d2-9624-6e5e952859c4` are COMPLETE-PASS, focused discovery found `17` rows including `RuntimeAssetData_AnimationTrackTargetBindingResolvesModelAndSkeletonTargetFamilies`, `RuntimeAssetData_RuntimeInstanceMappingBuildsTargetFamilyRows`, and `RuntimeAssetData_RuntimeInstanceMappingResolvesModelAndSkeletonFamilies`, focused execution `17/17` PASS, and old unsupported target-family labels are absent |
 | Next slice | WorldObject-facing mapping / broader Resource/File/VFS follow-through | keep direct WorldObject/editor mapping outside RTSPINE-007 and keep broader Resource/File/VFS follow-through outside RTSPINE-008H until their own gates |
 
 The slice may split implementation tasks later, but those tasks must stay
@@ -478,6 +480,9 @@ Accepted proof:
   RuntimeAssetData package payload-window consumption, RHI destination range, and
   ResourceUpload destination range, with VQ status taken from each scoped
   workspace result.
+- VQ-closed ModelNode/SkeletonJoint target-family binding through `3fa4ef7`, with
+  direct WorldObject/editor binding and broader Resource/File/VFS follow-through
+  still requiring separate gates.
 
 Rejected proof:
 

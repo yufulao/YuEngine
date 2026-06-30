@@ -3,7 +3,7 @@
 Status: active commercial-engine execution plan
 Owner: Architect, lead engineer
 Started: 2026-06-11
-Current planning checkpoint: `origin/main@50ff335fe1ddfea77a72ce20f770baa3028df4a2`
+Current planning checkpoint: `origin/main@3fa4ef7bd42da8f60bd5ebb3a7f863bd76292c84`
 Reference product target: `C:\Steam\steamapps\common\TouhouNewWorld`
 Canonical entry point: `docs/README.md`
 
@@ -225,7 +225,7 @@ Current mainline has meaningful lower-engine and RuntimeAsset evidence:
 - RuntimeAsset has disk-backed closed-loop evidence through File/VFS/Resource,
   validators, RenderScene, RenderCore, RHI, package/product run ledgers, shader
   reflection hardening, and scene-animation selected-clip proof.
-- RuntimeAsset/Streaming/RHI HEAD evidence now also includes the post-008H
+- RuntimeAsset/Streaming/RHI evidence ledger also includes the post-008H
   payload-window and destination-range chain through
   `origin/main@50ff335fe1ddfea77a72ce20f770baa3028df4a2`.
 - Scene-animation implementation and QA are complete at
@@ -293,7 +293,8 @@ editor object, scene instance, raw pointer, display name, or file path.
 | RTSPINE-006 | Invalid target failure contract | PASS at `origin/main@96e0c024435f670c39ced019ff825b819a6830a3`; target-family mismatch and sample failure diagnostics fail without output mutation, and focused QA task `6d02c260-936a-456b-917b-5c2802bbb666` reports focused RuntimeAsset regex `8/8` PASS plus exact new rows `2/2` PASS without broad/full CTest |
 | RTSPINE-007 | Runtime instance mapping contract | PASS at `origin/main@37a112549190ac2123abcd72b5c688cdfa5b01e5`: asset target records map to caller-owned runtime instance rows for scene entities before any WorldObject/editor binding; focused QA task `6b6baf5f-2381-4b9c-89b1-4411fba53d23` reports exact RuntimeInstanceMapping rows `5/5` PASS without broad/full CTest |
 | RTSPINE-008 | Package/resource index pressure gate | 008A spec, 008B byte-range/index, 008C Package hash/dependency integrity, 008D File/VFS ranged IO, 008E Resource payload window/reference budget, 008F Package dependency closure/budgeted load plan, 008G RuntimeAsset packaged validation bridge, 008H RuntimeAsset transaction rollback/proof, and 008I Package archive range to RuntimeAsset Resource payload-window handoff are represented in current HEAD evidence; cite VQ-closed status only for lanes with workspace COMPLETE-PASS VQ |
-| RTSPINE-009 | Payload-window and destination-range follow-through ledger | Current HEAD `50ff335` records `e2e8c3c`/`1658639` RuntimeAssetWorldAdapter bridge/handoff with exact marker aliases `RuntimeAssetWorldObjectAdapter` and `RuntimeAssetWorldObjectRestoreHandoff`, `0d2021c` Streaming U64 staging, `bc6d0ee` Resource U64 `payload_window`, `2c93ddf` RuntimeAsset payload logical count, `6ac7ff9` Streaming cache payload bridge, `08b1ccd`/`35a84c3` Package payload metadata and legacy compatibility, `50a654e`/`baae22d` Streaming pipeline cache payload consumer plus rejection/no-mutation coverage, `e5cd6ee` Package-to-Streaming artifact fixture, `10f7b30` RuntimeAssetData package payload-window consumer, `c3cf022` RHI update destination range contract, and `50ff335` ResourceUpload destination range consumer; this is implementation/focused evidence unless a scoped VQ says COMPLETE-PASS; next-gate matrix marker `a5aad608` / `NEXT-GATE-MATRIX-READY` is docs-only VQ evidence routing, not implementation closure |
+| RTSPINE-009 | Payload-window and destination-range follow-through ledger | The `50ff335` ledger records `e2e8c3c`/`1658639` RuntimeAssetWorldAdapter bridge/handoff with exact marker aliases `RuntimeAssetWorldObjectAdapter` and `RuntimeAssetWorldObjectRestoreHandoff`, `0d2021c` Streaming U64 staging, `bc6d0ee` Resource U64 `payload_window`, `2c93ddf` RuntimeAsset payload logical count, `6ac7ff9` Streaming cache payload bridge, `08b1ccd`/`35a84c3` Package payload metadata and legacy compatibility, `50a654e`/`baae22d` Streaming pipeline cache payload consumer plus rejection/no-mutation coverage, `e5cd6ee` Package-to-Streaming artifact fixture, `10f7b30` RuntimeAssetData package payload-window consumer, `c3cf022` RHI update destination range contract, and `50ff335` ResourceUpload destination range consumer; this is implementation/focused evidence unless a scoped VQ says COMPLETE-PASS; next-gate matrix marker `a5aad608` / `NEXT-GATE-MATRIX-READY` is docs-only VQ evidence routing, not implementation closure |
+| RTSPINE-010 | ModelNode/SkeletonJoint target-family binding | VQ-closed at `origin/main@3fa4ef7bd42da8f60bd5ebb3a7f863bd76292c84`: implementation task `06724fe5-b2e4-410e-97e7-2b41c195c3a0` is COMPLETE-PASS / committed, VQ task `04e2a7a6-eac5-41d2-9624-6e5e952859c4` is COMPLETE-PASS / VQ-READY, changed paths were exactly `CMakeLists.txt`, `RuntimeAssetData.cpp`, and `RuntimeAssetDataClosedLoopTests.cpp`, focused discovery found `17` rows including new Model/Skeleton target-family rows, execution `17/17` PASS, and old unsupported target-family labels are absent |
 
 ### 5.4 Forbidden Work In This Stage
 
@@ -406,6 +407,7 @@ mapping -> Render/Audio/Input/Save -> Tools -> Shipping
 ```
 
 The next correct move is not feature breadth. The current RuntimeAsset
-production spine is evidence-rich through `50ff335`, but next implementation
-must wait for the canonical docs/VQ boundary to name the next scoped gate rather
-than reopening broad WorldObject, Resource/File/VFS, editor, or gameplay work.
+production spine is evidence-rich through `3fa4ef7`, but next implementation
+must wait for the canonical docs/VQ boundary and `13ee55d7` next-gate matrix to
+name the next scoped gate rather than reopening broad WorldObject,
+Resource/File/VFS, editor, or gameplay work.

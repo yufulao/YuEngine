@@ -424,7 +424,9 @@ C++ in-memory construction alone.
 | Asset target identity table | PASS | `origin/main@5ea838f6fd3428e7e67b77c1ca85c41e6e1c09e4` defines `RuntimeAssetTargetIdentityRecord` output tables for scene node, model node, and skeleton joint identities; `RuntimeAssetData_TargetIdentityTableLoadsSceneModelAndSkeletonJointIds`, `RuntimeAssetData_TargetIdentityTableRejectsDuplicateIdWithoutMutation`, `RuntimeAssetData_TargetIdentityTableRejectsMissingParentWithoutMutation`, and `RuntimeAssetData_TargetIdentityTableRejectsCapacityOverflowWithoutMutation` are covered by focused QA |
 | Asset target identity focused QA | PASS | focused `YuRuntimeAssetDataClosedLoopTests` build PASS; exact target identity plus scene/runtime animation regression discovery found `10` rows and execution reported `10/10` PASS; `git diff --check`, added-line hygiene, and production boundary scans passed; broad full CTest was not run for this docs lane |
 | Animation track target binding | PASS | `origin/main@ebe9ea35f531aa40133262b701e5e751f8ed9ccf` defines caller-owned `RuntimeAssetAnimationTrackTargetBindingRecord` output for SceneNode `target_id` plus property binding; `RuntimeAssetData_AnimationTrackTargetBindingResolvesTargetIdAndProperty`, `RuntimeAssetData_AnimationTrackTargetBindingRejectsMissingTargetWithoutMutation`, `RuntimeAssetData_AnimationTrackTargetBindingRejectsUnsupportedPropertyWithoutMutation`, and `RuntimeAssetData_AnimationTrackTargetBindingRejectsCapacityOverflowWithoutMutation` prove binding success and no-mutation failures |
-| Animation track target binding focused QA | PASS | workspace task `2e2d5a4e-0bb0-4cf4-bd1b-ab3a87987b7f` reports focused `YuRuntimeAssetDataClosedLoopTests` build PASS, focused discovery `17` rows, execution `17/17` PASS, `git diff --check` PASS, added-line hygiene PASS, dependency boundary PASS, and non-goal scans PASS; broad full CTest was not run, and ModelNode/SkeletonJoint animation binding was not opened |
+| Animation track target binding focused QA | PASS | workspace task `2e2d5a4e-0bb0-4cf4-bd1b-ab3a87987b7f` reports focused `YuRuntimeAssetDataClosedLoopTests` build PASS, focused discovery `17` rows, execution `17/17` PASS, `git diff --check` PASS, added-line hygiene PASS, dependency boundary PASS, and non-goal scans PASS; broad full CTest was not run, and ModelNode/SkeletonJoint animation binding was later closed by the `3fa4ef7` target-family gate |
+| ModelNode/SkeletonJoint target-family binding | PASS | `origin/main@3fa4ef7bd42da8f60bd5ebb3a7f863bd76292c84` adds RuntimeAssetData ModelNode/SkeletonJoint target-family binding support; `RuntimeAssetData_AnimationTrackTargetBindingResolvesModelAndSkeletonTargetFamilies`, `RuntimeAssetData_RuntimeInstanceMappingBuildsTargetFamilyRows`, and `RuntimeAssetData_RuntimeInstanceMappingResolvesModelAndSkeletonFamilies` are included in the focused evidence set |
+| ModelNode/SkeletonJoint target-family binding VQ | PASS | implementation task `06724fe5-b2e4-410e-97e7-2b41c195c3a0` reports COMPLETE-PASS / committed, VQ task `04e2a7a6-eac5-41d2-9624-6e5e952859c4` reports COMPLETE-PASS / VQ-READY, committed scope was exactly `CMakeLists.txt`, `RuntimeAssetData.cpp`, and `RuntimeAssetDataClosedLoopTests.cpp`, focused `YuRuntimeAssetDataClosedLoopTests` build PASS, focused CTest discovery found `17` rows, focused execution `17/17` PASS, and old unsupported target-family labels are absent |
 | Animation minimal interpolation | PASS | `origin/main@2bfe7e37d36ca711dd706728f21b1e4caecfd3db` adds Step/Linear fixed-time sampling plus no-mutation unsupported-interpolation and sample-output-capacity failures through `RuntimeAssetData_AnimationInterpolationSamplesStepAndLinearAtFixedTime`, `RuntimeAssetData_AnimationInterpolationRejectsUnsupportedModeWithoutMutation`, and `RuntimeAssetData_AnimationInterpolationRejectsSampleOutputCapacityWithoutMutation` |
 | Animation minimal interpolation focused QA | PASS | workspace task `951a3da8-6b13-4268-960e-407f65c40db7` reports focused `YuRuntimeAssetDataClosedLoopTests` build PASS, exact RTSPINE-005 interpolation discovery `3`, execution `3/3` PASS, non-Package RuntimeAsset animation whitelist `23/23` PASS, `git diff --check` PASS, added-line hygiene PASS, production boundary/non-goal scans PASS, and no broad/full CTest run |
 | Animation invalid-target failure model | PASS | `origin/main@96e0c024435f670c39ced019ff825b819a6830a3` adds `RuntimeAssetData_AnimationTrackTargetBindingRejectsTargetFamilyMismatchWithoutMutation` and `RuntimeAssetData_AnimationFailureModelReportsSampleFailuresWithoutMutation` for target-family mismatch and sample failure diagnostics without output mutation |
@@ -435,8 +437,8 @@ C++ in-memory construction alone.
 | Package/product generic submission ledger | PASS | `RuntimeAssetData_PackageRunEmitsGenericRenderSceneSubmissionLedger`, `RuntimeAssetData_ProductRunCommandReportsGenericRenderSceneSubmissionLedger`, and `RuntimeAssetData_PackageRunRejectsGenericSubmissionCapacityWithoutMutation` prove packaged and product-run entrypoints expose generic RenderScene submission ledgers and reject undersized output capacity without mutating frame/material outputs |
 | RuntimeAsset packaged validation bridge | PASS | `origin/main@175b6542cf8460b279d1de8a5499e2cbd508c80a` adds archive byte-range/hash and payload hash validation before graph-load mutation; `RuntimeAssetData_PackagedValidationBridgeConsumesArchiveByteRangesAndHashes`, archive byte-count mismatch, payload hash mismatch, duplicate load-plan record, and ProductRun packaged validation failure rows are covered by focused QA task `35fdc7a2-c09d-416a-95aa-b4aabdb05d0f`, which reports focused build PASS, exact RTSPINE-008G rows `5/5` PASS, adjacent packaged/product rows `8/8` PASS, `git diff --check` PASS, exact committed scope, and no broad/full CTest |
 | RuntimeAsset transaction rollback/proof | PASS | `origin/main@1120c3659bf0375f8eb9ef87e042f24c6e5d3ca1` adds rollback journals, rollback status/proof fields, and commit-failure rollback of previously committed RuntimeAsset records plus Resource/Asset snapshots; `RuntimeAssetData_LoaderCommitFailureRollsBackCommittedRecords` is covered by focused QA task `1ec65e79-70f2-4fe5-8f08-6fb0ba2371fd`, which reports focused build PASS, exact row `1/1` PASS, rollback/commit/adjacent packaged/product set `19/19` PASS, `git diff --check` PASS, exact committed scope, and no broad/full CTest |
-| RuntimeAsset post-008H payload-window chain | HEAD evidence | Current `origin/main@50ff335fe1ddfea77a72ce20f770baa3028df4a2` records `7c41265` RTSPINE-008I package archive range to RuntimeAsset Resource payload-window handoff, `bc6d0ee` Resource U64 `payload_window` follow-through, `2c93ddf` RuntimeAsset payload logical count propagation, `6ac7ff9` Streaming Resource cache payload bridge, `08b1ccd` Package payload metadata producer, `35a84c3` legacy artifact compatibility fix, `50a654e` Streaming pipeline cache payload consumer, `baae22d` rejection/no-mutation coverage fix, `e5cd6ee` Package-to-Streaming artifact fixture, and `10f7b30` RuntimeAssetData package payload-window consumer; this row is a canonical evidence ledger and VQ status must come from each lane's workspace result |
-| RuntimeAssetWorldAdapter / destination range chain | HEAD evidence | Current `origin/main@50ff335fe1ddfea77a72ce20f770baa3028df4a2` records `e2e8c3c` RuntimeAssetWorldAdapter bridge using exact marker `RuntimeAssetWorldObjectAdapter`, `1658639` RuntimeAssetWorldAdapter restore handoff using exact marker `RuntimeAssetWorldObjectRestoreHandoff`, `0d2021c` Streaming U64 staging window, `c3cf022` RHI update destination range contract, and `50ff335` ResourceUpload destination range consumer; direct WorldObject/editor binding, broad Resource/File/VFS expansion, and stage-close claims still require their own scoped gate/VQ |
+| RuntimeAsset post-008H payload-window chain | HEAD evidence | The `50ff335fe1ddfea77a72ce20f770baa3028df4a2` ledger records `7c41265` RTSPINE-008I package archive range to RuntimeAsset Resource payload-window handoff, `bc6d0ee` Resource U64 `payload_window` follow-through, `2c93ddf` RuntimeAsset payload logical count propagation, `6ac7ff9` Streaming Resource cache payload bridge, `08b1ccd` Package payload metadata producer, `35a84c3` legacy artifact compatibility fix, `50a654e` Streaming pipeline cache payload consumer, `baae22d` rejection/no-mutation coverage fix, `e5cd6ee` Package-to-Streaming artifact fixture, and `10f7b30` RuntimeAssetData package payload-window consumer; this row is a canonical evidence ledger and VQ status must come from each lane's workspace result |
+| RuntimeAssetWorldAdapter / destination range chain | HEAD evidence | The `50ff335fe1ddfea77a72ce20f770baa3028df4a2` ledger records `e2e8c3c` RuntimeAssetWorldAdapter bridge using exact marker `RuntimeAssetWorldObjectAdapter`, `1658639` RuntimeAssetWorldAdapter restore handoff using exact marker `RuntimeAssetWorldObjectRestoreHandoff`, `0d2021c` Streaming U64 staging window, `c3cf022` RHI update destination range contract, and `50ff335` ResourceUpload destination range consumer; direct WorldObject/editor binding, broad Resource/File/VFS expansion, and stage-close claims still require their own scoped gate/VQ |
 | RenderCore/RHI capture | PASS | `RuntimeAssetData_RenderClosedLoop_CapturesCubeCylinderConeThroughRhi` |
 | CPU oracle guard | PASS | `RuntimeAssetData_CpuPpmOracleDoesNotBypassRhiRenderCore` |
 | Upper-layer dependency guard | PASS | `RuntimeAssetData_DoesNotDependOnEditorUiInputOrGdiViewer` |
@@ -453,13 +455,15 @@ runtime animation output tables, explicit selected animation clip sampling,
 asset-internal scene node/model node/skeleton joint target identity tables,
 SceneNode animation track `target_id` plus property binding records,
 invalid-target failure model diagnostics, generic RenderScene CPU submission
-records, runtime instance mapping rows, per-entity material tables, package/cook/run ledgers, and product-run
-smoke as the current mainline closed loop. The
+records, runtime instance mapping rows, VQ-closed ModelNode/SkeletonJoint
+target-family binding rows, per-entity material tables, package/cook/run ledgers,
+and product-run smoke as the current mainline closed loop. The
 remaining work is production hardening for broader material and scene variants,
-native/non-fixture shader compiler integration, ModelNode/SkeletonJoint
-animation binding beyond explicit unsupported-target rejection, WorldObject-facing
-instance application, blending and clip-family variants, and scene/animation/camera
-production variants beyond the canonical cube/cylinder/cone graph.
+native/non-fixture shader compiler integration, skeletal skinning and deeper
+animation variants beyond the VQ-closed target-family binding rows,
+WorldObject-facing instance application, blending and clip-family variants, and
+scene/animation/camera production variants beyond the canonical
+cube/cylinder/cone graph.
 
 ## Validator, Cook, Load, Render
 
@@ -529,13 +533,14 @@ model implementation plus focused QA are PASS. RTSPINE-007 runtime instance
 mapping implementation plus focused QA are PASS at
 `37a112549190ac2123abcd72b5c688cdfa5b01e5`, covering caller-owned runtime
 instance rows for SceneNode targets and no-mutation failures for missing scene
-entities, capacity overflow, and unsupported ModelNode/SkeletonJoint mappings.
+entities and capacity overflow; ModelNode/SkeletonJoint mapping is now covered
+by the later `3fa4ef7` target-family binding VQ.
 RTSPINE-008G RuntimeAsset packaged validation bridge implementation plus focused
 QA are PASS at `175b6542cf8460b279d1de8a5499e2cbd508c80a`, covering packaged
 validation preflight before graph mutation and ProductRun failure reporting.
 RTSPINE-008H transaction rollback/proof implementation plus focused QA are PASS
 at `1120c3659bf0375f8eb9ef87e042f24c6e5d3ca1`, covering commit-failure
-rollback without output mutation. Current HEAD `50ff335` then records the
+rollback without output mutation. The `50ff335` ledger then records the
 post-008H RuntimeAssetWorldAdapter, Resource/Streaming payload-window,
 Package payload metadata, RuntimeAssetData payload-window consumer, RHI
 destination-range, and ResourceUpload destination-range implementation chain.
@@ -545,6 +550,13 @@ WorldObject/editor binding and broader Resource/File/VFS expansion still need
 their own gates. Current docs-only VQ marker repair also records next-gate matrix
 reference `a5aad608` / `NEXT-GATE-MATRIX-READY`; this is a routing marker, not a
 new implementation acceptance result.
+RTSPINE-RUNTIMEASSET-MODEL-SKELETON-TARGET-BINDING-U64-001 is VQ-closed at
+`3fa4ef7bd42da8f60bd5ebb3a7f863bd76292c84`: implementation task
+`06724fe5-b2e4-410e-97e7-2b41c195c3a0` reports COMPLETE-PASS / committed and VQ
+task `04e2a7a6-eac5-41d2-9624-6e5e952859c4` reports COMPLETE-PASS / VQ-READY.
+It closes ModelNode/SkeletonJoint target-family binding for RuntimeAssetData
+focused rows, but it does not open direct WorldObject/editor binding or broader
+Resource/File/VFS follow-through.
 Selected clip sampling remains the earlier closed slice because it only selects
 among bounded clip records and proves no-mutation failure for a missing selected
 clip.
@@ -564,8 +576,9 @@ RuntimeAsset spine constraints are:
 2. keep RTSPINE-004 binding limited to SceneNode target id plus property without
    WorldObject, editor object, raw pointer, display name, or file path
    references;
-3. do not count ModelNode/SkeletonJoint animation binding as completed by the
-   SceneNode RTSPINE-004 PASS;
+3. count ModelNode/SkeletonJoint target-family binding only through the later
+   `3fa4ef7` VQ-closed gate, not through the older SceneNode-only RTSPINE-004
+   PASS;
 4. keep RTSPINE-005 limited to Step/Linear interpolation and the covered
    no-mutation interpolation failures; do not treat it as cubic, blend tree,
    montage, timeline, skeletal skinning, or editor authoring proof;

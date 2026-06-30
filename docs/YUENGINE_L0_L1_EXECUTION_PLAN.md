@@ -136,7 +136,8 @@ target identity work.
 | RTSPINE-006 | Define invalid target failure model | PASS at `origin/main@96e0c024435f670c39ced019ff825b819a6830a3`: target-family mismatch and sample failure diagnostics fail without output mutation; focused QA task `6d02c260-936a-456b-917b-5c2802bbb666` reports isolated clean worktree, focused RuntimeAsset regex `8/8` PASS, exact new rows `2/2` PASS, diff/hygiene/boundary PASS, and no broad/full CTest |
 | RTSPINE-007 | Define runtime instance mapping gate | PASS at `origin/main@37a112549190ac2123abcd72b5c688cdfa5b01e5`: asset target records map to caller-owned runtime instance rows for scene entities before any WorldObject/editor binding; focused QA task `6b6baf5f-2381-4b9c-89b1-4411fba53d23` reports exact RuntimeInstanceMapping rows `5/5` PASS and no broad/full CTest |
 | RTSPINE-008 | Define package/resource pressure gate | 008A pressure contract defines vocabulary, byte-range policy, hash coverage, mutation contract, and forbidden scope; 008B byte-range/index, 008C Package artifact hash/dependency integrity, 008D File/VFS ranged IO, 008E Resource payload window/reference budget, 008F Package dependency closure/budgeted load plan, 008G RuntimeAsset packaged validation bridge, 008H RuntimeAsset transaction rollback/proof, and 008I package archive range to RuntimeAsset Resource payload-window handoff are represented in current HEAD evidence |
-| RTSPINE-009 | Record post-008H payload and destination-range spine | Current HEAD `50ff335fe1ddfea77a72ce20f770baa3028df4a2` records implementation/focused evidence from RuntimeAssetWorldAdapter bridge/handoff through Resource/Streaming payload-window propagation, Package payload metadata, RuntimeAssetData package payload-window consumption, RHI destination range, and ResourceUpload destination range; only lanes with explicit workspace VQ COMPLETE-PASS should be treated as VQ-closed |
+| RTSPINE-009 | Record post-008H payload and destination-range spine | The `50ff335fe1ddfea77a72ce20f770baa3028df4a2` ledger records implementation/focused evidence from RuntimeAssetWorldAdapter bridge/handoff through Resource/Streaming payload-window propagation, Package payload metadata, RuntimeAssetData package payload-window consumption, RHI destination range, and ResourceUpload destination range; only lanes with explicit workspace VQ COMPLETE-PASS should be treated as VQ-closed |
+| RTSPINE-010 | Close ModelNode/SkeletonJoint target-family binding | VQ-closed at `origin/main@3fa4ef7bd42da8f60bd5ebb3a7f863bd76292c84`; implementation task `06724fe5-b2e4-410e-97e7-2b41c195c3a0` and VQ task `04e2a7a6-eac5-41d2-9624-6e5e952859c4` are COMPLETE-PASS, focused discovery found `17` rows including Model/Skeleton target-family rows, focused execution `17/17` PASS, and old unsupported target-family labels are absent |
 
 ### 1.2.2 RTSPINE-008A Package/Resource Pressure Contract
 
@@ -530,8 +531,10 @@ caller-owned output. Focused QA task `2e2d5a4e-0bb0-4cf4-bd1b-ab3a87987b7f`
 reports focused `YuRuntimeAssetDataClosedLoopTests` build PASS, exact discovery
 of `17` rows, execution `17/17` PASS, `git diff --check` PASS, added-line
 hygiene PASS, and boundary/non-goal scans PASS without running broad full CTest.
-The RTSPINE-004 PASS does not open ModelNode/SkeletonJoint animation binding,
-RTSPINE-007 runtime instance mapping, or any Package/Resource write lane.
+The RTSPINE-004 PASS did not by itself open ModelNode/SkeletonJoint animation
+binding, RTSPINE-007 runtime instance mapping, or any Package/Resource write
+lane; the later `3fa4ef7` gate below closes the ModelNode/SkeletonJoint
+target-family binding slice.
 
 Current RuntimeAsset minimal interpolation evidence at
 `2bfe7e37d36ca711dd706728f21b1e4caecfd3db` covers Step/Linear fixed-time
@@ -541,8 +544,9 @@ capacity. Focused QA task `951a3da8-6b13-4268-960e-407f65c40db7` reports focused
 discovery `3`, execution `3/3` PASS, non-Package RuntimeAsset animation
 whitelist discovery/execution `23/23` PASS, `git diff --check` PASS, added-line
 hygiene PASS, and production boundary/non-goal scans PASS without running
-broad/full CTest. The PASS does not open ModelNode/SkeletonJoint animation
-binding or RTSPINE-007 runtime instance mapping.
+broad/full CTest. The PASS did not by itself open ModelNode/SkeletonJoint
+animation binding or RTSPINE-007 runtime instance mapping; `3fa4ef7` records the
+later VQ-closed ModelNode/SkeletonJoint target-family binding slice.
 
 Current RuntimeAsset invalid-target failure model evidence at
 `96e0c024435f670c39ced019ff825b819a6830a3` covers target-family mismatch
@@ -559,8 +563,8 @@ Current RuntimeAsset runtime instance mapping evidence at
 `37a112549190ac2123abcd72b5c688cdfa5b01e5` covers caller-owned runtime
 instance mapping rows for SceneNode targets, animation target binding through
 the mapping, missing scene entity failure without mutation, output capacity
-failure without mutation, and unsupported ModelNode/SkeletonJoint target-family
-mapping failures without mutation. Focused QA task
+failure without mutation, and the pre-3fa4 ModelNode/SkeletonJoint
+target-family rejection path without mutation. Focused QA task
 `6b6baf5f-2381-4b9c-89b1-4411fba53d23` reports focused
 `YuRuntimeAssetDataClosedLoopTests` build PASS,
 `RuntimeAssetData_(RuntimeInstanceMapping|AnimationTrackTargetBinding|AnimationFailureModel|RuntimeAnimationTables)`
@@ -570,6 +574,24 @@ scan PASS, read-only QA with a clean final repo, and no broad/full CTest. The
 PASS does not open direct WorldObject/editor mapping, RTSPINE-008H, or the
 RuntimeAsset packaged validation bridge by itself; the separate RTSPINE-008G gate
 below opens that bridge.
+
+Current RuntimeAsset ModelNode/SkeletonJoint target-family binding evidence at
+`3fa4ef7bd42da8f60bd5ebb3a7f863bd76292c84` is VQ-closed. Implementation task
+`06724fe5-b2e4-410e-97e7-2b41c195c3a0` reports
+`COMPLETE-PASS / RTSPINE-RUNTIMEASSET-MODEL-SKELETON-TARGET-BINDING-U64-001-COMMITTED`;
+VQ task `04e2a7a6-eac5-41d2-9624-6e5e952859c4` reports
+`COMPLETE-PASS / RTSPINE-RUNTIMEASSET-MODEL-SKELETON-TARGET-BINDING-U64-001-VQ-READY`.
+The committed scope was exactly `CMakeLists.txt`,
+`Src/YuEngine/RuntimeAsset/Src/RuntimeAssetData.cpp`, and
+`Tests/RenderScene/RuntimeAssetDataClosedLoopTests.cpp`. Focused
+`YuRuntimeAssetDataClosedLoopTests` build PASS, focused CTest discovery found
+`17` rows including
+`RuntimeAssetData_AnimationTrackTargetBindingResolvesModelAndSkeletonTargetFamilies`,
+`RuntimeAssetData_RuntimeInstanceMappingBuildsTargetFamilyRows`, and
+`RuntimeAssetData_RuntimeInstanceMappingResolvesModelAndSkeletonFamilies`,
+focused execution `17/17` PASS, and old unsupported target-family labels are
+absent. This does not open direct WorldObject/editor binding or broader
+Resource/File/VFS follow-through.
 
 Current post-008H RuntimeAsset spine evidence at
 `origin/main@50ff335fe1ddfea77a72ce20f770baa3028df4a2` records the following
