@@ -377,6 +377,11 @@ PlatformWindowPollResult WindowsPlatformWindow::PollEvents(PlatformWindowEvent* 
     result.event_count = writable_count;
     result.events_remaining = event_count_ > 0U;
     result.dropped_event_count = dropped_event_count_;
+    if (result.dropped_event_count > 0U) {
+        result.status = SetLastStatus(PlatformWindowStatus::EventQueueOverflow);
+        return result;
+    }
+
     if (result.events_remaining) {
         result.status = SetLastStatus(PlatformWindowStatus::OutputBufferFull);
         return result;

@@ -41,6 +41,30 @@ using yuengine::platform::PlatformWindowStatus;
 using yuengine::platform::WindowsPlatformWindow;
 using BoundedInMemoryLogSink = yuengine::diagnostics::BoundedInMemoryLogSink;
 
+namespace yuengine::platform {
+struct WindowsPlatformWindowAccess {
+    static void ApplyClientExtent(WindowsPlatformWindow& window, std::uint32_t client_width, std::uint32_t client_height) {
+        window.ApplyClientExtent(client_width, client_height);
+    }
+
+    static void ApplyFocusState(WindowsPlatformWindow& window, bool focused) {
+        window.ApplyFocusState(focused);
+    }
+
+    static void ApplyMinimizedState(WindowsPlatformWindow& window, bool minimized) {
+        window.ApplyMinimizedState(minimized);
+    }
+
+    static void ApplyCloseRequest(WindowsPlatformWindow& window) {
+        window.ApplyCloseRequest();
+    }
+
+    static PlatformWindowStatus PushPlatformEvent(WindowsPlatformWindow& window, const PlatformWindowEvent& event) {
+        return window.PushPlatformEvent(event);
+    }
+};
+}
+
 namespace {
 constexpr const char* TEST_HOST = "Host_StartTickShutdown_Deterministic";
 constexpr const char* TEST_TIMER = "Host_TimerMonotonic_ForFixedTicks";
@@ -54,6 +78,7 @@ constexpr const char* TEST_WINDOW_NULL_POLL = "PlatformWindow_PollEventsRejectsN
 constexpr const char* TEST_WINDOW_POLL_NOT_CREATED = "PlatformWindow_PollEventsBeforeCreateReturnsNotCreated";
 constexpr const char* TEST_WINDOW_OPS_NOT_CREATED = "PlatformWindow_OperationsBeforeCreateReturnNotCreated";
 constexpr const char* TEST_WINDOW_QUEUE_BOUNDED = "PlatformWindow_QueueCapacityLimitIsBounded";
+constexpr const char* TEST_WINDOW_EVENT_OVERFLOW_STATUS = "PlatformWindow_EventOverflowReportsSnapshotStatus";
 constexpr const char* TEST_WINDOW_PLAIN_TYPES = "PlatformWindow_PublicTypesArePlainValues";
 constexpr const char* LOG_MODULE_PLATFORM = "Platform";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
@@ -374,6 +399,41 @@ int PlatformWindowQueueCapacityLimitIsBounded() {
     return 0;
 }
 
+int PlatformWindowEventOverflowReportsSnapshotStatus() {
+    WindowsPlatformWindow window;
+    for (std::size_t index = 0U; index < PlatformWindowDesc::DEFAULT_EVENT_QUEUE_CAPACITY; ++index) {
+        PlatformWindowEvent queued_event{};
+        queued_event.type = yuengine::platform::PlatformWindowEventType::RawKeyDown;
+        queued_event.raw_code = static_cast<std::uint32_t>(index);
+        const PlatformWindowStatus status = yuengine::platform::WindowsPlatformWindowAccess::PushPlatformEvent(window, queued_event);
+        if (status != PlatformWindowStatus::Success) {
+            return Fail("internal platform event enqueue failed before capacity");
+        }
+    }
+
+    PlatformWindowEvent second_event{};
+    second_event.type = yuengine::platform::PlatformWindowEventType::FocusLost;
+    const PlatformWindowStatus second_status = yuengine::platform::WindowsPlatformWindowAccess::PushPlatformEvent(window, second_event);
+    if (second_status != PlatformWindowStatus::EventQueueOverflow) {
+        return Fail("internal platform event overflow did not return overflow status");
+    }
+
+    PlatformWindowSnapshot snapshot = window.GetSnapshot();
+    if (snapshot.queued_event_count != PlatformWindowDesc::DEFAULT_EVENT_QUEUE_CAPACITY) {
+        return Fail("internal platform event overflow changed queued count");
+    }
+
+    if (snapshot.dropped_event_count != 1U) {
+        return Fail("internal platform event overflow did not record dropped count");
+    }
+
+    if (snapshot.last_status != PlatformWindowStatus::EventQueueOverflow) {
+        return Fail("internal platform event overflow did not record snapshot status");
+    }
+
+    return 0;
+}
+
 int PlatformWindowPublicTypesArePlainValues() {
     static_assert(std::is_trivially_copyable<PlatformNativeSurface>::value);
     static_assert(std::is_trivially_copyable<PlatformWindowEvent>::value);
@@ -402,6 +462,7 @@ int main(int argc, char** argv) {
         {TEST_WINDOW_POLL_NOT_CREATED, PlatformWindowPollEventsBeforeCreateReturnsNotCreated},
         {TEST_WINDOW_OPS_NOT_CREATED, PlatformWindowOperationsBeforeCreateReturnNotCreated},
         {TEST_WINDOW_QUEUE_BOUNDED, PlatformWindowQueueCapacityLimitIsBounded},
+        {TEST_WINDOW_EVENT_OVERFLOW_STATUS, PlatformWindowEventOverflowReportsSnapshotStatus},
         {TEST_WINDOW_PLAIN_TYPES, PlatformWindowPublicTypesArePlainValues}};
 
     const std::string_view test_name(argv[1]);
