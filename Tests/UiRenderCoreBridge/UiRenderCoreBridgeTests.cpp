@@ -532,12 +532,26 @@ int UiRenderCoreBridgeRejectsSmallOutputStorageWithoutSubmission() {
         return Fail("bridge accepted undersized output storage");
     }
 
+    if (result.failed_entry_index != 1U ||
+        result.failed_node_id.value != 13U ||
+        result.submitted_entry_count != 0U ||
+        result.completed_entry_count != 0U) {
+        return Fail("bridge output capacity diagnostics changed");
+    }
+
     if (!PassRequestMatchesSentinel(pass_requests[0U])) {
         return Fail("bridge mutated pass request after undersized output storage");
     }
 
     if (pass.Snapshot().executed_pass_count != 0U || batch.Snapshot().submission_record_count != 0U) {
         return Fail("bridge submitted after undersized output storage");
+    }
+
+    const auto bridge_snapshot = bridge.Snapshot();
+    if (bridge_snapshot.last_failed_entry_index != 1U ||
+        bridge_snapshot.last_failed_node_id.value != 13U ||
+        bridge_snapshot.last_status != UiRenderCoreBridgeStatus::OutputCapacityExceeded) {
+        return Fail("bridge output capacity snapshot diagnostics changed");
     }
 
     return 0;

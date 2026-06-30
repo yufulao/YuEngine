@@ -24,22 +24,33 @@ bool IsKnownDrawElementType(yuengine::uicore::UiDrawElementType type) {
     return type == yuengine::uicore::UiDrawElementType::Text;
 }
 
-bool HasValidOutputStorage(
+bool FindOutputCapacityFailureIndex(
     const UiRenderCoreBridgeRequest &request,
-    std::size_t draw_count) {
-    if (request.pass_requests.size() < draw_count) {
+    std::size_t draw_count,
+    std::size_t *out_failed_entry_index) {
+    if (out_failed_entry_index == nullptr) {
         return false;
     }
 
-    if (request.pass_results.size() < draw_count) {
-        return false;
+    *out_failed_entry_index = draw_count;
+
+    if (request.pass_requests.size() < draw_count) {
+        *out_failed_entry_index = request.pass_requests.size();
+    }
+
+    if (request.pass_results.size() < *out_failed_entry_index) {
+        *out_failed_entry_index = request.pass_results.size();
     }
 
     if (request.pass_requests.data() == nullptr) {
-        return false;
+        *out_failed_entry_index = 0U;
     }
 
-    return request.pass_results.data() != nullptr;
+    if (request.pass_results.data() == nullptr) {
+        *out_failed_entry_index = 0U;
+    }
+
+    return *out_failed_entry_index < draw_count;
 }
 
 bool HasValidPassIdRange(std::uint32_t pass_id_base, std::size_t draw_count) {
@@ -137,7 +148,10 @@ UiRenderCoreBridgeStatus UiRenderCoreBridge::ValidateRequest(
         return UiRenderCoreBridgeStatus::InvalidArgument;
     }
 
-    if (!HasValidOutputStorage(request, draw_count)) {
+    std::size_t capacity_failed_entry_index = 0U;
+    if (FindOutputCapacityFailureIndex(request, draw_count, &capacity_failed_entry_index)) {
+        result->failed_entry_index = capacity_failed_entry_index;
+        result->failed_node_id = request.draw_elements[capacity_failed_entry_index].node_id;
         return UiRenderCoreBridgeStatus::OutputCapacityExceeded;
     }
 
