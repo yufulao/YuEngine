@@ -66,6 +66,8 @@ constexpr const char *TEST_MISSING_SCENE =
     "EditorHostSession_RejectsMissingSceneWorkflowWithoutMutation";
 constexpr const char *TEST_SMALL_PERSISTENCE =
     "EditorHostSession_RejectsSmallPersistenceOutputWithoutMutation";
+constexpr const char *TEST_CAPACITY_REQUIRED_COUNTS =
+    "EditorHostSession_CapacityRejectionsReportRequiredCounts";
 constexpr const char *TEST_INVALID_PERSISTED =
     "EditorHostSession_RejectsInvalidPersistedSessionWithoutMutation";
 constexpr const char *TEST_APP_OPEN_REFRESH =
@@ -953,6 +955,151 @@ int EditorHostSessionRejectsSmallPersistenceOutputWithoutMutation() {
     return 0;
 }
 
+int EditorHostSessionCapacityRejectionsReportRequiredCounts() {
+    SceneEditorWorkflowResult scene = ReadySceneWorkflow();
+    AnimationEditorTimelineWorkflowResult animation = ReadyAnimationWorkflow();
+    UiEditorDesignInspectorWorkflowResult ui = ReadyUiWorkflow();
+    AuthoredEditorPackageRunResult package_run = ReadyPackageRun();
+
+    std::array<EditorHostPanelStateRow, 3U> small_panels{};
+    small_panels[0U].session_id = 91U;
+    small_panels[0U].kind = EditorHostPanelKind::PackageRun;
+    small_panels[0U].content_row_count = 92U;
+    small_panels[0U].forged_preview_output = true;
+    std::array<EditorHostPersistedPanelRecord, 4U> enough_persisted{};
+    EditorHostSessionShellResult panel_result{};
+    const EditorHostSessionStatus panel_status = BuildEditorHostSessionShell(
+        MakeRequest(
+            &scene,
+            &animation,
+            &ui,
+            &package_run,
+            true,
+            small_panels,
+            enough_persisted),
+        &panel_result);
+    if (panel_status != EditorHostSessionStatus::PanelOutputCapacityExceeded ||
+        panel_result.blocked_layer != EditorHostSessionBlockedLayer::PanelOutput ||
+        panel_result.panel_count != 4U) {
+        return Fail("editor host panel capacity count mismatch");
+    }
+
+    if (!SentinelPanelUnchanged(small_panels[0U])) {
+        return Fail("editor host panel capacity mutated caller output");
+    }
+
+    std::array<EditorHostPanelStateRow, 3U> panels{};
+    panels[0U].session_id = 91U;
+    panels[0U].kind = EditorHostPanelKind::PackageRun;
+    panels[0U].content_row_count = 92U;
+    panels[0U].forged_preview_output = true;
+    std::array<EditorHostPersistedPanelRecord, 2U> small_persisted{};
+    small_persisted[0U].session_id = 93U;
+    small_persisted[0U].kind = EditorHostPanelKind::UiEditor;
+    small_persisted[0U].content_row_count = 94U;
+    small_persisted[0U].forged_preview_output = true;
+    EditorHostSessionShellResult persistence_result{};
+    const EditorHostSessionStatus persistence_status = BuildEditorHostSessionShell(
+        MakeRequest(
+            &scene,
+            &animation,
+            &ui,
+            nullptr,
+            true,
+            panels,
+            small_persisted),
+        &persistence_result);
+    if (persistence_status != EditorHostSessionStatus::PersistenceOutputCapacityExceeded ||
+        persistence_result.blocked_layer != EditorHostSessionBlockedLayer::PersistenceStore ||
+        persistence_result.panel_count != 3U ||
+        persistence_result.persisted_panel_count != 3U) {
+        return Fail("editor host persistence capacity count mismatch");
+    }
+
+    if (!SentinelPanelUnchanged(panels[0U]) ||
+        !SentinelPersistedUnchanged(small_persisted[0U])) {
+        return Fail("editor host persistence capacity mutated caller output");
+    }
+
+    std::array<EditorHostPersistedPanelRecord, 3U> restore_source{};
+    restore_source[0U].session_id = Descriptor().session_id;
+    restore_source[0U].layout_revision = Descriptor().layout_revision;
+    restore_source[0U].kind = EditorHostPanelKind::SceneEditor;
+    restore_source[0U].shell_state_only = true;
+    restore_source[0U].requires_runtime_refresh = true;
+    restore_source[1U] = restore_source[0U];
+    restore_source[1U].kind = EditorHostPanelKind::AnimationEditor;
+    restore_source[1U].order = 1U;
+    restore_source[2U] = restore_source[0U];
+    restore_source[2U].kind = EditorHostPanelKind::UiEditor;
+    restore_source[2U].order = 2U;
+    std::array<EditorHostPanelStateRow, 2U> small_restore_panels{};
+    small_restore_panels[0U].session_id = 91U;
+    small_restore_panels[0U].kind = EditorHostPanelKind::PackageRun;
+    small_restore_panels[0U].content_row_count = 92U;
+    small_restore_panels[0U].forged_preview_output = true;
+    EditorHostSessionRestoreRequest restore_request{};
+    restore_request.descriptor = Descriptor();
+    restore_request.persisted_panels = restore_source;
+    restore_request.panel_output = small_restore_panels;
+    EditorHostSessionRestoreResult restore_result{};
+    const EditorHostSessionStatus restore_status =
+        RestoreEditorHostSessionShell(restore_request, &restore_result);
+    if (restore_status != EditorHostSessionStatus::PanelOutputCapacityExceeded ||
+        restore_result.blocked_layer != EditorHostSessionBlockedLayer::PanelOutput ||
+        restore_result.restored_panel_count != 3U) {
+        return Fail("editor host restore capacity count mismatch");
+    }
+
+    if (!SentinelPanelUnchanged(small_restore_panels[0U])) {
+        return Fail("editor host restore capacity mutated caller output");
+    }
+
+    ResourceBrowserDepthWorkflowResult resource_browser = ReadyResourceBrowserDepth();
+    PreviewHostViewportSessionResult preview = ReadyPreviewViewport();
+    SceneEditorGizmoResourceSaveLoadWorkflowResult scene_integration =
+        ReadySceneGizmoWorkflow();
+    AnimationEditorStateEventPlaybackWorkflowResult animation_integration =
+        ReadyAnimationStateWorkflow();
+    UiEditorRuntimePreviewWorkflowResult ui_integration =
+        ReadyUiRuntimePreviewWorkflow();
+    std::array<EditorHostApplicationIntegrationRow, 4U> small_integrations{};
+    small_integrations[0U].session_id = 95U;
+    small_integrations[0U].kind = EditorHostApplicationIntegrationKind::UiEditor;
+    small_integrations[0U].content_row_count = 96U;
+    small_integrations[0U].forged_preview_output = true;
+    EditorHostApplicationLifecycleResult lifecycle_result{};
+    const EditorHostSessionStatus lifecycle_status = BuildEditorHostApplicationLifecycle(
+        MakeApplicationRequest(
+            EditorHostApplicationLifecyclePhase::Open,
+            &scene,
+            &animation,
+            &ui,
+            &package_run,
+            &resource_browser,
+            &preview,
+            &scene_integration,
+            &animation_integration,
+            &ui_integration,
+            true,
+            std::span<const EditorHostPersistedPanelRecord>{},
+            panels,
+            enough_persisted,
+            small_integrations),
+        &lifecycle_result);
+    if (lifecycle_status != EditorHostSessionStatus::IntegrationOutputCapacityExceeded ||
+        lifecycle_result.blocked_layer != EditorHostSessionBlockedLayer::IntegrationOutput ||
+        lifecycle_result.integration_row_count != 5U) {
+        return Fail("editor host lifecycle capacity count mismatch");
+    }
+
+    if (!SentinelIntegrationUnchanged(small_integrations[0U])) {
+        return Fail("editor host lifecycle capacity mutated caller output");
+    }
+
+    return 0;
+}
+
 int EditorHostSessionRejectsInvalidPersistedSessionWithoutMutation() {
     std::array<EditorHostPersistedPanelRecord, 1U> persisted{};
     persisted[0U].session_id = 0xBADU;
@@ -1008,6 +1155,10 @@ int main(int argc, char **argv) {
 
     if (test_name == TEST_SMALL_PERSISTENCE) {
         return EditorHostSessionRejectsSmallPersistenceOutputWithoutMutation();
+    }
+
+    if (test_name == TEST_CAPACITY_REQUIRED_COUNTS) {
+        return EditorHostSessionCapacityRejectionsReportRequiredCounts();
     }
 
     if (test_name == TEST_INVALID_PERSISTED) {
