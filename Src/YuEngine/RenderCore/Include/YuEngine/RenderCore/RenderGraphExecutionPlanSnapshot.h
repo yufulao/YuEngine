@@ -38,6 +38,9 @@ struct RenderGraphExecutionPlanSnapshot final {
     std::uint32_t last_frame_id = 0U;
     std::size_t last_pass_count = 0U;
     std::size_t last_record_slot = 0U;
+    std::size_t last_required_plan_record_count = 0U;
+    std::size_t last_required_frame_packet_record_count = 0U;
+    std::size_t last_required_submission_record_count = 0U;
     std::size_t last_completed_entry_count = 0U;
     std::size_t last_failed_entry_count = 0U;
     std::size_t last_failed_entry_index = 0U;

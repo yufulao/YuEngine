@@ -138,17 +138,19 @@ RenderFixturePassStatus ValidatePassRequest(const RenderFixturePassRequest &requ
     return RenderFixturePassStatus::Success;
 }
 
-std::size_t RemainingFramePacketRecordCapacity(const RenderFramePacketFixture &fixture) {
+std::size_t RequiredFramePacketRecordCount(const RenderFramePacketFixture &fixture) {
     const RenderFramePacketFixtureSnapshot snapshot = fixture.Snapshot();
-    if (snapshot.frame_packet_record_count >= snapshot.frame_packet_record_capacity) {
-        return 0U;
-    }
-
-    return snapshot.frame_packet_record_capacity - snapshot.frame_packet_record_count;
+    return snapshot.frame_packet_record_count + 1U;
 }
 
-std::size_t RemainingSubmissionRecordCapacity(const RenderSubmissionBatchFixture &fixture) {
+std::size_t RequiredSubmissionRecordCount(
+    const RenderSubmissionBatchFixture &fixture,
+    std::size_t pass_count) {
     const RenderSubmissionBatchFixtureSnapshot snapshot = fixture.Snapshot();
+    return snapshot.submission_record_count + pass_count;
+}
+
+std::size_t RemainingSubmissionRecordCapacity(const RenderSubmissionBatchFixtureSnapshot &snapshot) {
     if (snapshot.submission_record_count >= snapshot.submission_record_capacity) {
         return 0U;
     }
@@ -219,6 +221,9 @@ std::size_t RenderGraphExecutionPlan::QueryRecords(std::span<RenderGraphExecutio
     ++snapshot_.query_count;
     snapshot_.last_operation = RenderGraphExecutionPlanOperation::Query;
     snapshot_.last_status = RenderGraphExecutionPlanStatus::Success;
+    snapshot_.last_required_plan_record_count = 0U;
+    snapshot_.last_required_frame_packet_record_count = 0U;
+    snapshot_.last_required_submission_record_count = 0U;
     return copied_count;
 }
 
@@ -306,6 +311,7 @@ RenderGraphExecutionPlanStatus RenderGraphExecutionPlan::ValidateRequest(
         return RenderGraphExecutionPlanStatus::DuplicateGraphExecution;
     }
 
+    result->required_plan_record_count = snapshot_.plan_record_count + 1U;
     if (!HasRecordCapacity()) {
         return RenderGraphExecutionPlanStatus::PlanCapacityExceeded;
     }
@@ -338,14 +344,24 @@ RenderGraphExecutionPlanStatus RenderGraphExecutionPlan::ValidateRequest(
         return RenderGraphExecutionPlanStatus::MissingPassResultStorage;
     }
 
-    if (RemainingFramePacketRecordCapacity(*request.frame_packet) == 0U) {
+    const RenderFramePacketFixtureSnapshot frame_snapshot =
+        request.frame_packet->Snapshot();
+    result->required_frame_packet_record_count =
+        RequiredFramePacketRecordCount(*request.frame_packet);
+    if (result->required_frame_packet_record_count >
+        frame_snapshot.frame_packet_record_capacity) {
         result->frame_status = RenderFramePacketFixtureStatus::PacketCapacityExceeded;
         return RenderGraphExecutionPlanStatus::FramePacketCapacityExceeded;
     }
 
-    const std::size_t remaining_submission_record_capacity =
-        RemainingSubmissionRecordCapacity(*request.submission_batch);
-    if (pass_count > remaining_submission_record_capacity) {
+    const RenderSubmissionBatchFixtureSnapshot submission_snapshot =
+        request.submission_batch->Snapshot();
+    result->required_submission_record_count =
+        RequiredSubmissionRecordCount(*request.submission_batch, pass_count);
+    if (result->required_submission_record_count >
+        submission_snapshot.submission_record_capacity) {
+        const std::size_t remaining_submission_record_capacity =
+            RemainingSubmissionRecordCapacity(submission_snapshot);
         const RenderFixturePassRequest &failed_request =
             batch_request.pass_requests[remaining_submission_record_capacity];
         result->batch_status = RenderSubmissionBatchFixtureStatus::BatchCapacityExceeded;
@@ -470,6 +486,9 @@ void RenderGraphExecutionPlan::RecordReleaseResult(
     snapshot_.last_frame_id = 0U;
     snapshot_.last_pass_count = 0U;
     snapshot_.last_record_slot = 0U;
+    snapshot_.last_required_plan_record_count = 0U;
+    snapshot_.last_required_frame_packet_record_count = 0U;
+    snapshot_.last_required_submission_record_count = 0U;
     snapshot_.last_completed_entry_count = 0U;
     snapshot_.last_failed_entry_count = 0U;
     snapshot_.last_failed_entry_index = 0U;
@@ -514,6 +533,11 @@ void RenderGraphExecutionPlan::StoreLastResult(const RenderGraphExecutionPlanRes
     snapshot_.last_frame_id = result.frame_id;
     snapshot_.last_pass_count = result.pass_count;
     snapshot_.last_record_slot = result.record_slot;
+    snapshot_.last_required_plan_record_count = result.required_plan_record_count;
+    snapshot_.last_required_frame_packet_record_count =
+        result.required_frame_packet_record_count;
+    snapshot_.last_required_submission_record_count =
+        result.required_submission_record_count;
     snapshot_.last_completed_entry_count = result.completed_entry_count;
     snapshot_.last_failed_entry_count = result.failed_entry_count;
     snapshot_.last_failed_entry_index = result.failed_entry_index;

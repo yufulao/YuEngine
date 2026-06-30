@@ -685,13 +685,33 @@ int RenderCoreGraphExecutionPlanRejectsPlanCapacityOverflowWithoutMutation() {
         return Fail("first capacity execution failed");
     }
 
-    const int plan_capacity_result = ExpectPlanValidationFailure(
-        RenderGraphExecutionPlanStatus::PlanCapacityExceeded,
-        plan,
-        second_fixture,
-        ExecutionRequestFrom(second_fixture, NEXT_PLAN_ID, NEXT_FRAME_ID));
-    if (plan_capacity_result != 0) {
-        return plan_capacity_result;
+    const DependencySnapshots plan_capacity_before =
+        CaptureDependencySnapshots(second_fixture);
+    const std::size_t before_plan_record_count = plan.Snapshot().plan_record_count;
+    const auto plan_capacity_result =
+        plan.Execute(ExecutionRequestFrom(second_fixture, NEXT_PLAN_ID, NEXT_FRAME_ID));
+    if (plan_capacity_result.status != RenderGraphExecutionPlanStatus::PlanCapacityExceeded) {
+        return Fail("execution plan did not reject plan capacity");
+    }
+
+    if (plan_capacity_result.required_plan_record_count != 2U) {
+        return Fail("execution plan did not report required plan count");
+    }
+
+    const DependencySnapshots plan_capacity_after =
+        CaptureDependencySnapshots(second_fixture);
+    if (!DependencySnapshotsMatch(plan_capacity_before, plan_capacity_after)) {
+        return Fail("plan capacity validation mutated dependency state");
+    }
+
+    const auto plan_capacity_snapshot = plan.Snapshot();
+    if (plan_capacity_snapshot.plan_record_count != before_plan_record_count ||
+        plan_capacity_snapshot.plan_capacity_rejected_count != 1U) {
+        return Fail("execution plan capacity snapshot counter mismatch");
+    }
+
+    if (plan_capacity_snapshot.last_required_plan_record_count != 2U) {
+        return Fail("execution plan capacity snapshot required count mismatch");
     }
 
     PreparedGraphFixture submission_fixture;
@@ -716,6 +736,12 @@ int RenderCoreGraphExecutionPlanRejectsPlanCapacityOverflowWithoutMutation() {
 
     if (submission_result.batch_status != RenderSubmissionBatchFixtureStatus::BatchCapacityExceeded) {
         return Fail("execution plan did not preserve submission capacity status");
+    }
+
+    if (submission_result.required_plan_record_count != 1U ||
+        submission_result.required_frame_packet_record_count != 1U ||
+        submission_result.required_submission_record_count != 2U) {
+        return Fail("execution plan submission capacity required count mismatch");
     }
 
     if (submission_result.failed_entry_index != 1U || submission_result.failed_entry_count != 1U) {
@@ -745,6 +771,12 @@ int RenderCoreGraphExecutionPlanRejectsPlanCapacityOverflowWithoutMutation() {
 
     if (snapshot.last_failed_entry_index != 1U || snapshot.last_failed_entry_count != 1U) {
         return Fail("execution plan submission capacity snapshot entry mismatch");
+    }
+
+    if (snapshot.last_required_plan_record_count != 1U ||
+        snapshot.last_required_frame_packet_record_count != 1U ||
+        snapshot.last_required_submission_record_count != 2U) {
+        return Fail("execution plan submission capacity snapshot required count mismatch");
     }
 
     if (snapshot.last_pass_id != SECOND_PASS_ID || snapshot.last_material_id != SECOND_MATERIAL_ID) {
@@ -784,6 +816,12 @@ int RenderCoreGraphExecutionPlanRejectsFramePacketCapacityWithoutStatusLoss() {
         return Fail("execution plan did not preserve frame packet capacity status");
     }
 
+    if (result.required_plan_record_count != 1U ||
+        result.required_frame_packet_record_count != 1U ||
+        result.required_submission_record_count != 0U) {
+        return Fail("execution plan frame capacity required count mismatch");
+    }
+
     const DependencySnapshots after = CaptureDependencySnapshots(fixture);
     if (!DependencySnapshotsMatch(before, after)) {
         return Fail("frame packet capacity validation mutated dependency state");
@@ -799,6 +837,12 @@ int RenderCoreGraphExecutionPlanRejectsFramePacketCapacityWithoutStatusLoss() {
     const auto snapshot = plan.Snapshot();
     if (snapshot.plan_record_count != 0U || snapshot.frame_capacity_rejected_count != 1U) {
         return Fail("execution plan frame packet capacity snapshot counter mismatch");
+    }
+
+    if (snapshot.last_required_plan_record_count != 1U ||
+        snapshot.last_required_frame_packet_record_count != 1U ||
+        snapshot.last_required_submission_record_count != 0U) {
+        return Fail("execution plan frame packet capacity snapshot required count mismatch");
     }
 
     if (snapshot.last_status != RenderGraphExecutionPlanStatus::FramePacketCapacityExceeded ||
