@@ -81,6 +81,37 @@ UiDynamicAtlasSpriteRequest BuildSpriteRequest(const UiFontGlyphBuildRequest &re
     return sprite_request;
 }
 
+std::uint32_t FindBuildValidationFailedCodepoint(std::span<const UiFontGlyphBuildRequest> requests) {
+    if (requests.size() > static_cast<std::size_t>(MAX_UI_NODE_COUNT)) {
+        return 0U;
+    }
+
+    for (const UiFontGlyphBuildRequest &request : requests) {
+        if (!IsGlyphKeyValid(request.key)) {
+            return request.key.codepoint;
+        }
+
+        if (request.sprite_key == 0U || request.width == 0U || request.height == 0U) {
+            return request.key.codepoint;
+        }
+    }
+
+    const std::size_t request_count = requests.size();
+    for (std::size_t left_index = 0U; left_index < request_count; ++left_index) {
+        for (std::size_t right_index = left_index + 1U; right_index < request_count; ++right_index) {
+            if (requests[left_index].sprite_key == requests[right_index].sprite_key) {
+                return requests[right_index].key.codepoint;
+            }
+
+            if (AreGlyphKeysEqual(requests[left_index].key, requests[right_index].key)) {
+                return requests[right_index].key.codepoint;
+            }
+        }
+    }
+
+    return 0U;
+}
+
 UiFontGlyphAtlasStatus MapDynamicStatus(UiDynamicAtlasStatus status) {
     switch (status) {
         case UiDynamicAtlasStatus::Success:
@@ -132,6 +163,7 @@ UiFontGlyphAtlasStatus UiFontGlyphAtlas::BuildGlyphSprites(
 
     UiFontGlyphAtlasStatus status = ValidateBuildRequests(requests);
     if (status != UiFontGlyphAtlasStatus::Success) {
+        out_result->failed_codepoint = FindBuildValidationFailedCodepoint(requests);
         SetBuildResult(out_result, status, UiDynamicAtlasStatus::InvalidSpriteRequest);
         return status;
     }

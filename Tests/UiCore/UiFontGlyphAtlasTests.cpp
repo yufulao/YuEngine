@@ -264,6 +264,67 @@ int UiCoreFontGlyphAtlasRejectsPaintPathPackAndDuplicateGlyph() {
         return Fail("font glyph paint-path rejection result mismatch");
     }
 
+    const UiFontGlyphBuildDesc safe_point_build_desc{pages, UiDynamicAtlasPackPhase::SafePoint, 0U};
+    const std::array<UiFontGlyphBuildRequest, 2U> invalid_requests{
+        MakeBuildRequest(FONT_PRIMARY, CODEPOINT_A, 3001U, 8U, 16U),
+        MakeBuildRequest(FONT_PRIMARY, CODEPOINT_B, 3002U, 0U, 16U)};
+    std::array<UiStaticAtlasSpriteDesc, 2U> invalid_sprites{
+        SentinelSprite(),
+        SentinelSprite()};
+    build_result = UiFontGlyphBuildResult{};
+    status = atlas.BuildGlyphSprites(safe_point_build_desc, invalid_requests, invalid_sprites, &build_result);
+    if (status != UiFontGlyphAtlasStatus::InvalidGlyphMetadata) {
+        return Fail("font glyph accepted invalid build request");
+    }
+
+    if (build_result.failed_codepoint != CODEPOINT_B) {
+        return Fail("font glyph invalid build request codepoint mismatch");
+    }
+
+    if (!SpriteMatchesSentinel(invalid_sprites[0U]) || !SpriteMatchesSentinel(invalid_sprites[1U])) {
+        return Fail("font glyph invalid build request mutated output");
+    }
+
+    const std::array<UiFontGlyphBuildRequest, 2U> duplicate_sprite_requests{
+        MakeBuildRequest(FONT_PRIMARY, CODEPOINT_A, 4001U, 8U, 16U),
+        MakeBuildRequest(FONT_PRIMARY, CODEPOINT_B, 4001U, 8U, 16U)};
+    std::array<UiStaticAtlasSpriteDesc, 2U> duplicate_sprite_sprites{
+        SentinelSprite(),
+        SentinelSprite()};
+    build_result = UiFontGlyphBuildResult{};
+    status = atlas.BuildGlyphSprites(safe_point_build_desc, duplicate_sprite_requests, duplicate_sprite_sprites, &build_result);
+    if (status != UiFontGlyphAtlasStatus::DuplicateGlyph) {
+        return Fail("font glyph accepted duplicate sprite build request");
+    }
+
+    if (build_result.failed_codepoint != CODEPOINT_B) {
+        return Fail("font glyph duplicate sprite codepoint mismatch");
+    }
+
+    if (!SpriteMatchesSentinel(duplicate_sprite_sprites[0U]) || !SpriteMatchesSentinel(duplicate_sprite_sprites[1U])) {
+        return Fail("font glyph duplicate sprite mutated output");
+    }
+
+    const std::array<UiFontGlyphBuildRequest, 2U> duplicate_glyph_requests{
+        MakeBuildRequest(FONT_PRIMARY, CODEPOINT_A, 5001U, 8U, 16U),
+        MakeBuildRequest(FONT_PRIMARY, CODEPOINT_A, 5002U, 8U, 16U)};
+    std::array<UiStaticAtlasSpriteDesc, 2U> duplicate_glyph_sprites{
+        SentinelSprite(),
+        SentinelSprite()};
+    build_result = UiFontGlyphBuildResult{};
+    status = atlas.BuildGlyphSprites(safe_point_build_desc, duplicate_glyph_requests, duplicate_glyph_sprites, &build_result);
+    if (status != UiFontGlyphAtlasStatus::DuplicateGlyph) {
+        return Fail("font glyph accepted duplicate glyph build request");
+    }
+
+    if (build_result.failed_codepoint != CODEPOINT_A) {
+        return Fail("font glyph duplicate glyph codepoint mismatch");
+    }
+
+    if (!SpriteMatchesSentinel(duplicate_glyph_sprites[0U]) || !SpriteMatchesSentinel(duplicate_glyph_sprites[1U])) {
+        return Fail("font glyph duplicate glyph mutated output");
+    }
+
     UiStaticAtlasSpriteDesc sprite;
     sprite.sprite_key = 2001U;
     sprite.page_key = 7U;
