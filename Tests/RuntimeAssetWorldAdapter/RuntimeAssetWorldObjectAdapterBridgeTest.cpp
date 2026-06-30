@@ -59,6 +59,8 @@ namespace {
 constexpr std::uint32_t OUTPUT_RECORD_COUNT = 2U;
 constexpr const char *TEST_BUILD_RESTORE_RECORDS =
     "RuntimeAssetWorldObjectAdapter_BuildsRestoreRecordsFromRuntimeInstanceMapping";
+constexpr const char *TEST_BUILD_TARGET_FAMILY_ALIAS_RESTORE_RECORDS =
+    "RuntimeAssetWorldObjectAdapter_BuildsRestoreRecordsForModelAndSkeletonTargetFamilyAliases";
 constexpr const char *TEST_REJECT_MISSING_MAPPING =
     "RuntimeAssetWorldObjectAdapter_RejectsMissingRuntimeInstanceMappingWithoutMutation";
 constexpr const char *TEST_REJECT_TARGET_KIND =
@@ -485,6 +487,60 @@ int TestBuildRestoreRecords() {
     return 0;
 }
 
+int TestBuildTargetFamilyAliasRestoreRecords() {
+    AdapterFixture fixture = MakeFixture();
+    fixture.mappings[0U].target_kind = RuntimeAssetTargetIdentityKind::ModelNode;
+    fixture.mappings[1U].target_kind = RuntimeAssetTargetIdentityKind::SkeletonJoint;
+
+    RuntimeAssetWorldObjectAdapterBridge bridge{};
+    const RuntimeAssetWorldObjectAdapterResult result = bridge.BuildRestoreRecords(fixture.Request());
+    if (!result.Succeeded()) {
+        return Fail("target family alias restore records failed");
+    }
+
+    if (result.state.output_identity_count != OUTPUT_RECORD_COUNT) {
+        return Fail("target family identity output count mismatch");
+    }
+
+    if (result.state.output_transform_count != OUTPUT_RECORD_COUNT) {
+        return Fail("target family transform output count mismatch");
+    }
+
+    if (fixture.output_identities[0U].world_object_id.value != WORLD_OBJECT_A.value) {
+        return Fail("model node identity world object mismatch");
+    }
+
+    if (fixture.output_identities[1U].world_object_id.value != WORLD_OBJECT_B.value) {
+        return Fail("skeleton joint identity world object mismatch");
+    }
+
+    if (!ObjectHandlesMatch(fixture.output_identities[0U].object_handle, OBJECT_HANDLE_A)) {
+        return Fail("model node object handle mismatch");
+    }
+
+    if (!ObjectHandlesMatch(fixture.output_identities[1U].object_handle, OBJECT_HANDLE_B)) {
+        return Fail("skeleton joint object handle mismatch");
+    }
+
+    if (fixture.output_transforms[0U].world_object_id.value != WORLD_OBJECT_A.value) {
+        return Fail("model node transform world object mismatch");
+    }
+
+    if (fixture.output_transforms[1U].world_object_id.value != WORLD_OBJECT_B.value) {
+        return Fail("skeleton joint transform world object mismatch");
+    }
+
+    if (!TransformsMatch(fixture.output_transforms[0U].transform_state, fixture.scene_transforms[0U].transform)) {
+        return Fail("model node transform state mismatch");
+    }
+
+    if (!TransformsMatch(fixture.output_transforms[1U].transform_state, fixture.scene_transforms[1U].transform)) {
+        return Fail("skeleton joint transform state mismatch");
+    }
+
+    return 0;
+}
+
 int TestRejectMissingRuntimeInstanceMapping() {
     AdapterFixture fixture = MakeFixture();
     RuntimeAssetWorldObjectAdapterRequest request = fixture.Request();
@@ -497,7 +553,7 @@ int TestRejectMissingRuntimeInstanceMapping() {
 
 int TestRejectInvalidTargetKind() {
     AdapterFixture fixture = MakeFixture();
-    fixture.mappings[0U].target_kind = RuntimeAssetTargetIdentityKind::ModelNode;
+    fixture.mappings[0U].target_kind = RuntimeAssetTargetIdentityKind::Unknown;
     return ExpectFailureWithoutOutputMutation(
         fixture,
         fixture.Request(),
@@ -623,8 +679,9 @@ int TestDoesNotMutateWorldOrObjectRegistryDuringBuild() {
 }
 
 int RunTest(std::string_view test_name) {
-    constexpr std::array<TestCase, 12U> TESTS{{
+    constexpr std::array<TestCase, 13U> TESTS{{
         {TEST_BUILD_RESTORE_RECORDS, TestBuildRestoreRecords},
+        {TEST_BUILD_TARGET_FAMILY_ALIAS_RESTORE_RECORDS, TestBuildTargetFamilyAliasRestoreRecords},
         {TEST_REJECT_MISSING_MAPPING, TestRejectMissingRuntimeInstanceMapping},
         {TEST_REJECT_TARGET_KIND, TestRejectInvalidTargetKind},
         {TEST_REJECT_SCENE_ENTITY_INDEX, TestRejectSceneEntityIndexOverflow},

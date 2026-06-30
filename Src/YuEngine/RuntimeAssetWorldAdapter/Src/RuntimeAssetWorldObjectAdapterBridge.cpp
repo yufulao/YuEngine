@@ -19,6 +19,18 @@ namespace {
 bool WorldObjectIdsMatch(WorldObjectId left, WorldObjectId right) {
     return left.value == right.value;
 }
+
+bool RuntimeAssetTargetKindIsSupported(RuntimeAssetTargetIdentityKind target_kind) {
+    if (target_kind == RuntimeAssetTargetIdentityKind::SceneNode) {
+        return true;
+    }
+
+    if (target_kind == RuntimeAssetTargetIdentityKind::ModelNode) {
+        return true;
+    }
+
+    return target_kind == RuntimeAssetTargetIdentityKind::SkeletonJoint;
+}
 }
 
 RuntimeAssetWorldObjectAdapterResult RuntimeAssetWorldObjectAdapterResult::Success(
@@ -185,7 +197,7 @@ RuntimeAssetWorldObjectAdapterStatus RuntimeAssetWorldObjectAdapterBridge::Valid
         return RuntimeAssetWorldObjectAdapterStatus::InvalidRuntimeInstanceMapping;
     }
 
-    if (mapping.target_kind != RuntimeAssetTargetIdentityKind::SceneNode) {
+    if (!RuntimeAssetTargetKindIsSupported(mapping.target_kind)) {
         return RuntimeAssetWorldObjectAdapterStatus::UnsupportedTargetKind;
     }
 
