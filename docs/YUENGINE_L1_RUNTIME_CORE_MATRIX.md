@@ -162,33 +162,35 @@ destination range consumer. This is a HEAD evidence ledger, not a blanket
 stage-close VQ: each later lane must cite its own workspace VQ before being
 called VQ-closed.
 
-Current HEAD `088f21eb313be7c0e6ff283af922f23ec335ee09` records VQ-closed
-RuntimeAssetWorldAdapter World scene record-stream handoff for
-`RTSPINE-RUNTIMEASSETWORLDADAPTER-WORLD-SCENE-RECORD-STREAM-HANDOFF-U64-001`.
-Implementation task `1ea59c46` is COMPLETE-PASS / committed and VQ task
-`943f29a6-8a24-4a77-8e8a-4366285890b4` is COMPLETE-PASS / VQ-READY. The commit
+Current HEAD `f8ef490493f43a97d2958d6a604e598b68f1fcab` records VQ-closed
+WorldSceneAuthoring runtime export to RuntimeAssetWorldAdapter handoff for
+`RTSPINE-WORLDSCENEAUTHORING-RUNTIME-EXPORT-TO-RUNTIMEASSETWORLDADAPTER-HANDOFF-U64-001`.
+Implementation task `c1a469a8` is COMPLETE-PASS / committed and VQ task
+`5c536c0b-7849-436b-a695-e323f8afd339` is COMPLETE-PASS / VQ-READY. The commit
 touched only `CMakeLists.txt`,
-`RuntimeAssetWorldObjectRecordStreamHandoffFixtureTest.cpp`, and
+`RuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTest.cpp`, and
 `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`; no production
 RuntimeAsset, RuntimeAssetWorldAdapter, World, Resource, docs, editor,
 GameAdapter, UI, gameplay, or broad File/VFS paths changed. Focused build
-`YuRuntimeAssetWorldAdapterHandoffTests` PASS, new record-stream row
-`RuntimeAssetWorldObjectRecordStreamHandoff_FeedsWorldSceneRecordStreamsIntoRestoreHandoff`
-is `1/1` PASS, RuntimeAssetWorldObject Adapter/Handoff/DataHandoff rows pass
-`22/22`, WorldScene stream/decoded-plan/proof rows pass `143/143`, and
-WorldSceneActiveRestoreGate rows pass `4/4`. The fixture feeds caller-owned
-World scene record-stream and decoded-plan outputs through existing in-memory
-World value-stream, apply-time proof, and active-restore gate records into
-RuntimeAssetWorldAdapter restore handoff. Direct
+`YuRuntimeAssetWorldAdapterHandoffTests` PASS, new authoring runtime export row
+`RuntimeAssetWorldObjectAuthoringRuntimeExportHandoff_FeedsAuthoringRuntimeExportThroughRecordStreamIntoRestoreHandoff`
+is `1/1` PASS, RuntimeAssetWorldObject handoff label set passes `24/24`,
+WorldSceneAuthoringDocument rows pass `9/9`, WorldScene stream/decoded-plan/proof
+rows pass `143/143`, and WorldSceneActiveRestoreGate rows pass `4/4`. The
+fixture feeds `WorldSceneAuthoringDocumentValidator::ValidateAndExport` runtime
+export records through existing WorldScene record-stream, decoded-plan, proof,
+active-gate, and RuntimeAssetWorldAdapter restore handoff plumbing. Direct
 WorldObject/editor/GameAdapter/UI/gameplay and broad Resource/File/VFS remain
-closed. Read-only scout `5adfbc12-ce6a-4a8e-8b54-470e74e13a6f` is
+closed. Read-only scout `66357e13-ff90-4442-97eb-3756be804b0f` reports
 COMPLETE-PASS /
-`RTSPINE-CANONICAL-DOCS-HEAD-RECONCILE-088F21E-001-NEXT-GATE-MATRIX-READY` and
+`RTSPINE-CANONICAL-DOCS-HEAD-RECONCILE-F8EF490-001-NEXT-GATE-MATRIX-READY` and
 selects
-`RTSPINE-WORLDSCENEAUTHORING-RUNTIME-EXPORT-TO-RUNTIMEASSETWORLDADAPTER-HANDOFF-U64-001`
-as the next narrow tests-only gate, backed by current RuntimeAssetWorldObject
-focused rows `23`, WorldScene stream/decoded-plan/proof/gate rows `88`, and
-WorldSceneAuthoringDocument rows `9`.
+`RTSPINE-WORLDSCENEAUTHORING-ATTACHMENT-BINDING-DEPENDENCY-EXPORT-TO-RUNTIMEASSETWORLDADAPTER-HANDOFF-U64-001`
+as the next narrow tests-only bridge. F8EF490 intentionally left attachment,
+binding, and dependency handoff counts at zero; adjacent WorldSceneAuthoring and
+RuntimeAssetWorldAdapter matrices already prove each half, and the next gate
+should connect them without opening direct WorldObject/editor/GameAdapter/UI,
+gameplay, or broad Resource/File/VFS.
 
 The `296100b3bda25e962c3a3a503f9f78f0160083ce` evidence records VQ-closed
 RuntimeAssetWorldAdapter target-family alias handoff for
