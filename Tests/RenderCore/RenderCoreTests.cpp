@@ -2091,6 +2091,112 @@ int RenderCoreFramePacketRejectsInvalidBatchRequestWithoutMutation() {
         return Fail("invalid frame packet batch mutated fixture pass state");
     }
 
+    MaterialBindingFixture capacity_material_fixture;
+    std::array<RenderFixturePassRequest, 2U> capacity_requests{};
+    std::vector<std::uint8_t> first_capacity_capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    std::vector<std::uint8_t> second_capacity_capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    if (!FillMaterialPreparedBatchRequest(
+        device,
+        capacity_material_fixture,
+        capacity_requests[0U],
+        first_capacity_capture,
+        MATERIAL_ID,
+        MATERIAL_PASS_ID)) {
+        return Fail("first capacity frame packet invalid batch setup failed");
+    }
+
+    if (!FillMaterialPreparedBatchRequest(
+        device,
+        capacity_material_fixture,
+        capacity_requests[1U],
+        second_capacity_capture,
+        NEXT_MATERIAL_ID,
+        MATERIAL_PASS_ID + 1U)) {
+        return Fail("second capacity frame packet invalid batch setup failed");
+    }
+
+    RenderSubmissionBatchFixtureDesc capacity_desc{};
+    capacity_desc.submission_record_capacity = 1U;
+    RenderFixturePass capacity_pass;
+    RenderSubmissionBatchFixture capacity_batch(capacity_desc);
+    RenderFramePacketFixture capacity_frame_packet;
+    const RenderFixturePassResult capacity_sentinel = SentinelPassResult();
+    std::array<RenderFixturePassResult, 2U> capacity_results{};
+    capacity_results.fill(capacity_sentinel);
+    const RhiDeviceSnapshot capacity_before = device.Snapshot();
+    const auto capacity_batch_before = capacity_batch.Snapshot();
+    const auto capacity_pass_before = capacity_pass.Snapshot();
+    const std::span<const RenderFixturePassRequest> capacity_request_span(
+        capacity_requests.data(),
+        capacity_requests.size());
+    const std::span<RenderFixturePassResult> capacity_result_span(
+        capacity_results.data(),
+        capacity_results.size());
+    const RenderSubmissionBatchFixtureRequest capacity_batch_request =
+        BatchRequestFrom(capacity_pass, capacity_request_span, capacity_result_span);
+    const RenderFramePacketFixtureRequest capacity_frame_request =
+        FramePacketRequestFrom(NEXT_FRAME_ID, capacity_batch, capacity_batch_request);
+    const auto capacity_result = capacity_frame_packet.Execute(capacity_frame_request);
+    if (capacity_result.status != RenderFramePacketFixtureStatus::InvalidBatchRequest) {
+        return Fail("frame packet fixture accepted capacity invalid batch request");
+    }
+
+    if (capacity_result.batch_status != RenderSubmissionBatchFixtureStatus::BatchCapacityExceeded) {
+        return Fail("frame packet fixture missed batch capacity status");
+    }
+
+    constexpr std::size_t expected_capacity_failed_entry_index = 1U;
+    if (capacity_result.failed_entry_count != 1U ||
+        capacity_result.failed_entry_index != expected_capacity_failed_entry_index) {
+        return Fail("frame packet fixture missed capacity failed entry");
+    }
+
+    if (capacity_result.pass_id != MATERIAL_PASS_ID + 1U ||
+        capacity_result.material_id != NEXT_MATERIAL_ID) {
+        return Fail("frame packet fixture missed capacity failed entry identifiers");
+    }
+
+    if (!PassResultsUnchanged(capacity_results, capacity_sentinel)) {
+        return Fail("capacity frame packet batch mutated result storage");
+    }
+
+    const RhiDeviceSnapshot capacity_after = device.Snapshot();
+    if (!WorkCountersMatch(capacity_before, capacity_after)) {
+        return Fail("capacity frame packet batch mutated RHI work counters");
+    }
+
+    const auto capacity_batch_after = capacity_batch.Snapshot();
+    if (capacity_batch_after.submission_record_count != capacity_batch_before.submission_record_count) {
+        return Fail("capacity frame packet batch mutated submission batch records");
+    }
+
+    const auto capacity_pass_after = capacity_pass.Snapshot();
+    if (capacity_pass_after.executed_pass_count != capacity_pass_before.executed_pass_count ||
+        capacity_pass_after.failed_validation_count != capacity_pass_before.failed_validation_count) {
+        return Fail("capacity frame packet batch mutated fixture pass state");
+    }
+
+    if (!CaptureUnchanged(first_capacity_capture) || !CaptureUnchanged(second_capacity_capture)) {
+        return Fail("capacity frame packet batch wrote capture output");
+    }
+
+    const auto capacity_frame_snapshot = capacity_frame_packet.Snapshot();
+    if (capacity_frame_snapshot.failed_packet_count != 1U ||
+        capacity_frame_snapshot.failed_validation_count != 1U ||
+        capacity_frame_snapshot.frame_packet_record_count != 0U) {
+        return Fail("capacity frame packet batch counters were not updated");
+    }
+
+    if (capacity_frame_snapshot.last_failed_entry_count != 1U ||
+        capacity_frame_snapshot.last_failed_entry_index != expected_capacity_failed_entry_index) {
+        return Fail("capacity frame packet batch snapshot missed failed entry");
+    }
+
+    if (capacity_frame_snapshot.last_pass_id != MATERIAL_PASS_ID + 1U ||
+        capacity_frame_snapshot.last_material_id != NEXT_MATERIAL_ID) {
+        return Fail("capacity frame packet batch snapshot missed failed identifiers");
+    }
+
     return 0;
 }
 
