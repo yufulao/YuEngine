@@ -6,6 +6,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "YuEngine/Thread/TaskStatus.h"
+
 namespace yuengine::thread {
 struct TaskSchedulerSnapshot {
     std::uint64_t submitted_count;
@@ -19,6 +21,7 @@ struct TaskSchedulerSnapshot {
     std::size_t capacity_before_fixture;
     std::size_t capacity_after_last_drain;
     std::size_t pending_count;
+    TaskStatus last_status;
     bool is_shutdown;
 };
 }

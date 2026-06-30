@@ -39,6 +39,7 @@ constexpr const char* TEST_SHUTDOWN_REJECTS = "Thread_ShutdownRejectsNewSubmissi
 constexpr const char* TEST_SHUTDOWN_DRAIN = "Thread_ShutdownDrainPolicy_ExecutesQueuedTasks";
 constexpr const char* TEST_SHUTDOWN_CANCEL = "Thread_ShutdownCancelPolicy_CancelsQueuedTasks";
 constexpr const char* TEST_CAPACITY = "Thread_QueueCapacity_DoesNotGrowDuringFixture";
+constexpr const char* TEST_QUEUE_LAST_STATUS = "Thread_QueueLastStatus_TracksSubmitDrainCancel";
 constexpr const char* TEST_DIAGNOSTICS_DISABLED = "Thread_DiagnosticsDisabled_DoesNotChangeBehavior";
 constexpr const char* TEST_WORKER_BEFORE_START = "Thread_WorkerSubmitBeforeStart_ReturnsExplicitStatus";
 constexpr const char* TEST_WORKER_DRAIN = "Thread_WorkerDrainShutdown_WritesCompletionRecords";
@@ -384,6 +385,89 @@ int ThreadQueueCapacityDoesNotGrowDuringFixture() {
 
     if (snapshot.task_execution_allocation_count != 0U) {
         return Fail("task execution recorded tracked job allocations");
+    }
+
+    return 0;
+}
+
+int ThreadQueueLastStatusTracksSubmitDrainCancel() {
+    DisabledMemoryTracker memory_tracker;
+    InlineTaskExecutor executor;
+    FixedTraceBuffer trace;
+
+    BoundedTaskQueue queue(SMALL_CAPACITY, memory_tracker);
+    if (queue.Snapshot().last_status != TaskStatus::Created) {
+        return Fail("initial queue last status was not created");
+    }
+
+    ThreadTestContext first_context{&trace, FIRST_VALUE, false};
+    if (queue.Submit(&RecordTask, &first_context).status != TaskStatus::Queued) {
+        return Fail("last status fixture submit failed");
+    }
+
+    if (queue.Snapshot().last_status != TaskStatus::Queued) {
+        return Fail("queued task did not update last status");
+    }
+
+    ThreadTestContext second_context{&trace, SECOND_VALUE, false};
+    ThreadTestContext third_context{&trace, THIRD_VALUE, false};
+    queue.Submit(&RecordTask, &second_context);
+    if (queue.Submit(&RecordTask, &third_context).status != TaskStatus::Rejected) {
+        return Fail("last status fixture rejection failed");
+    }
+
+    auto snapshot = queue.Snapshot();
+    if (snapshot.last_status != TaskStatus::Rejected) {
+        return Fail("rejected task did not update last status");
+    }
+
+    if (snapshot.rejected_count != 1U) {
+        return Fail("last status fixture changed rejected count");
+    }
+
+    if (queue.Drain(executor).status != TaskStatus::Completed) {
+        return Fail("last status fixture drain failed");
+    }
+
+    snapshot = queue.Snapshot();
+    if (snapshot.last_status != TaskStatus::Completed) {
+        return Fail("completed drain did not update last status");
+    }
+
+    if (snapshot.executed_count != 2U) {
+        return Fail("last status fixture changed executed count");
+    }
+
+    BoundedTaskQueue failed_queue(SMALL_CAPACITY, memory_tracker);
+    ThreadTestContext failed_context{&trace, FIRST_VALUE, true};
+    failed_queue.Submit(&RecordTask, &failed_context);
+    if (failed_queue.Drain(executor).status != TaskStatus::Failed) {
+        return Fail("last status fixture failed task did not fail drain");
+    }
+
+    snapshot = failed_queue.Snapshot();
+    if (snapshot.last_status != TaskStatus::Failed) {
+        return Fail("failed drain did not update last status");
+    }
+
+    if (snapshot.failed_count != 1U) {
+        return Fail("last status fixture changed failed count");
+    }
+
+    BoundedTaskQueue canceled_queue(SMALL_CAPACITY, memory_tracker);
+    ThreadTestContext cancel_context{&trace, FIRST_VALUE, false};
+    canceled_queue.Submit(&RecordTask, &cancel_context);
+    if (canceled_queue.Shutdown(ShutdownPolicy::CancelQueued, executor).status != TaskStatus::Canceled) {
+        return Fail("last status fixture cancel shutdown failed");
+    }
+
+    snapshot = canceled_queue.Snapshot();
+    if (snapshot.last_status != TaskStatus::Canceled) {
+        return Fail("canceled shutdown did not update last status");
+    }
+
+    if (snapshot.canceled_count != 1U) {
+        return Fail("last status fixture changed canceled count");
     }
 
     return 0;
@@ -739,6 +823,7 @@ int main(int argc, char** argv) {
         {TEST_SHUTDOWN_DRAIN, ThreadShutdownDrainPolicyExecutesQueuedTasks},
         {TEST_SHUTDOWN_CANCEL, ThreadShutdownCancelPolicyCancelsQueuedTasks},
         {TEST_CAPACITY, ThreadQueueCapacityDoesNotGrowDuringFixture},
+        {TEST_QUEUE_LAST_STATUS, ThreadQueueLastStatusTracksSubmitDrainCancel},
         {TEST_DIAGNOSTICS_DISABLED, ThreadDiagnosticsDisabledDoesNotChangeBehavior},
         {TEST_WORKER_BEFORE_START, ThreadWorkerSubmitBeforeStartReturnsExplicitStatus},
         {TEST_WORKER_DRAIN, ThreadWorkerDrainShutdownWritesCompletionRecords},

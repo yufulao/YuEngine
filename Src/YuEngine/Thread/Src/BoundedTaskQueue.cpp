@@ -13,7 +13,7 @@ constexpr std::uint64_t INVALID_TASK_ID = 0U;
 BoundedTaskQueue::BoundedTaskQueue(std::size_t capacity, memory::IMemoryTracker& memory_tracker)
     : records_(capacity),
       memory_tracker_(memory_tracker),
-      snapshot_{0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U, capacity, capacity, 0U, false},
+      snapshot_{0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U, capacity, capacity, 0U, TaskStatus::Created, false},
       head_index_(0U),
       tail_index_(0U),
       next_task_id_(1U) {
@@ -22,11 +22,13 @@ BoundedTaskQueue::BoundedTaskQueue(std::size_t capacity, memory::IMemoryTracker&
 TaskResult BoundedTaskQueue::Submit(TaskCallback callback, void* context) {
     if (snapshot_.is_shutdown) {
         ++snapshot_.rejected_count;
+        snapshot_.last_status = TaskStatus::Rejected;
         return RejectResult();
     }
 
     if (snapshot_.pending_count >= records_.size()) {
         ++snapshot_.rejected_count;
+        snapshot_.last_status = TaskStatus::Rejected;
         return RejectResult();
     }
 
@@ -42,6 +44,7 @@ TaskResult BoundedTaskQueue::Submit(TaskCallback callback, void* context) {
         snapshot_.max_queue_depth = snapshot_.pending_count;
     }
 
+    snapshot_.last_status = TaskStatus::Queued;
     return TaskResult{task_id, TaskStatus::Queued};
 }
 
@@ -71,6 +74,7 @@ TaskResult BoundedTaskQueue::Drain(InlineTaskExecutor& executor) {
     const std::uint64_t allocation_count_after = memory_tracker_.AllocationCountForBudget(memory::MemoryBudgetClass::Job);
     snapshot_.task_execution_allocation_count += allocation_count_after - allocation_count_before;
     snapshot_.capacity_after_last_drain = records_.capacity();
+    snapshot_.last_status = result.status;
     return result;
 }
 
@@ -79,6 +83,7 @@ TaskResult BoundedTaskQueue::Shutdown(ShutdownPolicy policy, InlineTaskExecutor&
 
     if (policy == ShutdownPolicy::CancelQueued) {
         CancelQueuedTasks();
+        snapshot_.last_status = TaskStatus::Canceled;
         return TaskResult{TaskId{INVALID_TASK_ID}, TaskStatus::Canceled};
     }
 
@@ -103,6 +108,7 @@ void BoundedTaskQueue::CancelQueuedTasks() {
     }
 
     snapshot_.capacity_after_last_drain = records_.capacity();
+    snapshot_.last_status = TaskStatus::Canceled;
 }
 
 TaskResult BoundedTaskQueue::RejectResult() const {
