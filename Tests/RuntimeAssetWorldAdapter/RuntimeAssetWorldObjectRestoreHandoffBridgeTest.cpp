@@ -112,6 +112,8 @@ constexpr const char *TEST_APPLY_TARGET_FAMILY_ALIASES =
     "RuntimeAssetWorldObjectRestoreHandoff_AppliesModelAndSkeletonTargetFamilyAliases";
 constexpr const char *TEST_APPLY_ATTACHMENT_BINDING_GATE_RECORDS =
     "RuntimeAssetWorldObjectRestoreHandoff_CarriesAttachmentAndBindingGateRecordsForTargetAliases";
+constexpr const char *TEST_APPLY_SIDECAR_ASSEMBLY_RESTORE =
+    "RuntimeAssetWorldObjectRestoreHandoff_RestoresAttachmentAndBindingSidecarsThroughWorldAssembly";
 constexpr const char *TEST_REJECT_ADAPTER_PREFLIGHT =
     "RuntimeAssetWorldObjectRestoreHandoff_RejectsAdapterPreflightWithoutWorldMutation";
 constexpr const char *TEST_REJECT_WORLD_GATE =
@@ -225,6 +227,62 @@ ResourceDescriptor Resource(ResourceTypeId type, const char *key) {
     descriptor.type = type;
     descriptor.logical_key = ResourceLogicalKey(key);
     return descriptor;
+}
+
+int PrepareSidecarInputs(
+    HandoffFixture *fixture,
+    ResourceRegistry *resource_registry,
+    ResourceHandle *texture_handle,
+    ResourceHandle *material_handle) {
+    if (fixture == nullptr) {
+        return Fail("sidecar fixture missing");
+    }
+
+    if (resource_registry == nullptr) {
+        return Fail("sidecar registry missing");
+    }
+
+    ResourceDescriptor texture_descriptor = Resource(RESOURCE_TYPE_TEXTURE, "handoff_texture");
+    const ResourceRegistrationResult texture_resource =
+        resource_registry->RegisterSyntheticDescriptor(texture_descriptor);
+    if (!texture_resource.Succeeded()) {
+        return Fail("target family sidecar texture setup failed");
+    }
+
+    ResourceDescriptor material_descriptor = Resource(RESOURCE_TYPE_MATERIAL, "handoff_material");
+    const ResourceRegistrationResult material_resource =
+        resource_registry->RegisterSyntheticDescriptor(material_descriptor);
+    if (!material_resource.Succeeded()) {
+        return Fail("target family sidecar material setup failed");
+    }
+
+    fixture->attachments[0U].world_object_id = WORLD_OBJECT_A;
+    fixture->attachments[0U].component_type_id = COMPONENT_TYPE_MESH;
+    fixture->attachments[0U].component_slot_id = COMPONENT_SLOT_MESH;
+    fixture->attachments[1U].world_object_id = WORLD_OBJECT_B;
+    fixture->attachments[1U].component_type_id = COMPONENT_TYPE_MATERIAL;
+    fixture->attachments[1U].component_slot_id = COMPONENT_SLOT_MATERIAL;
+
+    fixture->bindings[0U].world_object_id = WORLD_OBJECT_A;
+    fixture->bindings[0U].component_type_id = COMPONENT_TYPE_MESH;
+    fixture->bindings[0U].component_slot_id = COMPONENT_SLOT_MESH;
+    fixture->bindings[0U].resource_handle = texture_resource.handle;
+    fixture->bindings[0U].expected_resource_type = RESOURCE_TYPE_TEXTURE;
+    fixture->bindings[1U].world_object_id = WORLD_OBJECT_B;
+    fixture->bindings[1U].component_type_id = COMPONENT_TYPE_MATERIAL;
+    fixture->bindings[1U].component_slot_id = COMPONENT_SLOT_MATERIAL;
+    fixture->bindings[1U].resource_handle = material_resource.handle;
+    fixture->bindings[1U].expected_resource_type = RESOURCE_TYPE_MATERIAL;
+
+    if (texture_handle != nullptr) {
+        *texture_handle = texture_resource.handle;
+    }
+
+    if (material_handle != nullptr) {
+        *material_handle = material_resource.handle;
+    }
+
+    return 0;
 }
 
 WorldSceneObjectTransformRestoreIdentityRecord SentinelIdentityOutput() {
@@ -511,6 +569,68 @@ bool ResourceHandlesMatch(ResourceHandle left, ResourceHandle right) {
     return left.generation == right.generation;
 }
 
+int VerifyRestoredSidecarDestinations(
+    WorldComponentAttachmentBridge *attachment_destination,
+    WorldComponentResourceBindingBridge *binding_destination,
+    ResourceHandle texture_handle,
+    ResourceHandle material_handle) {
+    if (attachment_destination == nullptr) {
+        return Fail("sidecar assembly attachment destination missing");
+    }
+
+    if (binding_destination == nullptr) {
+        return Fail("sidecar assembly binding destination missing");
+    }
+
+    const auto model_attachment = attachment_destination->Query(WORLD_OBJECT_A, COMPONENT_TYPE_MESH);
+    if (!model_attachment.Succeeded()) {
+        return Fail("model node assembly attachment query failed");
+    }
+
+    if (model_attachment.component_slot_id.value != COMPONENT_SLOT_MESH.value) {
+        return Fail("model node assembly attachment slot mismatch");
+    }
+
+    const auto skeleton_attachment = attachment_destination->Query(WORLD_OBJECT_B, COMPONENT_TYPE_MATERIAL);
+    if (!skeleton_attachment.Succeeded()) {
+        return Fail("skeleton joint assembly attachment query failed");
+    }
+
+    if (skeleton_attachment.component_slot_id.value != COMPONENT_SLOT_MATERIAL.value) {
+        return Fail("skeleton joint assembly attachment slot mismatch");
+    }
+
+    const auto model_binding =
+        binding_destination->Query(WORLD_OBJECT_A, COMPONENT_TYPE_MESH, COMPONENT_SLOT_MESH);
+    if (!model_binding.Succeeded()) {
+        return Fail("model node assembly binding query failed");
+    }
+
+    if (!ResourceHandlesMatch(model_binding.resource_handle, texture_handle)) {
+        return Fail("model node assembly binding resource handle mismatch");
+    }
+
+    if (model_binding.expected_resource_type.value != RESOURCE_TYPE_TEXTURE.value) {
+        return Fail("model node assembly binding resource type mismatch");
+    }
+
+    const auto skeleton_binding =
+        binding_destination->Query(WORLD_OBJECT_B, COMPONENT_TYPE_MATERIAL, COMPONENT_SLOT_MATERIAL);
+    if (!skeleton_binding.Succeeded()) {
+        return Fail("skeleton joint assembly binding query failed");
+    }
+
+    if (!ResourceHandlesMatch(skeleton_binding.resource_handle, material_handle)) {
+        return Fail("skeleton joint assembly binding resource handle mismatch");
+    }
+
+    if (skeleton_binding.expected_resource_type.value != RESOURCE_TYPE_MATERIAL.value) {
+        return Fail("skeleton joint assembly binding resource type mismatch");
+    }
+
+    return 0;
+}
+
 bool OutputRecordsHaveSentinelValues(const HandoffFixture &fixture) {
     std::uint32_t index = 0U;
     while (index < OUTPUT_RECORD_COUNT) {
@@ -750,37 +870,11 @@ int TestApplyAttachmentAndBindingGateRecords() {
     }
 
     ResourceRegistry resource_registry{};
-    ResourceDescriptor texture_descriptor = Resource(RESOURCE_TYPE_TEXTURE, "handoff_texture");
-    const ResourceRegistrationResult texture_resource =
-        resource_registry.RegisterSyntheticDescriptor(texture_descriptor);
-    if (!texture_resource.Succeeded()) {
-        return Fail("target family sidecar texture setup failed");
+    ResourceHandle texture_handle{};
+    ResourceHandle material_handle{};
+    if (PrepareSidecarInputs(&fixture, &resource_registry, &texture_handle, &material_handle) != 0) {
+        return 1;
     }
-
-    ResourceDescriptor material_descriptor = Resource(RESOURCE_TYPE_MATERIAL, "handoff_material");
-    const ResourceRegistrationResult material_resource =
-        resource_registry.RegisterSyntheticDescriptor(material_descriptor);
-    if (!material_resource.Succeeded()) {
-        return Fail("target family sidecar material setup failed");
-    }
-
-    fixture.attachments[0U].world_object_id = WORLD_OBJECT_A;
-    fixture.attachments[0U].component_type_id = COMPONENT_TYPE_MESH;
-    fixture.attachments[0U].component_slot_id = COMPONENT_SLOT_MESH;
-    fixture.attachments[1U].world_object_id = WORLD_OBJECT_B;
-    fixture.attachments[1U].component_type_id = COMPONENT_TYPE_MATERIAL;
-    fixture.attachments[1U].component_slot_id = COMPONENT_SLOT_MATERIAL;
-
-    fixture.bindings[0U].world_object_id = WORLD_OBJECT_A;
-    fixture.bindings[0U].component_type_id = COMPONENT_TYPE_MESH;
-    fixture.bindings[0U].component_slot_id = COMPONENT_SLOT_MESH;
-    fixture.bindings[0U].resource_handle = texture_resource.handle;
-    fixture.bindings[0U].expected_resource_type = RESOURCE_TYPE_TEXTURE;
-    fixture.bindings[1U].world_object_id = WORLD_OBJECT_B;
-    fixture.bindings[1U].component_type_id = COMPONENT_TYPE_MATERIAL;
-    fixture.bindings[1U].component_slot_id = COMPONENT_SLOT_MATERIAL;
-    fixture.bindings[1U].resource_handle = material_resource.handle;
-    fixture.bindings[1U].expected_resource_type = RESOURCE_TYPE_MATERIAL;
 
     WorldObjectIdentityBridge identity_destination(world, object_registry);
     WorldTransformBridge transform_destination(world);
@@ -889,7 +983,7 @@ int TestApplyAttachmentAndBindingGateRecords() {
         return Fail("model node binding gate component slot mismatch");
     }
 
-    if (!ResourceHandlesMatch(model_binding_gate.resource_handle, texture_resource.handle)) {
+    if (!ResourceHandlesMatch(model_binding_gate.resource_handle, texture_handle)) {
         return Fail("model node binding gate resource handle mismatch");
     }
 
@@ -918,7 +1012,7 @@ int TestApplyAttachmentAndBindingGateRecords() {
         return Fail("skeleton joint binding gate component slot mismatch");
     }
 
-    if (!ResourceHandlesMatch(skeleton_binding_gate.resource_handle, material_resource.handle)) {
+    if (!ResourceHandlesMatch(skeleton_binding_gate.resource_handle, material_handle)) {
         return Fail("skeleton joint binding gate resource handle mismatch");
     }
 
@@ -929,6 +1023,98 @@ int TestApplyAttachmentAndBindingGateRecords() {
     const RuntimeAssetWorldObjectRestoreHandoffSnapshot snapshot = bridge.Snapshot();
     if (snapshot.emitted_gate_record_count != SCRATCH_RECORD_COUNT) {
         return Fail("target family sidecar snapshot gate count mismatch");
+    }
+
+    return 0;
+}
+
+int TestApplySidecarAssemblyRestore() {
+    HandoffFixture fixture = MakeFixture();
+    fixture.mappings[0U].target_kind = RuntimeAssetTargetIdentityKind::ModelNode;
+    fixture.mappings[1U].target_kind = RuntimeAssetTargetIdentityKind::SkeletonJoint;
+
+    WorldInstance world = MakeWorld();
+    ObjectRegistry object_registry = MakeObjectRegistry();
+    if (PrepareWorldAndObjects(&world, &object_registry, &fixture, true) != 0) {
+        return 1;
+    }
+
+    ResourceRegistry resource_registry{};
+    ResourceHandle texture_handle{};
+    ResourceHandle material_handle{};
+    if (PrepareSidecarInputs(&fixture, &resource_registry, &texture_handle, &material_handle) != 0) {
+        return 1;
+    }
+
+    WorldObjectIdentityBridge identity_destination(world, object_registry);
+    WorldTransformBridge transform_destination(world);
+    WorldComponentAttachmentBridge attachment_destination{};
+    WorldComponentResourceBindingBridge binding_destination{};
+    RuntimeAssetWorldObjectAdapterRequest adapter_request = MakeAdapterRequest(&fixture);
+    RuntimeAssetWorldObjectRestoreHandoffRequest handoff_request = MakeHandoffRequest(
+        &fixture,
+        &adapter_request,
+        &world,
+        &object_registry,
+        &resource_registry,
+        &identity_destination,
+        &transform_destination,
+        &attachment_destination,
+        &binding_destination);
+    handoff_request.input_attachment_count = SIDECAR_RECORD_COUNT;
+    handoff_request.input_binding_count = SIDECAR_RECORD_COUNT;
+
+    RuntimeAssetWorldObjectRestoreHandoffBridge bridge{};
+    const RuntimeAssetWorldObjectRestoreHandoffResult result = bridge.ApplyRestore(handoff_request);
+    if (!result.Succeeded()) {
+        return Fail("sidecar assembly handoff apply failed");
+    }
+
+    if (result.state.restored_attachment_count != SIDECAR_RECORD_COUNT) {
+        return Fail("sidecar assembly restored attachment count mismatch");
+    }
+
+    if (result.state.restored_binding_count != SIDECAR_RECORD_COUNT) {
+        return Fail("sidecar assembly restored binding count mismatch");
+    }
+
+    const auto attachment_snapshot = attachment_destination.Snapshot();
+    if (attachment_snapshot.active_attachment_count != SIDECAR_RECORD_COUNT) {
+        return Fail("sidecar assembly attachment destination count mismatch");
+    }
+
+    const auto binding_snapshot = binding_destination.Snapshot();
+    if (binding_snapshot.active_binding_count != SIDECAR_RECORD_COUNT) {
+        return Fail("sidecar assembly binding destination count mismatch");
+    }
+
+    if (binding_snapshot.acquired_binding_count != SIDECAR_RECORD_COUNT) {
+        return Fail("sidecar assembly binding acquire count mismatch");
+    }
+
+    if (VerifyRestoredSidecarDestinations(
+            &attachment_destination,
+            &binding_destination,
+            texture_handle,
+            material_handle) != 0) {
+        return 1;
+    }
+
+    if (result.state.restored_identity_count != OUTPUT_RECORD_COUNT) {
+        return Fail("sidecar assembly restored identity count mismatch");
+    }
+
+    if (result.state.restored_transform_count != OUTPUT_RECORD_COUNT) {
+        return Fail("sidecar assembly restored transform count mismatch");
+    }
+
+    const RuntimeAssetWorldObjectRestoreHandoffSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.accepted_handoff_count != 1U) {
+        return Fail("sidecar assembly snapshot accepted count mismatch");
+    }
+
+    if (snapshot.emitted_gate_record_count != SCRATCH_RECORD_COUNT) {
+        return Fail("sidecar assembly snapshot gate count mismatch");
     }
 
     return 0;
@@ -1087,10 +1273,11 @@ int TestRejectNullAdapterRequest() {
 }
 
 int RunTest(std::string_view test_name) {
-    constexpr std::array<TestCase, 6U> TESTS{{
+    constexpr std::array<TestCase, 7U> TESTS{{
         {TEST_APPLY_RESTORE, TestApplyRestore},
         {TEST_APPLY_TARGET_FAMILY_ALIASES, TestApplyTargetFamilyAliases},
         {TEST_APPLY_ATTACHMENT_BINDING_GATE_RECORDS, TestApplyAttachmentAndBindingGateRecords},
+        {TEST_APPLY_SIDECAR_ASSEMBLY_RESTORE, TestApplySidecarAssemblyRestore},
         {TEST_REJECT_ADAPTER_PREFLIGHT, TestRejectAdapterPreflight},
         {TEST_REJECT_WORLD_GATE, TestRejectWorldGate},
         {TEST_REJECT_NULL_ADAPTER, TestRejectNullAdapterRequest},

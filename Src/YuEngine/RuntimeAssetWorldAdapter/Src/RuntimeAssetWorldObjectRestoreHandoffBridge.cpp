@@ -7,6 +7,8 @@
 #include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectAdapterResult.h"
 #include "YuEngine/World/WorldSceneActiveRestoreGateBridge.h"
 #include "YuEngine/World/WorldSceneActiveRestoreGateResult.h"
+#include "YuEngine/World/WorldSceneAssemblyBridge.h"
+#include "YuEngine/World/WorldSceneAssemblyResult.h"
 #include "YuEngine/World/WorldSceneObjectTransformRestoreBridge.h"
 #include "YuEngine/World/WorldSceneObjectTransformRestoreResult.h"
 
@@ -14,6 +16,8 @@ using yuengine::world::WorldSceneActiveRestoreGateBridge;
 using yuengine::world::WorldSceneActiveRestoreGateResult;
 using yuengine::world::WorldSceneActiveRestoreGateStatus;
 using yuengine::world::WorldSceneApplyTimeRestoreProofStatus;
+using yuengine::world::WorldSceneAssemblyBridge;
+using yuengine::world::WorldSceneAssemblyResult;
 using yuengine::world::WorldSceneObjectTransformRestoreBridge;
 using yuengine::world::WorldSceneObjectTransformRestoreResult;
 using yuengine::world::WorldSceneObjectTransformRestoreStatus;
@@ -94,6 +98,19 @@ RuntimeAssetWorldObjectRestoreHandoffResult RuntimeAssetWorldObjectRestoreHandof
         return RecordGateFailure(gate_result.status, gate_result.proof_status);
     }
 
+    WorldSceneAssemblyBridge assembly_bridge{};
+    const WorldSceneAssemblyResult assembly_result = assembly_bridge.Restore(
+        request.attachment_destination,
+        request.binding_destination,
+        request.resource_registry,
+        request.input_attachments,
+        request.input_attachment_count,
+        request.input_bindings,
+        request.input_binding_count);
+    if (!assembly_result.Succeeded()) {
+        return RecordRestoreFailure(WorldSceneObjectTransformRestoreStatus::Success);
+    }
+
     WorldSceneObjectTransformRestoreBridge restore_bridge{};
     const WorldSceneObjectTransformRestoreResult restore_result = restore_bridge.Restore(
         request.world,
@@ -115,6 +132,8 @@ RuntimeAssetWorldObjectRestoreHandoffResult RuntimeAssetWorldObjectRestoreHandof
     state.proof_record_count = gate_result.state.proof_record_count;
     state.slice_record_count = gate_result.state.slice_record_count;
     state.gate_record_count = gate_result.state.gate_record_count;
+    state.restored_attachment_count = assembly_result.state.restored_attachment_count;
+    state.restored_binding_count = assembly_result.state.restored_binding_count;
     state.restored_identity_count = restore_result.state.restored_identity_count;
     state.restored_transform_count = restore_result.state.restored_transform_count;
     return RecordSuccess(state);
