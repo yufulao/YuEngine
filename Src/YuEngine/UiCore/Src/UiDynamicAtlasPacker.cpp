@@ -182,6 +182,43 @@ void SetResult(
     out_result->status = status;
     out_result->required_allocation_count = required_allocation_count;
 }
+
+bool IsSpriteRequestValid(const UiDynamicAtlasSpriteRequest &request) {
+    if (request.sprite_key == 0U) {
+        return false;
+    }
+
+    if (request.width == 0U || request.height == 0U) {
+        return false;
+    }
+
+    return IsRequestNineSliceValid(request);
+}
+
+std::uint32_t FindFailedSpriteKey(
+    std::span<const UiDynamicAtlasSpriteRequest> requests,
+    UiDynamicAtlasStatus status) {
+    if (status == UiDynamicAtlasStatus::InvalidSpriteRequest) {
+        for (const UiDynamicAtlasSpriteRequest &request : requests) {
+            if (!IsSpriteRequestValid(request)) {
+                return request.sprite_key;
+            }
+        }
+    }
+
+    if (status == UiDynamicAtlasStatus::DuplicateSprite) {
+        const std::size_t request_count = requests.size();
+        for (std::size_t left_index = 0U; left_index < request_count; ++left_index) {
+            for (std::size_t right_index = left_index + 1U; right_index < request_count; ++right_index) {
+                if (requests[left_index].sprite_key == requests[right_index].sprite_key) {
+                    return requests[right_index].sprite_key;
+                }
+            }
+        }
+    }
+
+    return 0U;
+}
 }
 
 UiDynamicAtlasStatus UiDynamicAtlasPacker::Pack(
@@ -205,6 +242,7 @@ UiDynamicAtlasStatus UiDynamicAtlasPacker::Pack(
 
     status = ValidateRequests(requests);
     if (status != UiDynamicAtlasStatus::Success) {
+        out_result->failed_sprite_key = FindFailedSpriteKey(requests, status);
         SetResult(out_result, status, out_result->required_allocation_count);
         return status;
     }

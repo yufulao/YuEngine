@@ -225,6 +225,22 @@ int UiCoreDynamicAtlasPackerRejectsSmallOutputAndInvalidRequest() {
         return Fail("dynamic atlas accepted invalid request metadata");
     }
 
+    if (result.failed_sprite_key != 13U || !SpriteMatchesSentinel(sprites[0U])) {
+        return Fail("dynamic atlas invalid request diagnostics changed");
+    }
+
+    const std::array<UiDynamicAtlasSpriteRequest, 2U> duplicate_requests{
+        MakeRequest(15U, 16U, 16U),
+        MakeRequest(15U, 8U, 8U)};
+    status = packer.Pack(desc, duplicate_requests, sprites, &result);
+    if (status != UiDynamicAtlasStatus::DuplicateSprite) {
+        return Fail("dynamic atlas accepted duplicate sprite key");
+    }
+
+    if (result.failed_sprite_key != 15U || !SpriteMatchesSentinel(sprites[0U])) {
+        return Fail("dynamic atlas duplicate request diagnostics changed");
+    }
+
     return 0;
 }
 
