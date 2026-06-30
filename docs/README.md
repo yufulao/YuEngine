@@ -2,7 +2,7 @@
 
 Status: canonical documentation handoff
 Owner: Architect
-Last major planning sync: `origin/main@e512d3990412f90b38aee8469845c44e188dd275`
+Last major planning sync: `origin/main@088f21eb313be7c0e6ff283af922f23ec335ee09`
 
 ## 1. Read This First
 
@@ -64,8 +64,8 @@ At the latest handoff:
   returned `1167 / ERROR_DEVICE_NOT_CONNECTED` until DualSenseX exposed an
   XInput controller;
 - the current repo baseline is clean:
-  `HEAD == origin/main == e512d3990412f90b38aee8469845c44e188dd275`
-  after RuntimeAssetData-to-RuntimeAssetWorldAdapter handoff fixture;
+  `HEAD == origin/main == 088f21eb313be7c0e6ff283af922f23ec335ee09`
+  after RuntimeAssetWorldAdapter World scene record-stream handoff;
 - active workspace tasks, timers, and coordinator goals were empty at the final
   L0/L1 handoff;
 - the next mainline is RuntimeAsset production spine continuation, starting from
@@ -240,6 +240,27 @@ At the latest handoff:
   RuntimeAssetWorldAdapter restore handoff through caller-owned
   World/ObjectRegistry identity and transform destinations; object handles and
   world object ids remain caller-owned runtime identity, not asset-file data;
+- RTSPINE-RUNTIMEASSETWORLDADAPTER-WORLD-SCENE-RECORD-STREAM-HANDOFF-U64-001
+  is VQ-closed at `088f21eb313be7c0e6ff283af922f23ec335ee09`;
+  implementation task `1ea59c46` reports committed completion and VQ task
+  `943f29a6-8a24-4a77-8e8a-4366285890b4` reports
+  `COMPLETE-PASS / RTSPINE-RUNTIMEASSETWORLDADAPTER-WORLD-SCENE-RECORD-STREAM-HANDOFF-U64-001-VQ-READY`;
+  exact implementation scope was `CMakeLists.txt`,
+  `Tests/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectRecordStreamHandoffFixtureTest.cpp`,
+  and
+  `Tests/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`;
+  no docs or production RuntimeAsset, RuntimeAssetWorldAdapter, World,
+  Resource, editor, GameAdapter, UI, gameplay, or broad File/VFS paths changed;
+  focused build `YuRuntimeAssetWorldAdapterHandoffTests` PASS; new record-stream
+  row
+  `RuntimeAssetWorldObjectRecordStreamHandoff_FeedsWorldSceneRecordStreamsIntoRestoreHandoff`
+  passes `1/1`; RuntimeAssetWorldObject Adapter/Handoff/DataHandoff rows pass
+  `22/22`; WorldScene stream/decoded-plan/proof rows pass `143/143`;
+  WorldSceneActiveRestoreGate rows pass `4/4`; the fixture proves
+  RuntimeAssetWorldAdapter handoff can consume caller-owned World scene
+  record-stream and decoded-plan outputs derived from the RuntimeAssetData scene
+  output shape through existing in-memory World value-stream, decoded-plan,
+  apply-time proof, and active-restore gate records;
 - direct WorldObject/editor object binding remains unopened; the later
   RuntimeAssetWorldAdapter alias/handoff/sidecar gates reuse existing scene
   entity, scene transform, identity-record handoff, and World active restore
@@ -310,16 +331,14 @@ At the latest handoff:
 - exact docs-only VQ marker labels for the `50ff335` evidence ledger are
   `RuntimeAssetWorldObjectAdapter`, `RuntimeAssetWorldObjectRestoreHandoff`, and
   `payload_window`;
-- current canonical HEAD is `e512d3990412f90b38aee8469845c44e188dd275`,
-  adding the VQ-closed RuntimeAssetData-to-RuntimeAssetWorldAdapter handoff
-  fixture evidence above; read-only scout
-  `8bb595fd-5b8b-4a4d-a444-325871687799` returned COMPLETE-PASS /
-  `RTSPINE-CANONICAL-DOCS-HEAD-RECONCILE-E512D39-001-NEXT-GATE-MATRIX-READY`
+- current canonical HEAD is `088f21eb313be7c0e6ff283af922f23ec335ee09`,
+  adding the VQ-closed RuntimeAssetWorldAdapter World scene record-stream
+  handoff evidence above; read-only scout
+  `5adfbc12-ce6a-4a8e-8b54-470e74e13a6f` returned COMPLETE-PASS /
+  `RTSPINE-CANONICAL-DOCS-HEAD-RECONCILE-088F21E-001-NEXT-GATE-MATRIX-READY`
   and selects
-  `RTSPINE-RUNTIMEASSETWORLDADAPTER-WORLD-SCENE-RECORD-STREAM-HANDOFF-U64-001`
-  as the next narrow gate, with focused RuntimeAssetWorldObject
-  adapter/handoff/data-handoff rows `22/22` PASS and WorldScene
-  stream/decoded-plan/proof rows `143/143` PASS; no direct
+  `RTSPINE-WORLDSCENEAUTHORING-RUNTIME-EXPORT-TO-RUNTIMEASSETWORLDADAPTER-HANDOFF-U64-001`
+  as the next narrow tests-only gate; no direct
   WorldObject/editor/GameAdapter/UI/gameplay or broader Resource/File/VFS gate
   is released by this docs sync;
 - L0-RES-001 File/VFS loose read/write policy closure is PASS at
@@ -507,9 +526,10 @@ RuntimeAsset container and family identity
 -> RuntimeAssetWorldAdapter handoff sidecar assembly restore VQ-closed at `f85c677`
 -> RuntimeAssetWorldAdapter handoff sidecar failure status VQ-closed at `4587c7d`
 -> RuntimeAssetData to RuntimeAssetWorldAdapter handoff fixture VQ-closed at `e512d39`
+-> RuntimeAssetWorldAdapter World scene record stream handoff VQ-closed at `088f21e`
 -> Resource/Streaming payload-window follow-through as narrow evidence already
    landed through `50ff335`
--> RuntimeAssetWorldAdapter World scene record stream handoff selected by scout `8bb595fd`
+-> WorldSceneAuthoring runtime export to RuntimeAssetWorldAdapter handoff selected by scout `5adfbc12`
 -> direct WorldObject/editor/GameAdapter binding or broader Resource/File/VFS expansion only
    after their own gates are released
 -> editor/importer authoring surfaces after runtime contracts pass

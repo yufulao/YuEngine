@@ -144,6 +144,7 @@ target identity work.
 | RTSPINE-014 | Close RuntimeAssetWorldAdapter handoff sidecar assembly restore | VQ-closed at `origin/main@f85c67701f2ff90c94c84cdc2761e434524128d8`; implementation task `81f4806a-cfc4-464b-a644-b163bfc0459f` and VQ task `dac5643f-7225-4ba0-a76b-c063178dfb97` are COMPLETE-PASS, focused RuntimeAssetWorldObjectRestoreHandoff discovery/execution reports `7/7` PASS including `RuntimeAssetWorldObjectRestoreHandoff_RestoresAttachmentAndBindingSidecarsThroughWorldAssembly`, RuntimeAssetWorldObject(Adapter|RestoreHandoff) rows report `20/20` PASS, WorldSceneAssemblyBridge rows report `27/27` PASS, exact implementation scope is `CMakeLists.txt`, `RuntimeAssetWorldObjectRestoreHandoffState.h`, `RuntimeAssetWorldObjectRestoreHandoffBridge.cpp`, and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, and no direct WorldObject/editor/GameAdapter/UI or broader Resource/File/VFS gate is opened |
 | RTSPINE-015 | Close RuntimeAssetWorldAdapter handoff sidecar failure status | VQ-closed at `origin/main@4587c7d1f204663577950241d4c42a5b72ab03a1`; implementation task `ab4eb0f5-0350-49af-8da3-13b4c47dda8b` and VQ task `f0c0c54e-32bd-4ee2-9dc2-b8c10c68c59a` are COMPLETE-PASS, focused RuntimeAssetWorldObjectRestoreHandoff discovery/execution reports `8/8` PASS including `RuntimeAssetWorldObjectRestoreHandoff_ExposesSidecarAssemblyFailureStatus`, RuntimeAssetWorldObjectAdapter plus RuntimeAssetWorldObjectRestoreHandoff rows report `21/21` PASS, WorldSceneAssemblyBridge rows report `27/27` PASS, exact implementation scope is `CMakeLists.txt`, `RuntimeAssetWorldObjectRestoreHandoffBridge.h`, `RuntimeAssetWorldObjectRestoreHandoffResult.h`, `RuntimeAssetWorldObjectRestoreHandoffSnapshot.h`, `RuntimeAssetWorldObjectRestoreHandoffState.h`, `RuntimeAssetWorldObjectRestoreHandoffBridge.cpp`, and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, and no docs/World/Resource/direct WorldObject/editor/GameAdapter/UI or broader Resource/File/VFS gate is opened |
 | RTSPINE-016 | Close RuntimeAssetData to RuntimeAssetWorldAdapter handoff fixture | VQ-closed at `origin/main@e512d3990412f90b38aee8469845c44e188dd275`; implementation task `150e051b` and VQ task `6f086b28-40e3-4574-bac5-33e587b2e91c` are COMPLETE-PASS, focused `YuRuntimeAssetWorldAdapterHandoffTests` build PASS, new `RuntimeAssetWorldObjectDataHandoff_FeedsRuntimeAssetDataOutputsIntoRestoreHandoff` row reports `1/1` PASS, RuntimeAssetWorldObject Adapter/Handoff/DataHandoff rows report `22/22` PASS, RuntimeAssetData target/mapping rows report `14/14` PASS, World active gate/object restore rows report `34/34` PASS, exact implementation scope is `CMakeLists.txt`, `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, and `RuntimeAssetWorldObjectDataHandoffFixtureTest.cpp`, and no production RuntimeAsset/RuntimeAssetWorldAdapter/World/Resource or docs/editor/GameAdapter/UI/broad File/VFS gate is opened |
+| RTSPINE-017 | Close RuntimeAssetWorldAdapter World scene record-stream handoff | VQ-closed at `origin/main@088f21eb313be7c0e6ff283af922f23ec335ee09`; implementation task `1ea59c46` and VQ task `943f29a6-8a24-4a77-8e8a-4366285890b4` are COMPLETE-PASS, focused `YuRuntimeAssetWorldAdapterHandoffTests` build PASS, new `RuntimeAssetWorldObjectRecordStreamHandoff_FeedsWorldSceneRecordStreamsIntoRestoreHandoff` row reports `1/1` PASS, RuntimeAssetWorldObject Adapter/Handoff/DataHandoff rows report `22/22` PASS, WorldScene stream/decoded-plan/proof rows report `143/143` PASS, WorldSceneActiveRestoreGate rows report `4/4` PASS, exact implementation scope is `CMakeLists.txt`, `RuntimeAssetWorldObjectRecordStreamHandoffFixtureTest.cpp`, and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, and no docs/production RuntimeAsset/RuntimeAssetWorldAdapter/World/Resource/direct WorldObject/editor/GameAdapter/UI or broader Resource/File/VFS gate is opened |
 
 ### 1.2.2 RTSPINE-008A Package/Resource Pressure Contract
 
@@ -701,6 +702,29 @@ selects
 as the next narrow RuntimeAsset production-spine gate. The scout evidence keeps
 RuntimeAssetWorldObject adapter/handoff/data-handoff rows at `22/22` PASS and
 WorldScene stream/decoded-plan/proof rows at `143/143` PASS.
+
+The selected RuntimeAssetWorldAdapter World scene record-stream handoff is now
+VQ-closed at `origin/main@088f21eb313be7c0e6ff283af922f23ec335ee09`:
+`RTSPINE-RUNTIMEASSETWORLDADAPTER-WORLD-SCENE-RECORD-STREAM-HANDOFF-U64-001`.
+Implementation task `1ea59c46` and VQ task
+`943f29a6-8a24-4a77-8e8a-4366285890b4` report COMPLETE-PASS. The fixture adds
+`RuntimeAssetWorldObjectRecordStreamHandoff_FeedsWorldSceneRecordStreamsIntoRestoreHandoff`
+and validates RuntimeAssetWorldAdapter handoff consuming caller-owned World
+scene record-stream and decoded-plan outputs through existing in-memory World
+value-stream, apply-time proof, and active-restore gate records. Focused build
+`YuRuntimeAssetWorldAdapterHandoffTests` PASS, the new record-stream row passes
+`1/1`, RuntimeAssetWorldObject Adapter/Handoff/DataHandoff rows pass `22/22`,
+WorldScene stream/decoded-plan/proof rows pass `143/143`, and
+WorldSceneActiveRestoreGate rows pass `4/4`. Read-only scout
+`5adfbc12-ce6a-4a8e-8b54-470e74e13a6f` returned COMPLETE-PASS /
+`RTSPINE-CANONICAL-DOCS-HEAD-RECONCILE-088F21E-001-NEXT-GATE-MATRIX-READY` and
+selects
+`RTSPINE-WORLDSCENEAUTHORING-RUNTIME-EXPORT-TO-RUNTIMEASSETWORLDADAPTER-HANDOFF-U64-001`
+as the next narrow tests-only gate. The selected scope is `CMakeLists.txt`,
+`RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, and
+`RuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTest.cpp`; it must
+keep World, RuntimeAssetWorldAdapter, RuntimeAsset, Resource, direct
+WorldObject/editor/GameAdapter/UI/gameplay, and broad Resource/File/VFS readonly.
 
 Current Package artifact hash/dependency evidence at
 `d18f1679ebd389ecec506055764602591f5b9ab6` covers RTSPINE-008C Package-only
