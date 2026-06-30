@@ -6,6 +6,15 @@
 #include <cstdio>
 #include <string_view>
 
+#include "YuEngine/Asset/AssetDescriptor.h"
+#include "YuEngine/Asset/AssetHandle.h"
+#include "YuEngine/Asset/AssetManager.h"
+#include "YuEngine/Asset/AssetManagerDesc.h"
+#include "YuEngine/Asset/AssetRecord.h"
+#include "YuEngine/Asset/AssetRegistrationResult.h"
+#include "YuEngine/Asset/AssetSnapshot.h"
+#include "YuEngine/Asset/AssetStatus.h"
+#include "YuEngine/Asset/AssetTypeId.h"
 #include "YuEngine/Object/ObjectDescriptor.h"
 #include "YuEngine/Object/ObjectHandle.h"
 #include "YuEngine/Object/ObjectRegistrationResult.h"
@@ -58,6 +67,15 @@
 #include "YuEngine/World/WorldTransformSnapshot.h"
 #include "YuEngine/World/WorldTransformState.h"
 
+using yuengine::asset::AssetDescriptor;
+using yuengine::asset::AssetHandle;
+using yuengine::asset::AssetManager;
+using yuengine::asset::AssetManagerDesc;
+using yuengine::asset::AssetRecord;
+using yuengine::asset::AssetRegistrationResult;
+using yuengine::asset::AssetSnapshot;
+using yuengine::asset::AssetStatus;
+using yuengine::asset::AssetTypeId;
 using yuengine::object::ObjectDescriptor;
 using yuengine::object::ObjectHandle;
 using yuengine::object::ObjectRegistrationResult;
@@ -135,12 +153,16 @@ constexpr std::uint32_t SIDECAR_STREAM_PLAN_RECORD_COUNT =
 constexpr std::uint64_t SCENE_DOCUMENT_ID = 0x4101U;
 constexpr std::uint64_t SCENE_DOCUMENT_HASH = 0xA55A4101U;
 constexpr std::uint64_t STABLE_RESOURCE_ID = 0x5150U;
+constexpr std::uint64_t ASSET_STABLE_SCENE_DOCUMENT = 0xA510U;
+constexpr std::uint64_t ASSET_STABLE_TEXTURE = 0xA511U;
 constexpr const char *TEST_FEED_AUTHORING_RUNTIME_EXPORT =
     "RuntimeAssetWorldObjectAuthoringRuntimeExportHandoff_FeedsAuthoringRuntimeExportThroughRecordStreamIntoRestoreHandoff";
 constexpr const char *TEST_FEED_AUTHORING_SIDECAR_RUNTIME_EXPORT =
     "RuntimeAssetWorldObjectAuthoringRuntimeExportHandoff_FeedsAttachmentBindingDependencyExportThroughRecordStreamIntoRestoreHandoff";
 constexpr const char *TEST_COMMIT_AUTHORING_DEPENDENCY_EDGE_RUNTIME_EXPORT =
     "RuntimeAssetWorldObjectAuthoringRuntimeExportHandoff_CommitsExportedDependencyAsCallerOwnedResourceEdge";
+constexpr const char *TEST_COMMIT_AUTHORING_ASSET_DEPENDENCY_EDGE_RUNTIME_EXPORT =
+    "RuntimeAssetWorldObjectAuthoringRuntimeExportHandoff_CommitsExportedDependencyAsCallerOwnedAssetEdge";
 constexpr WorldObjectId WORLD_OBJECT_SCENE{31U};
 constexpr WorldObjectId WORLD_OBJECT_MODEL{32U};
 constexpr WorldObjectId WORLD_OBJECT_SKELETON{33U};
@@ -149,6 +171,8 @@ constexpr ObjectHandle SENTINEL_OBJECT_HANDLE{9U, 9U};
 constexpr ObjectTypeId OBJECT_TYPE_SCENE{1U};
 constexpr ObjectTypeId OBJECT_TYPE_MODEL{2U};
 constexpr ObjectTypeId OBJECT_TYPE_SKELETON{3U};
+constexpr AssetTypeId ASSET_TYPE_SCENE_DOCUMENT{1U};
+constexpr AssetTypeId ASSET_TYPE_TEXTURE{2U};
 constexpr ResourceTypeId RESOURCE_TYPE_TEXTURE{1U};
 constexpr ResourceTypeId RESOURCE_TYPE_SCENE_DOCUMENT{2U};
 constexpr WorldComponentTypeId COMPONENT_TYPE_MESH{1U};
@@ -337,11 +361,32 @@ WorldInstance MakeWorld() {
     return WorldInstance(desc);
 }
 
+AssetManager MakeAssetManager() {
+    AssetManagerDesc desc{};
+    desc.asset_capacity = 4U;
+    desc.type_capacity = 4U;
+    desc.dependency_edge_capacity = 2U;
+    return AssetManager(desc);
+}
+
 ObjectRegistrationResult CreateObject(ObjectRegistry *object_registry, ObjectTypeId type) {
     ObjectDescriptor descriptor{};
     descriptor.type = type;
     descriptor.initial_reference_count = 0U;
     return object_registry->CreateSyntheticObject(descriptor);
+}
+
+AssetDescriptor Asset(
+    std::uint64_t stable_id,
+    AssetTypeId asset_type,
+    ResourceHandle resource,
+    ResourceTypeId resource_type) {
+    AssetDescriptor descriptor{};
+    descriptor.stable_id = stable_id;
+    descriptor.asset_type = asset_type;
+    descriptor.resource = resource;
+    descriptor.resource_type = resource_type;
+    return descriptor;
 }
 
 ResourceDescriptor Resource(ResourceTypeId type, const char *key) {
@@ -506,6 +551,64 @@ int PrepareAuthoringDependencyEdgeInputs(
     return PrepareAuthoringSidecarInputs(fixture, resource_registry, texture_handle);
 }
 
+int PrepareAuthoringAssetDependencyEdgeInputs(
+    AuthoringRuntimeExportHandoffFixture *fixture,
+    ResourceRegistry *resource_registry,
+    AssetManager *asset_manager,
+    AssetHandle *document_asset_handle,
+    AssetHandle *dependency_asset_handle,
+    ResourceHandle *texture_handle) {
+    if (asset_manager == nullptr) {
+        return Fail("authoring asset dependency edge manager missing");
+    }
+
+    ResourceHandle document_resource{};
+    ResourceHandle dependency_resource{};
+    if (PrepareAuthoringDependencyEdgeInputs(
+            fixture,
+            resource_registry,
+            &document_resource,
+            &dependency_resource) != 0) {
+        return 1;
+    }
+
+    const AssetDescriptor document_asset = Asset(
+        ASSET_STABLE_SCENE_DOCUMENT,
+        ASSET_TYPE_SCENE_DOCUMENT,
+        document_resource,
+        RESOURCE_TYPE_SCENE_DOCUMENT);
+    const AssetRegistrationResult document_result =
+        asset_manager->RegisterRuntimeAsset(resource_registry, document_asset);
+    if (!document_result.Succeeded()) {
+        return Fail("authoring asset dependency edge document asset setup failed");
+    }
+
+    const AssetDescriptor dependency_asset = Asset(
+        ASSET_STABLE_TEXTURE,
+        ASSET_TYPE_TEXTURE,
+        dependency_resource,
+        RESOURCE_TYPE_TEXTURE);
+    const AssetRegistrationResult dependency_result =
+        asset_manager->RegisterRuntimeAsset(resource_registry, dependency_asset);
+    if (!dependency_result.Succeeded()) {
+        return Fail("authoring asset dependency edge dependency asset setup failed");
+    }
+
+    if (document_asset_handle != nullptr) {
+        *document_asset_handle = document_result.handle;
+    }
+
+    if (dependency_asset_handle != nullptr) {
+        *dependency_asset_handle = dependency_result.handle;
+    }
+
+    if (texture_handle != nullptr) {
+        *texture_handle = dependency_resource;
+    }
+
+    return 0;
+}
+
 WorldSceneAuthoringDocument MakeAuthoringDocument(
     const AuthoringRuntimeExportHandoffFixture &fixture,
     std::uint32_t attachment_count,
@@ -561,6 +664,14 @@ bool ObjectHandlesMatch(ObjectHandle left, ObjectHandle right) {
 }
 
 bool ResourceHandlesMatch(ResourceHandle left, ResourceHandle right) {
+    if (left.slot != right.slot) {
+        return false;
+    }
+
+    return left.generation == right.generation;
+}
+
+bool AssetHandlesMatch(AssetHandle left, AssetHandle right) {
     if (left.slot != right.slot) {
         return false;
     }
@@ -1471,6 +1582,77 @@ int CommitExportedAuthoringDependencyEdge(
     return 0;
 }
 
+int CommitExportedAuthoringAssetDependencyEdge(
+    const AuthoringRuntimeExportHandoffFixture &fixture,
+    AssetManager *asset_manager,
+    AssetHandle document_asset_handle,
+    AssetHandle dependency_asset_handle) {
+    if (asset_manager == nullptr) {
+        return Fail("authoring asset dependency edge manager missing");
+    }
+
+    const WorldSceneAuthoringDependencyRecord &dependency =
+        fixture.authoring_output_dependencies[0U];
+
+    const AssetStatus stable_id_only_status =
+        asset_manager->AddDependency(document_asset_handle, AssetHandle{});
+    if (stable_id_only_status != AssetStatus::InvalidHandle) {
+        return Fail("authoring asset dependency edge accepted default handle");
+    }
+
+    const AssetSnapshot stable_id_only_snapshot = asset_manager->Snapshot();
+    if (stable_id_only_snapshot.active_dependency_edge_count != 0U) {
+        return Fail("authoring asset dependency edge default handle changed edge count");
+    }
+
+    AssetRecord dependency_asset{};
+    const AssetStatus query_status =
+        asset_manager->QueryAsset(dependency_asset_handle, &dependency_asset);
+    if (query_status != AssetStatus::Success) {
+        return Fail("authoring asset dependency edge dependency asset query failed");
+    }
+
+    if (!ResourceHandlesMatch(dependency_asset.resource, dependency.resource_handle)) {
+        return Fail("authoring asset dependency edge resource handle mismatch");
+    }
+
+    if (dependency_asset.resource_type.value != dependency.expected_resource_type.value) {
+        return Fail("authoring asset dependency edge resource type mismatch");
+    }
+
+    const AssetStatus edge_status =
+        asset_manager->AddDependency(document_asset_handle, dependency_asset_handle);
+    if (edge_status != AssetStatus::Success) {
+        return Fail("authoring asset dependency edge commit failed");
+    }
+
+    const AssetSnapshot edge_snapshot = asset_manager->Snapshot();
+    if (edge_snapshot.active_dependency_edge_count != 1U) {
+        return Fail("authoring asset dependency edge commit count mismatch");
+    }
+
+    std::array<AssetHandle, 1U> dependencies{};
+    std::uint32_t dependency_count = 0U;
+    const AssetStatus traverse_status = asset_manager->TraverseDependencies(
+        document_asset_handle,
+        dependencies.data(),
+        static_cast<std::uint32_t>(dependencies.size()),
+        &dependency_count);
+    if (traverse_status != AssetStatus::Success) {
+        return Fail("authoring asset dependency edge traversal failed");
+    }
+
+    if (dependency_count != 1U) {
+        return Fail("authoring asset dependency edge traversal count mismatch");
+    }
+
+    if (!AssetHandlesMatch(dependencies[0U], dependency_asset_handle)) {
+        return Fail("authoring asset dependency edge traversal handle mismatch");
+    }
+
+    return 0;
+}
+
 int TestFeedAuthoringRuntimeExportThroughRecordStreamIntoRestoreHandoff() {
     AuthoringRuntimeExportHandoffFixture fixture = MakeFixture();
     WorldInstance world = MakeWorld();
@@ -1916,6 +2098,154 @@ int TestCommitExportedDependencyAsCallerOwnedResourceEdge() {
     return 0;
 }
 
+int TestCommitExportedDependencyAsCallerOwnedAssetEdge() {
+    AuthoringRuntimeExportHandoffFixture fixture = MakeFixture();
+    WorldInstance world = MakeWorld();
+    ObjectRegistry object_registry = MakeObjectRegistry();
+    if (PrepareCallerOwnedRegistries(&world, &object_registry, &fixture) != 0) {
+        return 1;
+    }
+
+    ResourceRegistry resource_registry{};
+    AssetManager asset_manager = MakeAssetManager();
+    AssetHandle document_asset_handle{};
+    AssetHandle dependency_asset_handle{};
+    ResourceHandle texture_handle{};
+    if (PrepareAuthoringAssetDependencyEdgeInputs(
+            &fixture,
+            &resource_registry,
+            &asset_manager,
+            &document_asset_handle,
+            &dependency_asset_handle,
+            &texture_handle) != 0) {
+        return 1;
+    }
+
+    const AssetSnapshot asset_after_setup = asset_manager.Snapshot();
+    if (asset_after_setup.active_dependency_edge_count != 0U) {
+        return Fail("authoring asset dependency edge setup changed edge count");
+    }
+
+    if (ExportAuthoringRuntimeRecords(
+            &fixture,
+            SIDECAR_RECORD_COUNT,
+            SIDECAR_RECORD_COUNT,
+            DEPENDENCY_RECORD_COUNT) != 0) {
+        return 1;
+    }
+
+    if (VerifyAuthoringRuntimeOutputs(
+            fixture,
+            SIDECAR_RECORD_COUNT,
+            SIDECAR_RECORD_COUNT,
+            DEPENDENCY_RECORD_COUNT,
+            texture_handle) != 0) {
+        return 1;
+    }
+
+    if (CommitExportedAuthoringAssetDependencyEdge(
+            fixture,
+            &asset_manager,
+            document_asset_handle,
+            dependency_asset_handle) != 0) {
+        return 1;
+    }
+
+    const AssetSnapshot asset_after_edge_commit = asset_manager.Snapshot();
+    if (asset_after_edge_commit.active_dependency_edge_count != 1U) {
+        return Fail("authoring asset dependency edge committed count missing");
+    }
+
+    if (RoundTripWorldSceneRecordStream(&fixture, SIDECAR_RECORD_COUNT, SIDECAR_RECORD_COUNT) != 0) {
+        return 1;
+    }
+
+    if (VerifyRecordStreamOutputs(
+            fixture,
+            SIDECAR_RECORD_COUNT,
+            SIDECAR_RECORD_COUNT,
+            texture_handle) != 0) {
+        return 1;
+    }
+
+    WorldObjectIdentityBridge identity_destination(world, object_registry);
+    WorldTransformBridge transform_destination(world);
+    WorldComponentAttachmentBridge attachment_destination{};
+    WorldComponentResourceBindingBridge binding_destination{};
+    RuntimeAssetWorldObjectAdapterRequest adapter_request = MakeAdapterRequest(&fixture);
+    RuntimeAssetWorldObjectRestoreHandoffRequest handoff_request = MakeHandoffRequest(
+        &fixture,
+        &adapter_request,
+        &world,
+        &object_registry,
+        &resource_registry,
+        &identity_destination,
+        &transform_destination,
+        &attachment_destination,
+        &binding_destination,
+        SIDECAR_RECORD_COUNT,
+        SIDECAR_RECORD_COUNT);
+
+    RuntimeAssetWorldObjectRestoreHandoffBridge bridge{};
+    const RuntimeAssetWorldObjectRestoreHandoffResult result = bridge.ApplyRestore(handoff_request);
+    if (!result.Succeeded()) {
+        return Fail("authoring asset dependency edge handoff failed");
+    }
+
+    if (result.state.proof_record_count != SIDECAR_STREAM_PLAN_RECORD_COUNT) {
+        return Fail("authoring asset dependency edge handoff proof count mismatch");
+    }
+
+    if (result.state.slice_record_count != SIDECAR_STREAM_PLAN_RECORD_COUNT) {
+        return Fail("authoring asset dependency edge handoff slice count mismatch");
+    }
+
+    if (result.state.gate_record_count != SIDECAR_STREAM_PLAN_RECORD_COUNT) {
+        return Fail("authoring asset dependency edge handoff gate count mismatch");
+    }
+
+    if (result.state.restored_attachment_count != SIDECAR_RECORD_COUNT) {
+        return Fail("authoring asset dependency edge restored attachment count mismatch");
+    }
+
+    if (result.state.restored_binding_count != SIDECAR_RECORD_COUNT) {
+        return Fail("authoring asset dependency edge restored binding count mismatch");
+    }
+
+    if (VerifyDecodedRecordStreams(
+            fixture,
+            SIDECAR_RECORD_COUNT,
+            SIDECAR_RECORD_COUNT,
+            texture_handle) != 0) {
+        return 1;
+    }
+
+    if (VerifyRestoredSidecarDestinations(
+            &attachment_destination,
+            &binding_destination,
+            texture_handle) != 0) {
+        return 1;
+    }
+
+    const auto binding_snapshot = binding_destination.Snapshot();
+    if (binding_snapshot.acquired_binding_count != SIDECAR_RECORD_COUNT) {
+        return Fail("authoring asset dependency edge binding acquire count mismatch");
+    }
+
+    const AssetSnapshot asset_after_handoff = asset_manager.Snapshot();
+    if (asset_after_handoff.active_dependency_edge_count !=
+        asset_after_edge_commit.active_dependency_edge_count) {
+        return Fail("authoring asset dependency edge handoff changed edge count");
+    }
+
+    const RuntimeAssetWorldObjectRestoreHandoffSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.emitted_gate_record_count != SIDECAR_STREAM_PLAN_RECORD_COUNT) {
+        return Fail("authoring asset dependency edge snapshot gate count mismatch");
+    }
+
+    return 0;
+}
+
 }
 
 bool RuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTestNameMatches(std::string_view test_name) {
@@ -1927,11 +2257,19 @@ bool RuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTestNameMatches(
         return true;
     }
 
-    return test_name == TEST_COMMIT_AUTHORING_DEPENDENCY_EDGE_RUNTIME_EXPORT;
+    if (test_name == TEST_COMMIT_AUTHORING_DEPENDENCY_EDGE_RUNTIME_EXPORT) {
+        return true;
+    }
+
+    return test_name == TEST_COMMIT_AUTHORING_ASSET_DEPENDENCY_EDGE_RUNTIME_EXPORT;
 }
 
 int RunRuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTest(std::string_view test_name) {
     if (RuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTestNameMatches(test_name)) {
+        if (test_name == TEST_COMMIT_AUTHORING_ASSET_DEPENDENCY_EDGE_RUNTIME_EXPORT) {
+            return TestCommitExportedDependencyAsCallerOwnedAssetEdge();
+        }
+
         if (test_name == TEST_COMMIT_AUTHORING_DEPENDENCY_EDGE_RUNTIME_EXPORT) {
             return TestCommitExportedDependencyAsCallerOwnedResourceEdge();
         }
