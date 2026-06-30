@@ -2,7 +2,7 @@
 
 Status: canonical documentation handoff
 Owner: Architect
-Last major planning sync: `origin/main@296100b3bda25e962c3a3a503f9f78f0160083ce`
+Last major planning sync: `origin/main@54e02e049bb6f67fd15ca32d1675f1c61380ae70`
 
 ## 1. Read This First
 
@@ -148,6 +148,20 @@ At the latest handoff:
   `RuntimeAssetWorldObjectAdapter_BuildsRestoreRecordsForModelAndSkeletonTargetFamilyAliases`;
   SceneNode behavior and Unknown/default rejection, duplicate, capacity, null,
   no-mutation, and status semantics are preserved;
+- RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-TARGET-FAMILY-PROOF-U64-001 is
+  VQ-closed at `54e02e049bb6f67fd15ca32d1675f1c61380ae70`; implementation task
+  `53b6d5dc-fd17-442c-b18b-9257c4f3650c` reports local commit completion and
+  VQ task `8fbe251e-2c14-4786-a48c-5b8b0b6f8e14` reports
+  `COMPLETE-PASS / RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-TARGET-FAMILY-PROOF-U64-001-VQ-READY`;
+  exact implementation scope was `CMakeLists.txt` and
+  `Tests/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`;
+  no `RuntimeAssetWorldObjectRestoreHandoffBridge.cpp` production bridge change
+  was needed; focused `RuntimeAssetWorldObjectRestoreHandoff` discovery and
+  execution PASS was `5/5`, including
+  `RuntimeAssetWorldObjectRestoreHandoff_AppliesModelAndSkeletonTargetFamilyAliases`;
+  the older adapter-preflight negative row now uses
+  `RuntimeAssetTargetIdentityKind::Unknown` and still proves
+  `AdapterBuildFailed`, `UnsupportedTargetKind`, and no output/world mutation;
 - direct WorldObject/editor object binding remains unopened; the later
   RuntimeAssetWorldAdapter alias/handoff gate reuses existing scene entity,
   scene transform, and identity-record handoff rows and does not authorize
@@ -218,18 +232,17 @@ At the latest handoff:
 - exact docs-only VQ marker labels for the `50ff335` evidence ledger are
   `RuntimeAssetWorldObjectAdapter`, `RuntimeAssetWorldObjectRestoreHandoff`, and
   `payload_window`;
-- current canonical HEAD is `296100b3bda25e962c3a3a503f9f78f0160083ce`, adding
-  the VQ-closed RuntimeAssetWorldAdapter ModelNode/SkeletonJoint alias handoff
+- current canonical HEAD is `54e02e049bb6f67fd15ca32d1675f1c61380ae70`,
+  adding the VQ-closed RuntimeAssetWorldAdapter handoff target-family proof
   evidence above; read-only scout
-  `a347a381-67ba-4d2d-aa48-91ef14beb4e7` selected
-  `RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-TARGET-FAMILY-PROOF-U64-001` as
-  the next same-module proof gate, with implementation task
-  `53b6d5dc-fd17-442c-b18b-9257c4f3650c` released only for
+  `06ca8037-d242-4482-bfe2-3eee93342bf3` selected
+  `RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-ATTACHMENT-BINDING-GATE-PROOF-U64-001`
+  as the next same-module sidecar proof gate, scoped to
   `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, `CMakeLists.txt`, and
-  optional `RuntimeAssetWorldObjectRestoreHandoffBridge.cpp`; the current
-  blocker is the stale focused row
-  `RuntimeAssetWorldObjectRestoreHandoff_RejectsAdapterPreflightWithoutWorldMutation`
-  still treating ModelNode as unsupported after `296100b`;
+  optional handoff bridge/state files only if evidence requires them; the gate
+  must prove non-zero component attachment and component resource binding
+  records through the existing World active restore gate without opening direct
+  WorldObject/editor/GameAdapter or broader Resource/File/VFS;
 - L0-RES-001 File/VFS loose read/write policy closure is PASS at
   `43cfc18fec4c4c5a5135e4ed15da64c8308247ff`; focused QA task
   `5020f3d6-a492-4138-b81f-c5e80cdd92e2` reports test-only
@@ -409,6 +422,7 @@ RuntimeAsset container and family identity
 -> sampled transform application to runtime instance records
 -> ModelNode/SkeletonJoint target-family binding VQ-closed at `3fa4ef7`
 -> RuntimeAssetWorldAdapter ModelNode/SkeletonJoint alias handoff VQ-closed at `296100b`
+-> RuntimeAssetWorldAdapter handoff target-family proof VQ-closed at `54e02e0`
 -> Resource/Streaming payload-window follow-through as narrow evidence already
    landed through `50ff335`
 -> direct WorldObject/editor/GameAdapter binding or broader Resource/File/VFS expansion only

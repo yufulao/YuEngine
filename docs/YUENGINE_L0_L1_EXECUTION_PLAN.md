@@ -139,6 +139,7 @@ target identity work.
 | RTSPINE-009 | Record post-008H payload and destination-range spine | The `50ff335fe1ddfea77a72ce20f770baa3028df4a2` ledger records implementation/focused evidence from RuntimeAssetWorldAdapter bridge/handoff through Resource/Streaming payload-window propagation, Package payload metadata, RuntimeAssetData package payload-window consumption, RHI destination range, and ResourceUpload destination range; only lanes with explicit workspace VQ COMPLETE-PASS should be treated as VQ-closed |
 | RTSPINE-010 | Close ModelNode/SkeletonJoint target-family binding | VQ-closed at `origin/main@3fa4ef7bd42da8f60bd5ebb3a7f863bd76292c84`; implementation task `06724fe5-b2e4-410e-97e7-2b41c195c3a0` and VQ task `04e2a7a6-eac5-41d2-9624-6e5e952859c4` are COMPLETE-PASS, focused discovery found `17` rows including Model/Skeleton target-family rows, focused execution `17/17` PASS, and old unsupported target-family labels are absent |
 | RTSPINE-011 | Close RuntimeAssetWorldAdapter target-family alias handoff | VQ-closed at `origin/main@296100b3bda25e962c3a3a503f9f78f0160083ce`; implementation task `77376606-d3d8-45de-8079-79121593b8e7` and VQ task `5fb82855-a437-4eb7-b078-373069988b2d` are COMPLETE-PASS, focused RuntimeAssetWorldObjectAdapter matrix reports `13/13` PASS including Model/Skeleton alias handoff, exact implementation scope is `CMakeLists.txt`, `RuntimeAssetWorldObjectAdapterBridge.cpp`, and `RuntimeAssetWorldObjectAdapterBridgeTest.cpp`, and direct WorldObject/editor/GameAdapter plus broader Resource/File/VFS closure remains out of scope |
+| RTSPINE-012 | Close RuntimeAssetWorldAdapter handoff target-family proof | VQ-closed at `origin/main@54e02e049bb6f67fd15ca32d1675f1c61380ae70`; implementation task `53b6d5dc-fd17-442c-b18b-9257c4f3650c` and VQ task `8fbe251e-2c14-4786-a48c-5b8b0b6f8e14` are COMPLETE-PASS, focused RuntimeAssetWorldObjectRestoreHandoff discovery/execution reports `5/5` PASS including `RuntimeAssetWorldObjectRestoreHandoff_AppliesModelAndSkeletonTargetFamilyAliases`, exact implementation scope is `CMakeLists.txt` and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, the Unknown negative row preserves adapter preflight no-mutation semantics, and no production bridge source changed |
 
 ### 1.2.2 RTSPINE-008A Package/Resource Pressure Contract
 
@@ -619,6 +620,22 @@ Implementation task `77376606-d3d8-45de-8079-79121593b8e7` and VQ task
 RuntimeAssetWorldObjectAdapter rows pass `13/13`, and the scope remains limited
 to bridge/test/CMake without direct WorldObject/editor/GameAdapter or broad
 Resource/File/VFS closure.
+
+The following RuntimeAssetWorldAdapter handoff target-family proof gate is now
+VQ-closed at `origin/main@54e02e049bb6f67fd15ca32d1675f1c61380ae70`:
+`RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-TARGET-FAMILY-PROOF-U64-001`.
+Implementation task `53b6d5dc-fd17-442c-b18b-9257c4f3650c` and VQ task
+`8fbe251e-2c14-4786-a48c-5b8b0b6f8e14` report COMPLETE-PASS. Focused
+RuntimeAssetWorldObjectRestoreHandoff rows discover and execute `5/5` PASS,
+including `RuntimeAssetWorldObjectRestoreHandoff_AppliesModelAndSkeletonTargetFamilyAliases`.
+The old adapter-preflight negative row now uses `RuntimeAssetTargetIdentityKind::Unknown`
+and still proves no output/world mutation.
+Read-only scout `06ca8037-d242-4482-bfe2-3eee93342bf3` selected
+`RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-ATTACHMENT-BINDING-GATE-PROOF-U64-001`
+as the next narrow gate. It should prove non-zero component attachment and
+component resource binding sidecar records through the existing World active
+restore gate, using RuntimeAssetWorldAdapter handoff test/CMake scope and
+read-only World/Resource evidence only.
 
 Current Package artifact hash/dependency evidence at
 `d18f1679ebd389ecec506055764602591f5b9ab6` covers RTSPINE-008C Package-only

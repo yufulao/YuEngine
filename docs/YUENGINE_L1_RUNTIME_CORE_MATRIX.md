@@ -162,7 +162,26 @@ destination range consumer. This is a HEAD evidence ledger, not a blanket
 stage-close VQ: each later lane must cite its own workspace VQ before being
 called VQ-closed.
 
-Current HEAD `296100b3bda25e962c3a3a503f9f78f0160083ce` records VQ-closed
+Current HEAD `54e02e049bb6f67fd15ca32d1675f1c61380ae70` records VQ-closed
+RuntimeAssetWorldAdapter handoff target-family proof for
+`RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-TARGET-FAMILY-PROOF-U64-001`.
+Implementation task `53b6d5dc-fd17-442c-b18b-9257c4f3650c` is COMPLETE-PASS /
+committed and VQ task `8fbe251e-2c14-4786-a48c-5b8b0b6f8e14` is COMPLETE-PASS /
+VQ-READY. The focused RuntimeAssetWorldObjectRestoreHandoff matrix reports
+discovery/execution `5/5` PASS including
+`RuntimeAssetWorldObjectRestoreHandoff_AppliesModelAndSkeletonTargetFamilyAliases`,
+and the adapter-preflight negative row now uses
+`RuntimeAssetTargetIdentityKind::Unknown` while preserving no output/world
+mutation semantics. The commit touched only `CMakeLists.txt` and
+`RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`.
+Read-only scout `06ca8037-d242-4482-bfe2-3eee93342bf3` selected
+`RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-ATTACHMENT-BINDING-GATE-PROOF-U64-001`
+as the next narrow proof. It stays in RuntimeAssetWorldAdapter handoff
+test/CMake scope, may use World and Resource only as read-only sidecar record
+evidence, and must not open direct WorldObject/editor/GameAdapter or broad
+Resource/File/VFS.
+
+The `296100b3bda25e962c3a3a503f9f78f0160083ce` evidence records VQ-closed
 RuntimeAssetWorldAdapter target-family alias handoff for
 `RTSPINE-RUNTIMEASSETWORLDADAPTER-TARGET-FAMILY-ALIAS-HANDOFF-U64-001`.
 Implementation task `77376606-d3d8-45de-8079-79121593b8e7` is COMPLETE-PASS /
