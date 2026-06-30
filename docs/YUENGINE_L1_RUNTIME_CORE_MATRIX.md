@@ -160,13 +160,20 @@ artifact fixture, `10f7b30` RuntimeAssetData payload-window consumer,
 `c3cf022` RHI destination range contract, and `50ff335` ResourceUpload
 destination range consumer. This is a HEAD evidence ledger, not a blanket
 stage-close VQ: each later lane must cite its own workspace VQ before being
-called VQ-closed. Next-gate matrix reference
-`13ee55d7-c208-4503-b390-475b4fe82c08` / `NEXT-GATE-MATRIX-READY` routes the
-next scoped gate to
-`RTSPINE-RUNTIMEASSETWORLDADAPTER-TARGET-FAMILY-ALIAS-HANDOFF-U64-001` as
-docs-only VQ routing evidence, not implementation closure.
+called VQ-closed.
 
-Current HEAD `3fa4ef7bd42da8f60bd5ebb3a7f863bd76292c84` records VQ-closed
+Current HEAD `296100b3bda25e962c3a3a503f9f78f0160083ce` records VQ-closed
+RuntimeAssetWorldAdapter target-family alias handoff for
+`RTSPINE-RUNTIMEASSETWORLDADAPTER-TARGET-FAMILY-ALIAS-HANDOFF-U64-001`.
+Implementation task `77376606-d3d8-45de-8079-79121593b8e7` is COMPLETE-PASS /
+committed and VQ task `5fb82855-a437-4eb7-b078-373069988b2d` is COMPLETE-PASS /
+VQ-READY. The focused RuntimeAssetWorldObjectAdapter matrix reports `13/13`
+PASS including `RuntimeAssetWorldObjectAdapter_BuildsRestoreRecordsForModelAndSkeletonTargetFamilyAliases`.
+The gate reuses existing scene entity, scene transform, and identity-record
+handoff rows; it does not open direct WorldObject/editor/GameAdapter or broader
+Resource/File/VFS closure.
+
+The `3fa4ef7bd42da8f60bd5ebb3a7f863bd76292c84` evidence records VQ-closed
 RuntimeAsset ModelNode/SkeletonJoint target-family binding. Implementation task
 `06724fe5-b2e4-410e-97e7-2b41c195c3a0` is COMPLETE-PASS / committed, VQ task
 `04e2a7a6-eac5-41d2-9624-6e5e952859c4` is COMPLETE-PASS / VQ-READY, focused

@@ -138,6 +138,7 @@ target identity work.
 | RTSPINE-008 | Define package/resource pressure gate | 008A pressure contract defines vocabulary, byte-range policy, hash coverage, mutation contract, and forbidden scope; 008B byte-range/index, 008C Package artifact hash/dependency integrity, 008D File/VFS ranged IO, 008E Resource payload window/reference budget, 008F Package dependency closure/budgeted load plan, 008G RuntimeAsset packaged validation bridge, 008H RuntimeAsset transaction rollback/proof, and 008I package archive range to RuntimeAsset Resource payload-window handoff are represented in current HEAD evidence |
 | RTSPINE-009 | Record post-008H payload and destination-range spine | The `50ff335fe1ddfea77a72ce20f770baa3028df4a2` ledger records implementation/focused evidence from RuntimeAssetWorldAdapter bridge/handoff through Resource/Streaming payload-window propagation, Package payload metadata, RuntimeAssetData package payload-window consumption, RHI destination range, and ResourceUpload destination range; only lanes with explicit workspace VQ COMPLETE-PASS should be treated as VQ-closed |
 | RTSPINE-010 | Close ModelNode/SkeletonJoint target-family binding | VQ-closed at `origin/main@3fa4ef7bd42da8f60bd5ebb3a7f863bd76292c84`; implementation task `06724fe5-b2e4-410e-97e7-2b41c195c3a0` and VQ task `04e2a7a6-eac5-41d2-9624-6e5e952859c4` are COMPLETE-PASS, focused discovery found `17` rows including Model/Skeleton target-family rows, focused execution `17/17` PASS, and old unsupported target-family labels are absent |
+| RTSPINE-011 | Close RuntimeAssetWorldAdapter target-family alias handoff | VQ-closed at `origin/main@296100b3bda25e962c3a3a503f9f78f0160083ce`; implementation task `77376606-d3d8-45de-8079-79121593b8e7` and VQ task `5fb82855-a437-4eb7-b078-373069988b2d` are COMPLETE-PASS, focused RuntimeAssetWorldObjectAdapter matrix reports `13/13` PASS including Model/Skeleton alias handoff, exact implementation scope is `CMakeLists.txt`, `RuntimeAssetWorldObjectAdapterBridge.cpp`, and `RuntimeAssetWorldObjectAdapterBridgeTest.cpp`, and direct WorldObject/editor/GameAdapter plus broader Resource/File/VFS closure remains out of scope |
 
 ### 1.2.2 RTSPINE-008A Package/Resource Pressure Contract
 
@@ -609,12 +610,15 @@ Package-to-Streaming artifact fixture; `10f7b30` RuntimeAssetData package
 payload-window consumer; `c3cf022` RHI update destination range contract; and
 `50ff335` ResourceUpload destination range consumer. This ledger reconciles
 HEAD with the canonical docs; it does not convert lanes without explicit VQ into
-stage-close proof. The current next-gate matrix scout reference
-`13ee55d7-c208-4503-b390-475b4fe82c08` / `NEXT-GATE-MATRIX-READY` routes the
-next scoped gate to
-`RTSPINE-RUNTIMEASSETWORLDADAPTER-TARGET-FAMILY-ALIAS-HANDOFF-U64-001` as
-docs-only evidence only; treat the RuntimeAssetWorldAdapter lane as unopened
-until a separate implementation gate is released and VQ-closed.
+stage-close proof. The following RuntimeAssetWorldAdapter target-family alias
+handoff gate is now VQ-closed at
+`origin/main@296100b3bda25e962c3a3a503f9f78f0160083ce`:
+`RTSPINE-RUNTIMEASSETWORLDADAPTER-TARGET-FAMILY-ALIAS-HANDOFF-U64-001`.
+Implementation task `77376606-d3d8-45de-8079-79121593b8e7` and VQ task
+`5fb82855-a437-4eb7-b078-373069988b2d` report COMPLETE-PASS, focused
+RuntimeAssetWorldObjectAdapter rows pass `13/13`, and the scope remains limited
+to bridge/test/CMake without direct WorldObject/editor/GameAdapter or broad
+Resource/File/VFS closure.
 
 Current Package artifact hash/dependency evidence at
 `d18f1679ebd389ecec506055764602591f5b9ab6` covers RTSPINE-008C Package-only

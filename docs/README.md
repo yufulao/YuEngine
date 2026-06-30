@@ -2,7 +2,7 @@
 
 Status: canonical documentation handoff
 Owner: Architect
-Last major planning sync: `origin/main@3fa4ef7bd42da8f60bd5ebb3a7f863bd76292c84`
+Last major planning sync: `origin/main@296100b3bda25e962c3a3a503f9f78f0160083ce`
 
 ## 1. Read This First
 
@@ -135,9 +135,23 @@ At the latest handoff:
   `RuntimeAssetData_RuntimeInstanceMappingResolvesModelAndSkeletonFamilies`,
   focused execution `17/17` PASS, and old unsupported target-family labels are
   absent;
+- RTSPINE-RUNTIMEASSETWORLDADAPTER-TARGET-FAMILY-ALIAS-HANDOFF-U64-001 is
+  VQ-closed at `296100b3bda25e962c3a3a503f9f78f0160083ce`; implementation task
+  `77376606-d3d8-45de-8079-79121593b8e7` reports
+  `COMPLETE-PASS / RTSPINE-RUNTIMEASSETWORLDADAPTER-TARGET-FAMILY-ALIAS-HANDOFF-U64-001-COMMITTED`
+  and VQ task `5fb82855-a437-4eb7-b078-373069988b2d` reports
+  `COMPLETE-PASS / RTSPINE-RUNTIMEASSETWORLDADAPTER-TARGET-FAMILY-ALIAS-HANDOFF-U64-001-VQ-READY`;
+  exact implementation scope was `CMakeLists.txt`,
+  `Src/YuEngine/RuntimeAssetWorldAdapter/Src/RuntimeAssetWorldObjectAdapterBridge.cpp`,
+  and `Tests/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectAdapterBridgeTest.cpp`;
+  focused `RuntimeAssetWorldObjectAdapter` matrix PASS was `13/13` including
+  `RuntimeAssetWorldObjectAdapter_BuildsRestoreRecordsForModelAndSkeletonTargetFamilyAliases`;
+  SceneNode behavior and Unknown/default rejection, duplicate, capacity, null,
+  no-mutation, and status semantics are preserved;
 - direct WorldObject/editor object binding remains unopened; the later
-  `e2e8c3c` and `1658639` commits are RuntimeAssetWorldAdapter bridge/handoff
-  implementation evidence only and do not authorize editor/gameplay binding;
+  RuntimeAssetWorldAdapter alias/handoff gate reuses existing scene entity,
+  scene transform, and identity-record handoff rows and does not authorize
+  editor/GameAdapter/gameplay binding;
 - the human lead has resumed execution and requires continuous multi-agent
   coordination until the active accepted goal's stop condition is actually met;
 - RTSPINE-008A docs/spec is PASS at
@@ -201,15 +215,21 @@ At the latest handoff:
   only the lanes with recorded COMPLETE-PASS VQ in workspace should be cited as
   VQ-closed, and later gates must still run their own scoped VQ before they are
   treated as stage-close proof;
-- exact docs-only VQ marker labels for this evidence ledger are
+- exact docs-only VQ marker labels for the `50ff335` evidence ledger are
   `RuntimeAssetWorldObjectAdapter`, `RuntimeAssetWorldObjectRestoreHandoff`, and
-  `payload_window`; next-gate matrix reference
-  `13ee55d7-c208-4503-b390-475b4fe82c08` /
-  `NEXT-GATE-MATRIX-READY` routes the next narrow gate to
-  `RTSPINE-RUNTIMEASSETWORLDADAPTER-TARGET-FAMILY-ALIAS-HANDOFF-U64-001` and
-  does not by itself promote that implementation lane to VQ-closed;
-- current canonical HEAD is `3fa4ef7bd42da8f60bd5ebb3a7f863bd76292c84`, adding
-  the VQ-closed ModelNode/SkeletonJoint target-family binding evidence above;
+  `payload_window`;
+- current canonical HEAD is `296100b3bda25e962c3a3a503f9f78f0160083ce`, adding
+  the VQ-closed RuntimeAssetWorldAdapter ModelNode/SkeletonJoint alias handoff
+  evidence above; read-only scout
+  `a347a381-67ba-4d2d-aa48-91ef14beb4e7` selected
+  `RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-TARGET-FAMILY-PROOF-U64-001` as
+  the next same-module proof gate, with implementation task
+  `53b6d5dc-fd17-442c-b18b-9257c4f3650c` released only for
+  `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, `CMakeLists.txt`, and
+  optional `RuntimeAssetWorldObjectRestoreHandoffBridge.cpp`; the current
+  blocker is the stale focused row
+  `RuntimeAssetWorldObjectRestoreHandoff_RejectsAdapterPreflightWithoutWorldMutation`
+  still treating ModelNode as unsupported after `296100b`;
 - L0-RES-001 File/VFS loose read/write policy closure is PASS at
   `43cfc18fec4c4c5a5135e4ed15da64c8308247ff`; focused QA task
   `5020f3d6-a492-4138-b81f-c5e80cdd92e2` reports test-only
@@ -362,11 +382,11 @@ At the latest handoff:
   L1 ASCENE rows, L1-SAMPLE-007, adjacent/full suites, broad/full CTest, and
   Render/RHI/World/UI/material/shader/scene/importer/package expansion remain
   separate;
-- direct WorldObject/editor binding and broad Resource/File/VFS expansion remain
-  blocked until their own gates are released; the current HEAD only opens the
-  narrow RuntimeAssetWorldAdapter, Resource/Streaming payload-window, RHI
-  destination-range, and ResourceUpload destination-range evidence chain listed
-  above.
+- direct WorldObject/editor/GameAdapter binding and broad Resource/File/VFS
+  expansion remain blocked until their own gates are released; the current HEAD
+  only closes the narrow RuntimeAssetWorldAdapter target-family alias handoff
+  plus the Resource/Streaming payload-window, RHI destination-range, and
+  ResourceUpload destination-range evidence chain listed above.
 
 Live workspace state is still authoritative for task ownership and current
 status. This file records the handoff baseline, not a replacement for the task
@@ -388,9 +408,10 @@ RuntimeAsset container and family identity
 -> Step/Linear interpolation
 -> sampled transform application to runtime instance records
 -> ModelNode/SkeletonJoint target-family binding VQ-closed at `3fa4ef7`
--> RuntimeAssetWorldAdapter bridge/handoff and Resource/Streaming payload-window
-   follow-through as narrow evidence already landed through `50ff335`
--> direct WorldObject/editor binding or broader Resource/File/VFS expansion only
+-> RuntimeAssetWorldAdapter ModelNode/SkeletonJoint alias handoff VQ-closed at `296100b`
+-> Resource/Streaming payload-window follow-through as narrow evidence already
+   landed through `50ff335`
+-> direct WorldObject/editor/GameAdapter binding or broader Resource/File/VFS expansion only
    after their own gates are released
 -> editor/importer authoring surfaces after runtime contracts pass
 ```

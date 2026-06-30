@@ -7,19 +7,23 @@ Owner: Architecture
 Task: #73 baseline; #50 RAV1 production contract amendment
 Related plan: `docs/YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md`
 Latest RuntimeAsset spine evidence: current `origin/main` HEAD
-`3fa4ef7bd42da8f60bd5ebb3a7f863bd76292c84` records VQ-closed
-ModelNode/SkeletonJoint target-family binding after the post-008H
-RuntimeAsset/Streaming/RHI/ResourceUpload `payload_window` and destination-range
-implementation ledger, including exact marker labels
-`RuntimeAssetWorldObjectAdapter` and `RuntimeAssetWorldObjectRestoreHandoff`.
+`296100b3bda25e962c3a3a503f9f78f0160083ce` records VQ-closed
+RuntimeAssetWorldAdapter target-family alias handoff after the
+`3fa4ef7bd42da8f60bd5ebb3a7f863bd76292c84` ModelNode/SkeletonJoint
+target-family binding and the post-008H RuntimeAsset/Streaming/RHI/ResourceUpload
+`payload_window` and destination-range implementation ledger, including exact
+marker labels `RuntimeAssetWorldObjectAdapter` and
+`RuntimeAssetWorldObjectRestoreHandoff`.
 Earlier RTSPINE-004 implementation
 `ebe9ea35f531aa40133262b701e5e751f8ed9ccf` plus focused QA workspace task
 `2e2d5a4e-0bb0-4cf4-bd1b-ab3a87987b7f` remains COMPLETE-PASS; later lanes
 should cite their own workspace VQ before being called VQ-closed.
-Next-gate matrix reference `13ee55d7-c208-4503-b390-475b4fe82c08` /
-`NEXT-GATE-MATRIX-READY` routes to
-`RTSPINE-RUNTIMEASSETWORLDADAPTER-TARGET-FAMILY-ALIAS-HANDOFF-U64-001` as
-docs-only VQ routing evidence, not implementation closure.
+Read-only scout `a347a381-67ba-4d2d-aa48-91ef14beb4e7` selected
+`RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-TARGET-FAMILY-PROOF-U64-001` as the
+next same-module proof gate; implementation task
+`53b6d5dc-fd17-442c-b18b-9257c4f3650c` is released for the focused handoff
+test/CMake path plus optional bridge code, and must pass its own VQ before this
+gate is called accepted.
 Production-gap closure: `docs/YUENGINE_RUNTIME_ASSET_V0_PRODUCTION_GAP_CLOSURE_PLAN.md`
 Format policy and validator vocabulary: `docs/YUENGINE_RUNTIME_ASSET_V0_FORMAT_POLICY_AND_VALIDATOR_VOCABULARY.md`
 Loader transaction plan: `docs/YUENGINE_RUNTIME_ASSET_V0_LOADER_TRANSACTION_PLAN.md`
@@ -427,7 +431,8 @@ This gate records these mainline implementation slices:
 | RAV1-V | RuntimeAsset packaged validation bridge | PASS; RuntimeAsset validates packaged archive byte ranges, payload hashes, dependency/load-plan records, duplicate load-plan records, and ProductRun packaged validation failure status before graph mutation; focused QA task `35fdc7a2-c09d-416a-95aa-b4aabdb05d0f` reports exact RTSPINE-008G rows `5/5` PASS, adjacent packaged/product rows `8/8` PASS, `git diff --check` PASS, exact committed scope, and no broad/full CTest |
 | RAV1-W | RuntimeAsset transaction rollback/proof | PASS; RuntimeAsset rolls back graph-load commit failures by restoring RuntimeAsset records plus Resource/Asset snapshots and reporting rollback proof fields without output mutation; focused QA task `1ec65e79-70f2-4fe5-8f08-6fb0ba2371fd` reports exact transaction rollback row `1/1` PASS, rollback/commit/adjacent packaged/product set `19/19` PASS, `git diff --check` PASS, exact committed scope, and no broad/full CTest |
 | RAV1-X | ModelNode/SkeletonJoint target-family binding | PASS; `origin/main@3fa4ef7bd42da8f60bd5ebb3a7f863bd76292c84` supports RuntimeAsset ModelNode/SkeletonJoint target-family binding; implementation task `06724fe5-b2e4-410e-97e7-2b41c195c3a0` and VQ task `04e2a7a6-eac5-41d2-9624-6e5e952859c4` are COMPLETE-PASS, focused discovery found `17` rows including `RuntimeAssetData_AnimationTrackTargetBindingResolvesModelAndSkeletonTargetFamilies`, `RuntimeAssetData_RuntimeInstanceMappingBuildsTargetFamilyRows`, and `RuntimeAssetData_RuntimeInstanceMappingResolvesModelAndSkeletonFamilies`, focused execution `17/17` PASS, and old unsupported target-family labels are absent |
-| Next slice | RuntimeAssetWorldAdapter target-family alias handoff | route next implementation through `RTSPINE-RUNTIMEASSETWORLDADAPTER-TARGET-FAMILY-ALIAS-HANDOFF-U64-001` using matrix scout `13ee55d7-c208-4503-b390-475b4fe82c08`; keep this as routing evidence only and require a later task result before treating the lane as accepted |
+| RAV1-Y | RuntimeAssetWorldAdapter target-family alias handoff | PASS; `origin/main@296100b3bda25e962c3a3a503f9f78f0160083ce` supports SceneNode, ModelNode, and SkeletonJoint runtime instance mappings through the existing scene entity/scene transform plus identity-record handoff path; implementation task `77376606-d3d8-45de-8079-79121593b8e7` and VQ task `5fb82855-a437-4eb7-b078-373069988b2d` are COMPLETE-PASS, exact implementation scope is `CMakeLists.txt`, `RuntimeAssetWorldObjectAdapterBridge.cpp`, and `RuntimeAssetWorldObjectAdapterBridgeTest.cpp`, and focused RuntimeAssetWorldObjectAdapter matrix reports `13/13` PASS including Model/Skeleton alias handoff |
+| Next slice | RuntimeAssetWorldAdapter handoff target-family proof | selected by read-only scout `a347a381-67ba-4d2d-aa48-91ef14beb4e7`; implementation task `53b6d5dc-fd17-442c-b18b-9257c4f3650c` is released for `RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-TARGET-FAMILY-PROOF-U64-001`, scoped to `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, `CMakeLists.txt`, and optional `RuntimeAssetWorldObjectRestoreHandoffBridge.cpp`; initial blocker is stale row `RuntimeAssetWorldObjectRestoreHandoff_RejectsAdapterPreflightWithoutWorldMutation` treating ModelNode as unsupported after `296100b`; do not open direct WorldObject/editor/GameAdapter or broader Resource/File/VFS from RAV1-Y alone |
 | Later slice | WorldObject-facing mapping / broader Resource/File/VFS follow-through | keep direct WorldObject/editor mapping outside RTSPINE-007 and keep broader Resource/File/VFS follow-through outside RTSPINE-008H until their own gates |
 
 The slice may split implementation tasks later, but those tasks must stay
