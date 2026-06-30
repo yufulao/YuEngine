@@ -1685,6 +1685,15 @@ int RenderCoreSubmissionBatchRejectsBatchCapacityWithoutMutation() {
         return Fail("submission batch fixture accepted capacity overflow");
     }
 
+    constexpr std::size_t expected_failed_entry_index = 1U;
+    if (result.failed_entry_index != expected_failed_entry_index) {
+        return Fail("submission batch capacity overflow reported wrong failed entry");
+    }
+
+    if (result.pass_id != MATERIAL_PASS_ID + 1U || result.material_id != NEXT_MATERIAL_ID) {
+        return Fail("submission batch capacity overflow missed failed entry identifiers");
+    }
+
     if (!PassResultsUnchanged(results, sentinel)) {
         return Fail("submission batch capacity overflow mutated result storage");
     }
@@ -1697,6 +1706,10 @@ int RenderCoreSubmissionBatchRejectsBatchCapacityWithoutMutation() {
     const auto snapshot = batch.Snapshot();
     if (snapshot.batch_capacity_rejected_count != 1U || snapshot.submission_record_count != 0U) {
         return Fail("submission batch capacity counters were not updated");
+    }
+
+    if (snapshot.last_entry_index != expected_failed_entry_index) {
+        return Fail("submission batch capacity snapshot missed failed entry");
     }
 
     return 0;

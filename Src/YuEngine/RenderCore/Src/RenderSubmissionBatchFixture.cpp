@@ -212,7 +212,12 @@ RenderSubmissionBatchFixtureStatus RenderSubmissionBatchFixture::ValidateRequest
         return RenderSubmissionBatchFixtureStatus::InvalidResultStorage;
     }
 
-    if (!HasRecordCapacity(request.pass_requests.size())) {
+    const std::size_t remaining_record_capacity = desc_.submission_record_capacity - snapshot_.submission_record_count;
+    if (request.pass_requests.size() > remaining_record_capacity) {
+        const RenderFixturePassRequest &failed_request = request.pass_requests[remaining_record_capacity];
+        result->failed_entry_index = remaining_record_capacity;
+        result->pass_id = failed_request.pass_id;
+        result->material_id = failed_request.material_id;
         return RenderSubmissionBatchFixtureStatus::BatchCapacityExceeded;
     }
 
