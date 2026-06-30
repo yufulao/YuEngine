@@ -180,14 +180,19 @@ PackageResourceStagingStatus PackageResourceStagingQueue::DrainCompletions(
         return PackageResourceStagingStatus::CompletionQueueFull;
     }
 
+    PackageResourceStagingStatus last_status = PackageResourceStagingStatus::Success;
     for (std::uint32_t index = 0U; index < snapshot_.completion_count; ++index) {
+        if (completions_[index].status != PackageResourceStagingStatus::Success) {
+            last_status = completions_[index].status;
+        }
+
         output_completions[index] = completions_[index];
         ++(*written_count);
         completions_[index] = PackageResourceStagingCompletion{};
     }
 
     snapshot_.completion_count = 0U;
-    snapshot_.last_status = PackageResourceStagingStatus::Success;
+    snapshot_.last_status = last_status;
     return PackageResourceStagingStatus::Success;
 }
 

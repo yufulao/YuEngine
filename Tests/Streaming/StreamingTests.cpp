@@ -1466,6 +1466,10 @@ int StreamingPackageResourceStagingReportsFileByteCountMismatch() {
     }
 
     const PackageResourceStagingSnapshot snapshot = queue.Snapshot();
+    if (snapshot.last_status != PackageResourceStagingStatus::FileByteCountMismatch) {
+        return Fail("file byte mismatch drain status was not preserved");
+    }
+
     if (snapshot.failed_count != 1U) {
         return Fail("file byte mismatch failed count changed");
     }
