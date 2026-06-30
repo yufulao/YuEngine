@@ -51,6 +51,18 @@ ThreadWorkerStatus RejectSubmitLocked(ThreadWorkerState& state, ThreadWorkerStat
     return status;
 }
 
+bool ShouldPreserveStatusAfterDrain(ThreadWorkerStatus status) {
+    if (status == ThreadWorkerStatus::Success) {
+        return false;
+    }
+
+    if (status == ThreadWorkerStatus::ShutdownComplete) {
+        return false;
+    }
+
+    return true;
+}
+
 std::size_t ReservedCompletionCountLocked(const ThreadWorkerState& state) {
     std::size_t result = state.snapshot.pending_count;
     result += state.snapshot.running_count;
@@ -379,6 +391,7 @@ ThreadWorkerStatus ThreadWorker::DrainCompletions(
     }
 
     std::lock_guard<std::mutex> lock(state_->mutex);
+    const ThreadWorkerStatus status_before_drain = state_->snapshot.last_status;
     if (state_->snapshot.completion_pending_count > 0U && output_capacity == 0U) {
         return ThreadWorkerStatus::CompletionQueueFull;
     }
@@ -395,6 +408,11 @@ ThreadWorkerStatus ThreadWorker::DrainCompletions(
     if (state_->snapshot.completion_pending_count > 0U) {
         SetLastStatusLocked(*state_, ThreadWorkerStatus::CompletionQueueFull);
         return ThreadWorkerStatus::CompletionQueueFull;
+    }
+
+    if (*written_count > 0U && ShouldPreserveStatusAfterDrain(status_before_drain)) {
+        SetLastStatusLocked(*state_, status_before_drain);
+        return ThreadWorkerStatus::Success;
     }
 
     SetLastStatusLocked(*state_, ThreadWorkerStatus::Success);

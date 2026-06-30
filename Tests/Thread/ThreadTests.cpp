@@ -517,6 +517,10 @@ int ThreadWorkerDrainShutdownWritesCompletionRecords() {
         return Fail("worker drain left pending tasks");
     }
 
+    if (snapshot.last_status != ThreadWorkerStatus::Success) {
+        return Fail("clean completion drain changed last status");
+    }
+
     return 0;
 }
 
@@ -703,6 +707,10 @@ int ThreadWorkerCompletionDrainUsesCallerStorageLimit() {
     const auto snapshot = worker.Snapshot();
     if (snapshot.drained_completion_count != 2U) {
         return Fail("drained completion count was wrong");
+    }
+
+    if (snapshot.last_status != ThreadWorkerStatus::CompletionQueueFull) {
+        return Fail("second completion drain erased prior failure status");
     }
 
     if (snapshot.work_capacity != snapshot.work_capacity_after_shutdown) {
