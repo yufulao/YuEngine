@@ -108,6 +108,9 @@ using yuengine::world::WorldTransformSnapshot;
 using yuengine::world::WorldTransformState;
 using yuengine::world::WorldTransformStatus;
 
+bool RuntimeAssetWorldObjectDataHandoffFixtureTestNameMatches(std::string_view test_name);
+int RunRuntimeAssetWorldObjectDataHandoffFixtureTest(std::string_view test_name);
+
 namespace {
 constexpr std::uint32_t OUTPUT_RECORD_COUNT = 2U;
 constexpr std::uint32_t SCRATCH_RECORD_COUNT = 8U;
@@ -1415,6 +1418,10 @@ int RunTest(std::string_view test_name) {
         if (test.name == test_name) {
             return test.function();
         }
+    }
+
+    if (RuntimeAssetWorldObjectDataHandoffFixtureTestNameMatches(test_name)) {
+        return RunRuntimeAssetWorldObjectDataHandoffFixtureTest(test_name);
     }
 
     return Fail("unknown test name");
