@@ -3,7 +3,7 @@
 Status: active commercial-engine execution plan
 Owner: Architect, lead engineer
 Started: 2026-06-11
-Current planning checkpoint: `origin/main@4587c7d1f204663577950241d4c42a5b72ab03a1`
+Current planning checkpoint: `origin/main@e512d3990412f90b38aee8469845c44e188dd275`
 Reference product target: `C:\Steam\steamapps\common\TouhouNewWorld`
 Canonical entry point: `docs/README.md`
 
@@ -300,6 +300,7 @@ editor object, scene instance, raw pointer, display name, or file path.
 | RTSPINE-013 | RuntimeAssetWorldAdapter handoff attachment/resource binding sidecar proof | VQ-closed at `origin/main@4d9f244ca373c466478b54b7fbc0dd91bf8b5720`: implementation task `3d8c0c2b-987c-4046-8f01-4e04f16f3715` is COMPLETE-PASS / committed, VQ task `4607e700-6bd8-4f0d-a508-ac86b991e7e7` is COMPLETE-PASS / VQ-READY, changed paths were exactly `CMakeLists.txt` and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, production handoff bridge/state files were unchanged, focused RuntimeAssetWorldObjectRestoreHandoff discovery/execution reports `6/6` PASS including `RuntimeAssetWorldObjectRestoreHandoff_CarriesAttachmentAndBindingGateRecordsForTargetAliases`, and the proof covers non-zero component attachment plus component resource binding sidecar gate records for ModelNode/SkeletonJoint aliases through the existing adapter/world active restore path |
 | RTSPINE-014 | RuntimeAssetWorldAdapter handoff sidecar assembly restore | VQ-closed at `origin/main@f85c67701f2ff90c94c84cdc2761e434524128d8`: implementation task `81f4806a-cfc4-464b-a644-b163bfc0459f` is COMPLETE-PASS / committed, VQ task `dac5643f-7225-4ba0-a76b-c063178dfb97` is COMPLETE-PASS / VQ-READY, changed paths were exactly `CMakeLists.txt`, `RuntimeAssetWorldObjectRestoreHandoffState.h`, `RuntimeAssetWorldObjectRestoreHandoffBridge.cpp`, and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, focused builds `YuRuntimeAssetWorldAdapterHandoffTests`, `YuRuntimeAssetWorldAdapterTests`, and `YuWorldTests` PASS, focused RuntimeAssetWorldObjectRestoreHandoff discovery/execution reports `7/7` PASS including `RuntimeAssetWorldObjectRestoreHandoff_RestoresAttachmentAndBindingSidecarsThroughWorldAssembly`, RuntimeAssetWorldObject(Adapter|RestoreHandoff) rows report `20/20` PASS, WorldSceneAssemblyBridge rows report `27/27` PASS, and direct WorldObject/editor/GameAdapter/UI plus broader Resource/File/VFS closure remains out of scope |
 | RTSPINE-015 | RuntimeAssetWorldAdapter handoff sidecar failure status | VQ-closed at `origin/main@4587c7d1f204663577950241d4c42a5b72ab03a1`: implementation task `ab4eb0f5-0350-49af-8da3-13b4c47dda8b` is COMPLETE-PASS / committed, VQ task `f0c0c54e-32bd-4ee2-9dc2-b8c10c68c59a` is COMPLETE-PASS / VQ-READY, changed paths were exactly `CMakeLists.txt`, `RuntimeAssetWorldObjectRestoreHandoffBridge.h`, `RuntimeAssetWorldObjectRestoreHandoffResult.h`, `RuntimeAssetWorldObjectRestoreHandoffSnapshot.h`, `RuntimeAssetWorldObjectRestoreHandoffState.h`, `RuntimeAssetWorldObjectRestoreHandoffBridge.cpp`, and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, `RuntimeAssetWorldObjectRestoreHandoffStatus.h` was allowed but unchanged, result/state/snapshot expose `WorldSceneAssemblyStatus`, handoff failure remains `RestoreFailed`, focused handoff rows report `8/8` PASS including `RuntimeAssetWorldObjectRestoreHandoff_ExposesSidecarAssemblyFailureStatus`, adapter plus handoff rows report `21/21` PASS, WorldSceneAssemblyBridge rows report `27/27` PASS, and direct WorldObject/editor/GameAdapter/UI plus broader Resource/File/VFS closure remains out of scope |
+| RTSPINE-016 | RuntimeAssetData to RuntimeAssetWorldAdapter handoff fixture | VQ-closed at `origin/main@e512d3990412f90b38aee8469845c44e188dd275`: implementation task `150e051b` is COMPLETE-PASS / committed, VQ task `6f086b28-40e3-4574-bac5-33e587b2e91c` is COMPLETE-PASS / VQ-READY, changed paths were exactly `CMakeLists.txt`, `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, and `RuntimeAssetWorldObjectDataHandoffFixtureTest.cpp`, no production RuntimeAsset/RuntimeAssetWorldAdapter/World/Resource or docs/editor/GameAdapter/UI/broad File/VFS paths changed, focused `YuRuntimeAssetWorldAdapterHandoffTests` build PASS, new data handoff row `1/1` PASS, RuntimeAssetWorldObject Adapter/Handoff/DataHandoff rows report `22/22` PASS, RuntimeAssetData target/mapping rows report `14/14` PASS, World active gate/object restore rows report `34/34` PASS, and the fixture proves RuntimeAssetData `runtime_instance_mappings`, `scene_entities`, and `scene_transforms` feed RuntimeAssetWorldAdapter restore handoff through caller-owned World/ObjectRegistry identity and transform destinations without writing object handles/world object ids into asset files |
 
 ### 5.4 Forbidden Work In This Stage
 
@@ -412,18 +413,16 @@ mapping -> Render/Audio/Input/Save -> Tools -> Shipping
 ```
 
 The next correct move is not feature breadth. The current RuntimeAsset
-production spine is evidence-rich through `4587c7d`: RuntimeAssetWorldAdapter
-sidecar failure status is VQ-closed and exposes `WorldSceneAssemblyStatus`
-through the handoff result/state/snapshot while preserving `RestoreFailed`.
-Direct WorldObject/editor, GameAdapter/UI, broad Resource/File/VFS, and gameplay
-work remain outside this closure. Read-only scout
-`e2b5dd55-a60f-4bbd-b33a-8aa7ef45e75b` reports
-`COMPLETE-PASS / RTSPINE-CANONICAL-DOCS-HEAD-RECONCILE-4587C7D-001-NEXT-GATE-MATRIX-READY`
-with RuntimeAssetWorldObject(Adapter|RestoreHandoff) plus WorldSceneAssemblyBridge
-focused matrix `48/48` PASS and RuntimeAssetData runtime instance mapping rows
-`5/5` PASS. It selects
-`RTSPINE-RUNTIMEASSETDATA-TO-RUNTIMEASSETWORLDADAPTER-HANDOFF-U64-001` as the
-next narrow gate: feed RuntimeAssetData real `scene_entities`,
-`scene_transforms`, and `runtime_instance_mappings` into RuntimeAssetWorldAdapter
-handoff while keeping object handles in caller-owned World/Object registry state
-and out of asset files.
+production spine is evidence-rich through `e512d39`: RuntimeAssetData output is
+now proven to feed RuntimeAssetWorldAdapter restore handoff through caller-owned
+World/ObjectRegistry identity and transform destinations while object
+handles/world object ids remain runtime identity, not asset-file data. Direct
+WorldObject/editor, GameAdapter/UI, broad Resource/File/VFS, and gameplay work
+remain outside this closure. Read-only scout
+`8bb595fd-5b8b-4a4d-a444-325871687799` returned COMPLETE-PASS /
+`RTSPINE-CANONICAL-DOCS-HEAD-RECONCILE-E512D39-001-NEXT-GATE-MATRIX-READY` and
+selects
+`RTSPINE-RUNTIMEASSETWORLDADAPTER-WORLD-SCENE-RECORD-STREAM-HANDOFF-U64-001`
+as the next narrow gate. That gate should prove the handoff through existing
+in-memory World value-stream, decoded-plan, and proof records; keep direct
+WorldObject/editor/GameAdapter/UI and broad Resource/File/VFS closed.

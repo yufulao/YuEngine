@@ -162,35 +162,33 @@ destination range consumer. This is a HEAD evidence ledger, not a blanket
 stage-close VQ: each later lane must cite its own workspace VQ before being
 called VQ-closed.
 
-Current HEAD `4587c7d1f204663577950241d4c42a5b72ab03a1` records VQ-closed
-RuntimeAssetWorldAdapter handoff sidecar failure status for
-`RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-SIDECAR-FAILURE-STATUS-U64-001`.
-Implementation task `ab4eb0f5-0350-49af-8da3-13b4c47dda8b` is COMPLETE-PASS /
-committed and VQ task `f0c0c54e-32bd-4ee2-9dc2-b8c10c68c59a` is COMPLETE-PASS /
-VQ-READY. Result/state/snapshot now expose `WorldSceneAssemblyStatus` through
-`assembly_status` and `last_assembly_status`, while assembly failures preserve
-RuntimeAssetWorldObjectRestoreHandoffStatus::RestoreFailed. Focused
-RuntimeAssetWorldObjectRestoreHandoff discovery/execution is `8/8` PASS
-including `RuntimeAssetWorldObjectRestoreHandoff_ExposesSidecarAssemblyFailureStatus`;
-RuntimeAssetWorldObjectAdapter plus RuntimeAssetWorldObjectRestoreHandoff rows
-pass `21/21`, and WorldSceneAssemblyBridge rows pass `27/27`. The implementation
+Current HEAD `e512d3990412f90b38aee8469845c44e188dd275` records VQ-closed
+RuntimeAssetData-to-RuntimeAssetWorldAdapter handoff fixture for
+`RTSPINE-RUNTIMEASSETDATA-TO-RUNTIMEASSETWORLDADAPTER-HANDOFF-U64-001`.
+Implementation task `150e051b` is COMPLETE-PASS / committed and VQ task
+`6f086b28-40e3-4574-bac5-33e587b2e91c` is COMPLETE-PASS / VQ-READY. The commit
 touched only `CMakeLists.txt`,
-`RuntimeAssetWorldObjectRestoreHandoffBridge.h`,
-`RuntimeAssetWorldObjectRestoreHandoffResult.h`,
-`RuntimeAssetWorldObjectRestoreHandoffSnapshot.h`,
-`RuntimeAssetWorldObjectRestoreHandoffState.h`,
-`RuntimeAssetWorldObjectRestoreHandoffBridge.cpp`, and
-`RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`; direct
-WorldObject/editor/GameAdapter/UI and broad Resource/File/VFS remain closed.
-Read-only scout `e2b5dd55-a60f-4bbd-b33a-8aa7ef45e75b` reports COMPLETE-PASS,
-confirms RuntimeAssetWorldObject(Adapter|RestoreHandoff) plus
-WorldSceneAssemblyBridge focused matrix `48/48` PASS and RuntimeAssetData runtime
-instance mapping rows `5/5` PASS, and selects
-`RTSPINE-RUNTIMEASSETDATA-TO-RUNTIMEASSETWORLDADAPTER-HANDOFF-U64-001` as the
-next narrow gate. That gate feeds RuntimeAssetData real `scene_entities`,
-`scene_transforms`, and `runtime_instance_mappings` into RuntimeAssetWorldAdapter
-handoff while object handles stay in caller-owned World/Object registry state
-and out of asset files.
+`RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, and
+`RuntimeAssetWorldObjectDataHandoffFixtureTest.cpp`; no production RuntimeAsset,
+RuntimeAssetWorldAdapter, World, Resource, docs, editor, GameAdapter, UI, or
+broad File/VFS paths changed. Focused build `YuRuntimeAssetWorldAdapterHandoffTests`
+PASS, new data handoff row
+`RuntimeAssetWorldObjectDataHandoff_FeedsRuntimeAssetDataOutputsIntoRestoreHandoff`
+is `1/1` PASS, RuntimeAssetWorldObject Adapter/Handoff/DataHandoff rows pass
+`22/22`, RuntimeAssetData target/mapping rows pass `14/14`, and World active
+gate/object restore rows pass `34/34`. The fixture feeds RuntimeAssetData
+`runtime_instance_mappings`, `scene_entities`, and `scene_transforms` into
+RuntimeAssetWorldAdapter restore handoff through caller-owned World/ObjectRegistry
+identity and transform destinations, while object handles and world object ids
+remain caller-owned runtime identity rather than asset-file data. Direct
+WorldObject/editor/GameAdapter/UI/gameplay and broad Resource/File/VFS remain
+closed. Read-only scout `8bb595fd-5b8b-4a4d-a444-325871687799` is COMPLETE-PASS /
+`RTSPINE-CANONICAL-DOCS-HEAD-RECONCILE-E512D39-001-NEXT-GATE-MATRIX-READY` and
+selects
+`RTSPINE-RUNTIMEASSETWORLDADAPTER-WORLD-SCENE-RECORD-STREAM-HANDOFF-U64-001`
+as the next narrow RuntimeAsset production-spine gate, backed by focused
+RuntimeAssetWorldObject adapter/handoff/data-handoff rows `22/22` PASS and
+WorldScene stream/decoded-plan/proof rows `143/143` PASS.
 
 The `296100b3bda25e962c3a3a503f9f78f0160083ce` evidence records VQ-closed
 RuntimeAssetWorldAdapter target-family alias handoff for
