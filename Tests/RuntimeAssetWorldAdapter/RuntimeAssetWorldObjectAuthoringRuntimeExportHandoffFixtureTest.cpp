@@ -12,7 +12,13 @@
 #include "YuEngine/Object/ObjectRegistry.h"
 #include "YuEngine/Object/ObjectRegistryDesc.h"
 #include "YuEngine/Object/ObjectTypeId.h"
+#include "YuEngine/Resource/ResourceDescriptor.h"
+#include "YuEngine/Resource/ResourceHandle.h"
+#include "YuEngine/Resource/ResourceLogicalKey.h"
+#include "YuEngine/Resource/ResourceRegistrationResult.h"
 #include "YuEngine/Resource/ResourceRegistry.h"
+#include "YuEngine/Resource/ResourceSnapshot.h"
+#include "YuEngine/Resource/ResourceTypeId.h"
 #include "YuEngine/RuntimeAsset/RuntimeAssetData.h"
 #include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectAdapterIdentityRecord.h"
 #include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectAdapterRequest.h"
@@ -57,7 +63,13 @@ using yuengine::object::ObjectRegistrationResult;
 using yuengine::object::ObjectRegistry;
 using yuengine::object::ObjectRegistryDesc;
 using yuengine::object::ObjectTypeId;
+using yuengine::resource::ResourceDescriptor;
+using yuengine::resource::ResourceHandle;
+using yuengine::resource::ResourceLogicalKey;
+using yuengine::resource::ResourceRegistrationResult;
 using yuengine::resource::ResourceRegistry;
+using yuengine::resource::ResourceSnapshot;
+using yuengine::resource::ResourceTypeId;
 using yuengine::runtimeasset::RuntimeAssetRuntimeInstanceMappingRecord;
 using yuengine::runtimeasset::RuntimeAssetSceneEntityRecord;
 using yuengine::runtimeasset::RuntimeAssetSceneTransformOutputRecord;
@@ -75,6 +87,8 @@ using yuengine::world::WorldComponentAttachmentBridge;
 using yuengine::world::WorldComponentAttachmentSnapshotRecord;
 using yuengine::world::WorldComponentResourceBindingBridge;
 using yuengine::world::WorldComponentResourceBindingSnapshotRecord;
+using yuengine::world::WorldComponentSlotId;
+using yuengine::world::WorldComponentTypeId;
 using yuengine::world::WorldDesc;
 using yuengine::world::WorldInstance;
 using yuengine::world::WorldObjectDesc;
@@ -112,10 +126,17 @@ constexpr std::uint32_t STREAM_PLAN_RECORD_COUNT = DATA_RECORD_COUNT + DATA_RECO
 constexpr std::uint32_t SCRATCH_RECORD_COUNT = 8U;
 constexpr std::uint32_t EMPTY_SIDECAR_COUNT = 1U;
 constexpr std::uint32_t EMPTY_DEPENDENCY_COUNT = 1U;
+constexpr std::uint32_t SIDECAR_RECORD_COUNT = 1U;
+constexpr std::uint32_t DEPENDENCY_RECORD_COUNT = 1U;
+constexpr std::uint32_t SIDECAR_STREAM_PLAN_RECORD_COUNT =
+    STREAM_PLAN_RECORD_COUNT + SIDECAR_RECORD_COUNT + SIDECAR_RECORD_COUNT;
 constexpr std::uint64_t SCENE_DOCUMENT_ID = 0x4101U;
 constexpr std::uint64_t SCENE_DOCUMENT_HASH = 0xA55A4101U;
+constexpr std::uint64_t STABLE_RESOURCE_ID = 0x5150U;
 constexpr const char *TEST_FEED_AUTHORING_RUNTIME_EXPORT =
     "RuntimeAssetWorldObjectAuthoringRuntimeExportHandoff_FeedsAuthoringRuntimeExportThroughRecordStreamIntoRestoreHandoff";
+constexpr const char *TEST_FEED_AUTHORING_SIDECAR_RUNTIME_EXPORT =
+    "RuntimeAssetWorldObjectAuthoringRuntimeExportHandoff_FeedsAttachmentBindingDependencyExportThroughRecordStreamIntoRestoreHandoff";
 constexpr WorldObjectId WORLD_OBJECT_SCENE{31U};
 constexpr WorldObjectId WORLD_OBJECT_MODEL{32U};
 constexpr WorldObjectId WORLD_OBJECT_SKELETON{33U};
@@ -124,6 +145,9 @@ constexpr ObjectHandle SENTINEL_OBJECT_HANDLE{9U, 9U};
 constexpr ObjectTypeId OBJECT_TYPE_SCENE{1U};
 constexpr ObjectTypeId OBJECT_TYPE_MODEL{2U};
 constexpr ObjectTypeId OBJECT_TYPE_SKELETON{3U};
+constexpr ResourceTypeId RESOURCE_TYPE_TEXTURE{1U};
+constexpr WorldComponentTypeId COMPONENT_TYPE_MESH{1U};
+constexpr WorldComponentSlotId COMPONENT_SLOT_MESH{11U};
 constexpr std::uint64_t TARGET_SCENE = 8101U;
 constexpr std::uint64_t TARGET_MODEL = 8102U;
 constexpr std::uint64_t TARGET_SKELETON = 8103U;
@@ -140,6 +164,9 @@ struct AuthoringRuntimeExportHandoffFixture final {
     std::array<RuntimeAssetWorldObjectAdapterIdentityRecord, DATA_RECORD_COUNT> identity_records{};
     std::array<WorldSceneObjectTransformRestoreIdentityRecord, DATA_RECORD_COUNT> authoring_input_identities{};
     std::array<WorldSceneObjectTransformRestoreTransformRecord, DATA_RECORD_COUNT> authoring_input_transforms{};
+    std::array<WorldComponentAttachmentSnapshotRecord, EMPTY_SIDECAR_COUNT> authoring_input_attachments{};
+    std::array<WorldComponentResourceBindingSnapshotRecord, EMPTY_SIDECAR_COUNT> authoring_input_bindings{};
+    std::array<WorldSceneAuthoringDependencyRecord, EMPTY_DEPENDENCY_COUNT> authoring_input_dependencies{};
     std::array<WorldSceneObjectTransformRestoreIdentityRecord, DATA_RECORD_COUNT> authoring_output_identities{};
     std::array<WorldSceneObjectTransformRestoreTransformRecord, DATA_RECORD_COUNT> authoring_output_transforms{};
     std::array<WorldComponentAttachmentSnapshotRecord, EMPTY_SIDECAR_COUNT> authoring_output_attachments{};
@@ -312,6 +339,13 @@ ObjectRegistrationResult CreateObject(ObjectRegistry *object_registry, ObjectTyp
     return object_registry->CreateSyntheticObject(descriptor);
 }
 
+ResourceDescriptor Resource(ResourceTypeId type, const char *key) {
+    ResourceDescriptor descriptor{};
+    descriptor.type = type;
+    descriptor.logical_key = ResourceLogicalKey(key);
+    return descriptor;
+}
+
 int RegisterWorldObject(WorldInstance *world, WorldObjectId world_object_id) {
     WorldObjectDesc object_desc{};
     object_desc.id = world_object_id;
@@ -398,15 +432,64 @@ int PrepareCallerOwnedRegistries(
     return 0;
 }
 
+int PrepareAuthoringSidecarInputs(
+    AuthoringRuntimeExportHandoffFixture *fixture,
+    ResourceRegistry *resource_registry,
+    ResourceHandle *texture_handle) {
+    if (fixture == nullptr) {
+        return Fail("authoring sidecar fixture missing");
+    }
+
+    if (resource_registry == nullptr) {
+        return Fail("authoring sidecar resource registry missing");
+    }
+
+    ResourceDescriptor texture_descriptor = Resource(RESOURCE_TYPE_TEXTURE, "authoring_handoff_texture");
+    const ResourceRegistrationResult texture_resource =
+        resource_registry->RegisterSyntheticDescriptor(texture_descriptor);
+    if (!texture_resource.Succeeded()) {
+        return Fail("authoring sidecar texture setup failed");
+    }
+
+    fixture->authoring_input_attachments[0U].world_object_id = WORLD_OBJECT_MODEL;
+    fixture->authoring_input_attachments[0U].component_type_id = COMPONENT_TYPE_MESH;
+    fixture->authoring_input_attachments[0U].component_slot_id = COMPONENT_SLOT_MESH;
+
+    fixture->authoring_input_bindings[0U].world_object_id = WORLD_OBJECT_MODEL;
+    fixture->authoring_input_bindings[0U].component_type_id = COMPONENT_TYPE_MESH;
+    fixture->authoring_input_bindings[0U].component_slot_id = COMPONENT_SLOT_MESH;
+    fixture->authoring_input_bindings[0U].resource_handle = texture_resource.handle;
+    fixture->authoring_input_bindings[0U].expected_resource_type = RESOURCE_TYPE_TEXTURE;
+
+    fixture->authoring_input_dependencies[0U].stable_resource_id = STABLE_RESOURCE_ID;
+    fixture->authoring_input_dependencies[0U].resource_handle = texture_resource.handle;
+    fixture->authoring_input_dependencies[0U].expected_resource_type = RESOURCE_TYPE_TEXTURE;
+
+    if (texture_handle != nullptr) {
+        *texture_handle = texture_resource.handle;
+    }
+
+    return 0;
+}
+
 WorldSceneAuthoringDocument MakeAuthoringDocument(
-    const AuthoringRuntimeExportHandoffFixture &fixture) {
+    const AuthoringRuntimeExportHandoffFixture &fixture,
+    std::uint32_t attachment_count,
+    std::uint32_t binding_count,
+    std::uint32_t dependency_count) {
     WorldSceneAuthoringDocument document{};
     document.header.scene_document_id = SCENE_DOCUMENT_ID;
     document.header.deterministic_document_hash = SCENE_DOCUMENT_HASH;
     document.header.identity_record_count = DATA_RECORD_COUNT;
     document.header.transform_record_count = DATA_RECORD_COUNT;
+    document.header.attachment_record_count = attachment_count;
+    document.header.binding_record_count = binding_count;
+    document.header.dependency_record_count = dependency_count;
     document.identity_records = fixture.authoring_input_identities.data();
     document.transform_records = fixture.authoring_input_transforms.data();
+    document.attachment_records = fixture.authoring_input_attachments.data();
+    document.binding_records = fixture.authoring_input_bindings.data();
+    document.dependency_records = fixture.authoring_input_dependencies.data();
     return document;
 }
 
@@ -436,6 +519,14 @@ WorldSceneAuthoringRuntimeExport MakeRuntimeExport(
 }
 
 bool ObjectHandlesMatch(ObjectHandle left, ObjectHandle right) {
+    if (left.slot != right.slot) {
+        return false;
+    }
+
+    return left.generation == right.generation;
+}
+
+bool ResourceHandlesMatch(ResourceHandle left, ResourceHandle right) {
     if (left.slot != right.slot) {
         return false;
     }
@@ -483,12 +574,20 @@ bool TransformsMatch(WorldTransformState left, WorldTransformState right) {
     return left.scale_z == right.scale_z;
 }
 
-int ExportAuthoringRuntimeRecords(AuthoringRuntimeExportHandoffFixture *fixture) {
+int ExportAuthoringRuntimeRecords(
+    AuthoringRuntimeExportHandoffFixture *fixture,
+    std::uint32_t attachment_count,
+    std::uint32_t binding_count,
+    std::uint32_t dependency_count) {
     if (fixture == nullptr) {
         return Fail("authoring export fixture missing");
     }
 
-    const WorldSceneAuthoringDocument document = MakeAuthoringDocument(*fixture);
+    const WorldSceneAuthoringDocument document = MakeAuthoringDocument(
+        *fixture,
+        attachment_count,
+        binding_count,
+        dependency_count);
     WorldSceneAuthoringRuntimeExport runtime_output = MakeRuntimeExport(fixture);
     WorldSceneAuthoringDocumentValidator validator;
     const WorldSceneAuthoringDocumentResult result =
@@ -513,6 +612,18 @@ int ExportAuthoringRuntimeRecords(AuthoringRuntimeExportHandoffFixture *fixture)
         return Fail("authoring runtime export transform state count mismatch");
     }
 
+    if (result.state.exported_attachment_count != attachment_count) {
+        return Fail("authoring runtime export attachment state count mismatch");
+    }
+
+    if (result.state.exported_binding_count != binding_count) {
+        return Fail("authoring runtime export binding state count mismatch");
+    }
+
+    if (result.state.exported_dependency_count != dependency_count) {
+        return Fail("authoring runtime export dependency state count mismatch");
+    }
+
     const WorldSceneAuthoringDocumentSnapshot snapshot = validator.Snapshot();
     if (snapshot.runtime_export_count != 1U) {
         return Fail("authoring runtime export snapshot count mismatch");
@@ -521,7 +632,68 @@ int ExportAuthoringRuntimeRecords(AuthoringRuntimeExportHandoffFixture *fixture)
     return 0;
 }
 
-int VerifyAuthoringRuntimeOutputs(const AuthoringRuntimeExportHandoffFixture &fixture) {
+int VerifyAuthoringSidecarRuntimeOutputs(
+    const AuthoringRuntimeExportHandoffFixture &fixture,
+    ResourceHandle texture_handle) {
+    const WorldComponentAttachmentSnapshotRecord &attachment =
+        fixture.authoring_output_attachments[0U];
+    if (attachment.world_object_id.value != WORLD_OBJECT_MODEL.value) {
+        return Fail("authoring runtime attachment world object mismatch");
+    }
+
+    if (attachment.component_type_id.value != COMPONENT_TYPE_MESH.value) {
+        return Fail("authoring runtime attachment component type mismatch");
+    }
+
+    if (attachment.component_slot_id.value != COMPONENT_SLOT_MESH.value) {
+        return Fail("authoring runtime attachment component slot mismatch");
+    }
+
+    const WorldComponentResourceBindingSnapshotRecord &binding =
+        fixture.authoring_output_bindings[0U];
+    if (binding.world_object_id.value != WORLD_OBJECT_MODEL.value) {
+        return Fail("authoring runtime binding world object mismatch");
+    }
+
+    if (binding.component_type_id.value != COMPONENT_TYPE_MESH.value) {
+        return Fail("authoring runtime binding component type mismatch");
+    }
+
+    if (binding.component_slot_id.value != COMPONENT_SLOT_MESH.value) {
+        return Fail("authoring runtime binding component slot mismatch");
+    }
+
+    if (!ResourceHandlesMatch(binding.resource_handle, texture_handle)) {
+        return Fail("authoring runtime binding resource handle mismatch");
+    }
+
+    if (binding.expected_resource_type.value != RESOURCE_TYPE_TEXTURE.value) {
+        return Fail("authoring runtime binding resource type mismatch");
+    }
+
+    const WorldSceneAuthoringDependencyRecord &dependency =
+        fixture.authoring_output_dependencies[0U];
+    if (dependency.stable_resource_id != STABLE_RESOURCE_ID) {
+        return Fail("authoring runtime dependency id mismatch");
+    }
+
+    if (!ResourceHandlesMatch(dependency.resource_handle, texture_handle)) {
+        return Fail("authoring runtime dependency resource handle mismatch");
+    }
+
+    if (dependency.expected_resource_type.value != RESOURCE_TYPE_TEXTURE.value) {
+        return Fail("authoring runtime dependency resource type mismatch");
+    }
+
+    return 0;
+}
+
+int VerifyAuthoringRuntimeOutputs(
+    const AuthoringRuntimeExportHandoffFixture &fixture,
+    std::uint32_t attachment_count,
+    std::uint32_t binding_count,
+    std::uint32_t dependency_count,
+    ResourceHandle texture_handle) {
     if (fixture.authoring_identity_count != DATA_RECORD_COUNT) {
         return Fail("authoring runtime identity count mismatch");
     }
@@ -530,15 +702,15 @@ int VerifyAuthoringRuntimeOutputs(const AuthoringRuntimeExportHandoffFixture &fi
         return Fail("authoring runtime transform count mismatch");
     }
 
-    if (fixture.authoring_attachment_count != 0U) {
+    if (fixture.authoring_attachment_count != attachment_count) {
         return Fail("authoring runtime attachment count mismatch");
     }
 
-    if (fixture.authoring_binding_count != 0U) {
+    if (fixture.authoring_binding_count != binding_count) {
         return Fail("authoring runtime binding count mismatch");
     }
 
-    if (fixture.authoring_dependency_count != 0U) {
+    if (fixture.authoring_dependency_count != dependency_count) {
         return Fail("authoring runtime dependency count mismatch");
     }
 
@@ -571,10 +743,29 @@ int VerifyAuthoringRuntimeOutputs(const AuthoringRuntimeExportHandoffFixture &fi
         ++index;
     }
 
+    if (attachment_count == 0U) {
+        return 0;
+    }
+
+    if (binding_count == 0U) {
+        return Fail("authoring runtime missing binding sidecar");
+    }
+
+    if (dependency_count == 0U) {
+        return Fail("authoring runtime missing dependency sidecar");
+    }
+
+    if (VerifyAuthoringSidecarRuntimeOutputs(fixture, texture_handle) != 0) {
+        return 1;
+    }
+
     return 0;
 }
 
-int RoundTripWorldSceneRecordStream(AuthoringRuntimeExportHandoffFixture *fixture) {
+int RoundTripWorldSceneRecordStream(
+    AuthoringRuntimeExportHandoffFixture *fixture,
+    std::uint32_t attachment_count,
+    std::uint32_t binding_count) {
     if (fixture == nullptr) {
         return Fail("authoring record stream fixture missing");
     }
@@ -589,10 +780,10 @@ int RoundTripWorldSceneRecordStream(AuthoringRuntimeExportHandoffFixture *fixtur
         fixture->authoring_identity_count,
         fixture->authoring_output_transforms.data(),
         fixture->authoring_transform_count,
-        fixture->empty_attachments.data(),
-        0U,
-        fixture->empty_bindings.data(),
-        0U);
+        fixture->authoring_output_attachments.data(),
+        attachment_count,
+        fixture->authoring_output_bindings.data(),
+        binding_count);
     if (!write_result.Succeeded()) {
         return Fail("authoring record stream write failed");
     }
@@ -603,8 +794,8 @@ int RoundTripWorldSceneRecordStream(AuthoringRuntimeExportHandoffFixture *fixtur
 
     std::uint32_t identity_count = 0U;
     std::uint32_t transform_count = 0U;
-    std::uint32_t attachment_count = 0U;
-    std::uint32_t binding_count = 0U;
+    std::uint32_t read_attachment_count = 0U;
+    std::uint32_t read_binding_count = 0U;
     SerializeReader reader(fixture->stream_buffer.data(), write_result.state.committed_byte_count);
     const WorldSceneRecordValueStreamResult read_result = stream_bridge.ReadSceneRecords(
         &reader,
@@ -616,10 +807,10 @@ int RoundTripWorldSceneRecordStream(AuthoringRuntimeExportHandoffFixture *fixtur
         &transform_count,
         fixture->stream_output_attachments.data(),
         EMPTY_SIDECAR_COUNT,
-        &attachment_count,
+        &read_attachment_count,
         fixture->stream_output_bindings.data(),
         EMPTY_SIDECAR_COUNT,
-        &binding_count);
+        &read_binding_count);
     if (!read_result.Succeeded()) {
         return Fail("authoring record stream read failed");
     }
@@ -632,11 +823,11 @@ int RoundTripWorldSceneRecordStream(AuthoringRuntimeExportHandoffFixture *fixtur
         return Fail("authoring record stream transform count mismatch");
     }
 
-    if (attachment_count != 0U) {
+    if (read_attachment_count != attachment_count) {
         return Fail("authoring record stream attachment count mismatch");
     }
 
-    if (binding_count != 0U) {
+    if (read_binding_count != binding_count) {
         return Fail("authoring record stream binding count mismatch");
     }
 
@@ -674,7 +865,9 @@ RuntimeAssetWorldObjectRestoreHandoffRequest MakeHandoffRequest(
     WorldObjectIdentityBridge *identity_destination,
     WorldTransformBridge *transform_destination,
     WorldComponentAttachmentBridge *attachment_destination,
-    WorldComponentResourceBindingBridge *binding_destination) {
+    WorldComponentResourceBindingBridge *binding_destination,
+    std::uint32_t attachment_count,
+    std::uint32_t binding_count) {
     RuntimeAssetWorldObjectRestoreHandoffRequest request{};
     request.adapter_request = adapter_request;
     request.world = world;
@@ -685,9 +878,9 @@ RuntimeAssetWorldObjectRestoreHandoffRequest MakeHandoffRequest(
     request.attachment_destination = attachment_destination;
     request.binding_destination = binding_destination;
     request.input_attachments = fixture->stream_output_attachments.data();
-    request.input_attachment_count = 0U;
+    request.input_attachment_count = attachment_count;
     request.input_bindings = fixture->stream_output_bindings.data();
-    request.input_binding_count = 0U;
+    request.input_binding_count = binding_count;
     request.plan_scratch = fixture->plan_scratch.data();
     request.plan_scratch_capacity = SCRATCH_RECORD_COUNT;
     request.proof_scratch = fixture->proof_scratch.data();
@@ -699,7 +892,53 @@ RuntimeAssetWorldObjectRestoreHandoffRequest MakeHandoffRequest(
     return request;
 }
 
-int VerifyRecordStreamOutputs(const AuthoringRuntimeExportHandoffFixture &fixture) {
+int VerifyRecordStreamSidecarOutputs(
+    const AuthoringRuntimeExportHandoffFixture &fixture,
+    ResourceHandle texture_handle) {
+    const WorldComponentAttachmentSnapshotRecord &stream_attachment =
+        fixture.stream_output_attachments[0U];
+    if (stream_attachment.world_object_id.value != WORLD_OBJECT_MODEL.value) {
+        return Fail("authoring record stream attachment world object mismatch");
+    }
+
+    if (stream_attachment.component_type_id.value != COMPONENT_TYPE_MESH.value) {
+        return Fail("authoring record stream attachment component type mismatch");
+    }
+
+    if (stream_attachment.component_slot_id.value != COMPONENT_SLOT_MESH.value) {
+        return Fail("authoring record stream attachment component slot mismatch");
+    }
+
+    const WorldComponentResourceBindingSnapshotRecord &stream_binding =
+        fixture.stream_output_bindings[0U];
+    if (stream_binding.world_object_id.value != WORLD_OBJECT_MODEL.value) {
+        return Fail("authoring record stream binding world object mismatch");
+    }
+
+    if (stream_binding.component_type_id.value != COMPONENT_TYPE_MESH.value) {
+        return Fail("authoring record stream binding component type mismatch");
+    }
+
+    if (stream_binding.component_slot_id.value != COMPONENT_SLOT_MESH.value) {
+        return Fail("authoring record stream binding component slot mismatch");
+    }
+
+    if (!ResourceHandlesMatch(stream_binding.resource_handle, texture_handle)) {
+        return Fail("authoring record stream binding resource handle mismatch");
+    }
+
+    if (stream_binding.expected_resource_type.value != RESOURCE_TYPE_TEXTURE.value) {
+        return Fail("authoring record stream binding resource type mismatch");
+    }
+
+    return 0;
+}
+
+int VerifyRecordStreamOutputs(
+    const AuthoringRuntimeExportHandoffFixture &fixture,
+    std::uint32_t attachment_count,
+    std::uint32_t binding_count,
+    ResourceHandle texture_handle) {
     std::uint32_t index = 0U;
     while (index < DATA_RECORD_COUNT) {
         const WorldSceneObjectTransformRestoreIdentityRecord &stream_identity =
@@ -727,6 +966,18 @@ int VerifyRecordStreamOutputs(const AuthoringRuntimeExportHandoffFixture &fixtur
         }
 
         ++index;
+    }
+
+    if (attachment_count == 0U) {
+        return 0;
+    }
+
+    if (binding_count == 0U) {
+        return Fail("authoring record stream missing binding sidecar");
+    }
+
+    if (VerifyRecordStreamSidecarOutputs(fixture, texture_handle) != 0) {
+        return 1;
     }
 
     return 0;
@@ -877,7 +1128,165 @@ int VerifyTransformRecordChain(
     return 0;
 }
 
-int VerifyDecodedRecordStreams(const AuthoringRuntimeExportHandoffFixture &fixture) {
+int VerifyAttachmentRecordChain(
+    const AuthoringRuntimeExportHandoffFixture &fixture,
+    std::uint32_t attachment_index) {
+    const std::uint32_t plan_index = STREAM_PLAN_RECORD_COUNT + attachment_index;
+    const WorldSceneDecodedRestorePlanRecord &plan = fixture.plan_scratch[plan_index];
+    if (plan.family != WorldSceneDecodedRestorePlanRecordFamily::Attachment) {
+        return Fail("authoring decoded attachment family mismatch");
+    }
+
+    if (plan.input_index != attachment_index) {
+        return Fail("authoring decoded attachment input mismatch");
+    }
+
+    if (plan.world_object_id.value != WORLD_OBJECT_MODEL.value) {
+        return Fail("authoring decoded attachment world object mismatch");
+    }
+
+    if (plan.component_type_id.value != COMPONENT_TYPE_MESH.value) {
+        return Fail("authoring decoded attachment component type mismatch");
+    }
+
+    if (plan.component_slot_id.value != COMPONENT_SLOT_MESH.value) {
+        return Fail("authoring decoded attachment component slot mismatch");
+    }
+
+    if (plan.status != WorldSceneDecodedRestorePlanStatus::Success) {
+        return Fail("authoring decoded attachment status mismatch");
+    }
+
+    const WorldSceneApplyTimeRestoreProofRecord &proof = fixture.proof_scratch[plan_index];
+    if (proof.family != WorldSceneApplyTimeRestoreProofFamily::Attachment) {
+        return Fail("authoring proof attachment family mismatch");
+    }
+
+    if (proof.plan_index != plan_index) {
+        return Fail("authoring proof attachment plan index mismatch");
+    }
+
+    if (proof.input_index != attachment_index) {
+        return Fail("authoring proof attachment input mismatch");
+    }
+
+    if (proof.status != WorldSceneApplyTimeRestoreProofStatus::Success) {
+        return Fail("authoring proof attachment status mismatch");
+    }
+
+    const WorldSceneApplyTimeRestoreProofSliceRecord &slice = fixture.slice_scratch[plan_index];
+    if (slice.family != WorldSceneApplyTimeRestoreProofFamily::Attachment) {
+        return Fail("authoring slice attachment family mismatch");
+    }
+
+    if (slice.plan_index != plan_index) {
+        return Fail("authoring slice attachment plan index mismatch");
+    }
+
+    const WorldSceneActiveRestoreGateRecord &gate = fixture.gate_outputs[plan_index];
+    if (gate.family != WorldSceneApplyTimeRestoreProofFamily::Attachment) {
+        return Fail("authoring gate attachment family mismatch");
+    }
+
+    if (gate.gate_index != plan_index) {
+        return Fail("authoring gate attachment index mismatch");
+    }
+
+    if (gate.status != WorldSceneActiveRestoreGateStatus::Success) {
+        return Fail("authoring gate attachment status mismatch");
+    }
+
+    return 0;
+}
+
+int VerifyBindingRecordChain(
+    const AuthoringRuntimeExportHandoffFixture &fixture,
+    std::uint32_t binding_index,
+    ResourceHandle texture_handle) {
+    const std::uint32_t plan_index = STREAM_PLAN_RECORD_COUNT + SIDECAR_RECORD_COUNT + binding_index;
+    const WorldSceneDecodedRestorePlanRecord &plan = fixture.plan_scratch[plan_index];
+    if (plan.family != WorldSceneDecodedRestorePlanRecordFamily::Binding) {
+        return Fail("authoring decoded binding family mismatch");
+    }
+
+    if (plan.input_index != binding_index) {
+        return Fail("authoring decoded binding input mismatch");
+    }
+
+    if (plan.world_object_id.value != WORLD_OBJECT_MODEL.value) {
+        return Fail("authoring decoded binding world object mismatch");
+    }
+
+    if (plan.component_type_id.value != COMPONENT_TYPE_MESH.value) {
+        return Fail("authoring decoded binding component type mismatch");
+    }
+
+    if (plan.component_slot_id.value != COMPONENT_SLOT_MESH.value) {
+        return Fail("authoring decoded binding component slot mismatch");
+    }
+
+    if (!ResourceHandlesMatch(plan.resource_handle, texture_handle)) {
+        return Fail("authoring decoded binding resource handle mismatch");
+    }
+
+    if (plan.expected_resource_type.value != RESOURCE_TYPE_TEXTURE.value) {
+        return Fail("authoring decoded binding resource type mismatch");
+    }
+
+    if (plan.projected_resource_acquire_count != 1U) {
+        return Fail("authoring decoded binding resource acquire count mismatch");
+    }
+
+    const WorldSceneApplyTimeRestoreProofRecord &proof = fixture.proof_scratch[plan_index];
+    if (proof.family != WorldSceneApplyTimeRestoreProofFamily::Binding) {
+        return Fail("authoring proof binding family mismatch");
+    }
+
+    if (proof.plan_index != plan_index) {
+        return Fail("authoring proof binding plan index mismatch");
+    }
+
+    if (!ResourceHandlesMatch(proof.resource_handle, texture_handle)) {
+        return Fail("authoring proof binding resource handle mismatch");
+    }
+
+    if (proof.projected_resource_acquire_count != 1U) {
+        return Fail("authoring proof binding resource acquire count mismatch");
+    }
+
+    if (proof.status != WorldSceneApplyTimeRestoreProofStatus::Success) {
+        return Fail("authoring proof binding status mismatch");
+    }
+
+    const WorldSceneActiveRestoreGateRecord &gate = fixture.gate_outputs[plan_index];
+    if (gate.family != WorldSceneApplyTimeRestoreProofFamily::Binding) {
+        return Fail("authoring gate binding family mismatch");
+    }
+
+    if (gate.gate_index != plan_index) {
+        return Fail("authoring gate binding index mismatch");
+    }
+
+    if (!ResourceHandlesMatch(gate.resource_handle, texture_handle)) {
+        return Fail("authoring gate binding resource handle mismatch");
+    }
+
+    if (gate.expected_resource_type.value != RESOURCE_TYPE_TEXTURE.value) {
+        return Fail("authoring gate binding resource type mismatch");
+    }
+
+    if (gate.status != WorldSceneActiveRestoreGateStatus::Success) {
+        return Fail("authoring gate binding status mismatch");
+    }
+
+    return 0;
+}
+
+int VerifyDecodedRecordStreams(
+    const AuthoringRuntimeExportHandoffFixture &fixture,
+    std::uint32_t attachment_count,
+    std::uint32_t binding_count,
+    ResourceHandle texture_handle) {
     std::uint32_t identity_index = 0U;
     while (identity_index < DATA_RECORD_COUNT) {
         if (VerifyIdentityRecordChain(fixture, identity_index) != 0) {
@@ -894,6 +1303,24 @@ int VerifyDecodedRecordStreams(const AuthoringRuntimeExportHandoffFixture &fixtu
         }
 
         ++transform_index;
+    }
+
+    std::uint32_t attachment_index = 0U;
+    while (attachment_index < attachment_count) {
+        if (VerifyAttachmentRecordChain(fixture, attachment_index) != 0) {
+            return 1;
+        }
+
+        ++attachment_index;
+    }
+
+    std::uint32_t binding_index = 0U;
+    while (binding_index < binding_count) {
+        if (VerifyBindingRecordChain(fixture, binding_index, texture_handle) != 0) {
+            return 1;
+        }
+
+        ++binding_index;
     }
 
     return 0;
@@ -926,6 +1353,44 @@ int VerifyRestoredTransforms(
     return 0;
 }
 
+int VerifyRestoredSidecarDestinations(
+    WorldComponentAttachmentBridge *attachment_destination,
+    WorldComponentResourceBindingBridge *binding_destination,
+    ResourceHandle texture_handle) {
+    if (attachment_destination == nullptr) {
+        return Fail("authoring sidecar attachment destination missing");
+    }
+
+    if (binding_destination == nullptr) {
+        return Fail("authoring sidecar binding destination missing");
+    }
+
+    const auto attachment = attachment_destination->Query(WORLD_OBJECT_MODEL, COMPONENT_TYPE_MESH);
+    if (!attachment.Succeeded()) {
+        return Fail("authoring sidecar attachment query failed");
+    }
+
+    if (attachment.component_slot_id.value != COMPONENT_SLOT_MESH.value) {
+        return Fail("authoring sidecar attachment slot mismatch");
+    }
+
+    const auto binding =
+        binding_destination->Query(WORLD_OBJECT_MODEL, COMPONENT_TYPE_MESH, COMPONENT_SLOT_MESH);
+    if (!binding.Succeeded()) {
+        return Fail("authoring sidecar binding query failed");
+    }
+
+    if (!ResourceHandlesMatch(binding.resource_handle, texture_handle)) {
+        return Fail("authoring sidecar binding resource handle mismatch");
+    }
+
+    if (binding.expected_resource_type.value != RESOURCE_TYPE_TEXTURE.value) {
+        return Fail("authoring sidecar binding resource type mismatch");
+    }
+
+    return 0;
+}
+
 int TestFeedAuthoringRuntimeExportThroughRecordStreamIntoRestoreHandoff() {
     AuthoringRuntimeExportHandoffFixture fixture = MakeFixture();
     WorldInstance world = MakeWorld();
@@ -934,19 +1399,19 @@ int TestFeedAuthoringRuntimeExportThroughRecordStreamIntoRestoreHandoff() {
         return 1;
     }
 
-    if (ExportAuthoringRuntimeRecords(&fixture) != 0) {
+    if (ExportAuthoringRuntimeRecords(&fixture, 0U, 0U, 0U) != 0) {
         return 1;
     }
 
-    if (VerifyAuthoringRuntimeOutputs(fixture) != 0) {
+    if (VerifyAuthoringRuntimeOutputs(fixture, 0U, 0U, 0U, ResourceHandle{}) != 0) {
         return 1;
     }
 
-    if (RoundTripWorldSceneRecordStream(&fixture) != 0) {
+    if (RoundTripWorldSceneRecordStream(&fixture, 0U, 0U) != 0) {
         return 1;
     }
 
-    if (VerifyRecordStreamOutputs(fixture) != 0) {
+    if (VerifyRecordStreamOutputs(fixture, 0U, 0U, ResourceHandle{}) != 0) {
         return 1;
     }
 
@@ -965,7 +1430,9 @@ int TestFeedAuthoringRuntimeExportThroughRecordStreamIntoRestoreHandoff() {
         &identity_destination,
         &transform_destination,
         &attachment_destination,
-        &binding_destination);
+        &binding_destination,
+        0U,
+        0U);
 
     RuntimeAssetWorldObjectRestoreHandoffBridge bridge{};
     const RuntimeAssetWorldObjectRestoreHandoffResult result = bridge.ApplyRestore(handoff_request);
@@ -1013,11 +1480,11 @@ int TestFeedAuthoringRuntimeExportThroughRecordStreamIntoRestoreHandoff() {
         return Fail("authoring handoff restored transform count mismatch");
     }
 
-    if (VerifyRecordStreamOutputs(fixture) != 0) {
+    if (VerifyRecordStreamOutputs(fixture, 0U, 0U, ResourceHandle{}) != 0) {
         return 1;
     }
 
-    if (VerifyDecodedRecordStreams(fixture) != 0) {
+    if (VerifyDecodedRecordStreams(fixture, 0U, 0U, ResourceHandle{}) != 0) {
         return 1;
     }
 
@@ -1055,14 +1522,168 @@ int TestFeedAuthoringRuntimeExportThroughRecordStreamIntoRestoreHandoff() {
     return 0;
 }
 
+int TestFeedAttachmentBindingDependencyExportThroughRecordStreamIntoRestoreHandoff() {
+    AuthoringRuntimeExportHandoffFixture fixture = MakeFixture();
+    WorldInstance world = MakeWorld();
+    ObjectRegistry object_registry = MakeObjectRegistry();
+    if (PrepareCallerOwnedRegistries(&world, &object_registry, &fixture) != 0) {
+        return 1;
+    }
+
+    ResourceRegistry resource_registry{};
+    ResourceHandle texture_handle{};
+    if (PrepareAuthoringSidecarInputs(&fixture, &resource_registry, &texture_handle) != 0) {
+        return 1;
+    }
+
+    const ResourceSnapshot resource_before_handoff = resource_registry.Snapshot();
+    if (resource_before_handoff.dependency_edge_count != 0U) {
+        return Fail("authoring dependency setup added resource dependency edge");
+    }
+
+    if (resource_before_handoff.dependency_validation_count != 0U) {
+        return Fail("authoring dependency setup ran resource dependency validation");
+    }
+
+    if (ExportAuthoringRuntimeRecords(
+            &fixture,
+            SIDECAR_RECORD_COUNT,
+            SIDECAR_RECORD_COUNT,
+            DEPENDENCY_RECORD_COUNT) != 0) {
+        return 1;
+    }
+
+    if (VerifyAuthoringRuntimeOutputs(
+            fixture,
+            SIDECAR_RECORD_COUNT,
+            SIDECAR_RECORD_COUNT,
+            DEPENDENCY_RECORD_COUNT,
+            texture_handle) != 0) {
+        return 1;
+    }
+
+    if (RoundTripWorldSceneRecordStream(&fixture, SIDECAR_RECORD_COUNT, SIDECAR_RECORD_COUNT) != 0) {
+        return 1;
+    }
+
+    if (VerifyRecordStreamOutputs(
+            fixture,
+            SIDECAR_RECORD_COUNT,
+            SIDECAR_RECORD_COUNT,
+            texture_handle) != 0) {
+        return 1;
+    }
+
+    WorldObjectIdentityBridge identity_destination(world, object_registry);
+    WorldTransformBridge transform_destination(world);
+    WorldComponentAttachmentBridge attachment_destination{};
+    WorldComponentResourceBindingBridge binding_destination{};
+    RuntimeAssetWorldObjectAdapterRequest adapter_request = MakeAdapterRequest(&fixture);
+    RuntimeAssetWorldObjectRestoreHandoffRequest handoff_request = MakeHandoffRequest(
+        &fixture,
+        &adapter_request,
+        &world,
+        &object_registry,
+        &resource_registry,
+        &identity_destination,
+        &transform_destination,
+        &attachment_destination,
+        &binding_destination,
+        SIDECAR_RECORD_COUNT,
+        SIDECAR_RECORD_COUNT);
+
+    RuntimeAssetWorldObjectRestoreHandoffBridge bridge{};
+    const RuntimeAssetWorldObjectRestoreHandoffResult result = bridge.ApplyRestore(handoff_request);
+    if (!result.Succeeded()) {
+        return Fail("authoring sidecar handoff failed");
+    }
+
+    if (result.state.proof_record_count != SIDECAR_STREAM_PLAN_RECORD_COUNT) {
+        return Fail("authoring sidecar handoff proof count mismatch");
+    }
+
+    if (result.state.slice_record_count != SIDECAR_STREAM_PLAN_RECORD_COUNT) {
+        return Fail("authoring sidecar handoff slice count mismatch");
+    }
+
+    if (result.state.gate_record_count != SIDECAR_STREAM_PLAN_RECORD_COUNT) {
+        return Fail("authoring sidecar handoff gate count mismatch");
+    }
+
+    if (result.state.restored_attachment_count != SIDECAR_RECORD_COUNT) {
+        return Fail("authoring sidecar restored attachment count mismatch");
+    }
+
+    if (result.state.restored_binding_count != SIDECAR_RECORD_COUNT) {
+        return Fail("authoring sidecar restored binding count mismatch");
+    }
+
+    if (VerifyDecodedRecordStreams(
+            fixture,
+            SIDECAR_RECORD_COUNT,
+            SIDECAR_RECORD_COUNT,
+            texture_handle) != 0) {
+        return 1;
+    }
+
+    if (VerifyRestoredSidecarDestinations(
+            &attachment_destination,
+            &binding_destination,
+            texture_handle) != 0) {
+        return 1;
+    }
+
+    const auto attachment_snapshot = attachment_destination.Snapshot();
+    if (attachment_snapshot.active_attachment_count != SIDECAR_RECORD_COUNT) {
+        return Fail("authoring sidecar attachment destination count mismatch");
+    }
+
+    const auto binding_snapshot = binding_destination.Snapshot();
+    if (binding_snapshot.active_binding_count != SIDECAR_RECORD_COUNT) {
+        return Fail("authoring sidecar binding destination count mismatch");
+    }
+
+    if (binding_snapshot.acquired_binding_count != SIDECAR_RECORD_COUNT) {
+        return Fail("authoring sidecar binding acquire count mismatch");
+    }
+
+    const ResourceSnapshot resource_after_handoff = resource_registry.Snapshot();
+    if (resource_after_handoff.dependency_edge_count != resource_before_handoff.dependency_edge_count) {
+        return Fail("authoring sidecar handoff mutated resource dependency edge count");
+    }
+
+    if (resource_after_handoff.dependency_validation_count != resource_before_handoff.dependency_validation_count) {
+        return Fail("authoring sidecar handoff ran resource dependency validation");
+    }
+
+    if (resource_after_handoff.acquired_handle_count != SIDECAR_RECORD_COUNT) {
+        return Fail("authoring sidecar handoff resource acquire count mismatch");
+    }
+
+    const RuntimeAssetWorldObjectRestoreHandoffSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.emitted_gate_record_count != SIDECAR_STREAM_PLAN_RECORD_COUNT) {
+        return Fail("authoring sidecar snapshot gate count mismatch");
+    }
+
+    return 0;
+}
+
 }
 
 bool RuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTestNameMatches(std::string_view test_name) {
-    return test_name == TEST_FEED_AUTHORING_RUNTIME_EXPORT;
+    if (test_name == TEST_FEED_AUTHORING_RUNTIME_EXPORT) {
+        return true;
+    }
+
+    return test_name == TEST_FEED_AUTHORING_SIDECAR_RUNTIME_EXPORT;
 }
 
 int RunRuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTest(std::string_view test_name) {
     if (RuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTestNameMatches(test_name)) {
+        if (test_name == TEST_FEED_AUTHORING_SIDECAR_RUNTIME_EXPORT) {
+            return TestFeedAttachmentBindingDependencyExportThroughRecordStreamIntoRestoreHandoff();
+        }
+
         return TestFeedAuthoringRuntimeExportThroughRecordStreamIntoRestoreHandoff();
     }
 
