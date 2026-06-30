@@ -246,6 +246,14 @@ AsyncFileReadStatus SelectDrainedLastStatus(
         return AsyncFileReadStatus::OutputTooSmall;
     }
 
+    if (result.status == AsyncFileReadStatus::WorkerFailure) {
+        return AsyncFileReadStatus::WorkerFailure;
+    }
+
+    if (result.status == AsyncFileReadStatus::Canceled) {
+        return AsyncFileReadStatus::Canceled;
+    }
+
     return current_status;
 }
 }
@@ -475,11 +483,6 @@ AsyncFileReadStatus AsyncFileReadQueue::DrainCompletions(
         ++(*written_count);
         RecordDrainedResult(*state_, result);
         drained_last_status = SelectDrainedLastStatus(drained_last_status, result);
-
-        if (worker_status == ThreadWorkerStatus::CompletionQueueFull) {
-            SetLastStatus(*state_, AsyncFileReadStatus::CompletionQueueFull);
-            return AsyncFileReadStatus::CompletionQueueFull;
-        }
     }
 
     const ThreadWorkerSnapshot final_worker_snapshot = state_->worker.Snapshot();

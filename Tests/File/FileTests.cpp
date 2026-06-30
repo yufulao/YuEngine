@@ -77,6 +77,7 @@ constexpr std::uint64_t RANGE_BYTE_OFFSET = 9ULL;
 constexpr std::uint64_t RANGE_BYTE_SIZE = 4ULL;
 constexpr const char* RANGE_TEXT = "file";
 constexpr std::size_t ASYNC_OUTPUT_CAPACITY = 64U;
+constexpr std::size_t ASYNC_CANCEL_REQUEST_COUNT = 64U;
 using TestFunction = int (*)();
 
 std::filesystem::path FixtureRoot() {
@@ -1169,12 +1170,62 @@ int FileAsyncReadQueueInitializedFailuresUpdateLastStatus() {
 int FileAsyncReadQueueShutdownRejectsSubmission() {
     MountTable table = CreateMountedTable();
     AsyncFileReadQueue queue;
-    queue.Initialize(2U, 2U);
-    queue.Start();
+    if (queue.Initialize(ASYNC_CANCEL_REQUEST_COUNT, ASYNC_CANCEL_REQUEST_COUNT) != AsyncFileReadStatus::Success) {
+        return Fail("async cancel queue initialize failed");
+    }
+
+    if (queue.Start() != AsyncFileReadStatus::Success) {
+        return Fail("async cancel queue start failed");
+    }
+
+    std::array<std::array<std::uint8_t, ASYNC_OUTPUT_CAPACITY>, ASYNC_CANCEL_REQUEST_COUNT> output_buffers{};
+    for (std::size_t index = 0U; index < ASYNC_CANCEL_REQUEST_COUNT; ++index) {
+        const std::uint64_t request_index = static_cast<std::uint64_t>(index + 1U);
+        AsyncFileReadRequest queued_request = CreateAsyncRequest(
+            table,
+            request_index,
+            NORMALIZED_PATH,
+            output_buffers[index].data(),
+            output_buffers[index].size());
+        if (queue.Submit(queued_request) != AsyncFileReadStatus::Queued) {
+            return Fail("async cancel request was not queued");
+        }
+    }
 
     const AsyncFileReadStatus shutdown_status = queue.Shutdown(true);
     if (shutdown_status != AsyncFileReadStatus::ShutdownComplete) {
         return Fail("async shutdown failed");
+    }
+
+    std::array<AsyncFileReadResult, ASYNC_CANCEL_REQUEST_COUNT> results{};
+    std::size_t written_count = 0U;
+    const AsyncFileReadStatus drain_status = queue.DrainCompletions(
+        results.data(),
+        results.size(),
+        &written_count);
+    if (drain_status != AsyncFileReadStatus::Success) {
+        return Fail("async canceled completion drain failed");
+    }
+
+    bool found_canceled_completion = false;
+    for (std::size_t index = 0U; index < written_count; ++index) {
+        if (results[index].status == AsyncFileReadStatus::Canceled) {
+            found_canceled_completion = true;
+            break;
+        }
+    }
+
+    if (!found_canceled_completion) {
+        return Fail("async shutdown did not produce canceled completion");
+    }
+
+    const auto snapshot = queue.Snapshot();
+    if (snapshot.canceled_count == 0U) {
+        return Fail("async shutdown did not count canceled completion");
+    }
+
+    if (snapshot.last_status != AsyncFileReadStatus::Canceled) {
+        return Fail("async canceled drain did not preserve last status");
     }
 
     std::array<std::uint8_t, ASYNC_OUTPUT_CAPACITY> output_bytes{};
