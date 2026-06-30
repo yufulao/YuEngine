@@ -19,14 +19,16 @@ RenderSceneStatus RenderSceneContractQueue::BuildRenderCorePackets(
     std::size_t visible_entity_count = 0U;
     const RenderSceneStatus validate_status =
         ValidateRequest(request, out_packets, &camera, &visible_entity_count);
+    if (camera != nullptr) {
+        result.camera_id = camera->camera_id;
+    }
+
+    result.visible_entity_count = visible_entity_count;
     if (validate_status != RenderSceneStatus::Success) {
         result.status = validate_status;
         *out_result = result;
         return RecordFailure(validate_status, result);
     }
-
-    result.camera_id = camera->camera_id;
-    result.visible_entity_count = visible_entity_count;
 
     std::size_t output_index = 0U;
     for (const RenderSceneEntityRecord &entity : request.entities) {
@@ -89,12 +91,12 @@ RenderSceneStatus RenderSceneContractQueue::ValidateRequest(
         return RenderSceneStatus::MissingEntity;
     }
 
+    *out_camera = camera;
+    *out_visible_entity_count = visible_entity_count;
     if (visible_entity_count > out_packets.size()) {
         return RenderSceneStatus::OutputCapacityExceeded;
     }
 
-    *out_camera = camera;
-    *out_visible_entity_count = visible_entity_count;
     return RenderSceneStatus::Success;
 }
 

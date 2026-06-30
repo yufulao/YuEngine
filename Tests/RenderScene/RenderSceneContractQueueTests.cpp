@@ -327,8 +327,24 @@ int RenderSceneOutputCapacityFailureDoesNotMutateOutput() {
         return Fail("render scene did not report output capacity");
     }
 
+    if (result.status != RenderSceneStatus::OutputCapacityExceeded) {
+        return Fail("render scene capacity result status mismatch");
+    }
+
+    if (result.visible_entity_count != 2U) {
+        return Fail("render scene capacity visible count mismatch");
+    }
+
     if (packets[0].view_id != 77U) {
         return Fail("render scene mutated output on capacity failure");
+    }
+
+    if (queue.Snapshot().last_status != RenderSceneStatus::OutputCapacityExceeded) {
+        return Fail("render scene capacity snapshot status mismatch");
+    }
+
+    if (queue.Snapshot().last_visible_entity_count != 2U) {
+        return Fail("render scene capacity snapshot visible count mismatch");
     }
 
     return 0;
