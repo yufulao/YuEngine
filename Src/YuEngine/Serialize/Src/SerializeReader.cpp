@@ -185,6 +185,8 @@ SerializeStatus SerializeReader::ReadFixedBytes(
     std::uint8_t* out_bytes,
     std::uint32_t out_capacity,
     std::uint32_t& out_byte_count) {
+    out_byte_count = 0U;
+
     FieldLocation location;
     const SerializeStatus find_status = FindField(record, field, location);
     if (find_status != SerializeStatus::Success) {

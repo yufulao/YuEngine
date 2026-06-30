@@ -57,6 +57,7 @@ constexpr const char* TEST_WRITER_OVERFLOW = "Serialize_WriterBufferOverflow_Ret
 constexpr const char* TEST_RECORD_CAPACITY = "Serialize_RecordCapacityOverflow_DoesNotMutate";
 constexpr const char* TEST_FIELD_CAPACITY = "Serialize_FieldCapacityOverflow_DoesNotMutate";
 constexpr const char* TEST_FIXED_BYTES_LIMIT = "Serialize_FixedBytesPayloadLimit_ReturnsExplicitStatus";
+constexpr const char* TEST_FIXED_BYTES_FAILURE_COUNT = "Serialize_ReadFixedBytesFailures_ClearOutputCount";
 constexpr const char* TEST_TRUNCATED = "Serialize_ReaderRejectsTruncatedStream";
 constexpr const char* TEST_INVALID_IDS = "Serialize_ReaderRejectsInvalidRecordOrFieldId";
 constexpr const char* TEST_MALFORMED_LENGTH = "Serialize_ReaderRejectsMalformedFieldLength";
@@ -77,8 +78,10 @@ constexpr const char *TEST_RUNTIME_CONFIG_BOUNDARY =
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char* UNDERSIZED_FIXED_BYTES_READ_MESSAGE = "undersized fixed bytes read did not fail";
-constexpr const char* UNDERSIZED_FIXED_BYTES_COUNT_MESSAGE = "undersized fixed bytes read changed output byte count";
+constexpr const char* UNDERSIZED_FIXED_BYTES_COUNT_MESSAGE = "undersized fixed bytes read did not clear output byte count";
 constexpr const char* UNDERSIZED_FIXED_BYTES_WRITE_MESSAGE = "undersized fixed bytes read wrote into caller buffer";
+constexpr const char* FIXED_BYTES_FAILURE_COUNT_MESSAGE = "failed fixed bytes read did not clear output byte count";
+constexpr const char* FIXED_BYTES_FAILURE_BUFFER_MESSAGE = "failed fixed bytes read changed caller buffer";
 constexpr const char* REOPEN_VALID_STREAM_MESSAGE = "reader did not open valid stream before failed reopen";
 constexpr const char* REOPEN_INVALID_MAGIC_MESSAGE = "invalid magic reopen did not return explicit status";
 constexpr const char* REOPEN_STALE_STATE_MESSAGE = "failed reopen left reader usable with stale stream state";
@@ -159,6 +162,19 @@ bool BytesMatch(const std::uint8_t* left, const std::uint8_t* right, std::uint32
     std::uint32_t index = 0U;
     while (index < byte_count) {
         if (left[index] != right[index]) {
+            return false;
+        }
+
+        ++index;
+    }
+
+    return true;
+}
+
+bool BytesFilledWith(const std::uint8_t* bytes, std::uint32_t byte_count, std::uint8_t value) {
+    std::uint32_t index = 0U;
+    while (index < byte_count) {
+        if (bytes[index] != value) {
             return false;
         }
 
@@ -387,7 +403,7 @@ int SerializeWriteReadPrimitivesRoundTripsDeterministically() {
         return Fail(UNDERSIZED_FIXED_BYTES_READ_MESSAGE);
     }
 
-    if (rejected_byte_count != 77U) {
+    if (rejected_byte_count != 0U) {
         return Fail(UNDERSIZED_FIXED_BYTES_COUNT_MESSAGE);
     }
 
@@ -644,6 +660,86 @@ int SerializeFixedBytesPayloadLimitReturnsExplicitStatus() {
 
     if (byte_count != 0U) {
         return Fail(ZERO_FIXED_BYTES_COUNT_MESSAGE);
+    }
+
+    return 0;
+}
+
+int SerializeReadFixedBytesFailuresClearOutputCount() {
+    StreamFixture fixture;
+    if (BuildRoundTripFixture(fixture) != 0) {
+        return 1;
+    }
+
+    SerializeReader reader(fixture.buffer.data(), fixture.byte_count);
+    if (reader.OpenStream() != SerializeStatus::Success) {
+        return Fail("reader open failed");
+    }
+
+    std::array<std::uint8_t, 5U> output{};
+    output.fill(SENTINEL_BYTE);
+    std::uint32_t byte_count = 99U;
+    SerializeStatus status = reader.ReadFixedBytes(
+        RECORD_MAIN,
+        FIELD_UNKNOWN,
+        output.data(),
+        static_cast<std::uint32_t>(output.size()),
+        byte_count);
+    if (status != SerializeStatus::FieldNotFound) {
+        return Fail("missing fixed bytes field did not return explicit status");
+    }
+
+    if (byte_count != 0U) {
+        return Fail(FIXED_BYTES_FAILURE_COUNT_MESSAGE);
+    }
+
+    if (!BytesFilledWith(output.data(), static_cast<std::uint32_t>(output.size()), SENTINEL_BYTE)) {
+        return Fail(FIXED_BYTES_FAILURE_BUFFER_MESSAGE);
+    }
+
+    output.fill(SENTINEL_BYTE);
+    byte_count = 99U;
+    status = reader.ReadFixedBytes(
+        RECORD_MAIN,
+        FIELD_U32,
+        output.data(),
+        static_cast<std::uint32_t>(output.size()),
+        byte_count);
+    if (status != SerializeStatus::TypeMismatch) {
+        return Fail("fixed bytes type mismatch did not return explicit status");
+    }
+
+    if (byte_count != 0U) {
+        return Fail(FIXED_BYTES_FAILURE_COUNT_MESSAGE);
+    }
+
+    if (!BytesFilledWith(output.data(), static_cast<std::uint32_t>(output.size()), SENTINEL_BYTE)) {
+        return Fail(FIXED_BYTES_FAILURE_BUFFER_MESSAGE);
+    }
+
+    output.fill(SENTINEL_BYTE);
+    byte_count = 99U;
+    status = reader.ReadFixedBytes(RECORD_MAIN, FIELD_BYTES, output.data(), 4U, byte_count);
+    if (status != SerializeStatus::BufferTooSmall) {
+        return Fail(UNDERSIZED_FIXED_BYTES_READ_MESSAGE);
+    }
+
+    if (byte_count != 0U) {
+        return Fail(FIXED_BYTES_FAILURE_COUNT_MESSAGE);
+    }
+
+    if (!BytesFilledWith(output.data(), static_cast<std::uint32_t>(output.size()), SENTINEL_BYTE)) {
+        return Fail(FIXED_BYTES_FAILURE_BUFFER_MESSAGE);
+    }
+
+    byte_count = 99U;
+    status = reader.ReadFixedBytes(RECORD_MAIN, FIELD_BYTES, nullptr, 5U, byte_count);
+    if (status != SerializeStatus::BufferTooSmall) {
+        return Fail("null fixed bytes output did not return explicit status");
+    }
+
+    if (byte_count != 0U) {
+        return Fail(FIXED_BYTES_FAILURE_COUNT_MESSAGE);
     }
 
     return 0;
@@ -1094,6 +1190,7 @@ int main(int argc, char** argv) {
         {TEST_RECORD_CAPACITY, SerializeRecordCapacityOverflowDoesNotMutate},
         {TEST_FIELD_CAPACITY, SerializeFieldCapacityOverflowDoesNotMutate},
         {TEST_FIXED_BYTES_LIMIT, SerializeFixedBytesPayloadLimitReturnsExplicitStatus},
+        {TEST_FIXED_BYTES_FAILURE_COUNT, SerializeReadFixedBytesFailuresClearOutputCount},
         {TEST_TRUNCATED, SerializeReaderRejectsTruncatedStream},
         {TEST_INVALID_IDS, SerializeReaderRejectsInvalidRecordOrFieldId},
         {TEST_MALFORMED_LENGTH, SerializeReaderRejectsMalformedFieldLength},
