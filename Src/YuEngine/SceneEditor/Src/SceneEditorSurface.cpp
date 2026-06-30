@@ -1277,6 +1277,8 @@ SceneEditorGizmoResourceWorkflowStatus BuildSceneEditorGizmoResourceSaveLoadWork
     if (!SaveLoadWorkflowOutputCapacityReady(request, document)) {
         result.status = SceneEditorGizmoResourceWorkflowStatus::OutputCapacityExceeded;
         result.blocked_layer = SceneEditorGizmoResourceWorkflowBlockedLayer::Output;
+        result.save_status = WorldSceneRecordValueStreamStatus::OutputCapacityExceeded;
+        result.load_status = WorldSceneRecordValueStreamStatus::OutputCapacityExceeded;
         *out_result = result;
         return result.status;
     }
@@ -1504,6 +1506,8 @@ SceneEditorGizmoResourceWorkflowStatus BuildSceneEditorGizmoResourceFilePersiste
     if (!FilePersistenceWorkflowOutputCapacityReady(request, document)) {
         result.status = SceneEditorGizmoResourceWorkflowStatus::OutputCapacityExceeded;
         result.blocked_layer = SceneEditorGizmoResourceWorkflowBlockedLayer::Output;
+        result.save_status = WorldSceneRecordValueStreamStatus::OutputCapacityExceeded;
+        result.load_status = WorldSceneRecordValueStreamStatus::OutputCapacityExceeded;
         *out_result = result;
         return result.status;
     }
