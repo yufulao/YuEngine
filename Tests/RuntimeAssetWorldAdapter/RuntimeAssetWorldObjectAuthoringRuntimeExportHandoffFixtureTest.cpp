@@ -96,10 +96,12 @@ using yuengine::runtimeasset::RuntimeAssetSceneTransformOutputRecord;
 using yuengine::runtimeasset::RuntimeAssetTargetIdentityKind;
 using yuengine::runtimeassetworldadapter::RuntimeAssetWorldObjectAdapterIdentityRecord;
 using yuengine::runtimeassetworldadapter::RuntimeAssetWorldObjectAdapterRequest;
+using yuengine::runtimeassetworldadapter::RuntimeAssetWorldObjectAdapterStatus;
 using yuengine::runtimeassetworldadapter::RuntimeAssetWorldObjectRestoreHandoffBridge;
 using yuengine::runtimeassetworldadapter::RuntimeAssetWorldObjectRestoreHandoffRequest;
 using yuengine::runtimeassetworldadapter::RuntimeAssetWorldObjectRestoreHandoffResult;
 using yuengine::runtimeassetworldadapter::RuntimeAssetWorldObjectRestoreHandoffSnapshot;
+using yuengine::runtimeassetworldadapter::RuntimeAssetWorldObjectRestoreHandoffStatus;
 using yuengine::serialize::MAX_STREAM_BYTE_COUNT;
 using yuengine::serialize::SerializeReader;
 using yuengine::serialize::SerializeWriter;
@@ -122,6 +124,7 @@ using yuengine::world::WorldSceneApplyTimeRestoreProofFamily;
 using yuengine::world::WorldSceneApplyTimeRestoreProofRecord;
 using yuengine::world::WorldSceneApplyTimeRestoreProofSliceRecord;
 using yuengine::world::WorldSceneApplyTimeRestoreProofStatus;
+using yuengine::world::WorldSceneAssemblyStatus;
 using yuengine::world::WorldSceneAuthoringDependencyRecord;
 using yuengine::world::WorldSceneAuthoringDocument;
 using yuengine::world::WorldSceneAuthoringDocumentResult;
@@ -132,9 +135,11 @@ using yuengine::world::WorldSceneDecodedRestorePlanRecord;
 using yuengine::world::WorldSceneDecodedRestorePlanRecordFamily;
 using yuengine::world::WorldSceneDecodedRestorePlanStatus;
 using yuengine::world::WorldSceneObjectTransformRestoreIdentityRecord;
+using yuengine::world::WorldSceneObjectTransformRestoreStatus;
 using yuengine::world::WorldSceneObjectTransformRestoreTransformRecord;
 using yuengine::world::WorldSceneRecordValueStreamBridge;
 using yuengine::world::WorldSceneRecordValueStreamResult;
+using yuengine::world::WorldStatus;
 using yuengine::world::WorldTransformBridge;
 using yuengine::world::WorldTransformResult;
 using yuengine::world::WorldTransformSnapshot;
@@ -163,6 +168,8 @@ constexpr const char *TEST_COMMIT_AUTHORING_DEPENDENCY_EDGE_RUNTIME_EXPORT =
     "RuntimeAssetWorldObjectAuthoringRuntimeExportHandoff_CommitsExportedDependencyAsCallerOwnedResourceEdge";
 constexpr const char *TEST_COMMIT_AUTHORING_ASSET_DEPENDENCY_EDGE_RUNTIME_EXPORT =
     "RuntimeAssetWorldObjectAuthoringRuntimeExportHandoff_CommitsExportedDependencyAsCallerOwnedAssetEdge";
+constexpr const char *TEST_REJECT_AUTHORING_ASSET_EDGE_WORLD_OBJECT_SNAPSHOT_FAILURE =
+    "RuntimeAssetWorldObjectAuthoringRuntimeExportHandoff_RejectsAssetEdgeWorldObjectSnapshotFailureWithoutMutation";
 constexpr WorldObjectId WORLD_OBJECT_SCENE{31U};
 constexpr WorldObjectId WORLD_OBJECT_MODEL{32U};
 constexpr WorldObjectId WORLD_OBJECT_SKELETON{33U};
@@ -717,6 +724,70 @@ bool TransformsMatch(WorldTransformState left, WorldTransformState right) {
     }
 
     return left.scale_z == right.scale_z;
+}
+
+bool ObjectIdentitySnapshotsMatch(
+    const WorldObjectIdentitySnapshot &left,
+    const WorldObjectIdentitySnapshot &right) {
+    if (left.bridge_capacity != right.bridge_capacity) {
+        return false;
+    }
+
+    if (left.binding_count != right.binding_count) {
+        return false;
+    }
+
+    if (left.acquired_handle_count != right.acquired_handle_count) {
+        return false;
+    }
+
+    if (left.released_handle_count != right.released_handle_count) {
+        return false;
+    }
+
+    if (left.failed_operation_count != right.failed_operation_count) {
+        return false;
+    }
+
+    if (left.allocation_accounting_status != right.allocation_accounting_status) {
+        return false;
+    }
+
+    if (left.last_object_status != right.last_object_status) {
+        return false;
+    }
+
+    return left.last_status == right.last_status;
+}
+
+bool TransformSnapshotsMatch(
+    const WorldTransformSnapshot &left,
+    const WorldTransformSnapshot &right) {
+    if (left.bridge_capacity != right.bridge_capacity) {
+        return false;
+    }
+
+    if (left.record_count != right.record_count) {
+        return false;
+    }
+
+    if (left.updated_record_count != right.updated_record_count) {
+        return false;
+    }
+
+    if (left.removed_record_count != right.removed_record_count) {
+        return false;
+    }
+
+    if (left.failed_operation_count != right.failed_operation_count) {
+        return false;
+    }
+
+    if (left.allocation_accounting_status != right.allocation_accounting_status) {
+        return false;
+    }
+
+    return left.last_status == right.last_status;
 }
 
 int ExportAuthoringRuntimeRecords(
@@ -2304,6 +2375,209 @@ int TestCommitExportedDependencyAsCallerOwnedAssetEdge() {
     return 0;
 }
 
+int TestRejectAssetEdgeWorldObjectSnapshotFailureWithoutMutation() {
+    AuthoringRuntimeExportHandoffFixture fixture = MakeFixture();
+    WorldInstance world = MakeWorld();
+    ObjectRegistry object_registry = MakeObjectRegistry();
+    if (PrepareCallerOwnedRegistries(&world, &object_registry, &fixture) != 0) {
+        return 1;
+    }
+
+    ResourceRegistry resource_registry{};
+    AssetManager asset_manager = MakeAssetManager();
+    AssetHandle document_asset_handle{};
+    AssetHandle dependency_asset_handle{};
+    ResourceHandle texture_handle{};
+    if (PrepareAuthoringAssetDependencyEdgeInputs(
+            &fixture,
+            &resource_registry,
+            &asset_manager,
+            &document_asset_handle,
+            &dependency_asset_handle,
+            &texture_handle) != 0) {
+        return 1;
+    }
+
+    if (ExportAuthoringRuntimeRecords(
+            &fixture,
+            SIDECAR_RECORD_COUNT,
+            SIDECAR_RECORD_COUNT,
+            DEPENDENCY_RECORD_COUNT) != 0) {
+        return 1;
+    }
+
+    if (VerifyAuthoringRuntimeOutputs(
+            fixture,
+            SIDECAR_RECORD_COUNT,
+            SIDECAR_RECORD_COUNT,
+            DEPENDENCY_RECORD_COUNT,
+            texture_handle) != 0) {
+        return 1;
+    }
+
+    if (CommitExportedAuthoringAssetDependencyEdge(
+            fixture,
+            &asset_manager,
+            document_asset_handle,
+            dependency_asset_handle) != 0) {
+        return 1;
+    }
+
+    const AssetSnapshot asset_after_edge_commit = asset_manager.Snapshot();
+    if (asset_after_edge_commit.active_dependency_edge_count != 1U) {
+        return Fail("authoring asset edge failure setup missing committed edge");
+    }
+
+    if (RoundTripWorldSceneRecordStream(&fixture, SIDECAR_RECORD_COUNT, SIDECAR_RECORD_COUNT) != 0) {
+        return 1;
+    }
+
+    if (VerifyRecordStreamOutputs(
+            fixture,
+            SIDECAR_RECORD_COUNT,
+            SIDECAR_RECORD_COUNT,
+            texture_handle) != 0) {
+        return 1;
+    }
+
+    const WorldStatus remove_status = world.RemoveObject(WORLD_OBJECT_MODEL);
+    if (remove_status != WorldStatus::Success) {
+        return Fail("authoring asset edge failure could not remove world object");
+    }
+
+    WorldObjectIdentityBridge identity_destination(world, object_registry);
+    WorldTransformBridge transform_destination(world);
+    WorldComponentAttachmentBridge attachment_destination{};
+    WorldComponentResourceBindingBridge binding_destination{};
+    const WorldObjectIdentitySnapshot identity_before = identity_destination.Snapshot();
+    const WorldTransformSnapshot transform_before = transform_destination.Snapshot();
+    const auto attachment_before = attachment_destination.Snapshot();
+    const auto binding_before = binding_destination.Snapshot();
+
+    RuntimeAssetWorldObjectAdapterRequest adapter_request = MakeAdapterRequest(&fixture);
+    RuntimeAssetWorldObjectRestoreHandoffRequest handoff_request = MakeHandoffRequest(
+        &fixture,
+        &adapter_request,
+        &world,
+        &object_registry,
+        &resource_registry,
+        &identity_destination,
+        &transform_destination,
+        &attachment_destination,
+        &binding_destination,
+        SIDECAR_RECORD_COUNT,
+        SIDECAR_RECORD_COUNT);
+
+    RuntimeAssetWorldObjectRestoreHandoffBridge bridge{};
+    const RuntimeAssetWorldObjectRestoreHandoffResult result = bridge.ApplyRestore(handoff_request);
+    if (result.status != RuntimeAssetWorldObjectRestoreHandoffStatus::GateFailed) {
+        return Fail("authoring asset edge failure returned wrong handoff status");
+    }
+
+    if (result.gate_status != WorldSceneActiveRestoreGateStatus::ProofFailed) {
+        return Fail("authoring asset edge failure returned wrong gate status");
+    }
+
+    if (result.proof_status != WorldSceneApplyTimeRestoreProofStatus::PlanFailed) {
+        return Fail("authoring asset edge failure returned wrong proof status");
+    }
+
+    if (result.adapter_status != RuntimeAssetWorldObjectAdapterStatus::Success) {
+        return Fail("authoring asset edge failure returned wrong adapter status");
+    }
+
+    if (result.assembly_status != WorldSceneAssemblyStatus::Success) {
+        return Fail("authoring asset edge failure returned wrong assembly status");
+    }
+
+    if (result.restore_status != WorldSceneObjectTransformRestoreStatus::Success) {
+        return Fail("authoring asset edge failure returned wrong restore status");
+    }
+
+    if (!ObjectIdentitySnapshotsMatch(identity_before, identity_destination.Snapshot())) {
+        return Fail("authoring asset edge failure mutated identity destination");
+    }
+
+    if (!TransformSnapshotsMatch(transform_before, transform_destination.Snapshot())) {
+        return Fail("authoring asset edge failure mutated transform destination");
+    }
+
+    const auto attachment_after = attachment_destination.Snapshot();
+    if (attachment_after.active_attachment_count != attachment_before.active_attachment_count) {
+        return Fail("authoring asset edge failure mutated attachment destination");
+    }
+
+    if (attachment_after.last_status != attachment_before.last_status) {
+        return Fail("authoring asset edge failure touched attachment status");
+    }
+
+    const auto binding_after = binding_destination.Snapshot();
+    if (binding_after.active_binding_count != binding_before.active_binding_count) {
+        return Fail("authoring asset edge failure mutated binding destination");
+    }
+
+    if (binding_after.acquired_binding_count != binding_before.acquired_binding_count) {
+        return Fail("authoring asset edge failure acquired binding resource");
+    }
+
+    if (binding_after.last_status != binding_before.last_status) {
+        return Fail("authoring asset edge failure touched binding status");
+    }
+
+    const AssetSnapshot asset_after_handoff = asset_manager.Snapshot();
+    if (asset_after_handoff.active_dependency_edge_count !=
+        asset_after_edge_commit.active_dependency_edge_count) {
+        return Fail("authoring asset edge failure mutated asset dependency edge count");
+    }
+
+    const RuntimeAssetWorldObjectRestoreHandoffSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.accepted_handoff_count != 0U) {
+        return Fail("authoring asset edge failure snapshot accepted count mismatch");
+    }
+
+    if (snapshot.failed_operation_count != 1U) {
+        return Fail("authoring asset edge failure snapshot failure count mismatch");
+    }
+
+    if (snapshot.rejected_operation_count != 1U) {
+        return Fail("authoring asset edge failure snapshot rejection count mismatch");
+    }
+
+    if (snapshot.emitted_gate_record_count != 0U) {
+        return Fail("authoring asset edge failure snapshot emitted gate count mismatch");
+    }
+
+    if (snapshot.restored_identity_count != 0U) {
+        return Fail("authoring asset edge failure snapshot restored identity count mismatch");
+    }
+
+    if (snapshot.restored_transform_count != 0U) {
+        return Fail("authoring asset edge failure snapshot restored transform count mismatch");
+    }
+
+    if (snapshot.last_status != RuntimeAssetWorldObjectRestoreHandoffStatus::GateFailed) {
+        return Fail("authoring asset edge failure snapshot handoff status mismatch");
+    }
+
+    if (snapshot.last_gate_status != WorldSceneActiveRestoreGateStatus::ProofFailed) {
+        return Fail("authoring asset edge failure snapshot gate status mismatch");
+    }
+
+    if (snapshot.last_proof_status != WorldSceneApplyTimeRestoreProofStatus::PlanFailed) {
+        return Fail("authoring asset edge failure snapshot proof status mismatch");
+    }
+
+    if (snapshot.last_assembly_status != WorldSceneAssemblyStatus::Success) {
+        return Fail("authoring asset edge failure snapshot assembly status mismatch");
+    }
+
+    if (snapshot.last_restore_status != WorldSceneObjectTransformRestoreStatus::Success) {
+        return Fail("authoring asset edge failure snapshot restore status mismatch");
+    }
+
+    return 0;
+}
+
 }
 
 bool RuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTestNameMatches(std::string_view test_name) {
@@ -2319,11 +2593,19 @@ bool RuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTestNameMatches(
         return true;
     }
 
-    return test_name == TEST_COMMIT_AUTHORING_ASSET_DEPENDENCY_EDGE_RUNTIME_EXPORT;
+    if (test_name == TEST_COMMIT_AUTHORING_ASSET_DEPENDENCY_EDGE_RUNTIME_EXPORT) {
+        return true;
+    }
+
+    return test_name == TEST_REJECT_AUTHORING_ASSET_EDGE_WORLD_OBJECT_SNAPSHOT_FAILURE;
 }
 
 int RunRuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTest(std::string_view test_name) {
     if (RuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTestNameMatches(test_name)) {
+        if (test_name == TEST_REJECT_AUTHORING_ASSET_EDGE_WORLD_OBJECT_SNAPSHOT_FAILURE) {
+            return TestRejectAssetEdgeWorldObjectSnapshotFailureWithoutMutation();
+        }
+
         if (test_name == TEST_COMMIT_AUTHORING_ASSET_DEPENDENCY_EDGE_RUNTIME_EXPORT) {
             return TestCommitExportedDependencyAsCallerOwnedAssetEdge();
         }
