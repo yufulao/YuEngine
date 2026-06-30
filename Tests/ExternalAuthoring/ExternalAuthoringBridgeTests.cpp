@@ -475,6 +475,10 @@ int ExternalAuthoringBridgeRejectsOutputCapacityWithoutMutation() {
         return Fail("capacity layer mismatch");
     }
 
+    if (harness.result.runtime_asset_input_count != 2U) {
+        return Fail("capacity required input count mismatch");
+    }
+
     if (harness.result.payload_read_count != 0U) {
         return Fail("capacity read payloads");
     }

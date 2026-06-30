@@ -761,6 +761,7 @@ ExternalAuthoringBridgeStatus BuildExternalAuthoringRuntimeAssetImportBridge(
 
     result.validated_dependency_graph = true;
     result.dependency_count = dependency_count;
+    result.runtime_asset_input_count = document.entry_count;
     if (request.runtime_asset_inputs.size() < document.entry_count) {
         result.status = ExternalAuthoringBridgeStatus::OutputCapacityExceeded;
         result.blocked_layer = ExternalAuthoringBridgeBlockedLayer::RuntimeAssetInput;
@@ -816,7 +817,6 @@ ExternalAuthoringBridgeStatus BuildExternalAuthoringRuntimeAssetImportBridge(
     *request.import_cook_request = staged_command;
     result.status = ExternalAuthoringBridgeStatus::Success;
     result.blocked_layer = ExternalAuthoringBridgeBlockedLayer::None;
-    result.runtime_asset_input_count = document.entry_count;
     result.emitted_runtime_asset_input = true;
     result.emitted_import_cook_request = true;
     return CommitResult(result, out_result);
