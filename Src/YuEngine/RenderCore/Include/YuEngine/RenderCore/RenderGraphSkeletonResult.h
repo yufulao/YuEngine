@@ -23,6 +23,8 @@ struct RenderGraphSkeletonResult final {
     std::uint32_t graph_id = 0U;
     std::size_t pass_count = 0U;
     std::size_t dependency_count = 0U;
+    std::size_t required_pass_record_count = 0U;
+    std::size_t required_dependency_record_count = 0U;
     std::size_t failed_pass_index = 0U;
     std::size_t failed_dependency_index = 0U;
     std::uint32_t pass_id = 0U;

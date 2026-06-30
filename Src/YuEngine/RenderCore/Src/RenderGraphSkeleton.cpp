@@ -225,6 +225,8 @@ RenderGraphSkeletonResult RenderGraphSkeleton::Prepare(const RenderGraphSkeleton
     result.graph_id = request.graph_id;
     result.pass_count = request.pass_declarations.size();
     result.dependency_count = request.dependency_declarations.size();
+    result.required_pass_record_count = request.pass_declarations.size();
+    result.required_dependency_record_count = request.dependency_declarations.size();
 
     result.status = ValidateRequest(request, &result);
     if (result.status != RenderGraphSkeletonStatus::Success) {
@@ -442,6 +444,9 @@ void RenderGraphSkeleton::RecordRejectedResult(const RenderGraphSkeletonResult &
     snapshot_.last_graph_id = result.graph_id;
     snapshot_.last_pass_count = result.pass_count;
     snapshot_.last_dependency_count = result.dependency_count;
+    snapshot_.last_required_pass_record_count = result.required_pass_record_count;
+    snapshot_.last_required_dependency_record_count =
+        result.required_dependency_record_count;
     snapshot_.last_failed_pass_index = result.failed_pass_index;
     snapshot_.last_failed_dependency_index = result.failed_dependency_index;
     snapshot_.last_pass_id = result.pass_id;
@@ -512,6 +517,9 @@ void RenderGraphSkeleton::RecordPreparedResult(const RenderGraphSkeletonResult &
     snapshot_.last_graph_id = result.graph_id;
     snapshot_.last_pass_count = result.pass_count;
     snapshot_.last_dependency_count = result.dependency_count;
+    snapshot_.last_required_pass_record_count = result.required_pass_record_count;
+    snapshot_.last_required_dependency_record_count =
+        result.required_dependency_record_count;
     snapshot_.last_pass_id = result.submission_batch_request.pass_requests[result.pass_count - 1U].pass_id;
     snapshot_.last_status = result.status;
     snapshot_.last_operation = result.operation;
@@ -530,6 +538,8 @@ void RenderGraphSkeleton::RecordReleaseResult(std::uint32_t graph_id, RenderGrap
     snapshot_.last_graph_id = graph_id;
     snapshot_.last_pass_count = 0U;
     snapshot_.last_dependency_count = 0U;
+    snapshot_.last_required_pass_record_count = 0U;
+    snapshot_.last_required_dependency_record_count = 0U;
     snapshot_.last_failed_pass_index = 0U;
     snapshot_.last_failed_dependency_index = 0U;
     snapshot_.last_pass_id = 0U;

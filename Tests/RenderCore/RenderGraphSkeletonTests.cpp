@@ -788,6 +788,11 @@ int RenderCoreGraphSkeletonRejectsPassCapacityOverflowWithoutMutation() {
         return Fail("pass capacity overflow did not report first overflowing pass");
     }
 
+    if (result.required_pass_record_count != 2U ||
+        result.required_dependency_record_count != 0U) {
+        return Fail("pass capacity overflow required counts mismatch");
+    }
+
     if (!PreparedSentinelUnchanged(std::span<const RenderFixturePassRequest>(prepared_requests.data(), prepared_requests.size()))) {
         return Fail("pass capacity overflow mutated prepared requests");
     }
@@ -795,6 +800,8 @@ int RenderCoreGraphSkeletonRejectsPassCapacityOverflowWithoutMutation() {
     const auto snapshot = graph.Snapshot();
     if (snapshot.last_failed_pass_index != 1U ||
         snapshot.last_pass_id != SECOND_PASS_ID ||
+        snapshot.last_required_pass_record_count != 2U ||
+        snapshot.last_required_dependency_record_count != 0U ||
         snapshot.pass_capacity_rejected_count != 1U) {
         return Fail("pass capacity overflow snapshot mismatch");
     }
@@ -838,6 +845,11 @@ int RenderCoreGraphSkeletonRejectsDependencyCapacityOverflowWithoutMutation() {
         return Fail("dependency capacity overflow did not report first overflowing dependency");
     }
 
+    if (result.required_pass_record_count != 2U ||
+        result.required_dependency_record_count != 1U) {
+        return Fail("dependency capacity overflow required counts mismatch");
+    }
+
     if (!PreparedSentinelUnchanged(std::span<const RenderFixturePassRequest>(prepared_requests.data(), prepared_requests.size()))) {
         return Fail("dependency capacity overflow mutated prepared requests");
     }
@@ -846,6 +858,8 @@ int RenderCoreGraphSkeletonRejectsDependencyCapacityOverflowWithoutMutation() {
     if (snapshot.last_failed_dependency_index != 0U ||
         snapshot.last_dependency_before_pass_id != FIRST_PASS_ID ||
         snapshot.last_dependency_after_pass_id != SECOND_PASS_ID ||
+        snapshot.last_required_pass_record_count != 2U ||
+        snapshot.last_required_dependency_record_count != 1U ||
         snapshot.dependency_capacity_rejected_count != 1U) {
         return Fail("dependency capacity overflow snapshot mismatch");
     }

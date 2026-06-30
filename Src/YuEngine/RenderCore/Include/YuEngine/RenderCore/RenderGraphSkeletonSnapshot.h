@@ -34,6 +34,8 @@ struct RenderGraphSkeletonSnapshot final {
     std::uint32_t last_graph_id = 0U;
     std::size_t last_pass_count = 0U;
     std::size_t last_dependency_count = 0U;
+    std::size_t last_required_pass_record_count = 0U;
+    std::size_t last_required_dependency_record_count = 0U;
     std::size_t last_failed_pass_index = 0U;
     std::size_t last_failed_dependency_index = 0U;
     std::uint32_t last_pass_id = 0U;
