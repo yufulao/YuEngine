@@ -49,6 +49,7 @@ namespace {
 constexpr const char *TEST_PLAYING_SOURCE = "AudioScene_PlayingSourceBuildsPcmQueueRequest";
 constexpr const char *TEST_BUS_ROUTING = "AudioScene_BusRoutingMapsFixedBusIdsToQueueIds";
 constexpr const char *TEST_MISSING_BACKEND = "AudioScene_MissingBackendReturnsExplicitStatus";
+constexpr const char *TEST_OUTPUT_CAPACITY = "AudioScene_OutputCapacityPreservesCountsWithoutMutation";
 constexpr const char *TEST_PAUSED_SOURCE = "AudioScene_PausedSourceDoesNotSubmitQueue";
 constexpr const char *TEST_MISSING_SOUND = "AudioScene_MissingSoundAssetDoesNotMutateOutput";
 constexpr const char *TEST_INVALID_BUS = "AudioScene_InvalidBusDoesNotMutateOutput";
@@ -231,6 +232,76 @@ int AudioSceneMissingBackendReturnsExplicitStatus() {
     return 0;
 }
 
+int AudioSceneOutputCapacityPreservesCountsWithoutMutation() {
+    const AudioPcmSamplePacketHandle packet{1U, 1U};
+    std::array<AudioSceneSourceRecord, 3U> sources{
+        SourceRecord(packet),
+        SourceRecord(packet),
+        SourceRecord(packet)};
+    sources[0].source_id = {1U, 1U};
+    sources[1].source_id = {2U, 1U};
+    sources[2].source_id = {3U, 1U};
+    sources[2].state = AudioSceneSourceState::Paused;
+
+    std::array<AudioPcmStreamQueueRequest, 1U> requests{};
+    requests[0].queue_id = 77U;
+    requests[0].expected_packet_id = 88U;
+    AudioSceneSubmitResult result{};
+
+    AudioSceneContractQueue queue;
+    const AudioSceneStatus status = queue.SubmitSourceUpdates(SubmitRequest(sources), requests, &result);
+    if (status != AudioSceneStatus::OutputCapacityExceeded) {
+        return Fail("audio scene did not report output capacity");
+    }
+
+    if (result.active_source_count != 3U) {
+        return Fail("audio scene output capacity active count mismatch");
+    }
+
+    if (result.playing_source_count != 2U) {
+        return Fail("audio scene output capacity playing count mismatch");
+    }
+
+    if (result.queue_request_count != 0U) {
+        return Fail("audio scene output capacity queued output");
+    }
+
+    if (result.status != AudioSceneStatus::OutputCapacityExceeded) {
+        return Fail("audio scene output capacity result status mismatch");
+    }
+
+    if (requests[0].queue_id != 77U) {
+        return Fail("audio scene output capacity mutated queue id");
+    }
+
+    if (requests[0].expected_packet_id != 88U) {
+        return Fail("audio scene output capacity mutated packet id");
+    }
+
+    const auto snapshot = queue.Snapshot();
+    if (snapshot.failed_submit_count != 1U) {
+        return Fail("audio scene output capacity failed count mismatch");
+    }
+
+    if (snapshot.last_active_source_count != 3U) {
+        return Fail("audio scene output capacity snapshot active count mismatch");
+    }
+
+    if (snapshot.last_playing_source_count != 2U) {
+        return Fail("audio scene output capacity snapshot playing count mismatch");
+    }
+
+    if (snapshot.last_queue_request_count != 0U) {
+        return Fail("audio scene output capacity snapshot queue count mismatch");
+    }
+
+    if (snapshot.last_status != AudioSceneStatus::OutputCapacityExceeded) {
+        return Fail("audio scene output capacity snapshot status mismatch");
+    }
+
+    return 0;
+}
+
 int AudioScenePausedSourceDoesNotSubmitQueue() {
     const AudioPcmSamplePacketHandle packet{1U, 1U};
     std::array<AudioSceneSourceRecord, 1U> sources{SourceRecord(packet)};
@@ -323,6 +394,10 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_MISSING_BACKEND) {
         return AudioSceneMissingBackendReturnsExplicitStatus();
+    }
+
+    if (name == TEST_OUTPUT_CAPACITY) {
+        return AudioSceneOutputCapacityPreservesCountsWithoutMutation();
     }
 
     if (name == TEST_PAUSED_SOURCE) {

@@ -19,14 +19,13 @@ AudioSceneStatus AudioSceneContractQueue::SubmitSourceUpdates(
     std::size_t playing_source_count = 0U;
     const AudioSceneStatus validate_status =
         ValidateRequest(request, out_requests, &active_source_count, &playing_source_count);
+    result.active_source_count = active_source_count;
+    result.playing_source_count = playing_source_count;
     if (validate_status != AudioSceneStatus::Success) {
         result.status = validate_status;
         *out_result = result;
         return RecordFailure(validate_status, result);
     }
-
-    result.active_source_count = active_source_count;
-    result.playing_source_count = playing_source_count;
 
     std::size_t output_index = 0U;
     for (const AudioSceneSourceRecord &source : request.sources) {
@@ -99,6 +98,9 @@ AudioSceneStatus AudioSceneContractQueue::ValidateRequest(
         return AudioSceneStatus::Success;
     }
 
+    *out_active_source_count = active_source_count;
+    *out_playing_source_count = playing_source_count;
+
     if (!request.backend_available) {
         return AudioSceneStatus::BackendUnavailable;
     }
@@ -107,8 +109,6 @@ AudioSceneStatus AudioSceneContractQueue::ValidateRequest(
         return AudioSceneStatus::OutputCapacityExceeded;
     }
 
-    *out_active_source_count = active_source_count;
-    *out_playing_source_count = playing_source_count;
     return AudioSceneStatus::Success;
 }
 
