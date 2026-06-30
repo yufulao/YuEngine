@@ -1780,6 +1780,10 @@ int StreamingResourceUploadCreateBufferFromStagingCompletion() {
         return Fail("buffer upload left pending record");
     }
 
+    if (snapshot.last_status != ResourceUploadStatus::Success) {
+        return Fail("buffer upload drain changed success status");
+    }
+
     return 0;
 }
 
@@ -2591,6 +2595,10 @@ int StreamingResourceUploadReportsRhiFailureWithoutWritingOutput() {
     const ResourceUploadSnapshot snapshot = queue.Snapshot();
     if (snapshot.rhi_upload_failed_count != 1U) {
         return Fail("RHI failure count was not tracked");
+    }
+
+    if (snapshot.last_status != ResourceUploadStatus::RhiUploadFailed) {
+        return Fail("RHI failure drain did not preserve last status");
     }
 
     return 0;

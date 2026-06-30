@@ -151,14 +151,20 @@ ResourceUploadStatus ResourceUploadQueue::DrainCompletions(
         return ResourceUploadStatus::CompletionQueueFull;
     }
 
+    ResourceUploadStatus drained_status = ResourceUploadStatus::Success;
     for (std::uint32_t index = 0U; index < snapshot_.completion_count; ++index) {
-        output_completions[index] = completions_[index];
+        const ResourceUploadCompletion completion = completions_[index];
+        output_completions[index] = completion;
+        if (completion.status != ResourceUploadStatus::Success) {
+            drained_status = completion.status;
+        }
+
         ++(*written_count);
         completions_[index] = ResourceUploadCompletion{};
     }
 
     snapshot_.completion_count = 0U;
-    snapshot_.last_status = ResourceUploadStatus::Success;
+    snapshot_.last_status = drained_status;
     return ResourceUploadStatus::Success;
 }
 
