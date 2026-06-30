@@ -17,7 +17,9 @@ using yuengine::world::WorldSceneActiveRestoreGateResult;
 using yuengine::world::WorldSceneActiveRestoreGateStatus;
 using yuengine::world::WorldSceneApplyTimeRestoreProofStatus;
 using yuengine::world::WorldSceneAssemblyBridge;
+using yuengine::world::WorldSceneAssemblyBridgeDesc;
 using yuengine::world::WorldSceneAssemblyResult;
+using yuengine::world::WorldSceneAssemblyStatus;
 using yuengine::world::WorldSceneObjectTransformRestoreBridge;
 using yuengine::world::WorldSceneObjectTransformRestoreResult;
 using yuengine::world::WorldSceneObjectTransformRestoreStatus;
@@ -30,6 +32,7 @@ RuntimeAssetWorldObjectRestoreHandoffResult RuntimeAssetWorldObjectRestoreHandof
         RuntimeAssetWorldObjectAdapterStatus::Success,
         WorldSceneActiveRestoreGateStatus::Success,
         WorldSceneApplyTimeRestoreProofStatus::Success,
+        WorldSceneAssemblyStatus::Success,
         WorldSceneObjectTransformRestoreStatus::Success,
         state};
 }
@@ -39,18 +42,27 @@ RuntimeAssetWorldObjectRestoreHandoffResult RuntimeAssetWorldObjectRestoreHandof
     RuntimeAssetWorldObjectAdapterStatus adapter_status,
     WorldSceneActiveRestoreGateStatus gate_status,
     WorldSceneApplyTimeRestoreProofStatus proof_status,
+    WorldSceneAssemblyStatus assembly_status,
     WorldSceneObjectTransformRestoreStatus restore_status) {
+    RuntimeAssetWorldObjectRestoreHandoffState state{};
+    state.assembly_status = assembly_status;
     return RuntimeAssetWorldObjectRestoreHandoffResult{
         status,
         adapter_status,
         gate_status,
         proof_status,
+        assembly_status,
         restore_status,
-        RuntimeAssetWorldObjectRestoreHandoffState{}};
+        state};
 }
 
 bool RuntimeAssetWorldObjectRestoreHandoffResult::Succeeded() const {
     return status == RuntimeAssetWorldObjectRestoreHandoffStatus::Success;
+}
+
+RuntimeAssetWorldObjectRestoreHandoffBridge::RuntimeAssetWorldObjectRestoreHandoffBridge(
+    WorldSceneAssemblyBridgeDesc assembly_desc) :
+    assembly_desc_(assembly_desc) {
 }
 
 RuntimeAssetWorldObjectRestoreHandoffResult RuntimeAssetWorldObjectRestoreHandoffBridge::ApplyRestore(
@@ -98,7 +110,7 @@ RuntimeAssetWorldObjectRestoreHandoffResult RuntimeAssetWorldObjectRestoreHandof
         return RecordGateFailure(gate_result.status, gate_result.proof_status);
     }
 
-    WorldSceneAssemblyBridge assembly_bridge{};
+    WorldSceneAssemblyBridge assembly_bridge(assembly_desc_);
     const WorldSceneAssemblyResult assembly_result = assembly_bridge.Restore(
         request.attachment_destination,
         request.binding_destination,
@@ -108,7 +120,7 @@ RuntimeAssetWorldObjectRestoreHandoffResult RuntimeAssetWorldObjectRestoreHandof
         request.input_bindings,
         request.input_binding_count);
     if (!assembly_result.Succeeded()) {
-        return RecordRestoreFailure(WorldSceneObjectTransformRestoreStatus::Success);
+        return RecordAssemblyFailure(assembly_result.status);
     }
 
     WorldSceneObjectTransformRestoreBridge restore_bridge{};
@@ -132,6 +144,7 @@ RuntimeAssetWorldObjectRestoreHandoffResult RuntimeAssetWorldObjectRestoreHandof
     state.proof_record_count = gate_result.state.proof_record_count;
     state.slice_record_count = gate_result.state.slice_record_count;
     state.gate_record_count = gate_result.state.gate_record_count;
+    state.assembly_status = assembly_result.status;
     state.restored_attachment_count = assembly_result.state.restored_attachment_count;
     state.restored_binding_count = assembly_result.state.restored_binding_count;
     state.restored_identity_count = restore_result.state.restored_identity_count;
@@ -150,6 +163,7 @@ RuntimeAssetWorldObjectRestoreHandoffResult RuntimeAssetWorldObjectRestoreHandof
     snapshot_.last_adapter_status = RuntimeAssetWorldObjectAdapterStatus::Success;
     snapshot_.last_gate_status = WorldSceneActiveRestoreGateStatus::Success;
     snapshot_.last_proof_status = WorldSceneApplyTimeRestoreProofStatus::Success;
+    snapshot_.last_assembly_status = WorldSceneAssemblyStatus::Success;
     snapshot_.last_restore_status = WorldSceneObjectTransformRestoreStatus::Success;
     return RuntimeAssetWorldObjectRestoreHandoffResult::Failure(status);
 }
@@ -162,6 +176,7 @@ RuntimeAssetWorldObjectRestoreHandoffResult RuntimeAssetWorldObjectRestoreHandof
     snapshot_.last_adapter_status = adapter_status;
     snapshot_.last_gate_status = WorldSceneActiveRestoreGateStatus::Success;
     snapshot_.last_proof_status = WorldSceneApplyTimeRestoreProofStatus::Success;
+    snapshot_.last_assembly_status = WorldSceneAssemblyStatus::Success;
     snapshot_.last_restore_status = WorldSceneObjectTransformRestoreStatus::Success;
     return RuntimeAssetWorldObjectRestoreHandoffResult::Failure(
         RuntimeAssetWorldObjectRestoreHandoffStatus::AdapterBuildFailed,
@@ -177,12 +192,31 @@ RuntimeAssetWorldObjectRestoreHandoffResult RuntimeAssetWorldObjectRestoreHandof
     snapshot_.last_adapter_status = RuntimeAssetWorldObjectAdapterStatus::Success;
     snapshot_.last_gate_status = gate_status;
     snapshot_.last_proof_status = proof_status;
+    snapshot_.last_assembly_status = WorldSceneAssemblyStatus::Success;
     snapshot_.last_restore_status = WorldSceneObjectTransformRestoreStatus::Success;
     return RuntimeAssetWorldObjectRestoreHandoffResult::Failure(
         RuntimeAssetWorldObjectRestoreHandoffStatus::GateFailed,
         RuntimeAssetWorldObjectAdapterStatus::Success,
         gate_status,
         proof_status);
+}
+
+RuntimeAssetWorldObjectRestoreHandoffResult RuntimeAssetWorldObjectRestoreHandoffBridge::RecordAssemblyFailure(
+    WorldSceneAssemblyStatus assembly_status) {
+    ++snapshot_.failed_operation_count;
+    snapshot_.last_status = RuntimeAssetWorldObjectRestoreHandoffStatus::RestoreFailed;
+    snapshot_.last_adapter_status = RuntimeAssetWorldObjectAdapterStatus::Success;
+    snapshot_.last_gate_status = WorldSceneActiveRestoreGateStatus::Success;
+    snapshot_.last_proof_status = WorldSceneApplyTimeRestoreProofStatus::Success;
+    snapshot_.last_assembly_status = assembly_status;
+    snapshot_.last_restore_status = WorldSceneObjectTransformRestoreStatus::Success;
+    return RuntimeAssetWorldObjectRestoreHandoffResult::Failure(
+        RuntimeAssetWorldObjectRestoreHandoffStatus::RestoreFailed,
+        RuntimeAssetWorldObjectAdapterStatus::Success,
+        WorldSceneActiveRestoreGateStatus::Success,
+        WorldSceneApplyTimeRestoreProofStatus::Success,
+        assembly_status,
+        WorldSceneObjectTransformRestoreStatus::Success);
 }
 
 RuntimeAssetWorldObjectRestoreHandoffResult RuntimeAssetWorldObjectRestoreHandoffBridge::RecordRestoreFailure(
@@ -192,12 +226,14 @@ RuntimeAssetWorldObjectRestoreHandoffResult RuntimeAssetWorldObjectRestoreHandof
     snapshot_.last_adapter_status = RuntimeAssetWorldObjectAdapterStatus::Success;
     snapshot_.last_gate_status = WorldSceneActiveRestoreGateStatus::Success;
     snapshot_.last_proof_status = WorldSceneApplyTimeRestoreProofStatus::Success;
+    snapshot_.last_assembly_status = WorldSceneAssemblyStatus::Success;
     snapshot_.last_restore_status = restore_status;
     return RuntimeAssetWorldObjectRestoreHandoffResult::Failure(
         RuntimeAssetWorldObjectRestoreHandoffStatus::RestoreFailed,
         RuntimeAssetWorldObjectAdapterStatus::Success,
         WorldSceneActiveRestoreGateStatus::Success,
         WorldSceneApplyTimeRestoreProofStatus::Success,
+        WorldSceneAssemblyStatus::Success,
         restore_status);
 }
 
@@ -213,6 +249,7 @@ RuntimeAssetWorldObjectRestoreHandoffResult RuntimeAssetWorldObjectRestoreHandof
     snapshot_.last_adapter_status = RuntimeAssetWorldObjectAdapterStatus::Success;
     snapshot_.last_gate_status = WorldSceneActiveRestoreGateStatus::Success;
     snapshot_.last_proof_status = WorldSceneApplyTimeRestoreProofStatus::Success;
+    snapshot_.last_assembly_status = WorldSceneAssemblyStatus::Success;
     snapshot_.last_restore_status = WorldSceneObjectTransformRestoreStatus::Success;
     return RuntimeAssetWorldObjectRestoreHandoffResult::Success(state);
 }

@@ -8,6 +8,7 @@
 #include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectRestoreHandoffStatus.h"
 #include "YuEngine/World/WorldSceneActiveRestoreGateStatus.h"
 #include "YuEngine/World/WorldSceneApplyTimeRestoreProofStatus.h"
+#include "YuEngine/World/WorldSceneAssemblyStatus.h"
 #include "YuEngine/World/WorldSceneObjectTransformRestoreStatus.h"
 
 namespace yuengine::runtimeassetworldadapter {
@@ -20,6 +21,8 @@ struct RuntimeAssetWorldObjectRestoreHandoffResult final {
         yuengine::world::WorldSceneActiveRestoreGateStatus::Success;
     yuengine::world::WorldSceneApplyTimeRestoreProofStatus proof_status =
         yuengine::world::WorldSceneApplyTimeRestoreProofStatus::Success;
+    yuengine::world::WorldSceneAssemblyStatus assembly_status =
+        yuengine::world::WorldSceneAssemblyStatus::Success;
     yuengine::world::WorldSceneObjectTransformRestoreStatus restore_status =
         yuengine::world::WorldSceneObjectTransformRestoreStatus::Success;
     RuntimeAssetWorldObjectRestoreHandoffState state{};
@@ -38,6 +41,7 @@ struct RuntimeAssetWorldObjectRestoreHandoffResult final {
      * @param adapter_status Adapter build 状态。
      * @param gate_status World active gate 状态。
      * @param proof_status World proof 状态。
+     * @param assembly_status World assembly 状态。
      * @param restore_status World restore 状态。
      * @return 失败结果。
      */
@@ -49,6 +53,8 @@ struct RuntimeAssetWorldObjectRestoreHandoffResult final {
             yuengine::world::WorldSceneActiveRestoreGateStatus::Success,
         yuengine::world::WorldSceneApplyTimeRestoreProofStatus proof_status=
             yuengine::world::WorldSceneApplyTimeRestoreProofStatus::Success,
+        yuengine::world::WorldSceneAssemblyStatus assembly_status=
+            yuengine::world::WorldSceneAssemblyStatus::Success,
         yuengine::world::WorldSceneObjectTransformRestoreStatus restore_status=
             yuengine::world::WorldSceneObjectTransformRestoreStatus::Success);
 

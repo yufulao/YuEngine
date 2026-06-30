@@ -10,6 +10,7 @@
 #include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectRestoreHandoffStatus.h"
 #include "YuEngine/World/WorldSceneActiveRestoreGateStatus.h"
 #include "YuEngine/World/WorldSceneApplyTimeRestoreProofStatus.h"
+#include "YuEngine/World/WorldSceneAssemblyStatus.h"
 #include "YuEngine/World/WorldSceneObjectTransformRestoreStatus.h"
 
 namespace yuengine::runtimeassetworldadapter {
@@ -33,6 +34,8 @@ struct RuntimeAssetWorldObjectRestoreHandoffSnapshot final {
         yuengine::world::WorldSceneActiveRestoreGateStatus::Success;
     yuengine::world::WorldSceneApplyTimeRestoreProofStatus last_proof_status =
         yuengine::world::WorldSceneApplyTimeRestoreProofStatus::Success;
+    yuengine::world::WorldSceneAssemblyStatus last_assembly_status =
+        yuengine::world::WorldSceneAssemblyStatus::Success;
     yuengine::world::WorldSceneObjectTransformRestoreStatus last_restore_status =
         yuengine::world::WorldSceneObjectTransformRestoreStatus::Success;
 };

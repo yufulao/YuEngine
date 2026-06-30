@@ -42,8 +42,11 @@
 #include "YuEngine/World/WorldSceneActiveRestoreGateStatus.h"
 #include "YuEngine/World/WorldSceneApplyTimeRestoreProofRecord.h"
 #include "YuEngine/World/WorldSceneApplyTimeRestoreProofSliceRecord.h"
+#include "YuEngine/World/WorldSceneAssemblyBridgeDesc.h"
+#include "YuEngine/World/WorldSceneAssemblyStatus.h"
 #include "YuEngine/World/WorldSceneDecodedRestorePlanRecord.h"
 #include "YuEngine/World/WorldSceneObjectTransformRestoreIdentityRecord.h"
+#include "YuEngine/World/WorldSceneObjectTransformRestoreStatus.h"
 #include "YuEngine/World/WorldSceneObjectTransformRestoreTransformRecord.h"
 #include "YuEngine/World/WorldTransformBridge.h"
 #include "YuEngine/World/WorldTransformResult.h"
@@ -93,8 +96,11 @@ using yuengine::world::WorldSceneActiveRestoreGateStatus;
 using yuengine::world::WorldSceneApplyTimeRestoreProofFamily;
 using yuengine::world::WorldSceneApplyTimeRestoreProofRecord;
 using yuengine::world::WorldSceneApplyTimeRestoreProofSliceRecord;
+using yuengine::world::WorldSceneAssemblyBridgeDesc;
+using yuengine::world::WorldSceneAssemblyStatus;
 using yuengine::world::WorldSceneDecodedRestorePlanRecord;
 using yuengine::world::WorldSceneObjectTransformRestoreIdentityRecord;
+using yuengine::world::WorldSceneObjectTransformRestoreStatus;
 using yuengine::world::WorldSceneObjectTransformRestoreTransformRecord;
 using yuengine::world::WorldTransformBridge;
 using yuengine::world::WorldTransformResult;
@@ -114,6 +120,8 @@ constexpr const char *TEST_APPLY_ATTACHMENT_BINDING_GATE_RECORDS =
     "RuntimeAssetWorldObjectRestoreHandoff_CarriesAttachmentAndBindingGateRecordsForTargetAliases";
 constexpr const char *TEST_APPLY_SIDECAR_ASSEMBLY_RESTORE =
     "RuntimeAssetWorldObjectRestoreHandoff_RestoresAttachmentAndBindingSidecarsThroughWorldAssembly";
+constexpr const char *TEST_REJECT_SIDECAR_ASSEMBLY_FAILURE_STATUS =
+    "RuntimeAssetWorldObjectRestoreHandoff_ExposesSidecarAssemblyFailureStatus";
 constexpr const char *TEST_REJECT_ADAPTER_PREFLIGHT =
     "RuntimeAssetWorldObjectRestoreHandoff_RejectsAdapterPreflightWithoutWorldMutation";
 constexpr const char *TEST_REJECT_WORLD_GATE =
@@ -1120,6 +1128,125 @@ int TestApplySidecarAssemblyRestore() {
     return 0;
 }
 
+int TestRejectSidecarAssemblyFailureStatus() {
+    HandoffFixture fixture = MakeFixture();
+    fixture.mappings[0U].target_kind = RuntimeAssetTargetIdentityKind::ModelNode;
+    fixture.mappings[1U].target_kind = RuntimeAssetTargetIdentityKind::SkeletonJoint;
+
+    WorldInstance world = MakeWorld();
+    ObjectRegistry object_registry = MakeObjectRegistry();
+    if (PrepareWorldAndObjects(&world, &object_registry, &fixture, true) != 0) {
+        return 1;
+    }
+
+    ResourceRegistry resource_registry{};
+    ResourceHandle texture_handle{};
+    ResourceHandle material_handle{};
+    if (PrepareSidecarInputs(&fixture, &resource_registry, &texture_handle, &material_handle) != 0) {
+        return 1;
+    }
+
+    WorldObjectIdentityBridge identity_destination(world, object_registry);
+    WorldTransformBridge transform_destination(world);
+    WorldComponentAttachmentBridge attachment_destination{};
+    WorldComponentResourceBindingBridge binding_destination{};
+    const WorldObjectIdentitySnapshot identity_before = identity_destination.Snapshot();
+    const WorldTransformSnapshot transform_before = transform_destination.Snapshot();
+    const auto attachment_before = attachment_destination.Snapshot();
+    const auto binding_before = binding_destination.Snapshot();
+
+    RuntimeAssetWorldObjectAdapterRequest adapter_request = MakeAdapterRequest(&fixture);
+    RuntimeAssetWorldObjectRestoreHandoffRequest handoff_request = MakeHandoffRequest(
+        &fixture,
+        &adapter_request,
+        &world,
+        &object_registry,
+        &resource_registry,
+        &identity_destination,
+        &transform_destination,
+        &attachment_destination,
+        &binding_destination);
+    handoff_request.input_attachment_count = SIDECAR_RECORD_COUNT;
+    handoff_request.input_binding_count = SIDECAR_RECORD_COUNT;
+
+    WorldSceneAssemblyBridgeDesc assembly_desc{};
+    assembly_desc.attachment_capacity = 0U;
+    RuntimeAssetWorldObjectRestoreHandoffBridge bridge(assembly_desc);
+    const RuntimeAssetWorldObjectRestoreHandoffResult result = bridge.ApplyRestore(handoff_request);
+    if (result.status != RuntimeAssetWorldObjectRestoreHandoffStatus::RestoreFailed) {
+        return Fail("sidecar assembly failure returned wrong handoff status");
+    }
+
+    if (result.assembly_status != WorldSceneAssemblyStatus::InvalidBridgeCapacity) {
+        return Fail("sidecar assembly failure did not expose assembly status");
+    }
+
+    if (result.state.assembly_status != WorldSceneAssemblyStatus::InvalidBridgeCapacity) {
+        return Fail("sidecar assembly failure did not write state assembly status");
+    }
+
+    if (result.restore_status != WorldSceneObjectTransformRestoreStatus::Success) {
+        return Fail("sidecar assembly failure wrote wrong transform restore status");
+    }
+
+    if (result.gate_status != WorldSceneActiveRestoreGateStatus::Success) {
+        return Fail("sidecar assembly failure did not pass active gate first");
+    }
+
+    if (!ObjectIdentitySnapshotsMatch(identity_before, identity_destination.Snapshot())) {
+        return Fail("sidecar assembly failure mutated identity destination");
+    }
+
+    if (!TransformSnapshotsMatch(transform_before, transform_destination.Snapshot())) {
+        return Fail("sidecar assembly failure mutated transform destination");
+    }
+
+    const auto attachment_after = attachment_destination.Snapshot();
+    if (attachment_after.active_attachment_count != attachment_before.active_attachment_count) {
+        return Fail("sidecar assembly failure mutated attachment destination");
+    }
+
+    if (attachment_after.last_status != attachment_before.last_status) {
+        return Fail("sidecar assembly failure touched attachment status");
+    }
+
+    const auto binding_after = binding_destination.Snapshot();
+    if (binding_after.active_binding_count != binding_before.active_binding_count) {
+        return Fail("sidecar assembly failure mutated binding destination");
+    }
+
+    if (binding_after.acquired_binding_count != binding_before.acquired_binding_count) {
+        return Fail("sidecar assembly failure acquired binding resource");
+    }
+
+    if (binding_after.last_status != binding_before.last_status) {
+        return Fail("sidecar assembly failure touched binding status");
+    }
+
+    const RuntimeAssetWorldObjectRestoreHandoffSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.failed_operation_count != 1U) {
+        return Fail("sidecar assembly failure snapshot failure count mismatch");
+    }
+
+    if (snapshot.rejected_operation_count != 0U) {
+        return Fail("sidecar assembly failure snapshot rejection mismatch");
+    }
+
+    if (snapshot.last_status != RuntimeAssetWorldObjectRestoreHandoffStatus::RestoreFailed) {
+        return Fail("sidecar assembly failure snapshot handoff status mismatch");
+    }
+
+    if (snapshot.last_assembly_status != WorldSceneAssemblyStatus::InvalidBridgeCapacity) {
+        return Fail("sidecar assembly failure snapshot assembly status mismatch");
+    }
+
+    if (snapshot.last_restore_status != WorldSceneObjectTransformRestoreStatus::Success) {
+        return Fail("sidecar assembly failure snapshot restore status mismatch");
+    }
+
+    return 0;
+}
+
 int TestRejectAdapterPreflight() {
     HandoffFixture fixture = MakeFixture();
     fixture.mappings[0U].target_kind = RuntimeAssetTargetIdentityKind::Unknown;
@@ -1273,11 +1400,12 @@ int TestRejectNullAdapterRequest() {
 }
 
 int RunTest(std::string_view test_name) {
-    constexpr std::array<TestCase, 7U> TESTS{{
+    constexpr std::array<TestCase, 8U> TESTS{{
         {TEST_APPLY_RESTORE, TestApplyRestore},
         {TEST_APPLY_TARGET_FAMILY_ALIASES, TestApplyTargetFamilyAliases},
         {TEST_APPLY_ATTACHMENT_BINDING_GATE_RECORDS, TestApplyAttachmentAndBindingGateRecords},
         {TEST_APPLY_SIDECAR_ASSEMBLY_RESTORE, TestApplySidecarAssemblyRestore},
+        {TEST_REJECT_SIDECAR_ASSEMBLY_FAILURE_STATUS, TestRejectSidecarAssemblyFailureStatus},
         {TEST_REJECT_ADAPTER_PREFLIGHT, TestRejectAdapterPreflight},
         {TEST_REJECT_WORLD_GATE, TestRejectWorldGate},
         {TEST_REJECT_NULL_ADAPTER, TestRejectNullAdapterRequest},
