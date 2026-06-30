@@ -2,7 +2,7 @@
 
 Status: canonical documentation handoff
 Owner: Architect
-Last major planning sync: `origin/main@a4a520ffbdb1049dd4674330854033c61c91d6bb`
+Last major planning sync: `origin/main@50ff335fe1ddfea77a72ce20f770baa3028df4a2`
 
 ## 1. Read This First
 
@@ -64,7 +64,8 @@ At the latest handoff:
   returned `1167 / ERROR_DEVICE_NOT_CONNECTED` until DualSenseX exposed an
   XInput controller;
 - the current repo baseline is clean:
-  `HEAD == origin/main == a4a520ffbdb1049dd4674330854033c61c91d6bb`;
+  `HEAD == origin/main == 50ff335fe1ddfea77a72ce20f770baa3028df4a2`
+  after RuntimeAsset/Streaming/RHI/ResourceUpload spine follow-through;
 - active workspace tasks, timers, and coordinator goals were empty at the final
   L0/L1 handoff;
 - the next mainline is RuntimeAsset production spine continuation, starting from
@@ -119,7 +120,9 @@ At the latest handoff:
   discovery/execution `12/12` PASS, exact RuntimeInstanceMapping rows `5/5`
   PASS, commit-level diff/hygiene/boundary PASS, read-only QA with clean final
   repo, and no broad/full CTest;
-- WorldObject-facing runtime instance mapping remains unopened;
+- direct WorldObject/editor object binding remains unopened; the later
+  `e2e8c3c` and `1658639` commits are RuntimeAssetWorldAdapter bridge/handoff
+  implementation evidence only and do not authorize editor/gameplay binding;
 - the human lead has resumed execution and requires continuous multi-agent
   coordination until the active accepted goal's stop condition is actually met;
 - RTSPINE-008A docs/spec is PASS at
@@ -166,6 +169,23 @@ At the latest handoff:
   `19/19` PASS, committed scope limited to `CMakeLists.txt`,
   `RuntimeAssetData.h/.cpp`, and `RuntimeAssetDataClosedLoopTests.cpp`,
   `git diff --check` PASS, and no broad/full CTest;
+- post-008H RuntimeAsset production-spine follow-through is represented at
+  current HEAD `50ff335fe1ddfea77a72ce20f770baa3028df4a2`: `7c41265`
+  RTSPINE-008I package archive range to RuntimeAsset Resource payload window
+  handoff, `e2e8c3c`/`1658639` RuntimeAssetWorldAdapter bridge/handoff,
+  `0d2021c` Streaming U64 staging window contract, `bc6d0ee` Resource U64
+  payload-window follow-through, `2c93ddf` RuntimeAsset payload logical count
+  propagation, `6ac7ff9` Streaming Resource cache payload bridge, `08b1ccd`
+  Package payload metadata producer, `35a84c3` legacy artifact compatibility
+  fix, `50a654e` Streaming pipeline cache payload consumer, `baae22d`
+  rejection/no-mutation coverage fix, `e5cd6ee` Package-to-Streaming artifact
+  fixture, `10f7b30` RuntimeAssetData package payload-window consumer,
+  `c3cf022` RHI update destination range contract, and `50ff335`
+  ResourceUpload destination range consumer;
+- the commits above are canonical HEAD implementation/focused-evidence records;
+  only the lanes with recorded COMPLETE-PASS VQ in workspace should be cited as
+  VQ-closed, and later gates must still run their own scoped VQ before they are
+  treated as stage-close proof;
 - L0-RES-001 File/VFS loose read/write policy closure is PASS at
   `43cfc18fec4c4c5a5135e4ed15da64c8308247ff`; focused QA task
   `5020f3d6-a492-4138-b81f-c5e80cdd92e2` reports test-only
@@ -318,8 +338,11 @@ At the latest handoff:
   L1 ASCENE rows, L1-SAMPLE-007, adjacent/full suites, broad/full CTest, and
   Render/RHI/World/UI/material/shader/scene/importer/package expansion remain
   separate;
-- WorldObject-facing runtime instance mapping and broader Resource/File/VFS
-  follow-through remain blocked until their own gates are released.
+- direct WorldObject/editor binding and broad Resource/File/VFS expansion remain
+  blocked until their own gates are released; the current HEAD only opens the
+  narrow RuntimeAssetWorldAdapter, Resource/Streaming payload-window, RHI
+  destination-range, and ResourceUpload destination-range evidence chain listed
+  above.
 
 Live workspace state is still authoritative for task ownership and current
 status. This file records the handoff baseline, not a replacement for the task
@@ -340,7 +363,9 @@ RuntimeAsset container and family identity
 -> animation track/channel binding to target plus property
 -> Step/Linear interpolation
 -> sampled transform application to runtime instance records
--> WorldObject-facing mapping or broader Resource/File/VFS follow-through only
+-> RuntimeAssetWorldAdapter bridge/handoff and Resource/Streaming payload-window
+   follow-through as narrow evidence already landed through `50ff335`
+-> direct WorldObject/editor binding or broader Resource/File/VFS expansion only
    after their own gates are released
 -> editor/importer authoring surfaces after runtime contracts pass
 ```

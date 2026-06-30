@@ -6,10 +6,13 @@ Current decision: `RUNTIME_ASSET_DATA_CLOSED_LOOP_CURRENT_SLICE_PASS`
 Owner: Architecture
 Task: #73 baseline; #50 RAV1 production contract amendment
 Related plan: `docs/YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md`
-Latest RuntimeAsset spine evidence: RTSPINE-004 implementation
+Latest RuntimeAsset spine evidence: current `origin/main` HEAD
+`50ff335fe1ddfea77a72ce20f770baa3028df4a2` records the post-008H
+RuntimeAsset/Streaming/RHI/ResourceUpload payload-window and destination-range
+implementation ledger. Earlier RTSPINE-004 implementation
 `ebe9ea35f531aa40133262b701e5e751f8ed9ccf` plus focused QA workspace task
-`2e2d5a4e-0bb0-4cf4-bd1b-ab3a87987b7f` is COMPLETE-PASS; RTSPINE-004 VQ is
-pending this docs sync.
+`2e2d5a4e-0bb0-4cf4-bd1b-ab3a87987b7f` remains COMPLETE-PASS; later lanes
+should cite their own workspace VQ before being called VQ-closed.
 Production-gap closure: `docs/YUENGINE_RUNTIME_ASSET_V0_PRODUCTION_GAP_CLOSURE_PLAN.md`
 Format policy and validator vocabulary: `docs/YUENGINE_RUNTIME_ASSET_V0_FORMAT_POLICY_AND_VALIDATOR_VOCABULARY.md`
 Loader transaction plan: `docs/YUENGINE_RUNTIME_ASSET_V0_LOADER_TRANSACTION_PLAN.md`
@@ -46,7 +49,11 @@ typed validators, path-independent family detection, shader/program bytecode to
 RHI pipeline, decoded texture payload to material slots, disk animation
 sampling, deterministic scene loader output, scene loader no-mutation failures,
 package load-plan consumption, and file-backed package artifact product-run
-command smoke.
+command smoke. Current HEAD also records a canonical implementation ledger for
+Package payload metadata, RuntimeAsset Resource payload-window handoff,
+Resource/Streaming cache payload propagation, RuntimeAssetData package
+payload-window consumption, RHI update destination range, and ResourceUpload
+destination range.
 
 The earlier Phase A docs-only decision has been superseded by implementation
 evidence. Future work must still be separately scoped when it moves beyond the
@@ -131,7 +138,11 @@ This gate does not own:
   screenshots, reports, logs, sleeps, manual visual inspection, or generated
   artifacts as final acceptance;
 - widening lower modules so File, Resource, RHI, RenderCore, or RenderScene own
-  each other's lifecycle.
+  each other's lifecycle;
+- treating RuntimeAssetWorldAdapter bridge/handoff, Resource/Streaming
+  payload-window propagation, RHI destination range, or ResourceUpload
+  destination range as direct WorldObject/editor binding or broad Resource/File
+  ownership expansion.
 
 ## Data Contract Requirements
 
@@ -458,6 +469,11 @@ Accepted proof:
 - device-backed D3D11 cooked RuntimeAsset visual route evidence when target
   hardware is available, with unsupported target machines reported through the
   configured hardware-smoke skip/status path rather than silent success.
+- post-008H implementation evidence through `50ff335` for RuntimeAsset
+  payload-window propagation, Package payload metadata production,
+  RuntimeAssetData package payload-window consumption, RHI destination range, and
+  ResourceUpload destination range, with VQ status taken from each scoped
+  workspace result.
 
 Rejected proof:
 

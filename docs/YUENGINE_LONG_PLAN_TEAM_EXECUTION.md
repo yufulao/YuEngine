@@ -3,7 +3,7 @@
 Status: active commercial-engine execution plan
 Owner: Architect, lead engineer
 Started: 2026-06-11
-Current planning checkpoint: `origin/main@a4a520ffbdb1049dd4674330854033c61c91d6bb`
+Current planning checkpoint: `origin/main@50ff335fe1ddfea77a72ce20f770baa3028df4a2`
 Reference product target: `C:\Steam\steamapps\common\TouhouNewWorld`
 Canonical entry point: `docs/README.md`
 
@@ -225,6 +225,9 @@ Current mainline has meaningful lower-engine and RuntimeAsset evidence:
 - RuntimeAsset has disk-backed closed-loop evidence through File/VFS/Resource,
   validators, RenderScene, RenderCore, RHI, package/product run ledgers, shader
   reflection hardening, and scene-animation selected-clip proof.
+- RuntimeAsset/Streaming/RHI HEAD evidence now also includes the post-008H
+  payload-window and destination-range chain through
+  `origin/main@50ff335fe1ddfea77a72ce20f770baa3028df4a2`.
 - Scene-animation implementation and QA are complete at
   `f211f7f95299388987ccef00b4d1e8ee6f7bf0c1`.
 - Docs evidence sync is complete at
@@ -289,7 +292,8 @@ editor object, scene instance, raw pointer, display name, or file path.
 | RTSPINE-005 | Minimal interpolation contract | PASS at `origin/main@2bfe7e37d36ca711dd706728f21b1e4caecfd3db` with focused QA at `origin/main@d18f1679ebd389ecec506055764602591f5b9ab6`: Step and Linear scalar/vector/transform sampling pass fixed-time tests with no hidden global time; unsupported interpolation and sample output capacity fail without mutation |
 | RTSPINE-006 | Invalid target failure contract | PASS at `origin/main@96e0c024435f670c39ced019ff825b819a6830a3`; target-family mismatch and sample failure diagnostics fail without output mutation, and focused QA task `6d02c260-936a-456b-917b-5c2802bbb666` reports focused RuntimeAsset regex `8/8` PASS plus exact new rows `2/2` PASS without broad/full CTest |
 | RTSPINE-007 | Runtime instance mapping contract | PASS at `origin/main@37a112549190ac2123abcd72b5c688cdfa5b01e5`: asset target records map to caller-owned runtime instance rows for scene entities before any WorldObject/editor binding; focused QA task `6b6baf5f-2381-4b9c-89b1-4411fba53d23` reports exact RuntimeInstanceMapping rows `5/5` PASS without broad/full CTest |
-| RTSPINE-008 | Package/resource index pressure gate | 008A spec, 008B byte-range/index, 008C Package hash/dependency integrity, 008D File/VFS ranged IO, 008E Resource payload window/reference budget, 008F Package dependency closure/budgeted load plan, 008G RuntimeAsset packaged validation bridge, and 008H RuntimeAsset transaction rollback/proof are PASS; next separate gates cover broader Resource/File/VFS follow-through |
+| RTSPINE-008 | Package/resource index pressure gate | 008A spec, 008B byte-range/index, 008C Package hash/dependency integrity, 008D File/VFS ranged IO, 008E Resource payload window/reference budget, 008F Package dependency closure/budgeted load plan, 008G RuntimeAsset packaged validation bridge, 008H RuntimeAsset transaction rollback/proof, and 008I Package archive range to RuntimeAsset Resource payload-window handoff are represented in current HEAD evidence; cite VQ-closed status only for lanes with workspace COMPLETE-PASS VQ |
+| RTSPINE-009 | Payload-window and destination-range follow-through ledger | Current HEAD `50ff335` records `e2e8c3c`/`1658639` RuntimeAssetWorldAdapter bridge/handoff, `0d2021c` Streaming U64 staging, `bc6d0ee` Resource U64 payload window, `2c93ddf` RuntimeAsset payload logical count, `6ac7ff9` Streaming cache payload bridge, `08b1ccd`/`35a84c3` Package payload metadata and legacy compatibility, `50a654e`/`baae22d` Streaming pipeline cache payload consumer plus rejection/no-mutation coverage, `e5cd6ee` Package-to-Streaming artifact fixture, `10f7b30` RuntimeAssetData package payload-window consumer, `c3cf022` RHI update destination range contract, and `50ff335` ResourceUpload destination range consumer; this is implementation/focused evidence unless a scoped VQ says COMPLETE-PASS |
 
 ### 5.4 Forbidden Work In This Stage
 
@@ -299,11 +303,12 @@ editor object, scene instance, raw pointer, display name, or file path.
 - no WorldObject direct binding inside asset files;
 - no old TouhouNewWorld package parser as L0/L1 proof;
 - no broad shader/material work as a substitute for target identity;
-- no WorldObject-facing mapping beyond RTSPINE-007 caller-owned scene-entity
-  rows before its own evidence gate is released;
-- no broader Resource/File/VFS follow-through, WorldObject/editor expansion, or
-  RuntimeAsset packaged validation expansion beyond the RTSPINE-008H
-  transaction rollback/proof evidence before its own gate is released.
+- no direct WorldObject/editor binding beyond caller-owned scene-entity rows and
+  the narrow RuntimeAssetWorldAdapter bridge/handoff evidence before its own
+  evidence gate is released;
+- no broader Resource/File/VFS expansion beyond the narrow Resource/Streaming
+  payload-window and destination-range follow-through already represented at
+  `50ff335` before its own gate is released.
 
 ## 6. Team Execution Model
 
@@ -400,6 +405,7 @@ Package -> Resource -> RuntimeAsset -> Runtime records -> World/Scene instance
 mapping -> Render/Audio/Input/Save -> Tools -> Shipping
 ```
 
-The next correct move is not feature breadth. The next correct move is to close
-the current evidence gate and then harden the RuntimeAsset production spine,
-starting with asset-internal target identity before deeper animation work.
+The next correct move is not feature breadth. The current RuntimeAsset
+production spine is evidence-rich through `50ff335`, but next implementation
+must wait for the canonical docs/VQ boundary to name the next scoped gate rather
+than reopening broad WorldObject, Resource/File/VFS, editor, or gameplay work.

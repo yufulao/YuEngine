@@ -435,6 +435,8 @@ C++ in-memory construction alone.
 | Package/product generic submission ledger | PASS | `RuntimeAssetData_PackageRunEmitsGenericRenderSceneSubmissionLedger`, `RuntimeAssetData_ProductRunCommandReportsGenericRenderSceneSubmissionLedger`, and `RuntimeAssetData_PackageRunRejectsGenericSubmissionCapacityWithoutMutation` prove packaged and product-run entrypoints expose generic RenderScene submission ledgers and reject undersized output capacity without mutating frame/material outputs |
 | RuntimeAsset packaged validation bridge | PASS | `origin/main@175b6542cf8460b279d1de8a5499e2cbd508c80a` adds archive byte-range/hash and payload hash validation before graph-load mutation; `RuntimeAssetData_PackagedValidationBridgeConsumesArchiveByteRangesAndHashes`, archive byte-count mismatch, payload hash mismatch, duplicate load-plan record, and ProductRun packaged validation failure rows are covered by focused QA task `35fdc7a2-c09d-416a-95aa-b4aabdb05d0f`, which reports focused build PASS, exact RTSPINE-008G rows `5/5` PASS, adjacent packaged/product rows `8/8` PASS, `git diff --check` PASS, exact committed scope, and no broad/full CTest |
 | RuntimeAsset transaction rollback/proof | PASS | `origin/main@1120c3659bf0375f8eb9ef87e042f24c6e5d3ca1` adds rollback journals, rollback status/proof fields, and commit-failure rollback of previously committed RuntimeAsset records plus Resource/Asset snapshots; `RuntimeAssetData_LoaderCommitFailureRollsBackCommittedRecords` is covered by focused QA task `1ec65e79-70f2-4fe5-8f08-6fb0ba2371fd`, which reports focused build PASS, exact row `1/1` PASS, rollback/commit/adjacent packaged/product set `19/19` PASS, `git diff --check` PASS, exact committed scope, and no broad/full CTest |
+| RuntimeAsset post-008H payload-window chain | HEAD evidence | Current `origin/main@50ff335fe1ddfea77a72ce20f770baa3028df4a2` records `7c41265` RTSPINE-008I package archive range to RuntimeAsset Resource payload-window handoff, `bc6d0ee` Resource U64 payload-window follow-through, `2c93ddf` RuntimeAsset payload logical count propagation, `6ac7ff9` Streaming Resource cache payload bridge, `08b1ccd` Package payload metadata producer, `35a84c3` legacy artifact compatibility fix, `50a654e` Streaming pipeline cache payload consumer, `baae22d` rejection/no-mutation coverage fix, `e5cd6ee` Package-to-Streaming artifact fixture, and `10f7b30` RuntimeAssetData package payload-window consumer; this row is a canonical evidence ledger and VQ status must come from each lane's workspace result |
+| RuntimeAssetWorldAdapter / destination range chain | HEAD evidence | Current `origin/main@50ff335fe1ddfea77a72ce20f770baa3028df4a2` records `e2e8c3c` RuntimeAssetWorldAdapter bridge, `1658639` RuntimeAssetWorldAdapter restore handoff, `0d2021c` Streaming U64 staging window, `c3cf022` RHI update destination range contract, and `50ff335` ResourceUpload destination range consumer; direct WorldObject/editor binding, broad Resource/File/VFS expansion, and stage-close claims still require their own scoped gate/VQ |
 | RenderCore/RHI capture | PASS | `RuntimeAssetData_RenderClosedLoop_CapturesCubeCylinderConeThroughRhi` |
 | CPU oracle guard | PASS | `RuntimeAssetData_CpuPpmOracleDoesNotBypassRhiRenderCore` |
 | Upper-layer dependency guard | PASS | `RuntimeAssetData_DoesNotDependOnEditorUiInputOrGdiViewer` |
@@ -533,8 +535,14 @@ QA are PASS at `175b6542cf8460b279d1de8a5499e2cbd508c80a`, covering packaged
 validation preflight before graph mutation and ProductRun failure reporting.
 RTSPINE-008H transaction rollback/proof implementation plus focused QA are PASS
 at `1120c3659bf0375f8eb9ef87e042f24c6e5d3ca1`, covering commit-failure
-rollback without output mutation. Do not open WorldObject-facing mapping or
-broader Resource/File/VFS follow-through until their own gates are released.
+rollback without output mutation. Current HEAD `50ff335` then records the
+post-008H RuntimeAssetWorldAdapter, Resource/Streaming payload-window,
+Package payload metadata, RuntimeAssetData payload-window consumer, RHI
+destination-range, and ResourceUpload destination-range implementation chain.
+Treat that chain as canonical implementation/focused evidence unless a workspace
+VQ result explicitly marks the individual lane COMPLETE-PASS. Direct
+WorldObject/editor binding and broader Resource/File/VFS expansion still need
+their own gates.
 Selected clip sampling remains the earlier closed slice because it only selects
 among bounded clip records and proves no-mutation failure for a missing selected
 clip.
