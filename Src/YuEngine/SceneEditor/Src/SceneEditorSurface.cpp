@@ -467,6 +467,73 @@ void FillResultMetadata(
     result->consumed_editor_sidecar = document.header.sidecar_record_count > 0U;
 }
 
+void FillSurfaceOutputRequirements(
+    const WorldSceneAuthoringDocument &document,
+    SceneEditorSurfaceResult *result) {
+    if (result == nullptr) {
+        return;
+    }
+
+    result->hierarchy_row_count = document.header.identity_record_count;
+    result->inspector_row_count = result->selected_object_count;
+}
+
+void FillTransformOutputRequirements(
+    const WorldSceneAuthoringDocument &document,
+    SceneEditorTransformCommandResult *result) {
+    if (result == nullptr) {
+        return;
+    }
+
+    result->transform_record_count = document.header.transform_record_count;
+    result->ledger_record_count = 1U;
+}
+
+void FillWorkflowOutputRequirements(
+    const WorldSceneAuthoringDocument &document,
+    SceneEditorWorkflowResult *result) {
+    if (result == nullptr) {
+        return;
+    }
+
+    FillResultMetadata(document, &result->surface);
+    FillSurfaceOutputRequirements(document, &result->surface);
+    FillTransformOutputRequirements(document, &result->transform);
+    result->workflow_ledger_count = 1U;
+}
+
+void FillGizmoResourceOutputRequirements(
+    const WorldSceneAuthoringDocument &document,
+    SceneEditorGizmoResourceSaveLoadWorkflowResult *result) {
+    if (result == nullptr) {
+        return;
+    }
+
+    result->gizmo_row_count = 1U;
+    result->resource_picker_row_count = 1U;
+    result->save_load_record_count = 1U;
+    result->loaded_identity_count = document.header.identity_record_count;
+    result->loaded_transform_count = document.header.transform_record_count;
+    result->loaded_attachment_count = document.header.attachment_record_count;
+    result->loaded_binding_count = document.header.binding_record_count;
+}
+
+void FillGizmoResourceOutputRequirements(
+    const WorldSceneAuthoringDocument &document,
+    SceneEditorGizmoResourceFilePersistenceWorkflowResult *result) {
+    if (result == nullptr) {
+        return;
+    }
+
+    result->gizmo_row_count = 1U;
+    result->resource_picker_row_count = 1U;
+    result->save_load_record_count = 1U;
+    result->loaded_identity_count = document.header.identity_record_count;
+    result->loaded_transform_count = document.header.transform_record_count;
+    result->loaded_attachment_count = document.header.attachment_record_count;
+    result->loaded_binding_count = document.header.binding_record_count;
+}
+
 std::uint32_t NextCommandSequence(
     const SceneEditorTransformLedgerRecord *history_record) {
     if (history_record == nullptr) {
@@ -917,12 +984,14 @@ SceneEditorSurfaceStatus BuildSceneEditorNativeSurface(
     FillResultMetadata(document, &result);
     if (request.hierarchy_rows.size() < document.header.identity_record_count) {
         result.status = SceneEditorSurfaceStatus::OutputCapacityExceeded;
+        FillSurfaceOutputRequirements(document, &result);
         *out_result = result;
         return result.status;
     }
 
     if (request.inspector_rows.size() < result.selected_object_count) {
         result.status = SceneEditorSurfaceStatus::OutputCapacityExceeded;
+        FillSurfaceOutputRequirements(document, &result);
         *out_result = result;
         return result.status;
     }
@@ -1124,6 +1193,10 @@ SceneEditorWorkflowStatus BuildSceneEditorUsableWorkflowSurface(
         result.blocked_layer = SceneEditorWorkflowBlockedLayer::Output;
         result.surface_status = SceneEditorSurfaceStatus::OutputCapacityExceeded;
         result.transform_status = SceneEditorTransformCommandStatus::OutputCapacityExceeded;
+        result.surface.status = SceneEditorSurfaceStatus::OutputCapacityExceeded;
+        result.transform.status = SceneEditorTransformCommandStatus::OutputCapacityExceeded;
+        result.transform.blocked_layer = SceneEditorTransformCommandBlockedLayer::Output;
+        FillWorkflowOutputRequirements(document, &result);
         *out_result = result;
         return result.status;
     }
@@ -1279,6 +1352,7 @@ SceneEditorGizmoResourceWorkflowStatus BuildSceneEditorGizmoResourceSaveLoadWork
         result.blocked_layer = SceneEditorGizmoResourceWorkflowBlockedLayer::Output;
         result.save_status = WorldSceneRecordValueStreamStatus::OutputCapacityExceeded;
         result.load_status = WorldSceneRecordValueStreamStatus::OutputCapacityExceeded;
+        FillGizmoResourceOutputRequirements(document, &result);
         *out_result = result;
         return result.status;
     }
@@ -1508,6 +1582,7 @@ SceneEditorGizmoResourceWorkflowStatus BuildSceneEditorGizmoResourceFilePersiste
         result.blocked_layer = SceneEditorGizmoResourceWorkflowBlockedLayer::Output;
         result.save_status = WorldSceneRecordValueStreamStatus::OutputCapacityExceeded;
         result.load_status = WorldSceneRecordValueStreamStatus::OutputCapacityExceeded;
+        FillGizmoResourceOutputRequirements(document, &result);
         *out_result = result;
         return result.status;
     }

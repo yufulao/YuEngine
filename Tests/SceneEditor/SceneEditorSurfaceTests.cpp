@@ -113,6 +113,8 @@ constexpr const char *TEST_WORKFLOW_UNDO_REDO =
     "SceneEditorWorkflow_UndoRedoLedgerReplay";
 constexpr const char *TEST_WORKFLOW_BLOCKED_DEPENDENCY =
     "SceneEditorWorkflow_BlockedDependencyDoesNotMutateOutputs";
+constexpr const char *TEST_WORKFLOW_OUTPUT_CAPACITY =
+    "SceneEditorWorkflow_OutputCapacityReportsRequiredCounts";
 constexpr const char *TEST_GIZMO_RESOURCE_SAVE_LOAD =
     "SceneEditorGizmoWorkflow_RendersGizmoPicksResourceAndRoundTripsSceneRecords";
 constexpr const char *TEST_GIZMO_MISSING_SIDECAR =
@@ -567,7 +569,8 @@ int SceneEditorSurfaceRejectsSmallHierarchyOutputWithoutMutation() {
         MakeRequest(&document, hierarchy_rows.data(), 1U, inspector_rows.data(), 1U, false),
         &result);
     if (status != SceneEditorSurfaceStatus::OutputCapacityExceeded ||
-        result.hierarchy_row_count != 0U ||
+        result.hierarchy_row_count != 2U ||
+        result.inspector_row_count != 0U ||
         !SentinelHierarchyUnchanged(hierarchy_rows[0U]) ||
         !SentinelInspectorUnchanged(inspector_rows[0U])) {
         return Fail("small hierarchy output was not rejected atomically");
@@ -1381,6 +1384,107 @@ int SceneEditorWorkflowBlockedDependencyDoesNotMutateOutputs() {
     return 0;
 }
 
+int SceneEditorWorkflowOutputCapacityReportsRequiredCounts() {
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 2U> identities{
+        WorldSceneObjectTransformRestoreIdentityRecord{ObjectId(1U), MakeObjectHandle(1U, 10U)},
+        WorldSceneObjectTransformRestoreIdentityRecord{ObjectId(2U), MakeObjectHandle(2U, 10U)}};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 2U> transforms{
+        WorldSceneObjectTransformRestoreTransformRecord{ObjectId(1U), Transform(10.0F)},
+        WorldSceneObjectTransformRestoreTransformRecord{ObjectId(2U), Transform(20.0F)}};
+    std::array<WorldSceneEditorSidecarRecord, 1U> sidecars{
+        SelectionSidecar(ObjectId(2U))};
+    const WorldSceneAuthoringDocument document = MakeDocument(
+        identities.data(),
+        static_cast<std::uint32_t>(identities.size()),
+        transforms.data(),
+        static_cast<std::uint32_t>(transforms.size()),
+        nullptr,
+        0U,
+        nullptr,
+        0U,
+        nullptr,
+        0U,
+        sidecars.data(),
+        static_cast<std::uint32_t>(sidecars.size()));
+
+    ResourceBrowserSurfaceSelectionState selection = ReadyResourceSelection();
+    PreviewHostViewportSessionResult session = ReadyViewportSession(1U);
+    PreviewHostEditorViewportInteractionResult interaction =
+        ReadyViewportInteraction(ObjectId(2U), 1U);
+    std::array<SceneEditorHierarchyRow, 1U> hierarchy_rows{};
+    hierarchy_rows[0U].world_object_id = ObjectId(900U);
+    hierarchy_rows[0U].object_handle = MakeObjectHandle(90U, 1U);
+    hierarchy_rows[0U].row_index = 77U;
+    std::array<SceneEditorInspectorRow, 1U> inspector_rows{};
+    inspector_rows[0U].world_object_id = ObjectId(901U);
+    inspector_rows[0U].object_handle = MakeObjectHandle(91U, 1U);
+    inspector_rows[0U].component_count = 77U;
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transform_output{
+        WorldSceneObjectTransformRestoreTransformRecord{ObjectId(990U), Transform(991.0F)}};
+    std::array<SceneEditorTransformLedgerRecord, 1U> transform_ledger{};
+    transform_ledger[0U].world_object_id = ObjectId(992U);
+    transform_ledger[0U].command_sequence = 993U;
+    std::array<SceneEditorWorkflowLedgerRecord, 1U> workflow_ledger{};
+    workflow_ledger[0U].selected_world_object_id = ObjectId(994U);
+    workflow_ledger[0U].transform_command_sequence = 995U;
+
+    SceneEditorWorkflowResult result{};
+    const SceneEditorWorkflowStatus status = BuildSceneEditorUsableWorkflowSurface(
+        MakeWorkflowRequest(
+            &document,
+            &selection,
+            &session,
+            &interaction,
+            Transform(70.0F),
+            nullptr,
+            SceneEditorTransformCommandMode::Apply,
+            std::span<SceneEditorHierarchyRow>(hierarchy_rows.data(), hierarchy_rows.size()),
+            std::span<SceneEditorInspectorRow>(inspector_rows.data(), inspector_rows.size()),
+            std::span<WorldSceneObjectTransformRestoreTransformRecord>(
+                transform_output.data(),
+                transform_output.size()),
+            std::span<SceneEditorTransformLedgerRecord>(
+                transform_ledger.data(),
+                transform_ledger.size()),
+            std::span<SceneEditorWorkflowLedgerRecord>(
+                workflow_ledger.data(),
+                workflow_ledger.size())),
+        &result);
+
+    if (status != SceneEditorWorkflowStatus::OutputCapacityExceeded ||
+        result.blocked_layer != SceneEditorWorkflowBlockedLayer::Output ||
+        result.surface_status != SceneEditorSurfaceStatus::OutputCapacityExceeded ||
+        result.transform_status != SceneEditorTransformCommandStatus::OutputCapacityExceeded ||
+        result.surface.status != SceneEditorSurfaceStatus::OutputCapacityExceeded ||
+        result.transform.status != SceneEditorTransformCommandStatus::OutputCapacityExceeded ||
+        result.surface.hierarchy_row_count != 2U ||
+        result.surface.inspector_row_count != 1U ||
+        result.surface.selected_object_count != 1U ||
+        result.transform.transform_record_count != 2U ||
+        result.transform.ledger_record_count != 1U ||
+        result.workflow_ledger_count != 1U ||
+        !result.consumed_authoring_document ||
+        result.consumed_resource_browser_selection ||
+        result.consumed_viewport_session ||
+        result.consumed_viewport_interaction ||
+        result.emitted_hierarchy_rows ||
+        result.emitted_inspector_rows ||
+        result.applied_transform_command ||
+        result.committed_workflow) {
+        return Fail("scene editor workflow capacity required counts mismatch");
+    }
+
+    if (!SentinelHierarchyUnchanged(hierarchy_rows[0U]) ||
+        !SentinelInspectorUnchanged(inspector_rows[0U]) ||
+        !SentinelTransformUnchanged(transform_output[0U]) ||
+        !SentinelLedgerUnchanged(transform_ledger[0U]) ||
+        !SentinelWorkflowLedgerUnchanged(workflow_ledger[0U])) {
+        return Fail("scene editor workflow capacity mutated outputs");
+    }
+
+    return 0;
+}
+
 int SceneEditorGizmoWorkflowRendersGizmoPicksResourceAndRoundTripsSceneRecords() {
     std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> identities{
         WorldSceneObjectTransformRestoreIdentityRecord{ObjectId(1U), MakeObjectHandle(1U, 10U)}};
@@ -1847,6 +1951,13 @@ int SceneEditorGizmoWorkflowOutputCapacityReportsSaveLoadStatus() {
         result.authoring_status != WorldSceneAuthoringDocumentStatus::Success ||
         result.save_status != WorldSceneRecordValueStreamStatus::OutputCapacityExceeded ||
         result.load_status != WorldSceneRecordValueStreamStatus::OutputCapacityExceeded ||
+        result.gizmo_row_count != 1U ||
+        result.resource_picker_row_count != 1U ||
+        result.save_load_record_count != 1U ||
+        result.loaded_identity_count != 1U ||
+        result.loaded_transform_count != 1U ||
+        result.loaded_attachment_count != 1U ||
+        result.loaded_binding_count != 1U ||
         !result.consumed_authoring_document ||
         result.consumed_resource_browser_selection ||
         result.consumed_viewport_session ||
@@ -2236,6 +2347,13 @@ int SceneEditorFilePersistenceWorkflowOutputCapacityReportsSaveLoadStatus() {
         result.authoring_status != WorldSceneAuthoringDocumentStatus::Success ||
         result.save_status != WorldSceneRecordValueStreamStatus::OutputCapacityExceeded ||
         result.load_status != WorldSceneRecordValueStreamStatus::OutputCapacityExceeded ||
+        result.gizmo_row_count != 1U ||
+        result.resource_picker_row_count != 1U ||
+        result.save_load_record_count != 1U ||
+        result.loaded_identity_count != 1U ||
+        result.loaded_transform_count != 1U ||
+        result.loaded_attachment_count != 1U ||
+        result.loaded_binding_count != 1U ||
         !result.consumed_authoring_document ||
         result.consumed_resource_browser_selection ||
         result.consumed_viewport_session ||
@@ -2324,6 +2442,10 @@ int main(int argc, char **argv) {
 
     if (test_name == TEST_WORKFLOW_BLOCKED_DEPENDENCY) {
         return SceneEditorWorkflowBlockedDependencyDoesNotMutateOutputs();
+    }
+
+    if (test_name == TEST_WORKFLOW_OUTPUT_CAPACITY) {
+        return SceneEditorWorkflowOutputCapacityReportsRequiredCounts();
     }
 
     if (test_name == TEST_GIZMO_RESOURCE_SAVE_LOAD) {
