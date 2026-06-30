@@ -146,6 +146,7 @@ target identity work.
 | RTSPINE-016 | Close RuntimeAssetData to RuntimeAssetWorldAdapter handoff fixture | VQ-closed at `origin/main@e512d3990412f90b38aee8469845c44e188dd275`; implementation task `150e051b` and VQ task `6f086b28-40e3-4574-bac5-33e587b2e91c` are COMPLETE-PASS, focused `YuRuntimeAssetWorldAdapterHandoffTests` build PASS, new `RuntimeAssetWorldObjectDataHandoff_FeedsRuntimeAssetDataOutputsIntoRestoreHandoff` row reports `1/1` PASS, RuntimeAssetWorldObject Adapter/Handoff/DataHandoff rows report `22/22` PASS, RuntimeAssetData target/mapping rows report `14/14` PASS, World active gate/object restore rows report `34/34` PASS, exact implementation scope is `CMakeLists.txt`, `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, and `RuntimeAssetWorldObjectDataHandoffFixtureTest.cpp`, and no production RuntimeAsset/RuntimeAssetWorldAdapter/World/Resource or docs/editor/GameAdapter/UI/broad File/VFS gate is opened |
 | RTSPINE-017 | Close RuntimeAssetWorldAdapter World scene record-stream handoff | VQ-closed at `origin/main@088f21eb313be7c0e6ff283af922f23ec335ee09`; implementation task `1ea59c46` and VQ task `943f29a6-8a24-4a77-8e8a-4366285890b4` are COMPLETE-PASS, focused `YuRuntimeAssetWorldAdapterHandoffTests` build PASS, new `RuntimeAssetWorldObjectRecordStreamHandoff_FeedsWorldSceneRecordStreamsIntoRestoreHandoff` row reports `1/1` PASS, RuntimeAssetWorldObject Adapter/Handoff/DataHandoff rows report `22/22` PASS, WorldScene stream/decoded-plan/proof rows report `143/143` PASS, WorldSceneActiveRestoreGate rows report `4/4` PASS, exact implementation scope is `CMakeLists.txt`, `RuntimeAssetWorldObjectRecordStreamHandoffFixtureTest.cpp`, and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, and no docs/production RuntimeAsset/RuntimeAssetWorldAdapter/World/Resource/direct WorldObject/editor/GameAdapter/UI or broader Resource/File/VFS gate is opened |
 | RTSPINE-018 | Close WorldSceneAuthoring runtime export to RuntimeAssetWorldAdapter handoff | VQ-closed at `origin/main@f8ef490493f43a97d2958d6a604e598b68f1fcab`; implementation task `c1a469a8` and VQ task `5c536c0b-7849-436b-a695-e323f8afd339` are COMPLETE-PASS, focused `YuRuntimeAssetWorldAdapterHandoffTests` build PASS, new `RuntimeAssetWorldObjectAuthoringRuntimeExportHandoff_FeedsAuthoringRuntimeExportThroughRecordStreamIntoRestoreHandoff` row reports `1/1` PASS, RuntimeAssetWorldObject handoff label set reports `24/24` PASS, WorldSceneAuthoringDocument rows report `9/9` PASS, WorldScene stream/decoded-plan/proof rows report `143/143` PASS, WorldSceneActiveRestoreGate rows report `4/4` PASS, exact implementation scope is `CMakeLists.txt`, `RuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTest.cpp`, and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, and no docs/production RuntimeAsset/RuntimeAssetWorldAdapter/World/Resource/direct WorldObject/editor/GameAdapter/UI/gameplay or broader Resource/File/VFS gate is opened |
+| RTSPINE-019 | Close WorldSceneAuthoring attachment/binding/dependency export to RuntimeAssetWorldAdapter handoff | VQ-closed at `origin/main@318daeecef8905554bef459e998bd791eafa08bd`; implementation task `9184605b` and VQ task `97628142-20ed-4e09-ae05-be61f0226c44` are COMPLETE-PASS, focused `YuRuntimeAssetWorldAdapterHandoffTests` build PASS, new `RuntimeAssetWorldObjectAuthoringRuntimeExportHandoff_FeedsAttachmentBindingDependencyExportThroughRecordStreamIntoRestoreHandoff` row reports `1/1` PASS, authoring handoff rows report `2/2` PASS, RuntimeAssetWorldObject handoff rows report `12/12` PASS, WorldSceneAuthoringDocument rows report `9/9` PASS, WorldScene stream/plan/proof/gate rows report `88/88` PASS, exact implementation scope is `CMakeLists.txt` and `RuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTest.cpp`, dependency remains exported data only with no Resource/File/VFS loading or dependency graph traversal, and no docs/production RuntimeAsset/RuntimeAssetWorldAdapter/World/Resource/direct WorldObject/editor/GameAdapter/UI/gameplay or broader Resource/File/VFS gate is opened |
 
 ### 1.2.2 RTSPINE-008A Package/Resource Pressure Contract
 
@@ -727,31 +728,34 @@ as the now-closed tests-only gate. The committed scope is `CMakeLists.txt`,
 keep World, RuntimeAssetWorldAdapter, RuntimeAsset, Resource, direct
 WorldObject/editor/GameAdapter/UI/gameplay, and broad Resource/File/VFS readonly.
 
-The selected WorldSceneAuthoring runtime export to RuntimeAssetWorldAdapter
-handoff is now VQ-closed at
-`origin/main@f8ef490493f43a97d2958d6a604e598b68f1fcab`:
-`RTSPINE-WORLDSCENEAUTHORING-RUNTIME-EXPORT-TO-RUNTIMEASSETWORLDADAPTER-HANDOFF-U64-001`.
-Implementation task `c1a469a8` and VQ task
-`5c536c0b-7849-436b-a695-e323f8afd339` report COMPLETE-PASS. The fixture adds
-`RuntimeAssetWorldObjectAuthoringRuntimeExportHandoff_FeedsAuthoringRuntimeExportThroughRecordStreamIntoRestoreHandoff`
-and validates `WorldSceneAuthoringDocumentValidator::ValidateAndExport` runtime
-export records flowing through existing WorldScene record-stream, decoded-plan,
-proof, active-gate, and RuntimeAssetWorldAdapter restore handoff plumbing.
-Focused build `YuRuntimeAssetWorldAdapterHandoffTests` PASS, the new authoring
-handoff row passes `1/1`, RuntimeAssetWorldObject handoff label set passes
-`24/24`, WorldSceneAuthoringDocument rows pass `9/9`, WorldScene
-stream/decoded-plan/proof rows pass `143/143`, and WorldSceneActiveRestoreGate
-rows pass `4/4`. Read-only scout
-`66357e13-ff90-4442-97eb-3756be804b0f` reports COMPLETE-PASS /
-`RTSPINE-CANONICAL-DOCS-HEAD-RECONCILE-F8EF490-001-NEXT-GATE-MATRIX-READY` and
+The selected WorldSceneAuthoring attachment/binding/dependency export to
+RuntimeAssetWorldAdapter handoff is now VQ-closed at
+`origin/main@318daeecef8905554bef459e998bd791eafa08bd`:
+`RTSPINE-WORLDSCENEAUTHORING-ATTACHMENT-BINDING-DEPENDENCY-EXPORT-TO-RUNTIMEASSETWORLDADAPTER-HANDOFF-U64-001`.
+Implementation task `9184605b` and VQ task
+`97628142-20ed-4e09-ae05-be61f0226c44` report COMPLETE-PASS. The fixture adds
+`RuntimeAssetWorldObjectAuthoringRuntimeExportHandoff_FeedsAttachmentBindingDependencyExportThroughRecordStreamIntoRestoreHandoff`
+and validates `WorldSceneAuthoringDocumentValidator::ValidateAndExport`
+attachment, binding, and dependency runtime export records flowing through
+existing WorldScene record-stream, decoded-plan, proof, active-gate, and
+RuntimeAssetWorldAdapter attachment/resource-binding sidecar handoff plumbing.
+Focused build `YuRuntimeAssetWorldAdapterHandoffTests` PASS, the new sidecar
+handoff row passes `1/1`, authoring handoff rows pass `2/2`,
+RuntimeAssetWorldObject handoff rows pass `12/12`, WorldSceneAuthoringDocument
+rows pass `9/9`, and WorldScene stream/plan/proof/gate rows pass `88/88`.
+Dependency remains exported data only, not a Resource/File/VFS load or
+dependency graph traversal. Read-only scout
+`7196fcf6-597d-40fb-89b0-22b8e4570eb4` reports COMPLETE-PASS /
+`RTSPINE-CANONICAL-DOCS-HEAD-RECONCILE-318DAEE-001-NEXT-GATE-MATRIX-READY` and
 selects
-`RTSPINE-WORLDSCENEAUTHORING-ATTACHMENT-BINDING-DEPENDENCY-EXPORT-TO-RUNTIMEASSETWORLDADAPTER-HANDOFF-U64-001`
-as the next narrow tests-only bridge. Its preferred scope is `CMakeLists.txt`
-and `RuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTest.cpp`, with
-`RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp` only if row dispatch
-requires it. The gate should treat dependency as exported data, not a
-Resource/File/VFS load, while direct WorldObject/editor/GameAdapter/UI,
-gameplay, and broad Resource/File/VFS remain closed.
+`RTSPINE-WORLDSCENEAUTHORING-DEPENDENCY-EXPORT-TO-RESOURCE-EDGE-HANDOFF-U64-001`
+as the next narrow tests-only gate. Its preferred scope is `CMakeLists.txt` and
+`RuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTest.cpp`; expected
+proof uses a caller-owned dependent `ResourceHandle` plus the exported
+dependency `ResourceHandle`, preserves restore handoff as non-mutating for
+Resource dependency edges, and rejects `stable_resource_id`-only edge inference.
+Direct WorldObject/editor/GameAdapter/UI, gameplay, broad Resource/File/VFS, and
+Asset Manager dependency edges remain closed.
 
 Current Package artifact hash/dependency evidence at
 `d18f1679ebd389ecec506055764602591f5b9ab6` covers RTSPINE-008C Package-only
