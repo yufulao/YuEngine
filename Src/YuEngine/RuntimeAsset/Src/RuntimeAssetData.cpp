@@ -2229,6 +2229,50 @@ const RuntimeAssetRuntimeInstanceMappingRecord *FindRuntimeInstanceMappingRecord
     return nullptr;
 }
 
+RuntimeAssetDataStatus ResolveRuntimeInstanceMappingRecord(
+    const RuntimeAssetSceneLoaderStage &stage,
+    const RuntimeAssetTargetIdentityRecord &identity,
+    RuntimeAssetRuntimeInstanceMappingRecord *out_mapping) {
+    if (out_mapping == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    RuntimeAssetRuntimeInstanceMappingRecord mapping{};
+    mapping.target_kind = identity.kind;
+    mapping.target_id = identity.target_id;
+
+    const RuntimeAssetTargetIdentityRecord *current_identity = &identity;
+    std::span<const RuntimeAssetTargetIdentityRecord> identities(
+        stage.target_identities.data(),
+        stage.target_identity_count);
+    for (std::uint32_t depth = 0U; depth < stage.target_identity_count; ++depth) {
+        if (current_identity->kind == RuntimeAssetTargetIdentityKind::SceneNode) {
+            std::uint32_t scene_entity_index = 0U;
+            if (!FindSceneStageEntityIndexById(stage, current_identity->scene_entity_id, &scene_entity_index)) {
+                return RuntimeAssetDataStatus::MissingDependency;
+            }
+
+            mapping.scene_entity_id = current_identity->scene_entity_id;
+            mapping.scene_entity_index = scene_entity_index;
+            mapping.scene_transform_index = scene_entity_index;
+            mapping.is_valid = true;
+            *out_mapping = mapping;
+            return RuntimeAssetDataStatus::Success;
+        }
+
+        if (current_identity->parent_target_id == 0U) {
+            return RuntimeAssetDataStatus::MissingDependency;
+        }
+
+        current_identity = FindTargetIdentityRecord(identities, current_identity->parent_target_id);
+        if (current_identity == nullptr) {
+            return RuntimeAssetDataStatus::MissingDependency;
+        }
+    }
+
+    return RuntimeAssetDataStatus::InvalidDependency;
+}
+
 RuntimeAssetDataStatus BuildRuntimeInstanceMappings(RuntimeAssetSceneLoaderStage *stage) {
     if (stage == nullptr) {
         return RuntimeAssetDataStatus::InvalidArgument;
@@ -2237,19 +2281,10 @@ RuntimeAssetDataStatus BuildRuntimeInstanceMappings(RuntimeAssetSceneLoaderStage
     for (std::uint32_t index = 0U; index < stage->target_identity_count; ++index) {
         const RuntimeAssetTargetIdentityRecord &identity = stage->target_identities[index];
         RuntimeAssetRuntimeInstanceMappingRecord mapping{};
-        mapping.target_kind = identity.kind;
-        mapping.target_id = identity.target_id;
-        mapping.scene_entity_id = identity.scene_entity_id;
-
-        if (identity.kind == RuntimeAssetTargetIdentityKind::SceneNode) {
-            std::uint32_t scene_entity_index = 0U;
-            if (!FindSceneStageEntityIndexById(*stage, identity.scene_entity_id, &scene_entity_index)) {
-                return RuntimeAssetDataStatus::MissingDependency;
-            }
-
-            mapping.scene_entity_index = scene_entity_index;
-            mapping.scene_transform_index = scene_entity_index;
-            mapping.is_valid = true;
+        const RuntimeAssetDataStatus status =
+            ResolveRuntimeInstanceMappingRecord(*stage, identity, &mapping);
+        if (status != RuntimeAssetDataStatus::Success) {
+            return status;
         }
 
         stage->runtime_instance_mappings[index] = mapping;
@@ -2278,7 +2313,7 @@ RuntimeAssetDataStatus ResolveAnimationTrackTargetBinding(
         return RuntimeAssetDataStatus::MissingDependency;
     }
 
-    if (mapping->target_kind != RuntimeAssetTargetIdentityKind::SceneNode || !mapping->is_valid) {
+    if (!mapping->is_valid) {
         return RuntimeAssetDataStatus::TypeMismatch;
     }
 

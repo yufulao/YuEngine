@@ -515,9 +515,9 @@ constexpr const char *TEST_ANIMATION_TARGET_BINDING_UNSUPPORTED_PROPERTY =
 constexpr const char *TEST_ANIMATION_TARGET_BINDING_CAPACITY =
     "RuntimeAssetData_AnimationTrackTargetBindingRejectsCapacityOverflowWithoutMutation";
 constexpr const char *TEST_ANIMATION_TARGET_BINDING_TARGET_FAMILY =
-    "RuntimeAssetData_AnimationTrackTargetBindingRejectsTargetFamilyMismatchWithoutMutation";
+    "RuntimeAssetData_AnimationTrackTargetBindingResolvesModelAndSkeletonTargetFamilies";
 constexpr const char *TEST_RUNTIME_INSTANCE_MAPPING =
-    "RuntimeAssetData_RuntimeInstanceMappingBuildsSceneNodeRows";
+    "RuntimeAssetData_RuntimeInstanceMappingBuildsTargetFamilyRows";
 constexpr const char *TEST_RUNTIME_INSTANCE_MAPPING_FEEDS_TARGET_BINDING =
     "RuntimeAssetData_RuntimeInstanceMappingFeedsAnimationTargetBinding";
 constexpr const char *TEST_RUNTIME_INSTANCE_MAPPING_MISSING_ENTITY =
@@ -525,7 +525,7 @@ constexpr const char *TEST_RUNTIME_INSTANCE_MAPPING_MISSING_ENTITY =
 constexpr const char *TEST_RUNTIME_INSTANCE_MAPPING_CAPACITY =
     "RuntimeAssetData_RuntimeInstanceMappingRejectsCapacityOverflowWithoutMutation";
 constexpr const char *TEST_RUNTIME_INSTANCE_MAPPING_TARGET_FAMILY =
-    "RuntimeAssetData_RuntimeInstanceMappingRejectsUnsupportedTargetFamiliesWithoutMutation";
+    "RuntimeAssetData_RuntimeInstanceMappingResolvesModelAndSkeletonFamilies";
 constexpr const char *TEST_ANIMATION_INTERPOLATION_STEP_LINEAR =
     "RuntimeAssetData_AnimationInterpolationSamplesStepAndLinearAtFixedTime";
 constexpr const char *TEST_ANIMATION_INTERPOLATION_UNSUPPORTED =
@@ -3550,27 +3550,30 @@ bool BoundedRuntimeInstanceMappingOutputTableMatches(const BoundedLoadedGraph &g
     const RuntimeAssetRuntimeInstanceMappingRecord &model_node = graph.runtime_instance_mappings[1U];
     if (model_node.target_kind != RuntimeAssetTargetIdentityKind::ModelNode ||
         model_node.target_id != 2001U ||
-        model_node.scene_entity_id != 0U ||
-        model_node.scene_entity_index != 0U ||
-        model_node.scene_transform_index != 0U ||
-        model_node.is_valid) {
+        model_node.scene_entity_id != 1U ||
+        model_node.scene_entity_index != 2U ||
+        model_node.scene_transform_index != 2U ||
+        !model_node.is_valid) {
         return FailStep("bounded model node runtime instance mapping changed");
     }
 
     const RuntimeAssetRuntimeInstanceMappingRecord &skeleton_joint = graph.runtime_instance_mappings[2U];
     if (skeleton_joint.target_kind != RuntimeAssetTargetIdentityKind::SkeletonJoint ||
         skeleton_joint.target_id != 3001U ||
-        skeleton_joint.scene_entity_id != 0U ||
-        skeleton_joint.scene_entity_index != 0U ||
-        skeleton_joint.scene_transform_index != 0U ||
-        skeleton_joint.is_valid) {
+        skeleton_joint.scene_entity_id != 1U ||
+        skeleton_joint.scene_entity_index != 2U ||
+        skeleton_joint.scene_transform_index != 2U ||
+        !skeleton_joint.is_valid) {
         return FailStep("bounded skeleton joint runtime instance mapping changed");
     }
 
     return true;
 }
 
-bool BoundedAnimationTargetBindingOutputTableMatches(const BoundedLoadedGraph &graph) {
+bool BoundedAnimationTargetBindingOutputTableMatchesTargetIds(
+    const BoundedLoadedGraph &graph,
+    std::uint64_t rotation_target_id,
+    std::uint64_t translation_target_id) {
     if (graph.scene_output.animation_target_binding_count != 2U ||
         graph.scene_output.animation_target_binding_capacity !=
             static_cast<std::uint32_t>(graph.animation_target_bindings.size())) {
@@ -3579,7 +3582,7 @@ bool BoundedAnimationTargetBindingOutputTableMatches(const BoundedLoadedGraph &g
 
     const RuntimeAssetAnimationTrackTargetBindingRecord &rotation_binding = graph.animation_target_bindings[0U];
     if (rotation_binding.track_id != 1U ||
-        rotation_binding.target_id != 1001U ||
+        rotation_binding.target_id != rotation_target_id ||
         rotation_binding.property != RuntimeAssetAnimationTargetProperty::TransformRotationY ||
         !rotation_binding.is_valid) {
         return FailStep("bounded rotation target binding changed");
@@ -3587,7 +3590,7 @@ bool BoundedAnimationTargetBindingOutputTableMatches(const BoundedLoadedGraph &g
 
     const RuntimeAssetAnimationTrackTargetBindingRecord &translation_binding = graph.animation_target_bindings[1U];
     if (translation_binding.track_id != 2U ||
-        translation_binding.target_id != 1001U ||
+        translation_binding.target_id != translation_target_id ||
         translation_binding.property != RuntimeAssetAnimationTargetProperty::TransformTranslationY ||
         !translation_binding.is_valid) {
         return FailStep("bounded translation target binding changed");
@@ -3608,6 +3611,10 @@ bool BoundedAnimationTargetBindingOutputTableMatches(const BoundedLoadedGraph &g
     }
 
     return true;
+}
+
+bool BoundedAnimationTargetBindingOutputTableMatches(const BoundedLoadedGraph &graph) {
+    return BoundedAnimationTargetBindingOutputTableMatchesTargetIds(graph, 1001U, 1001U);
 }
 
 bool ResampleBoundedAnimationTables(
@@ -11456,7 +11463,7 @@ int RuntimeAssetDataTargetIdentityTableRejectsCapacityOverflowWithoutMutation() 
     return 0;
 }
 
-int RuntimeAssetDataRuntimeInstanceMappingBuildsSceneNodeRows() {
+int RuntimeAssetDataRuntimeInstanceMappingBuildsTargetFamilyRows() {
     MountTable table;
     if (!CreateMountedTable(TestRoot("BoundedRuntimeInstanceMapping"), &table)) {
         return Fail("mount setup failed");
@@ -11474,7 +11481,7 @@ int RuntimeAssetDataRuntimeInstanceMappingBuildsSceneNodeRows() {
     }
 
     if (!BoundedRuntimeInstanceMappingOutputTableMatches(graph)) {
-        return Fail("bounded runtime instance mapping table changed");
+        return Fail("bounded runtime instance mapping target family table changed");
     }
 
     return 0;
@@ -11549,31 +11556,25 @@ int RuntimeAssetDataRuntimeInstanceMappingRejectsCapacityOverflowWithoutMutation
     return 0;
 }
 
-int RuntimeAssetDataRuntimeInstanceMappingRejectsUnsupportedTargetFamiliesWithoutMutation() {
-    const std::string model_animation =
-        ReplaceFirst(BoundedTargetBindingAnimationBytes(), "target_id=1001", "target_id=2001");
-    if (!ProbeBoundedFailureCase(
-            "BoundedRuntimeInstanceMappingModelNoMutation",
-            BoundedSceneBytes(),
-            model_animation,
-            RuntimeAssetDataStatus::TypeMismatch,
-            3U,
-            3U,
-            3U)) {
-        return Fail("bounded runtime instance mapping model target failure mutated outputs");
+int RuntimeAssetDataRuntimeInstanceMappingResolvesModelAndSkeletonFamilies() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("BoundedRuntimeInstanceMappingTargetFamilies"), &table)) {
+        return Fail("mount setup failed");
     }
 
-    const std::string skeleton_animation =
-        ReplaceFirst(BoundedTargetBindingAnimationBytes(), "target_id=1001", "target_id=3001");
-    if (!ProbeBoundedFailureCase(
-            "BoundedRuntimeInstanceMappingSkeletonNoMutation",
-            BoundedSceneBytes(),
-            skeleton_animation,
-            RuntimeAssetDataStatus::TypeMismatch,
-            3U,
-            3U,
-            3U)) {
-        return Fail("bounded runtime instance mapping skeleton target failure mutated outputs");
+    if (!WriteBoundedFixture(table)) {
+        return Fail("bounded fixture write failed");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    BoundedLoadedGraph graph{};
+    if (!LoadBoundedRuntimeAssetRecords(table, registry, manager, &graph)) {
+        return Fail("bounded runtime instance mapping target family records failed");
+    }
+
+    if (!BoundedRuntimeInstanceMappingOutputTableMatches(graph)) {
+        return Fail("bounded runtime instance mapping target families changed");
     }
 
     return 0;
@@ -11659,29 +11660,43 @@ int RuntimeAssetDataAnimationTrackTargetBindingRejectsCapacityOverflowWithoutMut
     return 0;
 }
 
-int RuntimeAssetDataAnimationTrackTargetBindingRejectsTargetFamilyMismatchWithoutMutation() {
-    const std::string model_animation =
+int RuntimeAssetDataAnimationTrackTargetBindingResolvesModelAndSkeletonTargetFamilies() {
+    std::string animation =
         ReplaceFirst(BoundedTargetBindingAnimationBytes(), "target_id=1001", "target_id=2001");
-    if (!ProbeBoundedFailureCase(
-            "BoundedAnimationTargetBindingModelFamilyNoMutation",
-            BoundedSceneBytes(),
-            model_animation,
-            RuntimeAssetDataStatus::TypeMismatch,
-            3U,
-            3U)) {
-        return Fail("bounded model node animation target binding failure mutated outputs");
+    animation = ReplaceFirst(animation, "target_id=1001", "target_id=3001");
+
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("BoundedAnimationTargetBindingTargetFamilies"), &table)) {
+        return Fail("mount setup failed");
     }
 
-    const std::string skeleton_animation =
-        ReplaceFirst(BoundedTargetBindingAnimationBytes(), "target_id=1001", "target_id=3001");
-    if (!ProbeBoundedFailureCase(
-            "BoundedAnimationTargetBindingSkeletonFamilyNoMutation",
-            BoundedSceneBytes(),
-            skeleton_animation,
-            RuntimeAssetDataStatus::TypeMismatch,
-            3U,
-            3U)) {
-        return Fail("bounded skeleton joint animation target binding failure mutated outputs");
+    if (!WriteBoundedFixture(table)) {
+        return Fail("bounded fixture write failed");
+    }
+
+    if (!WriteBytes(table, "Animation/Spin.yuanim", BytesFromString(animation))) {
+        return Fail("bounded target family animation write failed");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    BoundedLoadedGraph graph{};
+    if (!LoadBoundedRuntimeAssetRecords(table, registry, manager, &graph)) {
+        return Fail("bounded animation target family records failed");
+    }
+
+    if (!BoundedRuntimeInstanceMappingOutputTableMatches(graph)) {
+        return Fail("bounded target family runtime instance mapping changed");
+    }
+
+    if (!BoundedAnimationTargetBindingOutputTableMatchesTargetIds(graph, 2001U, 3001U)) {
+        return Fail("bounded model skeleton target binding table changed");
+    }
+
+    if (graph.scene_output.animation_sampled_value_count != 2U ||
+        !Approx(graph.scene_entities[2U].transform.rotation_y, 0.5F) ||
+        !Approx(graph.scene_entities[2U].transform.translation_y, 2.0F)) {
+        return Fail("bounded model skeleton target binding did not update scene target");
     }
 
     return 0;
@@ -14937,7 +14952,7 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_TARGET_IDENTITY_CAPACITY_NO_MUTATION,
      RuntimeAssetDataTargetIdentityTableRejectsCapacityOverflowWithoutMutation},
     {TEST_RUNTIME_INSTANCE_MAPPING,
-     RuntimeAssetDataRuntimeInstanceMappingBuildsSceneNodeRows},
+     RuntimeAssetDataRuntimeInstanceMappingBuildsTargetFamilyRows},
     {TEST_RUNTIME_INSTANCE_MAPPING_FEEDS_TARGET_BINDING,
      RuntimeAssetDataRuntimeInstanceMappingFeedsAnimationTargetBinding},
     {TEST_RUNTIME_INSTANCE_MAPPING_MISSING_ENTITY,
@@ -14945,7 +14960,7 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_RUNTIME_INSTANCE_MAPPING_CAPACITY,
      RuntimeAssetDataRuntimeInstanceMappingRejectsCapacityOverflowWithoutMutation},
     {TEST_RUNTIME_INSTANCE_MAPPING_TARGET_FAMILY,
-     RuntimeAssetDataRuntimeInstanceMappingRejectsUnsupportedTargetFamiliesWithoutMutation},
+     RuntimeAssetDataRuntimeInstanceMappingResolvesModelAndSkeletonFamilies},
     {TEST_ANIMATION_TARGET_BINDING,
      RuntimeAssetDataAnimationTrackTargetBindingResolvesTargetIdAndProperty},
     {TEST_ANIMATION_TARGET_BINDING_MISSING_TARGET,
@@ -14955,7 +14970,7 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_ANIMATION_TARGET_BINDING_CAPACITY,
      RuntimeAssetDataAnimationTrackTargetBindingRejectsCapacityOverflowWithoutMutation},
     {TEST_ANIMATION_TARGET_BINDING_TARGET_FAMILY,
-     RuntimeAssetDataAnimationTrackTargetBindingRejectsTargetFamilyMismatchWithoutMutation},
+     RuntimeAssetDataAnimationTrackTargetBindingResolvesModelAndSkeletonTargetFamilies},
     {TEST_ANIMATION_INTERPOLATION_STEP_LINEAR,
      RuntimeAssetDataAnimationInterpolationSamplesStepAndLinearAtFixedTime},
     {TEST_ANIMATION_INTERPOLATION_UNSUPPORTED,
