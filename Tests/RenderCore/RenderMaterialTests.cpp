@@ -284,6 +284,13 @@ int RenderCoreMaterialRejectsCapacityExceeded() {
         return Fail("render material accepted capacity overflow");
     }
 
+    const auto snapshot = material.Snapshot();
+    if (result.required_material_record_count != 2U ||
+        snapshot.required_material_record_count != 2U ||
+        snapshot.material_capacity_rejected_count != 1U) {
+        return Fail("render material did not expose required material count");
+    }
+
     if (!BindingRequestMatchesSentinel(rejected_request)) {
         return Fail("render material mutated output after capacity overflow");
     }
@@ -313,7 +320,9 @@ int RenderCoreMaterialSnapshotTracksCounters() {
 
     material.Reset();
     const auto reset_snapshot = material.Snapshot();
-    if (reset_snapshot.material_record_count != 0U || reset_snapshot.accepted_material_count != 0U) {
+    if (reset_snapshot.material_record_count != 0U ||
+        reset_snapshot.accepted_material_count != 0U ||
+        reset_snapshot.required_material_record_count != 1U) {
         return Fail("render material reset did not clear counters");
     }
 

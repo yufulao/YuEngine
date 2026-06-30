@@ -141,6 +141,7 @@ RenderMaterialResult RenderMaterial::BuildBindingRequest(
         return result;
     }
 
+    result.required_material_record_count = RequiredMaterialRecordCount();
     if (!HasRecordCapacity()) {
         result.status = RenderMaterialStatus::MaterialCapacityExceeded;
         RecordRejectedMaterial(result);
@@ -160,6 +161,7 @@ void RenderMaterial::Reset() {
     records_ = {};
     snapshot_ = {};
     snapshot_.material_record_capacity = desc_.material_record_capacity;
+    snapshot_.required_material_record_count = 1U;
 }
 
 RenderMaterialStatus RenderMaterial::ValidateRequest(const RenderMaterialRequest &request) const {
@@ -217,6 +219,10 @@ bool RenderMaterial::HasRecordCapacity() const {
     return snapshot_.material_record_count < desc_.material_record_capacity;
 }
 
+std::size_t RenderMaterial::RequiredMaterialRecordCount() const {
+    return snapshot_.material_record_count + 1U;
+}
+
 bool RenderMaterial::HasMaterialId(std::uint32_t material_id) const {
     for (std::size_t index = 0U; index < snapshot_.material_record_count; ++index) {
         if (records_[index].material_id == material_id) {
@@ -270,6 +276,7 @@ void RenderMaterial::RecordAcceptedMaterial(
 
     ++snapshot_.material_record_count;
     ++snapshot_.accepted_material_count;
+    snapshot_.required_material_record_count = result->required_material_record_count;
     snapshot_.last_material_id = request.material_id;
     snapshot_.last_program_id = request.program_id;
     snapshot_.last_pass_id = request.pass_id;
@@ -283,6 +290,9 @@ void RenderMaterial::RecordRejectedMaterial(const RenderMaterialResult &result) 
     snapshot_.last_material_id = result.material_id;
     snapshot_.last_program_id = result.program_id;
     snapshot_.last_pass_id = result.pass_id;
+    if (result.required_material_record_count > 0U) {
+        snapshot_.required_material_record_count = result.required_material_record_count;
+    }
     snapshot_.last_constant_byte_count = result.constant_byte_count;
     snapshot_.last_status = result.status;
 

@@ -63,6 +63,7 @@ private:
 
     RenderMaterialStatus ValidateRequest(const RenderMaterialRequest &request) const;
     bool HasRecordCapacity() const;
+    std::size_t RequiredMaterialRecordCount() const;
     bool HasMaterialId(std::uint32_t material_id) const;
     void FillBindingRequest(
         const RenderMaterialRequest &request,

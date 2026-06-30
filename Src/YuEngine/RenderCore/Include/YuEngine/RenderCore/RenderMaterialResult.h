@@ -17,6 +17,7 @@ struct RenderMaterialResult final {
     std::uint32_t material_id = 0U;
     std::uint32_t program_id = 0U;
     std::uint32_t pass_id = 0U;
+    std::size_t required_material_record_count = 0U;
     std::size_t constant_byte_count = 0U;
 };
 }

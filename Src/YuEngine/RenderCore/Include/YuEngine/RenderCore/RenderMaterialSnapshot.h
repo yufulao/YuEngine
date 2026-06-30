@@ -15,6 +15,7 @@ namespace yuengine::rendercore {
 struct RenderMaterialSnapshot final {
     std::size_t material_record_capacity = 0U;
     std::size_t material_record_count = 0U;
+    std::size_t required_material_record_count = 0U;
     std::uint64_t accepted_material_count = 0U;
     std::uint64_t failed_validation_count = 0U;
     std::uint64_t duplicate_material_id_count = 0U;
