@@ -333,7 +333,33 @@ int RunRejectsMissingPanelLayerAndControllerTest() {
     }
 
     result = panel_map.ClosePanel(PanelId(999U));
-    return RequireStatus(result.status, UiManagerPanelMapStatus::PanelNotLoaded, "missing loaded status mismatch");
+    if (RequireStatus(result.status, UiManagerPanelMapStatus::PanelNotLoaded, "missing loaded status mismatch") != 0) {
+        return 1;
+    }
+
+    const UiManagerPanelMapSnapshot failed_snapshot = panel_map.Snapshot();
+    if (failed_snapshot.failed_operation_count != 5U ||
+        failed_snapshot.rejected_operation_count != 5U ||
+        failed_snapshot.accepted_operation_count != 0U ||
+        failed_snapshot.last_status != UiManagerPanelMapStatus::PanelNotLoaded) {
+        return Fail("failure snapshot counters mismatch");
+    }
+
+    result = panel_map.OpenPanel(PanelId(602U), registry, layer_model, &controller);
+    if (RequireStatus(result.status, UiManagerPanelMapStatus::Success, "open after failures status mismatch") != 0) {
+        return 1;
+    }
+
+    const UiManagerPanelMapSnapshot success_snapshot = panel_map.Snapshot();
+    if (success_snapshot.failed_operation_count != 5U ||
+        success_snapshot.rejected_operation_count != 5U ||
+        success_snapshot.accepted_operation_count != 1U ||
+        success_snapshot.open_operation_count != 1U ||
+        success_snapshot.last_status != UiManagerPanelMapStatus::Success) {
+        return Fail("success snapshot after failures mismatch");
+    }
+
+    return RequireSnapshotCounts(success_snapshot, 1U, 1U, "success snapshot counts mismatch");
 }
 
 int RunDuplicateOpenCloseAreIdempotentTest() {

@@ -457,6 +457,7 @@ UiManagerPanelMapResult UiManagerPanelMap::MakeResult(
 
 UiManagerPanelMapStatus UiManagerPanelMap::RecordFailure(UiManagerPanelMapStatus status) {
     ++snapshot_.rejected_operation_count;
+    ++snapshot_.failed_operation_count;
     snapshot_.last_status = status;
     return status;
 }

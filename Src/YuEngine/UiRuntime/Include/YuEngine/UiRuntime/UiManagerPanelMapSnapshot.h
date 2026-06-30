@@ -25,6 +25,7 @@ struct UiManagerPanelMapSnapshot final {
     std::uint32_t reopen_open_args_update_count = 0U;
     std::uint32_t accepted_operation_count = 0U;
     std::uint32_t rejected_operation_count = 0U;
+    std::uint32_t failed_operation_count = 0U;
     UiPanelOpenArgsSnapshot last_open_args;
     UiManagerPanelMapStatus last_status = UiManagerPanelMapStatus::Success;
 };
