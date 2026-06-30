@@ -14,6 +14,7 @@ struct UiManagerLayerModelSnapshot final {
     std::uint32_t registered_layer_count = 0U;
     std::uint32_t panel_binding_count = 0U;
     std::uint32_t accepted_operation_count = 0U;
+    std::uint32_t failed_operation_count = 0U;
     std::uint32_t rejected_operation_count = 0U;
     std::uint32_t duplicate_layer_rejected_count = 0U;
     std::uint32_t duplicate_panel_rejected_count = 0U;

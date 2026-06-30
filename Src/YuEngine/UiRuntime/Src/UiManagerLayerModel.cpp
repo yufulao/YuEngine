@@ -33,6 +33,7 @@ UiManagerLayerModel::UiManagerLayerModel(UiManagerLayerModelDesc desc)
                 0U,
                 0U,
                 0U,
+                0U,
                 UiManagerLayerModelStatus::Success} {
 }
 
@@ -518,6 +519,7 @@ UiManagerLayerModelResult UiManagerLayerModel::MakeResult(
 }
 
 UiManagerLayerModelStatus UiManagerLayerModel::RecordFailure(UiManagerLayerModelStatus status) {
+    ++snapshot_.failed_operation_count;
     ++snapshot_.rejected_operation_count;
     snapshot_.last_status = status;
     return status;

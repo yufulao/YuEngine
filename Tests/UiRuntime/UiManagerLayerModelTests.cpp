@@ -234,10 +234,18 @@ int UiRuntimeManagerLayerModelRejectsDuplicateAndMissingLayers() {
         return 1;
     }
 
+    result = model.RegisterLayer(LayerRecord(3U, UiManagerLayerType::Popup, 30, 300U));
+    if (!result.Succeeded()) {
+        return Fail("valid layer register after failure failed");
+    }
+
     const UiManagerLayerModelSnapshot snapshot = model.Snapshot();
-    if (snapshot.registered_layer_count != 1U ||
+    if (snapshot.registered_layer_count != 2U ||
+        snapshot.accepted_operation_count != 2U ||
+        snapshot.failed_operation_count != 3U ||
         snapshot.duplicate_layer_rejected_count != 2U ||
-        snapshot.rejected_operation_count != 3U) {
+        snapshot.rejected_operation_count != 3U ||
+        snapshot.last_status != UiManagerLayerModelStatus::Success) {
         return Fail("duplicate layer snapshot mismatch");
     }
 
