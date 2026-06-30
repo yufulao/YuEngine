@@ -13,6 +13,7 @@ struct UiPanelRegistrySnapshot final {
     std::uint32_t registered_panel_count = 0U;
     std::uint32_t accepted_operation_count = 0U;
     std::uint32_t rejected_operation_count = 0U;
+    std::uint32_t failed_operation_count = 0U;
     std::uint32_t duplicate_panel_rejected_count = 0U;
     UiPanelRegistryStatus last_status = UiPanelRegistryStatus::Success;
 };

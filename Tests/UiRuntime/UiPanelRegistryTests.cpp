@@ -174,10 +174,19 @@ int UiRuntimePanelRegistryRejectsDuplicateAndMissingPanels() {
         return 1;
     }
 
+    const UiPanelManifestRecord second_record = MakePanelRecord(21U, 102U, 202U, 302U);
+    result = registry.RegisterPanel(second_record);
+    if (!result.Succeeded()) {
+        return Fail("second panel register after failure failed");
+    }
+
     const UiPanelRegistrySnapshot snapshot = registry.Snapshot();
-    if (snapshot.registered_panel_count != 1U ||
+    if (snapshot.registered_panel_count != 2U ||
+        snapshot.accepted_operation_count != 2U ||
+        snapshot.rejected_operation_count != 1U ||
+        snapshot.failed_operation_count != 1U ||
         snapshot.duplicate_panel_rejected_count != 1U ||
-        snapshot.rejected_operation_count != 1U) {
+        snapshot.last_status != UiPanelRegistryStatus::Success) {
         return Fail("duplicate snapshot mismatch");
     }
 
@@ -222,7 +231,9 @@ int UiRuntimePanelRegistryLoadsExplicitTestManifestAtomically() {
     }
 
     const UiPanelRegistrySnapshot snapshot = registry.Snapshot();
-    if (snapshot.registered_panel_count != 2U || snapshot.rejected_operation_count != 1U) {
+    if (snapshot.registered_panel_count != 2U ||
+        snapshot.rejected_operation_count != 1U ||
+        snapshot.failed_operation_count != 1U) {
         return Fail("manifest atomic snapshot mismatch");
     }
 

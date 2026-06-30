@@ -28,6 +28,7 @@ UiPanelRegistry::UiPanelRegistry(UiPanelRegistryDesc desc)
                 0U,
                 0U,
                 0U,
+                0U,
                 UiPanelRegistryStatus::Success} {
 }
 
@@ -260,6 +261,7 @@ UiPanelRegistryResult UiPanelRegistry::MakeResult(
 
 UiPanelRegistryStatus UiPanelRegistry::RecordFailure(UiPanelRegistryStatus status) {
     ++snapshot_.rejected_operation_count;
+    ++snapshot_.failed_operation_count;
     snapshot_.last_status = status;
     return status;
 }
