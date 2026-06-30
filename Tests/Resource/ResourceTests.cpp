@@ -88,6 +88,7 @@ using yuengine::resource::ResourceSnapshot;
 using yuengine::resource::ResourceStatus;
 using yuengine::resource::ResourceTypeId;
 using yuengine::resource::INVALID_RESOURCE_GENERATION;
+using yuengine::resource::MAX_LOGICAL_KEY_BYTES;
 using yuengine::resource::MAX_RESOURCE_DECODE_PLAN_RECORD_COUNT;
 using yuengine::resource::MAX_RESOURCE_DECODE_RESULT_RECORD_COUNT;
 using yuengine::resource::MAX_RESOURCE_DECODED_PAYLOAD_RECORD_COUNT;
@@ -101,6 +102,8 @@ using yuengine::resource::RESOURCE_DECODE_PLAN_HEADER_VERSION;
 
 namespace {
 constexpr const char* TEST_REGISTER = "Resource_RegisterSyntheticDescriptor_ReturnsGenerationHandle";
+constexpr const char* TEST_INVALID_DESCRIPTOR =
+    "Resource_RegisterRejectsInvalidDescriptorWithoutMutation";
 constexpr const char* TEST_DUPLICATE = "Resource_RegisterDuplicate_ReturnsExplicitStatus";
 constexpr const char* TEST_CAPACITY = "Resource_RegistryRejectsCapacityOverflowWithoutMutation";
 constexpr const char* TEST_TYPE_CAPACITY = "Resource_TypeCapacityOverflow_DoesNotMutate";
@@ -343,6 +346,39 @@ ResourceDescriptor DescriptorWithReferenceCount(ResourceTypeId type, const char*
 
 ResourceRegistrationResult Register(ResourceRegistry& registry, ResourceTypeId type, const char* key) {
     return registry.RegisterSyntheticDescriptor(Descriptor(type, key));
+}
+
+bool InvalidDescriptorRegistrationFailsWithoutMutation(
+    ResourceRegistry& registry,
+    const ResourceDescriptor& descriptor) {
+    const ResourceSnapshot before_snapshot = registry.Snapshot();
+    const ResourceRegistrationResult result = registry.RegisterSyntheticDescriptor(descriptor);
+    if (result.status != ResourceStatus::InvalidDescriptor) {
+        return false;
+    }
+
+    if (result.handle.IsValid()) {
+        return false;
+    }
+
+    const ResourceSnapshot after_snapshot = registry.Snapshot();
+    if (after_snapshot.registered_resource_count != before_snapshot.registered_resource_count) {
+        return false;
+    }
+
+    if (after_snapshot.type_count != before_snapshot.type_count) {
+        return false;
+    }
+
+    if (after_snapshot.acquired_handle_count != before_snapshot.acquired_handle_count) {
+        return false;
+    }
+
+    if (after_snapshot.failed_operation_count != before_snapshot.failed_operation_count + 1U) {
+        return false;
+    }
+
+    return after_snapshot.last_status == ResourceStatus::InvalidDescriptor;
 }
 
 ResourceLoadCommitRequest LoadCommitRequest(
@@ -803,6 +839,38 @@ int ResourceRegisterSyntheticDescriptorReturnsGenerationHandle() {
 
     if (snapshot.last_status != ResourceStatus::Success) {
         return Fail("successful registration did not record success status");
+    }
+
+    return 0;
+}
+
+int ResourceRegisterRejectsInvalidDescriptorWithoutMutation() {
+    ResourceRegistry registry;
+    const ResourceDescriptor invalid_type = Descriptor(ResourceTypeId{}, "texture_invalid_type");
+    if (!InvalidDescriptorRegistrationFailsWithoutMutation(registry, invalid_type)) {
+        return Fail("invalid type descriptor did not return explicit status");
+    }
+
+    const ResourceDescriptor empty_key = Descriptor(TYPE_TEXTURE, "");
+    if (!InvalidDescriptorRegistrationFailsWithoutMutation(registry, empty_key)) {
+        return Fail("empty key descriptor did not return explicit status");
+    }
+
+    const std::size_t overlong_key_byte_count = MAX_LOGICAL_KEY_BYTES + 1U;
+    const std::string overlong_key(overlong_key_byte_count, 'a');
+    const ResourceDescriptor overlong_key_descriptor = Descriptor(TYPE_TEXTURE, overlong_key.c_str());
+    if (!InvalidDescriptorRegistrationFailsWithoutMutation(registry, overlong_key_descriptor)) {
+        return Fail("overlong key descriptor did not return explicit status");
+    }
+
+    const ResourceRegistrationResult retry_result = Register(registry, TYPE_TEXTURE, "texture_valid_after_invalid");
+    if (!retry_result.Succeeded()) {
+        return Fail("valid registration after invalid descriptor failures failed");
+    }
+
+    const ResourceSnapshot snapshot = registry.Snapshot();
+    if (snapshot.registered_resource_count != 1U || snapshot.type_count != 1U) {
+        return Fail("invalid descriptor failures mutated registration counts");
     }
 
     return 0;
@@ -5803,6 +5871,7 @@ int main(int argc, char** argv) {
 
     const TestRegistry test_registry{
         {TEST_REGISTER, ResourceRegisterSyntheticDescriptorReturnsGenerationHandle},
+        {TEST_INVALID_DESCRIPTOR, ResourceRegisterRejectsInvalidDescriptorWithoutMutation},
         {TEST_DUPLICATE, ResourceRegisterDuplicateReturnsExplicitStatus},
         {TEST_CAPACITY, ResourceRegistryRejectsCapacityOverflowWithoutMutation},
         {TEST_TYPE_CAPACITY, ResourceTypeCapacityOverflowDoesNotMutate},

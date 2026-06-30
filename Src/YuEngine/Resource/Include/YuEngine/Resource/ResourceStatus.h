@@ -9,6 +9,7 @@ enum class ResourceStatus {
     NotFound,
     DuplicateResource,
     CapacityExceeded,
+    InvalidDescriptor,
     InvalidHandle,
     GenerationMismatch,
     TypeMismatch,

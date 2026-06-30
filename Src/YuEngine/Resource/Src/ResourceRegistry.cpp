@@ -160,15 +160,15 @@ ResourceRegistry::ResourceRegistry(ResourceRegistryDesc desc)
 
 ResourceRegistrationResult ResourceRegistry::RegisterSyntheticDescriptor(const ResourceDescriptor& descriptor) {
     if (!descriptor.type.IsValid()) {
-        return ResourceRegistrationResult::Failure(RecordFailure(ResourceStatus::UnsupportedInThisGate));
+        return ResourceRegistrationResult::Failure(RecordFailure(ResourceStatus::InvalidDescriptor));
     }
 
     if (!descriptor.logical_key.IsWithinBounds()) {
-        return ResourceRegistrationResult::Failure(RecordFailure(ResourceStatus::CapacityExceeded));
+        return ResourceRegistrationResult::Failure(RecordFailure(ResourceStatus::InvalidDescriptor));
     }
 
     if (!descriptor.logical_key.IsValid()) {
-        return ResourceRegistrationResult::Failure(RecordFailure(ResourceStatus::UnsupportedInThisGate));
+        return ResourceRegistrationResult::Failure(RecordFailure(ResourceStatus::InvalidDescriptor));
     }
 
     if (HasDuplicateActiveResource(descriptor)) {
