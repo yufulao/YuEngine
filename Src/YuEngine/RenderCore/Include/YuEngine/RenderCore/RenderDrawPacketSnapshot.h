@@ -15,6 +15,7 @@ namespace yuengine::rendercore {
 struct RenderDrawPacketSnapshot final {
     std::size_t draw_record_capacity = 0U;
     std::size_t draw_record_count = 0U;
+    std::size_t required_draw_record_count = 0U;
     std::size_t accepted_draw_count = 0U;
     std::size_t failed_validation_count = 0U;
     std::size_t duplicate_draw_id_count = 0U;

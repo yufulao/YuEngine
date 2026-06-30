@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 #include "YuEngine/RenderCore/RenderDrawPacketStatus.h"
@@ -17,5 +18,6 @@ struct RenderDrawPacketResult final {
     std::uint32_t pass_id = 0U;
     std::uint32_t material_id = 0U;
     std::uint32_t index_count = 0U;
+    std::size_t required_draw_record_count = 0U;
 };
 }

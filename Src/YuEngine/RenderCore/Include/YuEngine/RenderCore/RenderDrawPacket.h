@@ -59,6 +59,7 @@ private:
     RenderDrawPacketStatus ValidateRequest(const RenderDrawPacketRequest &request) const;
     bool HasRecordCapacity() const;
     bool HasDrawId(std::uint32_t draw_id) const;
+    std::size_t RequiredDrawRecordCount() const;
     void FillPassRequest(
         const RenderDrawPacketRequest &request,
         RenderFixturePassRequest *out_request) const;

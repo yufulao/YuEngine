@@ -244,6 +244,14 @@ int RenderCoreDrawPacketRejectsCapacityExceeded() {
         return Fail("draw packet accepted capacity overflow");
     }
 
+    const auto snapshot = packet.Snapshot();
+    if (result.required_draw_record_count != 2U ||
+        snapshot.required_draw_record_count != 2U ||
+        snapshot.draw_capacity_rejected_count != 1U ||
+        snapshot.draw_record_count != 1U) {
+        return Fail("draw packet capacity required count mismatch");
+    }
+
     if (!PassRequestMatchesSentinel(rejected_request)) {
         return Fail("draw packet mutated output after capacity overflow");
     }
@@ -272,7 +280,9 @@ int RenderCoreDrawPacketSnapshotTracksCounters() {
 
     packet.Reset();
     const auto reset_snapshot = packet.Snapshot();
-    if (reset_snapshot.draw_record_count != 0U || reset_snapshot.accepted_draw_count != 0U) {
+    if (reset_snapshot.draw_record_count != 0U ||
+        reset_snapshot.accepted_draw_count != 0U ||
+        reset_snapshot.required_draw_record_count != 1U) {
         return Fail("draw packet reset did not clear counters");
     }
 

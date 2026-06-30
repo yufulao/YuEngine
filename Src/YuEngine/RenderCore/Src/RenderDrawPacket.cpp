@@ -123,6 +123,7 @@ RenderDrawPacketResult RenderDrawPacket::BuildPassRequest(
         return result;
     }
 
+    result.required_draw_record_count = RequiredDrawRecordCount();
     if (!HasRecordCapacity()) {
         result.status = RenderDrawPacketStatus::DrawCapacityExceeded;
         RecordRejectedDraw(result);
@@ -142,6 +143,7 @@ void RenderDrawPacket::Reset() {
     records_ = {};
     snapshot_ = {};
     snapshot_.draw_record_capacity = desc_.draw_record_capacity;
+    snapshot_.required_draw_record_count = 1U;
 }
 
 RenderDrawPacketStatus RenderDrawPacket::ValidateRequest(const RenderDrawPacketRequest &request) const {
@@ -174,6 +176,10 @@ RenderDrawPacketStatus RenderDrawPacket::ValidateRequest(const RenderDrawPacketR
 
 bool RenderDrawPacket::HasRecordCapacity() const {
     return snapshot_.draw_record_count < desc_.draw_record_capacity;
+}
+
+std::size_t RenderDrawPacket::RequiredDrawRecordCount() const {
+    return snapshot_.draw_record_count + 1U;
 }
 
 bool RenderDrawPacket::HasDrawId(std::uint32_t draw_id) const {
@@ -221,6 +227,7 @@ void RenderDrawPacket::RecordAcceptedDraw(
 
     ++snapshot_.draw_record_count;
     ++snapshot_.accepted_draw_count;
+    snapshot_.required_draw_record_count = result->required_draw_record_count;
     snapshot_.last_draw_id = request.draw_id;
     snapshot_.last_pass_id = request.pass_id;
     snapshot_.last_material_id = request.material_id;
@@ -235,6 +242,9 @@ void RenderDrawPacket::RecordRejectedDraw(const RenderDrawPacketResult &result) 
     snapshot_.last_pass_id = result.pass_id;
     snapshot_.last_material_id = result.material_id;
     snapshot_.last_index_count = result.index_count;
+    if (result.required_draw_record_count > 0U) {
+        snapshot_.required_draw_record_count = result.required_draw_record_count;
+    }
     snapshot_.last_status = result.status;
 
     if (result.status == RenderDrawPacketStatus::DuplicateDrawId) {
