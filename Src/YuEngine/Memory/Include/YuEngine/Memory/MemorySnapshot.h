@@ -6,6 +6,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "YuEngine/Memory/MemoryAccountingStatus.h"
+
 namespace yuengine::memory {
 struct MemorySnapshot {
     std::uint64_t allocation_count;
@@ -13,6 +15,7 @@ struct MemorySnapshot {
     std::size_t retained_bytes;
     std::size_t peak_retained_bytes;
     std::size_t leak_count;
+    MemoryAccountingStatus last_status = MemoryAccountingStatus::Success;
 
     /**
      * @comment 检查 保留的 allocations 保留.

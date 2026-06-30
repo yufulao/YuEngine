@@ -31,6 +31,7 @@ constexpr const char* TEST_DISABLED = "Memory_DisabledTracker_DoesNotChangeBehav
 constexpr const char* TEST_HOT_PATH = "Memory_HotPathBudget_FailsOnTrackedAllocation";
 constexpr const char* TEST_FIXED_CAPACITY = "Memory_TrackerRejectsBeyondFixedCapacityWithoutMutation";
 constexpr const char* TEST_OWNER_TAG_BYTE_CAPS = "Memory_TrackerEnforcesOwnerAndTagByteCapsWithoutMutation";
+constexpr const char *TEST_LAST_STATUS = "Memory_TrackerRecordsLastStatusForAllocationAndFree";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char* OWNER_PLATFORM = "Platform";
@@ -256,6 +257,10 @@ int MemoryDisabledTrackerDoesNotChangeBehavior() {
         return Fail("disabled tracker retained bytes");
     }
 
+    if (snapshot.last_status != MemoryAccountingStatus::Success) {
+        return Fail("disabled tracker last status changed");
+    }
+
     if (tracker.AllocationCountForBudget(MemoryBudgetClass::Frame) != 0U) {
         return Fail("disabled tracker counted hot-path budget allocations");
     }
@@ -415,6 +420,83 @@ int MemoryTrackerEnforcesOwnerAndTagByteCapsWithoutMutation() {
 
     return 0;
 }
+
+int MemoryTrackerRecordsLastStatusForAllocationAndFree() {
+    CountingMemoryTracker tracker;
+    const MemoryOwnerId owner{OWNER_PLATFORM};
+    const MemoryOwnerId other_owner{OWNER_KERNEL};
+    const MemoryTag tag{TAG_FIXTURE};
+
+    const auto initial_snapshot = tracker.Snapshot();
+    if (initial_snapshot.last_status != MemoryAccountingStatus::Success) {
+        return Fail("initial memory last status was not success");
+    }
+
+    const auto invalid_owner = tracker.RecordAllocation(
+        MemoryOwnerId{},
+        tag,
+        MemoryBudgetClass::Setup,
+        SMALL_BYTES,
+        ALIGNMENT);
+    if (invalid_owner.status != MemoryAccountingStatus::InvalidOwner) {
+        return Fail("invalid owner allocation status wrong");
+    }
+
+    const auto after_invalid_owner = tracker.Snapshot();
+    if (after_invalid_owner.last_status != MemoryAccountingStatus::InvalidOwner) {
+        return Fail("invalid owner did not update last status");
+    }
+
+    const auto allocation = tracker.RecordAllocation(owner, tag, MemoryBudgetClass::Setup, SMALL_BYTES, ALIGNMENT);
+    if (!allocation.Succeeded()) {
+        return Fail("last status fixture allocation failed");
+    }
+
+    const auto after_allocation = tracker.Snapshot();
+    if (after_allocation.last_status != MemoryAccountingStatus::Success) {
+        return Fail("allocation success did not reset last status");
+    }
+
+    const auto mismatch_status = tracker.RecordFree(allocation.allocation_id, other_owner, tag);
+    if (mismatch_status != MemoryAccountingStatus::OwnerTagMismatch) {
+        return Fail("last status owner mismatch status wrong");
+    }
+
+    const auto after_mismatch = tracker.Snapshot();
+    if (after_mismatch.last_status != MemoryAccountingStatus::OwnerTagMismatch) {
+        return Fail("owner mismatch did not update last status");
+    }
+
+    const auto cleanup_status = tracker.RecordFree(allocation.allocation_id, owner, tag);
+    if (cleanup_status != MemoryAccountingStatus::Success) {
+        return Fail("last status cleanup free failed");
+    }
+
+    const auto after_cleanup = tracker.Snapshot();
+    if (after_cleanup.last_status != MemoryAccountingStatus::Success) {
+        return Fail("free success did not reset last status");
+    }
+
+    const auto unmatched_status = tracker.RecordFree(MemoryAllocationId{999U}, owner, tag);
+    if (unmatched_status != MemoryAccountingStatus::UnmatchedFree) {
+        return Fail("last status unmatched free status wrong");
+    }
+
+    const auto after_unmatched = tracker.Snapshot();
+    if (after_unmatched.last_status != MemoryAccountingStatus::UnmatchedFree) {
+        return Fail("unmatched free did not update last status");
+    }
+
+    if (after_unmatched.allocation_count != after_cleanup.allocation_count) {
+        return Fail("last status unmatched free changed allocation count");
+    }
+
+    if (after_unmatched.free_count != after_cleanup.free_count) {
+        return Fail("last status unmatched free changed free count");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv) {
@@ -431,7 +513,8 @@ int main(int argc, char** argv) {
         {TEST_DISABLED, MemoryDisabledTrackerDoesNotChangeBehavior},
         {TEST_HOT_PATH, MemoryHotPathBudgetFailsOnTrackedAllocation},
         {TEST_FIXED_CAPACITY, MemoryTrackerRejectsBeyondFixedCapacityWithoutMutation},
-        {TEST_OWNER_TAG_BYTE_CAPS, MemoryTrackerEnforcesOwnerAndTagByteCapsWithoutMutation}};
+        {TEST_OWNER_TAG_BYTE_CAPS, MemoryTrackerEnforcesOwnerAndTagByteCapsWithoutMutation},
+        {TEST_LAST_STATUS, MemoryTrackerRecordsLastStatusForAllocationAndFree}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);

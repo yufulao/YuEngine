@@ -52,7 +52,7 @@ bool FixedTextEquals(const std::array<char, Capacity>& stored, std::size_t store
 CountingMemoryTracker::CountingMemoryTracker()
     : active_allocations_(),
       budget_allocation_counts_{},
-      snapshot_{0U, 0U, 0U, 0U, 0U},
+      snapshot_{0U, 0U, 0U, 0U, 0U, MemoryAccountingStatus::Success},
       next_allocation_id_(1U),
       active_allocation_count_(0U) {
 }
@@ -64,39 +64,48 @@ MemoryAccountingResult CountingMemoryTracker::RecordAllocation(
     std::size_t bytes,
     std::size_t alignment) {
     if (!owner.IsValid()) {
+        snapshot_.last_status = MemoryAccountingStatus::InvalidOwner;
         return MemoryAccountingResult::Failure(MemoryAccountingStatus::InvalidOwner);
     }
 
     if (!tag.IsValid()) {
+        snapshot_.last_status = MemoryAccountingStatus::InvalidTag;
         return MemoryAccountingResult::Failure(MemoryAccountingStatus::InvalidTag);
     }
 
     if (bytes == 0U) {
+        snapshot_.last_status = MemoryAccountingStatus::InvalidSize;
         return MemoryAccountingResult::Failure(MemoryAccountingStatus::InvalidSize);
     }
 
     if (!IsPowerOfTwo(alignment)) {
+        snapshot_.last_status = MemoryAccountingStatus::InvalidAlignment;
         return MemoryAccountingResult::Failure(MemoryAccountingStatus::InvalidAlignment);
     }
 
     if (!IsValidMemoryBudgetClass(budget_class)) {
+        snapshot_.last_status = MemoryAccountingStatus::InvalidBudgetClass;
         return MemoryAccountingResult::Failure(MemoryAccountingStatus::InvalidBudgetClass);
     }
 
     if (owner.value.size() > MAX_MEMORY_OWNER_ID_BYTES) {
+        snapshot_.last_status = MemoryAccountingStatus::InvalidOwner;
         return MemoryAccountingResult::Failure(MemoryAccountingStatus::InvalidOwner);
     }
 
     if (tag.value.size() > MAX_MEMORY_TAG_BYTES) {
+        snapshot_.last_status = MemoryAccountingStatus::InvalidTag;
         return MemoryAccountingResult::Failure(MemoryAccountingStatus::InvalidTag);
     }
 
     if (IsHotMemoryBudgetClass(budget_class)) {
+        snapshot_.last_status = MemoryAccountingStatus::BudgetExceeded;
         return MemoryAccountingResult::Failure(MemoryAccountingStatus::BudgetExceeded);
     }
 
     ActiveAllocationRecord* record = FindFreeAllocationRecord();
     if (record == nullptr) {
+        snapshot_.last_status = MemoryAccountingStatus::CapacityExceeded;
         return MemoryAccountingResult::Failure(MemoryAccountingStatus::CapacityExceeded);
     }
 
@@ -104,11 +113,13 @@ MemoryAccountingResult CountingMemoryTracker::RecordAllocation(
     ++next_allocation_id_;
 
     if (!CopyFixedText(owner.value, record->owner, record->owner_length)) {
+        snapshot_.last_status = MemoryAccountingStatus::InvalidOwner;
         return MemoryAccountingResult::Failure(MemoryAccountingStatus::InvalidOwner);
     }
 
     if (!CopyFixedText(tag.value, record->tag, record->tag_length)) {
         ResetAllocationRecord(*record);
+        snapshot_.last_status = MemoryAccountingStatus::InvalidTag;
         return MemoryAccountingResult::Failure(MemoryAccountingStatus::InvalidTag);
     }
 
@@ -125,25 +136,30 @@ MemoryAccountingResult CountingMemoryTracker::RecordAllocation(
 
     snapshot_.leak_count = active_allocation_count_;
     ++budget_allocation_counts_[MemoryBudgetClassIndex(budget_class)];
+    snapshot_.last_status = MemoryAccountingStatus::Success;
     return MemoryAccountingResult::Success(allocation_id);
 }
 
 MemoryAccountingStatus CountingMemoryTracker::RecordFree(MemoryAllocationId allocation_id, MemoryOwnerId owner, MemoryTag tag) {
     ActiveAllocationRecord* record = FindActiveAllocation(allocation_id);
     if (record == nullptr) {
+        snapshot_.last_status = MemoryAccountingStatus::UnmatchedFree;
         return MemoryAccountingStatus::UnmatchedFree;
     }
 
     if (!FixedTextEquals(record->owner, record->owner_length, owner.value)) {
+        snapshot_.last_status = MemoryAccountingStatus::OwnerTagMismatch;
         return MemoryAccountingStatus::OwnerTagMismatch;
     }
 
     if (!FixedTextEquals(record->tag, record->tag_length, tag.value)) {
+        snapshot_.last_status = MemoryAccountingStatus::OwnerTagMismatch;
         return MemoryAccountingStatus::OwnerTagMismatch;
     }
 
     const std::size_t bytes = record->bytes;
     if (bytes > snapshot_.retained_bytes) {
+        snapshot_.last_status = MemoryAccountingStatus::UnmatchedFree;
         return MemoryAccountingStatus::UnmatchedFree;
     }
 
@@ -153,6 +169,7 @@ MemoryAccountingStatus CountingMemoryTracker::RecordFree(MemoryAllocationId allo
     ResetAllocationRecord(*record);
     --active_allocation_count_;
     snapshot_.leak_count = active_allocation_count_;
+    snapshot_.last_status = MemoryAccountingStatus::Success;
     return MemoryAccountingStatus::Success;
 }
 
