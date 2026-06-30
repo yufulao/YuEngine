@@ -7,15 +7,16 @@ Owner: Architecture
 Task: #73 baseline; #50 RAV1 production contract amendment
 Related plan: `docs/YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md`
 Latest RuntimeAsset spine evidence: current `origin/main` HEAD
-`4d9f244ca373c466478b54b7fbc0dd91bf8b5720` records VQ-closed
-RuntimeAssetWorldAdapter handoff attachment/resource binding sidecar proof after
-the `54e02e049bb6f67fd15ca32d1675f1c61380ae70` handoff target-family proof, the
-`296100b3bda25e962c3a3a503f9f78f0160083ce` target-family alias handoff, the
-`3fa4ef7bd42da8f60bd5ebb3a7f863bd76292c84` ModelNode/SkeletonJoint
-target-family binding, and the post-008H RuntimeAsset/Streaming/RHI/ResourceUpload
-`payload_window` and destination-range implementation ledger, including exact
-marker labels `RuntimeAssetWorldObjectAdapter` and
-`RuntimeAssetWorldObjectRestoreHandoff`.
+`f85c67701f2ff90c94c84cdc2761e434524128d8` records VQ-closed
+RuntimeAssetWorldAdapter handoff sidecar assembly restore after the
+`4d9f244ca373c466478b54b7fbc0dd91bf8b5720` attachment/resource binding sidecar
+proof, the `54e02e049bb6f67fd15ca32d1675f1c61380ae70` handoff target-family
+proof, the `296100b3bda25e962c3a3a503f9f78f0160083ce` target-family alias
+handoff, the `3fa4ef7bd42da8f60bd5ebb3a7f863bd76292c84`
+ModelNode/SkeletonJoint target-family binding, and the post-008H
+RuntimeAsset/Streaming/RHI/ResourceUpload `payload_window` and destination-range
+implementation ledger, including exact marker labels
+`RuntimeAssetWorldObjectAdapter` and `RuntimeAssetWorldObjectRestoreHandoff`.
 Earlier RTSPINE-004 implementation
 `ebe9ea35f531aa40133262b701e5e751f8ed9ccf` plus focused QA workspace task
 `2e2d5a4e-0bb0-4cf4-bd1b-ab3a87987b7f` remains COMPLETE-PASS; later lanes
@@ -440,7 +441,8 @@ This gate records these mainline implementation slices:
 | RAV1-Y | RuntimeAssetWorldAdapter target-family alias handoff | PASS; `origin/main@296100b3bda25e962c3a3a503f9f78f0160083ce` supports SceneNode, ModelNode, and SkeletonJoint runtime instance mappings through the existing scene entity/scene transform plus identity-record handoff path; implementation task `77376606-d3d8-45de-8079-79121593b8e7` and VQ task `5fb82855-a437-4eb7-b078-373069988b2d` are COMPLETE-PASS, exact implementation scope is `CMakeLists.txt`, `RuntimeAssetWorldObjectAdapterBridge.cpp`, and `RuntimeAssetWorldObjectAdapterBridgeTest.cpp`, and focused RuntimeAssetWorldObjectAdapter matrix reports `13/13` PASS including Model/Skeleton alias handoff |
 | RAV1-Z | RuntimeAssetWorldAdapter handoff target-family proof | PASS; `origin/main@54e02e049bb6f67fd15ca32d1675f1c61380ae70` closes `RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-TARGET-FAMILY-PROOF-U64-001`; implementation task `53b6d5dc-fd17-442c-b18b-9257c4f3650c` and VQ task `8fbe251e-2c14-4786-a48c-5b8b0b6f8e14` are COMPLETE-PASS, exact implementation scope is `CMakeLists.txt` and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, focused RuntimeAssetWorldObjectRestoreHandoff discovery/execution reports `5/5` PASS including `RuntimeAssetWorldObjectRestoreHandoff_AppliesModelAndSkeletonTargetFamilyAliases`, the Unknown adapter-preflight negative row preserves no-mutation semantics, and no production bridge source was changed |
 | RAV1-AA | RuntimeAssetWorldAdapter handoff attachment/resource binding sidecar proof | PASS; `origin/main@4d9f244ca373c466478b54b7fbc0dd91bf8b5720` closes `RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-ATTACHMENT-BINDING-GATE-PROOF-U64-001`; implementation task `3d8c0c2b-987c-4046-8f01-4e04f16f3715` and VQ task `4607e700-6bd8-4f0d-a508-ac86b991e7e7` are COMPLETE-PASS, exact implementation scope is `CMakeLists.txt` and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, production handoff bridge/state files were unchanged, focused RuntimeAssetWorldObjectRestoreHandoff discovery/execution reports `6/6` PASS including `RuntimeAssetWorldObjectRestoreHandoff_CarriesAttachmentAndBindingGateRecordsForTargetAliases`, and the proof covers non-zero component attachment plus component resource binding sidecar gate records for ModelNode/SkeletonJoint aliases through the existing adapter/world active restore path |
-| Next slice | RuntimeAssetWorldAdapter handoff sidecar assembly restore | selected by read-only scout `71f9c68d-0fca-4a28-b3a6-3893ab3a3c38`; next gate is `RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-SIDECAR-ASSEMBLY-RESTORE-U64-001`, with implementation task `81f4806a-cfc4-464b-a644-b163bfc0459f` scoped to RuntimeAssetWorldAdapter handoff bridge/state/test/CMake plus read-only World/Resource evidence; expected proof is successful restore of caller-owned attachment and binding destinations through existing `WorldSceneAssemblyBridge`, with direct WorldObject/editor/GameAdapter/UI and broader Resource/File/VFS still closed |
+| RAV1-AB | RuntimeAssetWorldAdapter handoff sidecar assembly restore | PASS; `origin/main@f85c67701f2ff90c94c84cdc2761e434524128d8` closes `RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-SIDECAR-ASSEMBLY-RESTORE-U64-001`; implementation task `81f4806a-cfc4-464b-a644-b163bfc0459f` and VQ task `dac5643f-7225-4ba0-a76b-c063178dfb97` are COMPLETE-PASS, exact implementation scope is `CMakeLists.txt`, `RuntimeAssetWorldObjectRestoreHandoffState.h`, `RuntimeAssetWorldObjectRestoreHandoffBridge.cpp`, and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, focused RuntimeAssetWorldObjectRestoreHandoff discovery/execution reports `7/7` PASS including `RuntimeAssetWorldObjectRestoreHandoff_RestoresAttachmentAndBindingSidecarsThroughWorldAssembly`, RuntimeAssetWorldObject(Adapter|RestoreHandoff) rows report `20/20` PASS, WorldSceneAssemblyBridge rows report `27/27` PASS, and handoff state records `restored_attachment_count` plus `restored_binding_count` from the existing `WorldSceneAssemblyBridge` |
+| Next slice | RuntimeAssetWorldAdapter handoff sidecar failure/status gate | selected by read-only scout `b8595184-c9b7-451c-8227-73733737c29e`, which reports focused RuntimeAssetWorldObject(Adapter\|RestoreHandoff) plus WorldSceneAssemblyBridge matrix `47/47` PASS; next gate is `RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-SIDECAR-FAILURE-STATUS-U64-001`, limited to exposing `WorldSceneAssemblyStatus` or an equivalent sidecar assembly failure status through RuntimeAssetWorldAdapter handoff result/snapshot; direct WorldObject/editor/GameAdapter/UI and broader Resource/File/VFS remain closed |
 | Later slice | WorldObject-facing mapping / broader Resource/File/VFS follow-through | keep direct WorldObject/editor mapping outside RTSPINE-007 and keep broader Resource/File/VFS follow-through outside RTSPINE-008H until their own gates |
 
 The slice may split implementation tasks later, but those tasks must stay

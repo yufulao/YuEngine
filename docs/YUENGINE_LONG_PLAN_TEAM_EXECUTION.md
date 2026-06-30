@@ -3,7 +3,7 @@
 Status: active commercial-engine execution plan
 Owner: Architect, lead engineer
 Started: 2026-06-11
-Current planning checkpoint: `origin/main@4d9f244ca373c466478b54b7fbc0dd91bf8b5720`
+Current planning checkpoint: `origin/main@f85c67701f2ff90c94c84cdc2761e434524128d8`
 Reference product target: `C:\Steam\steamapps\common\TouhouNewWorld`
 Canonical entry point: `docs/README.md`
 
@@ -298,6 +298,7 @@ editor object, scene instance, raw pointer, display name, or file path.
 | RTSPINE-011 | RuntimeAssetWorldAdapter target-family alias handoff | VQ-closed at `origin/main@296100b3bda25e962c3a3a503f9f78f0160083ce`: implementation task `77376606-d3d8-45de-8079-79121593b8e7` is COMPLETE-PASS / committed, VQ task `5fb82855-a437-4eb7-b078-373069988b2d` is COMPLETE-PASS / VQ-READY, changed paths were exactly `CMakeLists.txt`, `RuntimeAssetWorldObjectAdapterBridge.cpp`, and `RuntimeAssetWorldObjectAdapterBridgeTest.cpp`, focused RuntimeAssetWorldObjectAdapter matrix reports `13/13` PASS including Model/Skeleton alias handoff, and SceneNode plus invalid/no-mutation semantics are preserved |
 | RTSPINE-012 | RuntimeAssetWorldAdapter handoff target-family proof | VQ-closed at `origin/main@54e02e049bb6f67fd15ca32d1675f1c61380ae70`: implementation task `53b6d5dc-fd17-442c-b18b-9257c4f3650c` is COMPLETE-PASS / committed, VQ task `8fbe251e-2c14-4786-a48c-5b8b0b6f8e14` is COMPLETE-PASS / VQ-READY, changed paths were exactly `CMakeLists.txt` and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, focused RuntimeAssetWorldObjectRestoreHandoff discovery/execution reports `5/5` PASS including Model/Skeleton alias restore handoff, the Unknown negative row preserves no-mutation failure semantics, and no production bridge source was changed |
 | RTSPINE-013 | RuntimeAssetWorldAdapter handoff attachment/resource binding sidecar proof | VQ-closed at `origin/main@4d9f244ca373c466478b54b7fbc0dd91bf8b5720`: implementation task `3d8c0c2b-987c-4046-8f01-4e04f16f3715` is COMPLETE-PASS / committed, VQ task `4607e700-6bd8-4f0d-a508-ac86b991e7e7` is COMPLETE-PASS / VQ-READY, changed paths were exactly `CMakeLists.txt` and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, production handoff bridge/state files were unchanged, focused RuntimeAssetWorldObjectRestoreHandoff discovery/execution reports `6/6` PASS including `RuntimeAssetWorldObjectRestoreHandoff_CarriesAttachmentAndBindingGateRecordsForTargetAliases`, and the proof covers non-zero component attachment plus component resource binding sidecar gate records for ModelNode/SkeletonJoint aliases through the existing adapter/world active restore path |
+| RTSPINE-014 | RuntimeAssetWorldAdapter handoff sidecar assembly restore | VQ-closed at `origin/main@f85c67701f2ff90c94c84cdc2761e434524128d8`: implementation task `81f4806a-cfc4-464b-a644-b163bfc0459f` is COMPLETE-PASS / committed, VQ task `dac5643f-7225-4ba0-a76b-c063178dfb97` is COMPLETE-PASS / VQ-READY, changed paths were exactly `CMakeLists.txt`, `RuntimeAssetWorldObjectRestoreHandoffState.h`, `RuntimeAssetWorldObjectRestoreHandoffBridge.cpp`, and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, focused builds `YuRuntimeAssetWorldAdapterHandoffTests`, `YuRuntimeAssetWorldAdapterTests`, and `YuWorldTests` PASS, focused RuntimeAssetWorldObjectRestoreHandoff discovery/execution reports `7/7` PASS including `RuntimeAssetWorldObjectRestoreHandoff_RestoresAttachmentAndBindingSidecarsThroughWorldAssembly`, RuntimeAssetWorldObject(Adapter|RestoreHandoff) rows report `20/20` PASS, WorldSceneAssemblyBridge rows report `27/27` PASS, and direct WorldObject/editor/GameAdapter/UI plus broader Resource/File/VFS closure remains out of scope |
 
 ### 5.4 Forbidden Work In This Stage
 
@@ -410,13 +411,13 @@ mapping -> Render/Audio/Input/Save -> Tools -> Shipping
 ```
 
 The next correct move is not feature breadth. The current RuntimeAsset
-production spine is evidence-rich through `4d9f244`:
-RuntimeAssetWorldAdapter handoff attachment/resource binding sidecar proof is
-VQ-closed, but direct WorldObject/editor, GameAdapter/UI, broad Resource/File/VFS,
-and gameplay work remain outside this closure. Read-only scout
-`71f9c68d-0fca-4a28-b3a6-3893ab3a3c38` selected
-`RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-SIDECAR-ASSEMBLY-RESTORE-U64-001`
-as the next narrow gate, and implementation task
-`81f4806a-cfc4-464b-a644-b163bfc0459f` is released with scope limited to
-RuntimeAssetWorldAdapter handoff bridge/state/test/CMake plus read-only
-World/Resource evidence.
+production spine is evidence-rich through `f85c677`: RuntimeAssetWorldAdapter
+handoff sidecar assembly restore is VQ-closed and proves caller-owned attachment
+and binding destination restore through the existing `WorldSceneAssemblyBridge`.
+Direct WorldObject/editor, GameAdapter/UI, broad Resource/File/VFS, and gameplay
+work remain outside this closure. Read-only scout
+`b8595184-c9b7-451c-8227-73733737c29e` reports COMPLETE-PASS and selects
+`RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-SIDECAR-FAILURE-STATUS-U64-001` as
+the next narrow gate: expose sidecar assembly failure status through the
+RuntimeAssetWorldAdapter handoff result/snapshot without opening direct
+WorldObject/editor, GameAdapter/UI, or broad Resource/File/VFS.

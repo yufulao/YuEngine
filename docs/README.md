@@ -2,7 +2,7 @@
 
 Status: canonical documentation handoff
 Owner: Architect
-Last major planning sync: `origin/main@4d9f244ca373c466478b54b7fbc0dd91bf8b5720`
+Last major planning sync: `origin/main@f85c67701f2ff90c94c84cdc2761e434524128d8`
 
 ## 1. Read This First
 
@@ -64,8 +64,8 @@ At the latest handoff:
   returned `1167 / ERROR_DEVICE_NOT_CONNECTED` until DualSenseX exposed an
   XInput controller;
 - the current repo baseline is clean:
-  `HEAD == origin/main == 3fa4ef7bd42da8f60bd5ebb3a7f863bd76292c84`
-  after RuntimeAsset/Streaming/RHI/ResourceUpload spine follow-through;
+  `HEAD == origin/main == f85c67701f2ff90c94c84cdc2761e434524128d8`
+  after RuntimeAssetWorldAdapter sidecar assembly restore;
 - active workspace tasks, timers, and coordinator goals were empty at the final
   L0/L1 handoff;
 - the next mainline is RuntimeAsset production spine continuation, starting from
@@ -179,6 +179,24 @@ At the latest handoff:
   sidecar gate records for ModelNode/SkeletonJoint aliases through the existing
   adapter/world active restore path, with output gates `4/5` as Attachment and
   `6/7` as Binding;
+- RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-SIDECAR-ASSEMBLY-RESTORE-U64-001
+  is VQ-closed at `f85c67701f2ff90c94c84cdc2761e434524128d8`;
+  implementation task `81f4806a-cfc4-464b-a644-b163bfc0459f` reports committed
+  completion and VQ task `dac5643f-7225-4ba0-a76b-c063178dfb97` reports
+  `COMPLETE-PASS / RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-SIDECAR-ASSEMBLY-RESTORE-U64-001-VQ-READY`;
+  exact implementation scope was `CMakeLists.txt`,
+  `Src/YuEngine/RuntimeAssetWorldAdapter/Include/YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectRestoreHandoffState.h`,
+  `Src/YuEngine/RuntimeAssetWorldAdapter/Src/RuntimeAssetWorldObjectRestoreHandoffBridge.cpp`,
+  and `Tests/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`;
+  focused builds `YuRuntimeAssetWorldAdapterHandoffTests`,
+  `YuRuntimeAssetWorldAdapterTests`, and `YuWorldTests` PASS; focused
+  `RuntimeAssetWorldObjectRestoreHandoff` discovery and execution PASS was
+  `7/7`, including
+  `RuntimeAssetWorldObjectRestoreHandoff_RestoresAttachmentAndBindingSidecarsThroughWorldAssembly`;
+  `RuntimeAssetWorldObject(Adapter|RestoreHandoff)` rows pass `20/20`,
+  `WorldSceneAssemblyBridge` rows pass `27/27`, and the handoff state records
+  `restored_attachment_count` plus `restored_binding_count` from the existing
+  `WorldSceneAssemblyBridge`;
 - direct WorldObject/editor object binding remains unopened; the later
   RuntimeAssetWorldAdapter alias/handoff/sidecar gates reuse existing scene
   entity, scene transform, identity-record handoff, and World active restore
@@ -249,15 +267,14 @@ At the latest handoff:
 - exact docs-only VQ marker labels for the `50ff335` evidence ledger are
   `RuntimeAssetWorldObjectAdapter`, `RuntimeAssetWorldObjectRestoreHandoff`, and
   `payload_window`;
-- current canonical HEAD is `4d9f244ca373c466478b54b7fbc0dd91bf8b5720`,
-  adding the VQ-closed RuntimeAssetWorldAdapter handoff attachment/resource
-  binding sidecar proof evidence above; read-only scout
-  `71f9c68d-0fca-4a28-b3a6-3893ab3a3c38` selected
-  `RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-SIDECAR-ASSEMBLY-RESTORE-U64-001`
-  as the next narrow gate; implementation task
-  `81f4806a-cfc4-464b-a644-b163bfc0459f` is released with scope limited to
-  RuntimeAssetWorldAdapter handoff bridge/state/test/CMake plus read-only
-  World/Resource evidence, and no direct WorldObject/editor/GameAdapter/UI or
+- current canonical HEAD is `f85c67701f2ff90c94c84cdc2761e434524128d8`,
+  adding the VQ-closed RuntimeAssetWorldAdapter handoff sidecar assembly restore
+  evidence above; read-only scout
+  `b8595184-c9b7-451c-8227-73733737c29e` reports
+  `COMPLETE-PASS / RTSPINE-CANONICAL-DOCS-HEAD-RECONCILE-F85C677-001-NEXT-GATE-MATRIX-READY`
+  and selects
+  `RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-SIDECAR-FAILURE-STATUS-U64-001`
+  as the next narrow gate; no direct WorldObject/editor/GameAdapter/UI or
   broader Resource/File/VFS gate is released by this docs sync;
 - L0-RES-001 File/VFS loose read/write policy closure is PASS at
   `43cfc18fec4c4c5a5135e4ed15da64c8308247ff`; focused QA task
@@ -440,9 +457,10 @@ RuntimeAsset container and family identity
 -> RuntimeAssetWorldAdapter ModelNode/SkeletonJoint alias handoff VQ-closed at `296100b`
 -> RuntimeAssetWorldAdapter handoff target-family proof VQ-closed at `54e02e0`
 -> RuntimeAssetWorldAdapter handoff attachment/resource binding sidecar proof VQ-closed at `4d9f244`
+-> RuntimeAssetWorldAdapter handoff sidecar assembly restore VQ-closed at `f85c677`
 -> Resource/Streaming payload-window follow-through as narrow evidence already
    landed through `50ff335`
--> RuntimeAssetWorldAdapter handoff sidecar assembly restore selected by scout `71f9c68d`
+-> RuntimeAssetWorldAdapter handoff sidecar failure/status gate selected by scout `b8595184`
 -> direct WorldObject/editor/GameAdapter binding or broader Resource/File/VFS expansion only
    after their own gates are released
 -> editor/importer authoring surfaces after runtime contracts pass

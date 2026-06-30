@@ -162,26 +162,26 @@ destination range consumer. This is a HEAD evidence ledger, not a blanket
 stage-close VQ: each later lane must cite its own workspace VQ before being
 called VQ-closed.
 
-Current HEAD `4d9f244ca373c466478b54b7fbc0dd91bf8b5720` records VQ-closed
-RuntimeAssetWorldAdapter handoff attachment/resource binding sidecar proof for
-`RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-ATTACHMENT-BINDING-GATE-PROOF-U64-001`.
-Implementation task `3d8c0c2b-987c-4046-8f01-4e04f16f3715` is COMPLETE-PASS /
-committed and VQ task `4607e700-6bd8-4f0d-a508-ac86b991e7e7` is COMPLETE-PASS /
+Current HEAD `f85c67701f2ff90c94c84cdc2761e434524128d8` records VQ-closed
+RuntimeAssetWorldAdapter handoff sidecar assembly restore for
+`RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-SIDECAR-ASSEMBLY-RESTORE-U64-001`.
+Implementation task `81f4806a-cfc4-464b-a644-b163bfc0459f` is COMPLETE-PASS /
+committed and VQ task `dac5643f-7225-4ba0-a76b-c063178dfb97` is COMPLETE-PASS /
 VQ-READY. The focused RuntimeAssetWorldObjectRestoreHandoff matrix reports
-discovery/execution `6/6` PASS including
-`RuntimeAssetWorldObjectRestoreHandoff_CarriesAttachmentAndBindingGateRecordsForTargetAliases`.
-The proof covers non-zero component attachment and component resource binding
-sidecar gate records for ModelNode/SkeletonJoint aliases through the existing
-adapter/world active restore path, with output gates `4/5` as Attachment and
-`6/7` as Binding. The commit touched only `CMakeLists.txt` and
-`RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`; production handoff
-bridge/state files were unchanged. Read-only scout
-`71f9c68d-0fca-4a28-b3a6-3893ab3a3c38` selected
-`RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-SIDECAR-ASSEMBLY-RESTORE-U64-001`
-as the next narrow gate. That gate may consume the existing
-`WorldSceneAssemblyBridge` from RuntimeAssetWorldAdapter handoff code, but this
-closure does not open direct WorldObject/editor/GameAdapter/UI or broad
-Resource/File/VFS.
+discovery/execution `7/7` PASS including
+`RuntimeAssetWorldObjectRestoreHandoff_RestoresAttachmentAndBindingSidecarsThroughWorldAssembly`.
+RuntimeAssetWorldObject(Adapter|RestoreHandoff) rows pass `20/20`, and
+WorldSceneAssemblyBridge rows pass `27/27`. The implementation touched
+`CMakeLists.txt`, `RuntimeAssetWorldObjectRestoreHandoffState.h`,
+`RuntimeAssetWorldObjectRestoreHandoffBridge.cpp`, and
+`RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`; it records
+`restored_attachment_count` plus `restored_binding_count` from the existing
+`WorldSceneAssemblyBridge`, while keeping direct WorldObject/editor/GameAdapter/UI
+and broad Resource/File/VFS closed. Read-only scout
+`b8595184-c9b7-451c-8227-73733737c29e` reports COMPLETE-PASS and selects
+`RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-SIDECAR-FAILURE-STATUS-U64-001` as
+the next narrow gate, limited to making sidecar assembly failure status
+observable through RuntimeAssetWorldAdapter handoff result/snapshot.
 
 The `296100b3bda25e962c3a3a503f9f78f0160083ce` evidence records VQ-closed
 RuntimeAssetWorldAdapter target-family alias handoff for
