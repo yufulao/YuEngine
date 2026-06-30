@@ -873,6 +873,10 @@ int ResourceRegisterRejectsInvalidDescriptorWithoutMutation() {
         return Fail("invalid descriptor failures mutated registration counts");
     }
 
+    if (snapshot.last_status != ResourceStatus::Success) {
+        return Fail("valid registration did not clear failed last status");
+    }
+
     return 0;
 }
 
@@ -1013,8 +1017,30 @@ int ResourceHandleRejectsTypeMismatch() {
         return Fail("type mismatch did not return explicit status");
     }
 
-    if (registry.Snapshot().acquired_handle_count != before_snapshot.acquired_handle_count) {
+    const ResourceSnapshot failed_snapshot = registry.Snapshot();
+    if (failed_snapshot.acquired_handle_count != before_snapshot.acquired_handle_count) {
         return Fail("type mismatch changed reference count");
+    }
+
+    if (failed_snapshot.last_status != ResourceStatus::TypeMismatch) {
+        return Fail("type mismatch did not record failed last status");
+    }
+
+    if (registry.Acquire(result.handle, TYPE_TEXTURE) != ResourceStatus::Success) {
+        return Fail("successful acquire after failure failed");
+    }
+
+    const ResourceSnapshot success_snapshot = registry.Snapshot();
+    if (success_snapshot.last_status != ResourceStatus::Success) {
+        return Fail("successful acquire did not clear failed last status");
+    }
+
+    if (success_snapshot.last_load_commit_status != failed_snapshot.last_load_commit_status) {
+        return Fail("successful acquire changed load commit status");
+    }
+
+    if (success_snapshot.last_load_state != failed_snapshot.last_load_state) {
+        return Fail("successful acquire changed load state");
     }
 
     return 0;
@@ -1280,8 +1306,26 @@ int ResourceDependencyValidationRejectsCycle() {
         return Fail("self dependency did not return cycle status");
     }
 
+    const ResourceSnapshot failed_snapshot = registry.Snapshot();
+    if (failed_snapshot.last_status != ResourceStatus::DependencyCycle) {
+        return Fail("self dependency did not record failed last status");
+    }
+
     if (registry.AddDependency(first.handle, second.handle) != ResourceStatus::Success) {
         return Fail("first dependency edge failed");
+    }
+
+    const ResourceSnapshot first_success_snapshot = registry.Snapshot();
+    if (first_success_snapshot.last_status != ResourceStatus::Success) {
+        return Fail("dependency success did not clear failed last status");
+    }
+
+    if (first_success_snapshot.last_load_commit_status != failed_snapshot.last_load_commit_status) {
+        return Fail("dependency success changed load commit status");
+    }
+
+    if (first_success_snapshot.last_load_state != failed_snapshot.last_load_state) {
+        return Fail("dependency success changed load state");
     }
 
     if (registry.AddDependency(second.handle, third.handle) != ResourceStatus::Success) {
