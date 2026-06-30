@@ -18,6 +18,7 @@
 #include "YuEngine/Resource/ResourceRegistrationResult.h"
 #include "YuEngine/Resource/ResourceRegistry.h"
 #include "YuEngine/Resource/ResourceSnapshot.h"
+#include "YuEngine/Resource/ResourceStatus.h"
 #include "YuEngine/Resource/ResourceTypeId.h"
 #include "YuEngine/RuntimeAsset/RuntimeAssetData.h"
 #include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectAdapterIdentityRecord.h"
@@ -69,6 +70,7 @@ using yuengine::resource::ResourceLogicalKey;
 using yuengine::resource::ResourceRegistrationResult;
 using yuengine::resource::ResourceRegistry;
 using yuengine::resource::ResourceSnapshot;
+using yuengine::resource::ResourceStatus;
 using yuengine::resource::ResourceTypeId;
 using yuengine::runtimeasset::RuntimeAssetRuntimeInstanceMappingRecord;
 using yuengine::runtimeasset::RuntimeAssetSceneEntityRecord;
@@ -137,6 +139,8 @@ constexpr const char *TEST_FEED_AUTHORING_RUNTIME_EXPORT =
     "RuntimeAssetWorldObjectAuthoringRuntimeExportHandoff_FeedsAuthoringRuntimeExportThroughRecordStreamIntoRestoreHandoff";
 constexpr const char *TEST_FEED_AUTHORING_SIDECAR_RUNTIME_EXPORT =
     "RuntimeAssetWorldObjectAuthoringRuntimeExportHandoff_FeedsAttachmentBindingDependencyExportThroughRecordStreamIntoRestoreHandoff";
+constexpr const char *TEST_COMMIT_AUTHORING_DEPENDENCY_EDGE_RUNTIME_EXPORT =
+    "RuntimeAssetWorldObjectAuthoringRuntimeExportHandoff_CommitsExportedDependencyAsCallerOwnedResourceEdge";
 constexpr WorldObjectId WORLD_OBJECT_SCENE{31U};
 constexpr WorldObjectId WORLD_OBJECT_MODEL{32U};
 constexpr WorldObjectId WORLD_OBJECT_SKELETON{33U};
@@ -146,6 +150,7 @@ constexpr ObjectTypeId OBJECT_TYPE_SCENE{1U};
 constexpr ObjectTypeId OBJECT_TYPE_MODEL{2U};
 constexpr ObjectTypeId OBJECT_TYPE_SKELETON{3U};
 constexpr ResourceTypeId RESOURCE_TYPE_TEXTURE{1U};
+constexpr ResourceTypeId RESOURCE_TYPE_SCENE_DOCUMENT{2U};
 constexpr WorldComponentTypeId COMPONENT_TYPE_MESH{1U};
 constexpr WorldComponentSlotId COMPONENT_SLOT_MESH{11U};
 constexpr std::uint64_t TARGET_SCENE = 8101U;
@@ -470,6 +475,35 @@ int PrepareAuthoringSidecarInputs(
     }
 
     return 0;
+}
+
+int PrepareAuthoringDependencyEdgeInputs(
+    AuthoringRuntimeExportHandoffFixture *fixture,
+    ResourceRegistry *resource_registry,
+    ResourceHandle *document_handle,
+    ResourceHandle *texture_handle) {
+    if (fixture == nullptr) {
+        return Fail("authoring dependency edge fixture missing");
+    }
+
+    if (resource_registry == nullptr) {
+        return Fail("authoring dependency edge resource registry missing");
+    }
+
+    ResourceDescriptor document_descriptor = Resource(
+        RESOURCE_TYPE_SCENE_DOCUMENT,
+        "authoring_scene_document");
+    const ResourceRegistrationResult document_resource =
+        resource_registry->RegisterSyntheticDescriptor(document_descriptor);
+    if (!document_resource.Succeeded()) {
+        return Fail("authoring dependency edge document setup failed");
+    }
+
+    if (document_handle != nullptr) {
+        *document_handle = document_resource.handle;
+    }
+
+    return PrepareAuthoringSidecarInputs(fixture, resource_registry, texture_handle);
 }
 
 WorldSceneAuthoringDocument MakeAuthoringDocument(
@@ -1391,6 +1425,52 @@ int VerifyRestoredSidecarDestinations(
     return 0;
 }
 
+int CommitExportedAuthoringDependencyEdge(
+    const AuthoringRuntimeExportHandoffFixture &fixture,
+    ResourceRegistry *resource_registry,
+    ResourceHandle document_handle) {
+    if (resource_registry == nullptr) {
+        return Fail("authoring dependency edge registry missing");
+    }
+
+    const WorldSceneAuthoringDependencyRecord &dependency =
+        fixture.authoring_output_dependencies[0U];
+    WorldSceneAuthoringDependencyRecord stable_id_only_dependency = dependency;
+    stable_id_only_dependency.resource_handle = ResourceHandle{};
+
+    const ResourceStatus stable_id_only_status =
+        resource_registry->AddDependency(document_handle, stable_id_only_dependency.resource_handle);
+    if (stable_id_only_status != ResourceStatus::DependencyMissing) {
+        return Fail("authoring dependency edge accepted stable id without handle");
+    }
+
+    const ResourceSnapshot stable_id_only_snapshot = resource_registry->Snapshot();
+    if (stable_id_only_snapshot.dependency_edge_count != 0U) {
+        return Fail("authoring dependency edge stable id path changed edge count");
+    }
+
+    if (stable_id_only_snapshot.dependency_validation_count != 1U) {
+        return Fail("authoring dependency edge stable id path validation count mismatch");
+    }
+
+    const ResourceStatus edge_status =
+        resource_registry->AddDependency(document_handle, dependency.resource_handle);
+    if (edge_status != ResourceStatus::Success) {
+        return Fail("authoring dependency edge commit failed");
+    }
+
+    const ResourceSnapshot edge_snapshot = resource_registry->Snapshot();
+    if (edge_snapshot.dependency_edge_count != 1U) {
+        return Fail("authoring dependency edge commit count mismatch");
+    }
+
+    if (edge_snapshot.dependency_validation_count != 2U) {
+        return Fail("authoring dependency edge validation count mismatch");
+    }
+
+    return 0;
+}
+
 int TestFeedAuthoringRuntimeExportThroughRecordStreamIntoRestoreHandoff() {
     AuthoringRuntimeExportHandoffFixture fixture = MakeFixture();
     WorldInstance world = MakeWorld();
@@ -1668,6 +1748,174 @@ int TestFeedAttachmentBindingDependencyExportThroughRecordStreamIntoRestoreHando
     return 0;
 }
 
+int TestCommitExportedDependencyAsCallerOwnedResourceEdge() {
+    AuthoringRuntimeExportHandoffFixture fixture = MakeFixture();
+    WorldInstance world = MakeWorld();
+    ObjectRegistry object_registry = MakeObjectRegistry();
+    if (PrepareCallerOwnedRegistries(&world, &object_registry, &fixture) != 0) {
+        return 1;
+    }
+
+    ResourceRegistry resource_registry{};
+    ResourceHandle document_handle{};
+    ResourceHandle texture_handle{};
+    if (PrepareAuthoringDependencyEdgeInputs(
+            &fixture,
+            &resource_registry,
+            &document_handle,
+            &texture_handle) != 0) {
+        return 1;
+    }
+
+    const ResourceSnapshot resource_after_setup = resource_registry.Snapshot();
+    if (resource_after_setup.dependency_edge_count != 0U) {
+        return Fail("authoring dependency edge setup changed edge count");
+    }
+
+    if (resource_after_setup.dependency_validation_count != 0U) {
+        return Fail("authoring dependency edge setup changed validation count");
+    }
+
+    if (ExportAuthoringRuntimeRecords(
+            &fixture,
+            SIDECAR_RECORD_COUNT,
+            SIDECAR_RECORD_COUNT,
+            DEPENDENCY_RECORD_COUNT) != 0) {
+        return 1;
+    }
+
+    if (VerifyAuthoringRuntimeOutputs(
+            fixture,
+            SIDECAR_RECORD_COUNT,
+            SIDECAR_RECORD_COUNT,
+            DEPENDENCY_RECORD_COUNT,
+            texture_handle) != 0) {
+        return 1;
+    }
+
+    if (CommitExportedAuthoringDependencyEdge(
+            fixture,
+            &resource_registry,
+            document_handle) != 0) {
+        return 1;
+    }
+
+    const ResourceSnapshot resource_after_edge_commit = resource_registry.Snapshot();
+    if (resource_after_edge_commit.dependency_edge_count != 1U) {
+        return Fail("authoring dependency edge committed count missing");
+    }
+
+    if (resource_after_edge_commit.dependency_validation_count != 2U) {
+        return Fail("authoring dependency edge committed validation count mismatch");
+    }
+
+    if (RoundTripWorldSceneRecordStream(&fixture, SIDECAR_RECORD_COUNT, SIDECAR_RECORD_COUNT) != 0) {
+        return 1;
+    }
+
+    if (VerifyRecordStreamOutputs(
+            fixture,
+            SIDECAR_RECORD_COUNT,
+            SIDECAR_RECORD_COUNT,
+            texture_handle) != 0) {
+        return 1;
+    }
+
+    WorldObjectIdentityBridge identity_destination(world, object_registry);
+    WorldTransformBridge transform_destination(world);
+    WorldComponentAttachmentBridge attachment_destination{};
+    WorldComponentResourceBindingBridge binding_destination{};
+    RuntimeAssetWorldObjectAdapterRequest adapter_request = MakeAdapterRequest(&fixture);
+    RuntimeAssetWorldObjectRestoreHandoffRequest handoff_request = MakeHandoffRequest(
+        &fixture,
+        &adapter_request,
+        &world,
+        &object_registry,
+        &resource_registry,
+        &identity_destination,
+        &transform_destination,
+        &attachment_destination,
+        &binding_destination,
+        SIDECAR_RECORD_COUNT,
+        SIDECAR_RECORD_COUNT);
+
+    RuntimeAssetWorldObjectRestoreHandoffBridge bridge{};
+    const RuntimeAssetWorldObjectRestoreHandoffResult result = bridge.ApplyRestore(handoff_request);
+    if (!result.Succeeded()) {
+        return Fail("authoring dependency edge handoff failed");
+    }
+
+    if (result.state.proof_record_count != SIDECAR_STREAM_PLAN_RECORD_COUNT) {
+        return Fail("authoring dependency edge handoff proof count mismatch");
+    }
+
+    if (result.state.slice_record_count != SIDECAR_STREAM_PLAN_RECORD_COUNT) {
+        return Fail("authoring dependency edge handoff slice count mismatch");
+    }
+
+    if (result.state.gate_record_count != SIDECAR_STREAM_PLAN_RECORD_COUNT) {
+        return Fail("authoring dependency edge handoff gate count mismatch");
+    }
+
+    if (result.state.restored_attachment_count != SIDECAR_RECORD_COUNT) {
+        return Fail("authoring dependency edge restored attachment count mismatch");
+    }
+
+    if (result.state.restored_binding_count != SIDECAR_RECORD_COUNT) {
+        return Fail("authoring dependency edge restored binding count mismatch");
+    }
+
+    if (VerifyDecodedRecordStreams(
+            fixture,
+            SIDECAR_RECORD_COUNT,
+            SIDECAR_RECORD_COUNT,
+            texture_handle) != 0) {
+        return 1;
+    }
+
+    if (VerifyRestoredSidecarDestinations(
+            &attachment_destination,
+            &binding_destination,
+            texture_handle) != 0) {
+        return 1;
+    }
+
+    const auto attachment_snapshot = attachment_destination.Snapshot();
+    if (attachment_snapshot.active_attachment_count != SIDECAR_RECORD_COUNT) {
+        return Fail("authoring dependency edge attachment destination count mismatch");
+    }
+
+    const auto binding_snapshot = binding_destination.Snapshot();
+    if (binding_snapshot.active_binding_count != SIDECAR_RECORD_COUNT) {
+        return Fail("authoring dependency edge binding destination count mismatch");
+    }
+
+    if (binding_snapshot.acquired_binding_count != SIDECAR_RECORD_COUNT) {
+        return Fail("authoring dependency edge binding acquire count mismatch");
+    }
+
+    const ResourceSnapshot resource_after_handoff = resource_registry.Snapshot();
+    if (resource_after_handoff.dependency_edge_count != resource_after_edge_commit.dependency_edge_count) {
+        return Fail("authoring dependency edge handoff changed edge count");
+    }
+
+    if (resource_after_handoff.dependency_validation_count !=
+        resource_after_edge_commit.dependency_validation_count) {
+        return Fail("authoring dependency edge handoff changed validation count");
+    }
+
+    if (resource_after_handoff.acquired_handle_count != SIDECAR_RECORD_COUNT) {
+        return Fail("authoring dependency edge handoff resource acquire count mismatch");
+    }
+
+    const RuntimeAssetWorldObjectRestoreHandoffSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.emitted_gate_record_count != SIDECAR_STREAM_PLAN_RECORD_COUNT) {
+        return Fail("authoring dependency edge snapshot gate count mismatch");
+    }
+
+    return 0;
+}
+
 }
 
 bool RuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTestNameMatches(std::string_view test_name) {
@@ -1675,11 +1923,19 @@ bool RuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTestNameMatches(
         return true;
     }
 
-    return test_name == TEST_FEED_AUTHORING_SIDECAR_RUNTIME_EXPORT;
+    if (test_name == TEST_FEED_AUTHORING_SIDECAR_RUNTIME_EXPORT) {
+        return true;
+    }
+
+    return test_name == TEST_COMMIT_AUTHORING_DEPENDENCY_EDGE_RUNTIME_EXPORT;
 }
 
 int RunRuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTest(std::string_view test_name) {
     if (RuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTestNameMatches(test_name)) {
+        if (test_name == TEST_COMMIT_AUTHORING_DEPENDENCY_EDGE_RUNTIME_EXPORT) {
+            return TestCommitExportedDependencyAsCallerOwnedResourceEdge();
+        }
+
         if (test_name == TEST_FEED_AUTHORING_SIDECAR_RUNTIME_EXPORT) {
             return TestFeedAttachmentBindingDependencyExportThroughRecordStreamIntoRestoreHandoff();
         }
