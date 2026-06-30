@@ -253,8 +253,10 @@ AssetStatus AssetManager::TraverseDependencies(
 
     std::array<std::uint32_t, MAX_ASSET_COUNT> pending_slots{};
     std::array<bool, MAX_ASSET_COUNT> visited_slots{};
+    std::array<AssetHandle, MAX_ASSET_COUNT> staged_dependencies{};
     std::uint32_t read_index = 0U;
     std::uint32_t pending_count = 1U;
+    std::uint32_t staged_dependency_count = 0U;
     pending_slots[0U] = static_cast<std::uint32_t>(root_index);
     visited_slots[root_index] = true;
 
@@ -280,24 +282,27 @@ AssetStatus AssetManager::TraverseDependencies(
                 continue;
             }
 
-            if (*output_asset_count >= output_asset_capacity) {
-                *output_asset_count = 0U;
+            if (staged_dependency_count >= output_asset_capacity) {
                 return RecordFailure(AssetStatus::OutputBufferTooSmall);
             }
 
-            output_assets[*output_asset_count] = edge.dependency;
-            ++(*output_asset_count);
-            visited_slots[dependency_slot] = true;
             if (pending_count >= MAX_ASSET_COUNT) {
-                *output_asset_count = 0U;
                 return RecordFailure(AssetStatus::CapacityExceeded);
             }
 
+            staged_dependencies[staged_dependency_count] = edge.dependency;
+            ++staged_dependency_count;
+            visited_slots[dependency_slot] = true;
             pending_slots[pending_count] = dependency_slot;
             ++pending_count;
         }
     }
 
+    for (std::uint32_t dependency_index = 0U; dependency_index < staged_dependency_count; ++dependency_index) {
+        output_assets[dependency_index] = staged_dependencies[dependency_index];
+    }
+
+    *output_asset_count = staged_dependency_count;
     RecordSuccess();
     return AssetStatus::Success;
 }

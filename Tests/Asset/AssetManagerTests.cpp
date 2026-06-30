@@ -289,10 +289,25 @@ int AssetDependenciesTraverseBoundedAndRejectCycle() {
         return Fail("dependency cycle was not rejected");
     }
 
+    const AssetHandle sentinel_dependency{99U, 77U};
     std::array<AssetHandle, 1U> small_dependencies{};
+    small_dependencies[0U] = sentinel_dependency;
+    dependency_count = 123U;
     if (manager.TraverseDependencies(asset_a.handle, small_dependencies.data(), 1U, &dependency_count) !=
         AssetStatus::OutputBufferTooSmall) {
         return Fail("small traversal output was not rejected");
+    }
+
+    if (dependency_count != 0U) {
+        return Fail("small traversal failure did not clear output count");
+    }
+
+    if (small_dependencies[0U].slot != sentinel_dependency.slot) {
+        return Fail("small traversal failure mutated output slot");
+    }
+
+    if (small_dependencies[0U].generation != sentinel_dependency.generation) {
+        return Fail("small traversal failure mutated output generation");
     }
 
     return 0;
