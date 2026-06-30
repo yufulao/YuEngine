@@ -8,11 +8,15 @@ Task: #73 baseline; #50 RAV1 production contract amendment
 Related plan: `docs/YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md`
 Latest RuntimeAsset spine evidence: current `origin/main` HEAD
 `50ff335fe1ddfea77a72ce20f770baa3028df4a2` records the post-008H
-RuntimeAsset/Streaming/RHI/ResourceUpload payload-window and destination-range
-implementation ledger. Earlier RTSPINE-004 implementation
+RuntimeAsset/Streaming/RHI/ResourceUpload `payload_window` and destination-range
+implementation ledger, including exact marker labels
+`RuntimeAssetWorldObjectAdapter` and `RuntimeAssetWorldObjectRestoreHandoff`.
+Earlier RTSPINE-004 implementation
 `ebe9ea35f531aa40133262b701e5e751f8ed9ccf` plus focused QA workspace task
 `2e2d5a4e-0bb0-4cf4-bd1b-ab3a87987b7f` remains COMPLETE-PASS; later lanes
 should cite their own workspace VQ before being called VQ-closed.
+Next-gate matrix reference `a5aad608` / `NEXT-GATE-MATRIX-READY` is docs-only VQ
+routing evidence.
 Production-gap closure: `docs/YUENGINE_RUNTIME_ASSET_V0_PRODUCTION_GAP_CLOSURE_PLAN.md`
 Format policy and validator vocabulary: `docs/YUENGINE_RUNTIME_ASSET_V0_FORMAT_POLICY_AND_VALIDATOR_VOCABULARY.md`
 Loader transaction plan: `docs/YUENGINE_RUNTIME_ASSET_V0_LOADER_TRANSACTION_PLAN.md`

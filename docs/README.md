@@ -186,6 +186,11 @@ At the latest handoff:
   only the lanes with recorded COMPLETE-PASS VQ in workspace should be cited as
   VQ-closed, and later gates must still run their own scoped VQ before they are
   treated as stage-close proof;
+- exact docs-only VQ marker labels for this evidence ledger are
+  `RuntimeAssetWorldObjectAdapter`, `RuntimeAssetWorldObjectRestoreHandoff`, and
+  `payload_window`; next-gate matrix reference `a5aad608` is the read-only scout
+  marker for `NEXT-GATE-MATRIX-READY` and does not by itself promote any
+  implementation lane to VQ-closed;
 - L0-RES-001 File/VFS loose read/write policy closure is PASS at
   `43cfc18fec4c4c5a5135e4ed15da64c8308247ff`; focused QA task
   `5020f3d6-a492-4138-b81f-c5e80cdd92e2` reports test-only

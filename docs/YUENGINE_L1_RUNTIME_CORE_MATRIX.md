@@ -148,8 +148,10 @@ snapshots only; broader Resource/File/VFS follow-through remains separate.
 Current HEAD `50ff335fe1ddfea77a72ce20f770baa3028df4a2` records the next
 RuntimeAsset production-spine implementation ledger: `7c41265` RTSPINE-008I
 package archive range to RuntimeAsset Resource payload-window handoff,
-`e2e8c3c`/`1658639` RuntimeAssetWorldAdapter bridge/handoff, `0d2021c`
-Streaming U64 staging, `bc6d0ee` Resource U64 payload-window follow-through,
+`e2e8c3c`/`1658639` RuntimeAssetWorldAdapter bridge/handoff with exact marker
+aliases `RuntimeAssetWorldObjectAdapter` and
+`RuntimeAssetWorldObjectRestoreHandoff`, `0d2021c` Streaming U64 staging,
+`bc6d0ee` Resource U64 `payload_window` follow-through,
 `2c93ddf` RuntimeAsset payload logical count propagation, `6ac7ff9` Streaming
 Resource cache payload bridge, `08b1ccd`/`35a84c3` Package payload metadata and
 legacy compatibility, `50a654e`/`baae22d` Streaming pipeline cache payload
@@ -158,7 +160,8 @@ artifact fixture, `10f7b30` RuntimeAssetData payload-window consumer,
 `c3cf022` RHI destination range contract, and `50ff335` ResourceUpload
 destination range consumer. This is a HEAD evidence ledger, not a blanket
 stage-close VQ: each later lane must cite its own workspace VQ before being
-called VQ-closed.
+called VQ-closed. Next-gate matrix reference `a5aad608` /
+`NEXT-GATE-MATRIX-READY` is docs-only VQ routing evidence.
 
 ## 3. Runtime Core Matrix
 

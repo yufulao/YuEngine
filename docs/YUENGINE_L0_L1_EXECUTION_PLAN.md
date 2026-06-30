@@ -575,8 +575,10 @@ Current post-008H RuntimeAsset spine evidence at
 `origin/main@50ff335fe1ddfea77a72ce20f770baa3028df4a2` records the following
 landed implementation/focused evidence chain: `7c41265` RTSPINE-008I package
 archive range to RuntimeAsset Resource payload window handoff; `e2e8c3c` and
-`1658639` RuntimeAssetWorldAdapter bridge/handoff; `0d2021c` Streaming U64
-staging; `bc6d0ee` Resource U64 payload-window follow-through; `2c93ddf`
+`1658639` RuntimeAssetWorldAdapter bridge/handoff with exact docs labels
+`RuntimeAssetWorldObjectAdapter` and `RuntimeAssetWorldObjectRestoreHandoff`;
+`0d2021c` Streaming U64 staging; `bc6d0ee` Resource U64 `payload_window`
+follow-through; `2c93ddf`
 RuntimeAsset payload logical count propagation; `6ac7ff9` Streaming Resource
 cache payload bridge; `08b1ccd` Package payload metadata producer; `35a84c3`
 legacy artifact compatibility fix; `50a654e` Streaming pipeline cache payload
@@ -585,7 +587,9 @@ Package-to-Streaming artifact fixture; `10f7b30` RuntimeAssetData package
 payload-window consumer; `c3cf022` RHI update destination range contract; and
 `50ff335` ResourceUpload destination range consumer. This ledger reconciles
 HEAD with the canonical docs; it does not convert lanes without explicit VQ into
-stage-close proof.
+stage-close proof. The next-gate matrix scout reference is `a5aad608` with
+`NEXT-GATE-MATRIX-READY`; treat that as docs-only VQ routing until a separate
+implementation gate is released.
 
 Current Package artifact hash/dependency evidence at
 `d18f1679ebd389ecec506055764602591f5b9ab6` covers RTSPINE-008C Package-only
