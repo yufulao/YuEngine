@@ -1498,6 +1498,48 @@ int VerifyRestoredTransforms(
     return 0;
 }
 
+int VerifyRestoredWorldObjectSnapshotEvidence(
+    WorldObjectIdentityBridge *identity_destination,
+    WorldTransformBridge *transform_destination,
+    const RuntimeAssetWorldObjectRestoreHandoffSnapshot &snapshot,
+    const AuthoringRuntimeExportHandoffFixture &fixture) {
+    if (identity_destination == nullptr) {
+        return Fail("authoring world object identity destination missing");
+    }
+
+    if (transform_destination == nullptr) {
+        return Fail("authoring world object transform destination missing");
+    }
+
+    const WorldObjectIdentitySnapshot identity_snapshot = identity_destination->Snapshot();
+    if (identity_snapshot.binding_count != DATA_RECORD_COUNT) {
+        return Fail("authoring world object identity snapshot binding count mismatch");
+    }
+
+    if (identity_snapshot.acquired_handle_count != DATA_RECORD_COUNT) {
+        return Fail("authoring world object identity snapshot acquire count mismatch");
+    }
+
+    const WorldTransformSnapshot transform_snapshot = transform_destination->Snapshot();
+    if (transform_snapshot.record_count != DATA_RECORD_COUNT) {
+        return Fail("authoring world object transform snapshot record count mismatch");
+    }
+
+    if (snapshot.restored_identity_count != static_cast<std::uint64_t>(DATA_RECORD_COUNT)) {
+        return Fail("authoring world object handoff snapshot identity count mismatch");
+    }
+
+    if (snapshot.restored_transform_count != static_cast<std::uint64_t>(DATA_RECORD_COUNT)) {
+        return Fail("authoring world object handoff snapshot transform count mismatch");
+    }
+
+    if (VerifyRestoredTransforms(transform_destination, fixture) != 0) {
+        return 1;
+    }
+
+    return 0;
+}
+
 int VerifyRestoredSidecarDestinations(
     WorldComponentAttachmentBridge *attachment_destination,
     WorldComponentResourceBindingBridge *binding_destination,
@@ -2212,6 +2254,14 @@ int TestCommitExportedDependencyAsCallerOwnedAssetEdge() {
         return Fail("authoring asset dependency edge restored binding count mismatch");
     }
 
+    if (result.state.restored_identity_count != DATA_RECORD_COUNT) {
+        return Fail("authoring asset dependency edge restored identity count mismatch");
+    }
+
+    if (result.state.restored_transform_count != DATA_RECORD_COUNT) {
+        return Fail("authoring asset dependency edge restored transform count mismatch");
+    }
+
     if (VerifyDecodedRecordStreams(
             fixture,
             SIDECAR_RECORD_COUNT,
@@ -2241,6 +2291,14 @@ int TestCommitExportedDependencyAsCallerOwnedAssetEdge() {
     const RuntimeAssetWorldObjectRestoreHandoffSnapshot snapshot = bridge.Snapshot();
     if (snapshot.emitted_gate_record_count != SIDECAR_STREAM_PLAN_RECORD_COUNT) {
         return Fail("authoring asset dependency edge snapshot gate count mismatch");
+    }
+
+    if (VerifyRestoredWorldObjectSnapshotEvidence(
+            &identity_destination,
+            &transform_destination,
+            snapshot,
+            fixture) != 0) {
+        return 1;
     }
 
     return 0;
