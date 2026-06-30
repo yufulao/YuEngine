@@ -24,6 +24,7 @@ struct UiManagerFullscreenStackSnapshot final {
     std::uint32_t idempotent_open_count = 0U;
     std::uint32_t idempotent_close_count = 0U;
     std::uint32_t accepted_operation_count = 0U;
+    std::uint32_t failed_operation_count = 0U;
     std::uint32_t rejected_operation_count = 0U;
     UiManagerFullscreenStackStatus last_status = UiManagerFullscreenStackStatus::Success;
 };

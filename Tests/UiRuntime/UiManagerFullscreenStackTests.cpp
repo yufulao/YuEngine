@@ -629,6 +629,13 @@ int RunRejectsMissingNonFullscreenAndBackEmptyStatusTest() {
     UiManagerFullscreenStack fullscreen_stack;
     TestPanelController fullscreen_controller;
     TestPanelController popup_controller;
+    const UiManagerFullscreenStackSnapshot initial_snapshot = fullscreen_stack.Snapshot();
+    if (initial_snapshot.failed_operation_count != 0U ||
+        initial_snapshot.rejected_operation_count != 0U ||
+        initial_snapshot.accepted_operation_count != 0U) {
+        return Fail("fullscreen initial operation counters changed");
+    }
+
     UiManagerFullscreenStackResult result = fullscreen_stack.NavigateBack(registry, layer_model, &panel_map);
     if (RequireStatus(result.status, UiManagerFullscreenStackStatus::BackStackEmpty, "empty back status mismatch") != 0) {
         return 1;
@@ -670,6 +677,17 @@ int RunRejectsMissingNonFullscreenAndBackEmptyStatusTest() {
         return 1;
     }
 
+    const UiManagerFullscreenStackSnapshot before_recovery_snapshot = fullscreen_stack.Snapshot();
+    if (before_recovery_snapshot.failed_operation_count != 5U ||
+        before_recovery_snapshot.rejected_operation_count != 5U ||
+        before_recovery_snapshot.accepted_operation_count != 0U) {
+        return Fail("fullscreen failure counters before recovery mismatch");
+    }
+
+    if (before_recovery_snapshot.last_status != UiManagerFullscreenStackStatus::FullscreenNotInStack) {
+        return Fail("fullscreen failure last status before recovery mismatch");
+    }
+
     if (!panel_map.ClosePanel(PanelId(1041U)).Succeeded()) {
         return Fail("direct fullscreen close failed");
     }
@@ -683,8 +701,34 @@ int RunRejectsMissingNonFullscreenAndBackEmptyStatusTest() {
         return Fail("inactive untracked close flags mismatch");
     }
 
+    const UiManagerFullscreenStackSnapshot after_recovery_snapshot = fullscreen_stack.Snapshot();
+    if (after_recovery_snapshot.failed_operation_count != before_recovery_snapshot.failed_operation_count ||
+        after_recovery_snapshot.rejected_operation_count != before_recovery_snapshot.rejected_operation_count ||
+        after_recovery_snapshot.accepted_operation_count != 1U) {
+        return Fail("fullscreen success-after-failure counters mismatch");
+    }
+
+    if (after_recovery_snapshot.last_status != UiManagerFullscreenStackStatus::Success) {
+        return Fail("fullscreen success-after-failure did not clear last status");
+    }
+
     result = fullscreen_stack.CloseFullscreenPanel(PanelId(9999U), registry, layer_model, &panel_map);
-    return RequireStatus(result.status, UiManagerFullscreenStackStatus::PanelNotLoaded, "missing close status mismatch");
+    if (RequireStatus(result.status, UiManagerFullscreenStackStatus::PanelNotLoaded, "missing close status mismatch") != 0) {
+        return 1;
+    }
+
+    const UiManagerFullscreenStackSnapshot final_snapshot = fullscreen_stack.Snapshot();
+    if (final_snapshot.failed_operation_count != 6U ||
+        final_snapshot.rejected_operation_count != 6U ||
+        final_snapshot.accepted_operation_count != 1U) {
+        return Fail("fullscreen final failure counters mismatch");
+    }
+
+    if (final_snapshot.last_status != UiManagerFullscreenStackStatus::PanelNotLoaded) {
+        return Fail("fullscreen final failure last status mismatch");
+    }
+
+    return 0;
 }
 
 int RunReleaseRestoresPreviousFullscreenTest() {

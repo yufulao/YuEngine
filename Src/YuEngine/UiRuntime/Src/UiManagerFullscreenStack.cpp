@@ -1096,6 +1096,7 @@ UiManagerFullscreenStackResult UiManagerFullscreenStack::MakeResult(
 }
 
 UiManagerFullscreenStackStatus UiManagerFullscreenStack::RecordFailure(UiManagerFullscreenStackStatus status) {
+    ++snapshot_.failed_operation_count;
     ++snapshot_.rejected_operation_count;
     snapshot_.last_status = status;
     return status;
