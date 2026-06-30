@@ -1655,6 +1655,11 @@ int RhiCommandListCapacityOverflowDoesNotMutate() {
         return Fail("command capacity overflow mutated command count");
     }
 
+    const auto snapshot = command_list.Snapshot();
+    if (snapshot.required_command_count != count_before + 1U) {
+        return Fail("command capacity overflow did not record required command count");
+    }
+
     return 0;
 }
 
@@ -1675,6 +1680,10 @@ int RhiCommandListLastStatusTracksLifecycleAndCapacity() {
     auto snapshot = command_list.Snapshot();
     if (snapshot.last_status != RhiStatus::InvalidLifecycle) {
         return Fail("record clear before begin did not record last status");
+    }
+
+    if (snapshot.required_command_count != 1U) {
+        return Fail("record clear before begin changed required command count");
     }
 
     status = command_list.Reset();
@@ -1743,6 +1752,10 @@ int RhiCommandListLastStatusTracksLifecycleAndCapacity() {
         return Fail("end frame capacity failure changed command count");
     }
 
+    if (snapshot.required_command_count != count_before + 1U) {
+        return Fail("end frame capacity failure did not record required command count");
+    }
+
     if (snapshot.last_status != RhiStatus::CapacityExceeded) {
         return Fail("end frame capacity failure did not record last status");
     }
@@ -1753,6 +1766,10 @@ int RhiCommandListLastStatusTracksLifecycleAndCapacity() {
     }
 
     snapshot = command_list.Snapshot();
+    if (snapshot.required_command_count != 1U) {
+        return Fail("command list reset after capacity failure did not reset required command count");
+    }
+
     if (snapshot.last_status != RhiStatus::Success) {
         return Fail("command list reset after capacity failure did not clear last status");
     }

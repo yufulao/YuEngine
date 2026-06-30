@@ -141,12 +141,14 @@ public:
 
 private:
     RhiStatus Append(RhiCommandRecord record);
+    std::size_t RequiredCommandCount() const;
     RhiStatus RecordSuccess();
     RhiStatus RecordFailure(RhiStatus status);
 
     std::vector<RhiCommandRecord> records_;
     RhiTextureHandle target_handle_;
     std::size_t command_count_;
+    std::size_t required_command_count_;
     std::size_t draw_command_count_;
     std::size_t indexed_draw_command_count_;
     std::size_t sampled_texture_bind_command_count_;

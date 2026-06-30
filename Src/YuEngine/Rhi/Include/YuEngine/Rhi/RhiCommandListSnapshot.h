@@ -11,6 +11,7 @@ namespace yuengine::rhi {
 struct RhiCommandListSnapshot final {
     std::size_t capacity = 0U;
     std::size_t command_count = 0U;
+    std::size_t required_command_count = 0U;
     std::size_t draw_command_count = 0U;
     std::size_t indexed_draw_command_count = 0U;
     std::size_t sampled_texture_bind_command_count = 0U;

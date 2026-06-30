@@ -8,6 +8,7 @@ RhiCommandList::RhiCommandList(std::size_t capacity)
     : records_(capacity),
       target_handle_{},
       command_count_(0U),
+      required_command_count_(1U),
       draw_command_count_(0U),
       indexed_draw_command_count_(0U),
       sampled_texture_bind_command_count_(0U),
@@ -22,6 +23,7 @@ RhiCommandList::RhiCommandList(std::size_t capacity)
 RhiStatus RhiCommandList::Reset() {
     target_handle_ = RhiTextureHandle{};
     command_count_ = 0U;
+    required_command_count_ = 1U;
     draw_command_count_ = 0U;
     indexed_draw_command_count_ = 0U;
     sampled_texture_bind_command_count_ = 0U;
@@ -267,6 +269,7 @@ RhiCommandListSnapshot RhiCommandList::Snapshot() const {
     return RhiCommandListSnapshot{
         records_.size(),
         command_count_,
+        required_command_count_,
         draw_command_count_,
         indexed_draw_command_count_,
         sampled_texture_bind_command_count_,
@@ -300,12 +303,18 @@ bool RhiCommandList::IsComplete() const {
 
 RhiStatus RhiCommandList::Append(RhiCommandRecord record) {
     if (command_count_ >= records_.size()) {
+        required_command_count_ = RequiredCommandCount();
         return RecordFailure(RhiStatus::CapacityExceeded);
     }
 
     records_[command_count_] = record;
     ++command_count_;
+    required_command_count_ = command_count_;
     return RecordSuccess();
+}
+
+std::size_t RhiCommandList::RequiredCommandCount() const {
+    return command_count_ + 1U;
 }
 
 RhiStatus RhiCommandList::RecordSuccess() {
