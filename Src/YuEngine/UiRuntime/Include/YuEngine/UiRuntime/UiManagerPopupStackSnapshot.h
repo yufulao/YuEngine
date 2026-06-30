@@ -25,6 +25,7 @@ struct UiManagerPopupStackSnapshot final {
     std::uint32_t idempotent_close_count = 0U;
     std::uint32_t accepted_operation_count = 0U;
     std::uint32_t rejected_operation_count = 0U;
+    std::uint64_t failed_operation_count = 0ULL;
     UiManagerPopupStackStatus last_status = UiManagerPopupStackStatus::Success;
 };
 }

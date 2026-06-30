@@ -761,6 +761,7 @@ UiManagerPopupStackResult UiManagerPopupStack::MakeResult(
 
 UiManagerPopupStackStatus UiManagerPopupStack::RecordFailure(UiManagerPopupStackStatus status) {
     ++snapshot_.rejected_operation_count;
+    ++snapshot_.failed_operation_count;
     snapshot_.last_status = status;
     return status;
 }

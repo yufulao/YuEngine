@@ -597,8 +597,28 @@ int RunRejectsMissingNonPopupAndUntrackedStatusTest() {
         return Fail("inactive untracked close flags mismatch");
     }
 
+    const UiManagerPopupStackSnapshot success_snapshot = popup_stack.Snapshot();
+    if (success_snapshot.failed_operation_count != 4ULL ||
+        success_snapshot.rejected_operation_count != 4U ||
+        success_snapshot.accepted_operation_count != 1U ||
+        success_snapshot.last_status != UiManagerPopupStackStatus::Success) {
+        return Fail("popup stack failure then success counters mismatch");
+    }
+
     result = popup_stack.ClosePopupPanel(PanelId(999U), &panel_map);
-    return RequireStatus(result.status, UiManagerPopupStackStatus::PanelNotLoaded, "missing close status mismatch");
+    if (RequireStatus(result.status, UiManagerPopupStackStatus::PanelNotLoaded, "missing close status mismatch") != 0) {
+        return 1;
+    }
+
+    const UiManagerPopupStackSnapshot failure_snapshot = popup_stack.Snapshot();
+    if (failure_snapshot.failed_operation_count != 5ULL ||
+        failure_snapshot.rejected_operation_count != 5U ||
+        failure_snapshot.accepted_operation_count != 1U ||
+        failure_snapshot.last_status != UiManagerPopupStackStatus::PanelNotLoaded) {
+        return Fail("popup stack final failure counters mismatch");
+    }
+
+    return 0;
 }
 
 int RunReleaseRemovesPopupAndPanelCacheTest() {
