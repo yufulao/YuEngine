@@ -10,6 +10,7 @@
 #include "YuEngine/Rhi/RhiExtent2D.h"
 #include "YuEngine/Rhi/RhiResourceSnapshot.h"
 #include "YuEngine/Rhi/RhiShaderStage.h"
+#include "YuEngine/Rhi/RhiStatus.h"
 #include "YuEngine/Rhi/RhiSwapchainSnapshot.h"
 
 namespace yuengine::rhi {
@@ -36,6 +37,7 @@ struct RhiDeviceSnapshot final {
     std::uint64_t present_count = 0U;
     std::uint64_t capture_count = 0U;
     std::uint64_t failed_operation_count = 0U;
+    RhiStatus last_status = RhiStatus::Success;
     std::uint32_t last_draw_vertex_count = 0U;
     std::uint32_t last_indexed_draw_index_count = 0U;
     std::uint32_t last_bound_sampled_texture_slot = 0U;

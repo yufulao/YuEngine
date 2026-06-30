@@ -841,6 +841,10 @@ bool DeviceSnapshotsEqual(const RhiDeviceSnapshot &left, const RhiDeviceSnapshot
         return false;
     }
 
+    if (left.last_status != right.last_status) {
+        return false;
+    }
+
     if (left.last_capture_bytes_written != right.last_capture_bytes_written) {
         return false;
     }
@@ -3321,6 +3325,21 @@ int RhiSubmitDrawRejectsMissingPipelineWithoutMutation() {
         return Fail("rejected draw changed submit count");
     }
 
+    if (after_snapshot.last_status != RhiStatus::InvalidLifecycle) {
+        return Fail("rejected draw did not record last status");
+    }
+
+    RhiSamplerDesc recovery_sampler_desc{};
+    RhiSamplerHandle recovery_sampler{};
+    if (device_interface.CreateSampler(recovery_sampler_desc, recovery_sampler) != RhiStatus::Success) {
+        return Fail("rejected draw recovery sampler creation failed");
+    }
+
+    const auto recovery_snapshot = device.Snapshot();
+    if (recovery_snapshot.last_status != RhiStatus::Success) {
+        return Fail("successful operation did not clear rejected draw last status");
+    }
+
     return 0;
 }
 
@@ -3367,6 +3386,10 @@ int RhiSubmitDrawRejectsVertexBufferRangeOverflow() {
 
     if (after_snapshot.submit_count != before_snapshot.submit_count) {
         return Fail("overflow draw changed submit count");
+    }
+
+    if (after_snapshot.last_status != RhiStatus::InvalidDescriptor) {
+        return Fail("overflow draw did not record last status");
     }
 
     return 0;
@@ -3565,6 +3588,10 @@ int RhiSubmitIndexedDrawRejectsMissingIndexBufferWithoutMutation() {
         return Fail("rejected indexed draw changed submit count");
     }
 
+    if (after_snapshot.last_status != RhiStatus::InvalidLifecycle) {
+        return Fail("rejected indexed draw did not record last status");
+    }
+
     return 0;
 }
 
@@ -3621,6 +3648,10 @@ int RhiSubmitIndexedDrawRejectsIndexRangeOverflow() {
 
     if (after_snapshot.submit_count != before_snapshot.submit_count) {
         return Fail("overflow indexed draw changed submit count");
+    }
+
+    if (after_snapshot.last_status != RhiStatus::InvalidDescriptor) {
+        return Fail("overflow indexed draw did not record last status");
     }
 
     return 0;
@@ -3832,6 +3863,10 @@ int RhiTextureSamplingSlotOverflowDoesNotMutate() {
         return Fail("sampled texture slot overflow was not tracked");
     }
 
+    if (texture_snapshot.last_status != RhiStatus::InvalidDescriptor) {
+        return Fail("sampled texture slot overflow did not record last status");
+    }
+
     RhiSamplerBinding sampler_binding = SamplerBindingFor(sampler);
     sampler_binding.slot = static_cast<std::uint32_t>(MAX_RHI_SAMPLER_SLOTS);
     status = device_interface.RecordBindSampler(command_list, sampler_binding);
@@ -3846,6 +3881,10 @@ int RhiTextureSamplingSlotOverflowDoesNotMutate() {
 
     if (sampler_snapshot.rejected_sampler_bind_count != texture_snapshot.rejected_sampler_bind_count + 1U) {
         return Fail("sampler slot overflow was not tracked");
+    }
+
+    if (sampler_snapshot.last_status != RhiStatus::InvalidDescriptor) {
+        return Fail("sampler slot overflow did not record last status");
     }
 
     return 0;
@@ -3935,6 +3974,10 @@ int RhiSubmitTextureSamplingRejectsMissingSamplerWithoutMutation() {
         return Fail("missing sampler rejection changed submit count");
     }
 
+    if (after_snapshot.last_status != RhiStatus::InvalidLifecycle) {
+        return Fail("missing sampler rejection did not record last status");
+    }
+
     return 0;
 }
 
@@ -4020,6 +4063,10 @@ int RhiSubmitSamplerRejectsMissingTextureWithoutMutation() {
 
     if (after_snapshot.submit_count != before_snapshot.submit_count) {
         return Fail("missing sampled texture rejection changed submit count");
+    }
+
+    if (after_snapshot.last_status != RhiStatus::InvalidLifecycle) {
+        return Fail("missing sampled texture rejection did not record last status");
     }
 
     return 0;
@@ -4338,6 +4385,10 @@ int RhiConstantBufferSlotOverflowDoesNotMutate() {
     if (after_snapshot.rejected_constant_buffer_bind_count !=
         before_snapshot.rejected_constant_buffer_bind_count + 1U) {
         return Fail("constant buffer slot overflow was not tracked");
+    }
+
+    if (after_snapshot.last_status != RhiStatus::InvalidDescriptor) {
+        return Fail("constant buffer slot overflow did not record last status");
     }
 
     return 0;

@@ -91,6 +91,11 @@ bool ByteRangeFits(
     const std::uint64_t remaining_bytes = total_bytes - byte_offset;
     return static_cast<std::uint64_t>(byte_count) <= remaining_bytes;
 }
+
+RhiStatus RecordDeviceSuccess(RhiDeviceSnapshot &snapshot) {
+    snapshot.last_status = RhiStatus::Success;
+    return RhiStatus::Success;
+}
 }
 
 RhiDeviceCreateResult RhiDeviceFactory::CreateDevice(const RhiDeviceDesc &desc, NullRhiDevice *null_device) {
@@ -302,7 +307,7 @@ RhiStatus NullRhiDevice::CreateColorTarget(const RhiColorTargetDesc &desc, RhiTe
         out_handle = RhiTextureHandle{static_cast<std::uint32_t>(index), slot.generation};
         ++snapshot_.color_target_count;
         ++snapshot_.created_target_count;
-        return RhiStatus::Success;
+        return RecordDeviceSuccess(snapshot_);
     }
 
     return RecordFailure(RhiStatus::CapacityExceeded);
@@ -334,7 +339,7 @@ RhiStatus NullRhiDevice::DestroyTarget(RhiTextureHandle handle) {
     ++slot.generation;
     --snapshot_.color_target_count;
     ++snapshot_.destroyed_target_count;
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus NullRhiDevice::RecordClear(RhiCommandList &command_list, RhiTextureHandle handle, RhiColor color) {
@@ -348,7 +353,7 @@ RhiStatus NullRhiDevice::RecordClear(RhiCommandList &command_list, RhiTextureHan
     }
 
     ++snapshot_.recorded_command_count;
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus NullRhiDevice::RecordBindPipeline(RhiCommandList &command_list, RhiPipelineHandle handle) {
@@ -362,7 +367,7 @@ RhiStatus NullRhiDevice::RecordBindPipeline(RhiCommandList &command_list, RhiPip
     }
 
     ++snapshot_.recorded_command_count;
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus NullRhiDevice::RecordBindVertexBuffer(RhiCommandList &command_list, const RhiVertexBufferView &view) {
@@ -376,7 +381,7 @@ RhiStatus NullRhiDevice::RecordBindVertexBuffer(RhiCommandList &command_list, co
     }
 
     ++snapshot_.recorded_command_count;
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus NullRhiDevice::RecordBindIndexBuffer(RhiCommandList &command_list, const RhiIndexBufferView &view) {
@@ -390,7 +395,7 @@ RhiStatus NullRhiDevice::RecordBindIndexBuffer(RhiCommandList &command_list, con
     }
 
     ++snapshot_.recorded_command_count;
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus NullRhiDevice::RecordBindSampledTexture(
@@ -410,7 +415,7 @@ RhiStatus NullRhiDevice::RecordBindSampledTexture(
     }
 
     ++snapshot_.recorded_command_count;
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus NullRhiDevice::RecordBindSampler(RhiCommandList &command_list, const RhiSamplerBinding &binding) {
@@ -428,7 +433,7 @@ RhiStatus NullRhiDevice::RecordBindSampler(RhiCommandList &command_list, const R
     }
 
     ++snapshot_.recorded_command_count;
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus NullRhiDevice::RecordBindConstantBuffer(
@@ -457,7 +462,7 @@ RhiStatus NullRhiDevice::RecordBindConstantBuffer(
     }
 
     ++snapshot_.recorded_command_count;
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus NullRhiDevice::RecordBindBlendState(RhiCommandList &command_list, const RhiBlendStateDesc &desc) {
@@ -471,7 +476,7 @@ RhiStatus NullRhiDevice::RecordBindBlendState(RhiCommandList &command_list, cons
     }
 
     ++snapshot_.recorded_command_count;
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus NullRhiDevice::RecordDraw(RhiCommandList &command_list, const RhiDrawDesc &desc) {
@@ -485,7 +490,7 @@ RhiStatus NullRhiDevice::RecordDraw(RhiCommandList &command_list, const RhiDrawD
     }
 
     ++snapshot_.recorded_command_count;
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus NullRhiDevice::RecordDrawIndexed(RhiCommandList &command_list, const RhiDrawIndexedDesc &desc) {
@@ -499,7 +504,7 @@ RhiStatus NullRhiDevice::RecordDrawIndexed(RhiCommandList &command_list, const R
     }
 
     ++snapshot_.recorded_command_count;
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus NullRhiDevice::Submit(const RhiCommandList &command_list) {
@@ -758,7 +763,7 @@ RhiStatus NullRhiDevice::Submit(const RhiCommandList &command_list) {
     }
 
     snapshot_.command_storage_capacity_after_last_frame = command_list.Capacity();
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus NullRhiDevice::Present() {
@@ -773,7 +778,7 @@ RhiStatus NullRhiDevice::Present() {
     presented_handle_ = submitted_handle_;
     has_presented_frame_ = true;
     ++snapshot_.present_count;
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiCaptureResult NullRhiDevice::CapturePresentedTarget(std::span<std::uint8_t> destination) {
@@ -807,6 +812,7 @@ RhiCaptureResult NullRhiDevice::CapturePresentedTarget(std::span<std::uint8_t> d
     ++snapshot_.capture_count;
     snapshot_.last_capture_bytes_written = byte_count;
     snapshot_.last_capture_extent = slot.desc.extent;
+    snapshot_.last_status = RhiStatus::Success;
     return RhiCaptureResult{RhiStatus::Success, byte_count, slot.desc.extent};
 }
 
@@ -840,7 +846,7 @@ RhiStatus NullRhiDevice::CreateBuffer(
         out_handle = RhiBufferHandle{static_cast<std::uint32_t>(index), slot.generation};
         ++snapshot_.resources.buffer_count;
         ++snapshot_.resources.created_primitive_count;
-        return RhiStatus::Success;
+        return RecordDeviceSuccess(snapshot_);
     }
 
     return RecordFailure(RhiStatus::CapacityExceeded);
@@ -869,7 +875,7 @@ RhiStatus NullRhiDevice::UpdateBuffer(
     std::copy(bytes.begin(), bytes.end(), slot.bytes.begin() + destination_byte_index);
     out_fence = SignalFence(bytes.size());
     ++snapshot_.resources.updated_primitive_count;
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus NullRhiDevice::DestroyBuffer(RhiBufferHandle handle) {
@@ -878,7 +884,7 @@ RhiStatus NullRhiDevice::DestroyBuffer(RhiBufferHandle handle) {
     }
 
     RetireBufferSlot(handle.slot);
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus NullRhiDevice::CreateTexture(
@@ -911,7 +917,7 @@ RhiStatus NullRhiDevice::CreateTexture(
         out_handle = RhiTextureHandle{static_cast<std::uint32_t>(index), slot.generation};
         ++snapshot_.resources.texture_count;
         ++snapshot_.resources.created_primitive_count;
-        return RhiStatus::Success;
+        return RecordDeviceSuccess(snapshot_);
     }
 
     return RecordFailure(RhiStatus::CapacityExceeded);
@@ -940,7 +946,7 @@ RhiStatus NullRhiDevice::UpdateTexture(
     std::copy(bytes.begin(), bytes.end(), slot.bytes.begin() + destination_byte_index);
     out_fence = SignalFence(bytes.size());
     ++snapshot_.resources.updated_primitive_count;
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus NullRhiDevice::DestroyTexture(RhiTextureHandle handle) {
@@ -949,7 +955,7 @@ RhiStatus NullRhiDevice::DestroyTexture(RhiTextureHandle handle) {
     }
 
     RetireTextureSlot(handle.slot);
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus NullRhiDevice::CreateSampler(const RhiSamplerDesc &desc, RhiSamplerHandle &out_handle) {
@@ -973,7 +979,7 @@ RhiStatus NullRhiDevice::CreateSampler(const RhiSamplerDesc &desc, RhiSamplerHan
         out_handle = RhiSamplerHandle{static_cast<std::uint32_t>(index), slot.generation};
         ++snapshot_.resources.sampler_count;
         ++snapshot_.resources.created_primitive_count;
-        return RhiStatus::Success;
+        return RecordDeviceSuccess(snapshot_);
     }
 
     return RecordFailure(RhiStatus::CapacityExceeded);
@@ -985,7 +991,7 @@ RhiStatus NullRhiDevice::DestroySampler(RhiSamplerHandle handle) {
     }
 
     RetireSamplerSlot(handle.slot);
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus NullRhiDevice::CreateShaderModule(const RhiShaderModuleDesc &desc, RhiShaderModuleHandle &out_handle) {
@@ -1015,7 +1021,7 @@ RhiStatus NullRhiDevice::CreateShaderModule(const RhiShaderModuleDesc &desc, Rhi
         out_handle = RhiShaderModuleHandle{static_cast<std::uint32_t>(index), slot.generation};
         ++snapshot_.resources.shader_module_count;
         ++snapshot_.resources.created_primitive_count;
-        return RhiStatus::Success;
+        return RecordDeviceSuccess(snapshot_);
     }
 
     return RecordFailure(RhiStatus::CapacityExceeded);
@@ -1027,7 +1033,7 @@ RhiStatus NullRhiDevice::DestroyShaderModule(RhiShaderModuleHandle handle) {
     }
 
     RetireShaderModuleSlot(handle.slot);
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus NullRhiDevice::CreatePipeline(const RhiPipelineDesc &desc, RhiPipelineHandle &out_handle) {
@@ -1055,7 +1061,7 @@ RhiStatus NullRhiDevice::CreatePipeline(const RhiPipelineDesc &desc, RhiPipeline
         out_handle = RhiPipelineHandle{static_cast<std::uint32_t>(index), slot.generation};
         ++snapshot_.resources.pipeline_count;
         ++snapshot_.resources.created_primitive_count;
-        return RhiStatus::Success;
+        return RecordDeviceSuccess(snapshot_);
     }
 
     return RecordFailure(RhiStatus::CapacityExceeded);
@@ -1067,7 +1073,7 @@ RhiStatus NullRhiDevice::DestroyPipeline(RhiPipelineHandle handle) {
     }
 
     RetirePipelineSlot(handle.slot);
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus NullRhiDevice::RequestPrimitiveRetirement(
@@ -1125,7 +1131,7 @@ RhiStatus NullRhiDevice::RequestPrimitiveRetirement(
         ++snapshot_.resources.primitive_retirement.pending_count;
         ++snapshot_.resources.primitive_retirement.requested_count;
         snapshot_.resources.primitive_retirement.next_retirement_id = next_primitive_retirement_id_;
-        return RhiStatus::Success;
+        return RecordDeviceSuccess(snapshot_);
     }
 
     out_record.status = RhiPrimitiveRetirementStatus::RejectedCapacity;
@@ -1199,7 +1205,7 @@ RhiStatus NullRhiDevice::DrainPrimitiveRetirements(
         return out_result.status;
     }
 
-    out_result.status = RhiStatus::Success;
+    out_result.status = RecordDeviceSuccess(snapshot_);
     return out_result.status;
 }
 
@@ -1213,6 +1219,7 @@ RhiDeviceSnapshot NullRhiDevice::Snapshot() const {
 
 RhiStatus NullRhiDevice::RecordFailure(RhiStatus status) {
     ++snapshot_.failed_operation_count;
+    snapshot_.last_status = status;
     return status;
 }
 

@@ -34,6 +34,11 @@ bool IsConstantBufferShaderStageValid(RhiShaderStage stage) {
     return stage == RhiShaderStage::Pixel;
 }
 
+RhiStatus RecordDeviceSuccess(RhiDeviceSnapshot &snapshot) {
+    snapshot.last_status = RhiStatus::Success;
+    return RhiStatus::Success;
+}
+
 std::size_t InputElementFormatByteCount(RhiInputElementFormat format) {
     if (format == RhiInputElementFormat::Float32x2) {
         return sizeof(float) * 2U;
@@ -306,7 +311,7 @@ RhiStatus D3D11RhiDevice::Initialize(const RhiDeviceDesc &desc) {
     initialized_ = true;
     submitted_ = false;
     presented_ = false;
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus D3D11RhiDevice::CreateColorTarget(const RhiColorTargetDesc &desc, RhiTextureHandle &out_handle) {
@@ -347,9 +352,9 @@ RhiStatus D3D11RhiDevice::ResizeSwapchain(
 
     if (request.extent.width == swapchain_desc_.extent.width &&
         request.extent.height == swapchain_desc_.extent.height) {
-        out_result.status = RhiStatus::Success;
+        out_result.status = RecordDeviceSuccess(snapshot_);
         out_result.snapshot = snapshot_.swapchain;
-        return RhiStatus::Success;
+        return out_result.status;
     }
 
     context_->OMSetRenderTargets(0U, nullptr, nullptr);
@@ -398,10 +403,10 @@ RhiStatus D3D11RhiDevice::ResizeSwapchain(
     submitted_ = false;
     presented_ = false;
 
-    out_result.status = RhiStatus::Success;
+    out_result.status = RecordDeviceSuccess(snapshot_);
     out_result.resized = true;
     out_result.snapshot = snapshot_.swapchain;
-    return RhiStatus::Success;
+    return out_result.status;
 }
 
 RhiStatus D3D11RhiDevice::DestroyTarget(RhiTextureHandle handle) {
@@ -423,7 +428,7 @@ RhiStatus D3D11RhiDevice::RecordClear(RhiCommandList &command_list, RhiTextureHa
     }
 
     ++snapshot_.recorded_command_count;
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus D3D11RhiDevice::RecordBindPipeline(RhiCommandList &command_list, RhiPipelineHandle handle) {
@@ -437,7 +442,7 @@ RhiStatus D3D11RhiDevice::RecordBindPipeline(RhiCommandList &command_list, RhiPi
     }
 
     ++snapshot_.recorded_command_count;
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus D3D11RhiDevice::RecordBindVertexBuffer(RhiCommandList &command_list, const RhiVertexBufferView &view) {
@@ -451,7 +456,7 @@ RhiStatus D3D11RhiDevice::RecordBindVertexBuffer(RhiCommandList &command_list, c
     }
 
     ++snapshot_.recorded_command_count;
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus D3D11RhiDevice::RecordBindIndexBuffer(RhiCommandList &command_list, const RhiIndexBufferView &view) {
@@ -465,7 +470,7 @@ RhiStatus D3D11RhiDevice::RecordBindIndexBuffer(RhiCommandList &command_list, co
     }
 
     ++snapshot_.recorded_command_count;
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus D3D11RhiDevice::RecordBindSampledTexture(
@@ -485,7 +490,7 @@ RhiStatus D3D11RhiDevice::RecordBindSampledTexture(
     }
 
     ++snapshot_.recorded_command_count;
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus D3D11RhiDevice::RecordBindSampler(RhiCommandList &command_list, const RhiSamplerBinding &binding) {
@@ -503,7 +508,7 @@ RhiStatus D3D11RhiDevice::RecordBindSampler(RhiCommandList &command_list, const 
     }
 
     ++snapshot_.recorded_command_count;
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus D3D11RhiDevice::RecordBindConstantBuffer(
@@ -532,7 +537,7 @@ RhiStatus D3D11RhiDevice::RecordBindConstantBuffer(
     }
 
     ++snapshot_.recorded_command_count;
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus D3D11RhiDevice::RecordBindBlendState(RhiCommandList &command_list, const RhiBlendStateDesc &desc) {
@@ -546,7 +551,7 @@ RhiStatus D3D11RhiDevice::RecordBindBlendState(RhiCommandList &command_list, con
     }
 
     ++snapshot_.recorded_command_count;
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus D3D11RhiDevice::RecordDraw(RhiCommandList &command_list, const RhiDrawDesc &desc) {
@@ -560,7 +565,7 @@ RhiStatus D3D11RhiDevice::RecordDraw(RhiCommandList &command_list, const RhiDraw
     }
 
     ++snapshot_.recorded_command_count;
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus D3D11RhiDevice::RecordDrawIndexed(RhiCommandList &command_list, const RhiDrawIndexedDesc &desc) {
@@ -574,7 +579,7 @@ RhiStatus D3D11RhiDevice::RecordDrawIndexed(RhiCommandList &command_list, const 
     }
 
     ++snapshot_.recorded_command_count;
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus D3D11RhiDevice::Submit(const RhiCommandList &command_list) {
@@ -944,7 +949,7 @@ RhiStatus D3D11RhiDevice::Submit(const RhiCommandList &command_list) {
     }
 
     snapshot_.command_storage_capacity_after_last_frame = command_list.Capacity();
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus D3D11RhiDevice::Present() {
@@ -966,7 +971,7 @@ RhiStatus D3D11RhiDevice::Present() {
     presented_ = true;
     ++snapshot_.present_count;
     snapshot_.swapchain.presented = true;
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiCaptureResult D3D11RhiDevice::CapturePresentedTarget(std::span<std::uint8_t> destination) {
@@ -1005,6 +1010,7 @@ RhiCaptureResult D3D11RhiDevice::CapturePresentedTarget(std::span<std::uint8_t> 
     ++snapshot_.capture_count;
     snapshot_.last_capture_bytes_written = byte_count;
     snapshot_.last_capture_extent = swapchain_desc_.extent;
+    snapshot_.last_status = RhiStatus::Success;
     return RhiCaptureResult{RhiStatus::Success, byte_count, swapchain_desc_.extent};
 }
 
@@ -1058,7 +1064,7 @@ RhiStatus D3D11RhiDevice::CreateBuffer(
         out_handle = RhiBufferHandle{static_cast<std::uint32_t>(index), slot.generation};
         ++snapshot_.resources.buffer_count;
         ++snapshot_.resources.created_primitive_count;
-        return RhiStatus::Success;
+        return RecordDeviceSuccess(snapshot_);
     }
 
     return RecordFailure(RhiStatus::CapacityExceeded);
@@ -1099,7 +1105,7 @@ RhiStatus D3D11RhiDevice::UpdateBuffer(
     context_->UpdateSubresource(slot.buffer, 0U, &update_box, bytes.data(), 0U, 0U);
     out_fence = SignalFence(bytes.size());
     ++snapshot_.resources.updated_primitive_count;
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus D3D11RhiDevice::DestroyBuffer(RhiBufferHandle handle) {
@@ -1108,7 +1114,7 @@ RhiStatus D3D11RhiDevice::DestroyBuffer(RhiBufferHandle handle) {
     }
 
     RetireBufferSlot(handle.slot);
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus D3D11RhiDevice::CreateTexture(
@@ -1181,7 +1187,7 @@ RhiStatus D3D11RhiDevice::CreateTexture(
         out_handle = RhiTextureHandle{static_cast<std::uint32_t>(index), slot.generation};
         ++snapshot_.resources.texture_count;
         ++snapshot_.resources.created_primitive_count;
-        return RhiStatus::Success;
+        return RecordDeviceSuccess(snapshot_);
     }
 
     return RecordFailure(RhiStatus::CapacityExceeded);
@@ -1212,7 +1218,7 @@ RhiStatus D3D11RhiDevice::UpdateTexture(
         context_->UpdateSubresource(slot.texture, 0U, nullptr, bytes.data(), row_bytes, 0U);
         out_fence = SignalFence(bytes.size());
         ++snapshot_.resources.updated_primitive_count;
-        return RhiStatus::Success;
+        return RecordDeviceSuccess(snapshot_);
     }
 
     D3D11_BOX update_box{};
@@ -1229,7 +1235,7 @@ RhiStatus D3D11RhiDevice::UpdateTexture(
     context_->UpdateSubresource(slot.texture, 0U, &update_box, bytes.data(), update_row_bytes, 0U);
     out_fence = SignalFence(bytes.size());
     ++snapshot_.resources.updated_primitive_count;
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus D3D11RhiDevice::DestroyTexture(RhiTextureHandle handle) {
@@ -1238,7 +1244,7 @@ RhiStatus D3D11RhiDevice::DestroyTexture(RhiTextureHandle handle) {
     }
 
     RetireTextureSlot(handle.slot);
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus D3D11RhiDevice::CreateSampler(const RhiSamplerDesc &desc, RhiSamplerHandle &out_handle) {
@@ -1280,7 +1286,7 @@ RhiStatus D3D11RhiDevice::CreateSampler(const RhiSamplerDesc &desc, RhiSamplerHa
         out_handle = RhiSamplerHandle{static_cast<std::uint32_t>(index), slot.generation};
         ++snapshot_.resources.sampler_count;
         ++snapshot_.resources.created_primitive_count;
-        return RhiStatus::Success;
+        return RecordDeviceSuccess(snapshot_);
     }
 
     return RecordFailure(RhiStatus::CapacityExceeded);
@@ -1292,7 +1298,7 @@ RhiStatus D3D11RhiDevice::DestroySampler(RhiSamplerHandle handle) {
     }
 
     RetireSamplerSlot(handle.slot);
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus D3D11RhiDevice::CreateShaderModule(const RhiShaderModuleDesc &desc, RhiShaderModuleHandle &out_handle) {
@@ -1348,7 +1354,7 @@ RhiStatus D3D11RhiDevice::CreateShaderModule(const RhiShaderModuleDesc &desc, Rh
         out_handle = RhiShaderModuleHandle{static_cast<std::uint32_t>(index), slot.generation};
         ++snapshot_.resources.shader_module_count;
         ++snapshot_.resources.created_primitive_count;
-        return RhiStatus::Success;
+        return RecordDeviceSuccess(snapshot_);
     }
 
     return RecordFailure(RhiStatus::CapacityExceeded);
@@ -1360,7 +1366,7 @@ RhiStatus D3D11RhiDevice::DestroyShaderModule(RhiShaderModuleHandle handle) {
     }
 
     RetireShaderModuleSlot(handle.slot);
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus D3D11RhiDevice::CreatePipeline(const RhiPipelineDesc &desc, RhiPipelineHandle &out_handle) {
@@ -1416,7 +1422,7 @@ RhiStatus D3D11RhiDevice::CreatePipeline(const RhiPipelineDesc &desc, RhiPipelin
         out_handle = RhiPipelineHandle{static_cast<std::uint32_t>(index), slot.generation};
         ++snapshot_.resources.pipeline_count;
         ++snapshot_.resources.created_primitive_count;
-        return RhiStatus::Success;
+        return RecordDeviceSuccess(snapshot_);
     }
 
     return RecordFailure(RhiStatus::CapacityExceeded);
@@ -1428,7 +1434,7 @@ RhiStatus D3D11RhiDevice::DestroyPipeline(RhiPipelineHandle handle) {
     }
 
     RetirePipelineSlot(handle.slot);
-    return RhiStatus::Success;
+    return RecordDeviceSuccess(snapshot_);
 }
 
 RhiStatus D3D11RhiDevice::RequestPrimitiveRetirement(
@@ -1486,7 +1492,7 @@ RhiStatus D3D11RhiDevice::RequestPrimitiveRetirement(
         ++snapshot_.resources.primitive_retirement.pending_count;
         ++snapshot_.resources.primitive_retirement.requested_count;
         snapshot_.resources.primitive_retirement.next_retirement_id = next_primitive_retirement_id_;
-        return RhiStatus::Success;
+        return RecordDeviceSuccess(snapshot_);
     }
 
     out_record.status = RhiPrimitiveRetirementStatus::RejectedCapacity;
@@ -1560,7 +1566,7 @@ RhiStatus D3D11RhiDevice::DrainPrimitiveRetirements(
         return out_result.status;
     }
 
-    out_result.status = RhiStatus::Success;
+    out_result.status = RecordDeviceSuccess(snapshot_);
     return out_result.status;
 }
 
@@ -1688,6 +1694,7 @@ void D3D11RhiDevice::InitializePrimitiveSlots() {
 
 RhiStatus D3D11RhiDevice::RecordFailure(RhiStatus status) {
     ++snapshot_.failed_operation_count;
+    snapshot_.last_status = status;
     return status;
 }
 
