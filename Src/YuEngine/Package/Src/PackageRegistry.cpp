@@ -313,6 +313,7 @@ PackageRegistry::PackageRegistry(PackageRegistryDesc desc)
           0U,
           0ULL,
           0U,
+          0U,
           MemoryAccountingStatus::ExplicitlyTrackedOnly,
           PackageStatus::Success} {
     first_dependency_edge_for_entry_.fill(INVALID_INDEX);
@@ -521,6 +522,7 @@ PackageStatus PackageRegistry::RecordFailure(PackageStatus status) {
 }
 
 void PackageRegistry::RecordSuccess() {
+    ++snapshot_.accepted_operation_count;
     snapshot_.last_status = PackageStatus::Success;
 }
 

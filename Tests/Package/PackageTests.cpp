@@ -67,6 +67,8 @@ constexpr const char* TEST_PAYLOAD_METADATA_LOAD_PLAN =
 constexpr const char* TEST_RESOLVE = "Package_ResolveEntryByResourceKey_ReturnsDeterministicLoadPlan";
 constexpr const char* TEST_RESOLVE_RESOURCE_KEY_TUPLE = "Package_ResolveEntryByResourceKey_UsesTypeAndLogicalKeyTuple";
 constexpr const char* TEST_INDEXED_LOOKUPS = "Package_IndexedLookupsPreserveStatusOrderAndCapacities";
+constexpr const char* TEST_ACCEPTED_STATUS =
+    "Package_AcceptedOperationCountTracksSuccessAfterFailureAndDuplicateDependency";
 constexpr const char* TEST_UNKNOWN_KEY = "Package_ResolveRejectsUnknownResourceKey";
 constexpr const char* TEST_TYPE_MISMATCH = "Package_ResolveRejectsTypeMismatchWithoutMutation";
 constexpr const char* TEST_MISSING_DEPENDENCY = "Package_DependencyValidationRejectsMissingEntry";
@@ -434,6 +436,10 @@ bool SnapshotsMatch(const PackageSnapshot& left, const PackageSnapshot& right) {
     }
 
     if (left.rejected_operation_count != right.rejected_operation_count) {
+        return false;
+    }
+
+    if (left.accepted_operation_count != right.accepted_operation_count) {
         return false;
     }
 
@@ -991,6 +997,138 @@ int PackageIndexedLookupsPreserveStatusOrderAndCapacities() {
 
     if (after_resolve.load_plan_record_capacity != before_resolve.load_plan_record_capacity) {
         return Fail(ERROR_INDEX_LOAD_PLAN_CAPACITY);
+    }
+
+    return 0;
+}
+
+int PackageAcceptedOperationCountTracksSuccessAfterFailureAndDuplicateDependency() {
+    PackageRegistry registry;
+    const PackageSnapshot initial_snapshot = registry.Snapshot();
+    if (initial_snapshot.accepted_operation_count != 0U) {
+        return Fail("initial accepted operation count changed");
+    }
+
+    if (initial_snapshot.rejected_operation_count != 0U) {
+        return Fail("initial rejected operation count changed");
+    }
+
+    const PackageRegistrationResult invalid_manifest = registry.RegisterSyntheticManifest({PackageId{}});
+    if (invalid_manifest.status != PackageStatus::InvalidPackageId) {
+        return Fail("invalid manifest status changed");
+    }
+
+    const PackageSnapshot after_invalid_manifest = registry.Snapshot();
+    if (after_invalid_manifest.accepted_operation_count != 0U) {
+        return Fail("invalid manifest changed accepted operation count");
+    }
+
+    if (after_invalid_manifest.rejected_operation_count != 1U) {
+        return Fail("invalid manifest did not increment rejected operation count");
+    }
+
+    if (after_invalid_manifest.last_status != PackageStatus::InvalidPackageId) {
+        return Fail("invalid manifest did not record last status");
+    }
+
+    if (!RegisterManifest(registry).Succeeded()) {
+        return Fail("accepted count fixture manifest failed");
+    }
+
+    const PackageSnapshot after_manifest = registry.Snapshot();
+    if (after_manifest.accepted_operation_count != 1U) {
+        return Fail("manifest success did not increment accepted operation count");
+    }
+
+    if (after_manifest.rejected_operation_count != 1U) {
+        return Fail("manifest success changed rejected operation count");
+    }
+
+    if (after_manifest.last_status != PackageStatus::Success) {
+        return Fail("manifest success did not clear last status");
+    }
+
+    if (!RegisterEntry(registry, ENTRY_TEXTURE, TYPE_TEXTURE, "texture_a", "textures/texture_a.bin").Succeeded()) {
+        return Fail("accepted count texture entry failed");
+    }
+
+    if (!RegisterEntry(registry, ENTRY_MATERIAL, TYPE_MATERIAL, "material_a", "materials/material_a.bin").Succeeded()) {
+        return Fail("accepted count material entry failed");
+    }
+
+    const PackageSnapshot after_entries = registry.Snapshot();
+    if (after_entries.accepted_operation_count != 3U) {
+        return Fail("entry success did not increment accepted operation count");
+    }
+
+    const PackageStatus dependency_status = registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_MATERIAL);
+    if (dependency_status != PackageStatus::Success) {
+        return Fail("accepted count dependency edge failed");
+    }
+
+    const PackageSnapshot after_dependency = registry.Snapshot();
+    if (after_dependency.accepted_operation_count != 4U) {
+        return Fail("dependency success did not increment accepted operation count");
+    }
+
+    if (after_dependency.dependency_edge_count != 1U) {
+        return Fail("dependency success changed edge count unexpectedly");
+    }
+
+    const PackageStatus duplicate_dependency_status = registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_MATERIAL);
+    if (duplicate_dependency_status != PackageStatus::Success) {
+        return Fail("duplicate dependency success path failed");
+    }
+
+    const PackageSnapshot after_duplicate_dependency = registry.Snapshot();
+    if (after_duplicate_dependency.accepted_operation_count != 5U) {
+        return Fail("duplicate dependency success did not increment accepted operation count");
+    }
+
+    if (after_duplicate_dependency.dependency_edge_count != after_dependency.dependency_edge_count) {
+        return Fail("duplicate dependency success changed edge count");
+    }
+
+    if (after_duplicate_dependency.rejected_operation_count != after_manifest.rejected_operation_count) {
+        return Fail("duplicate dependency success changed rejected operation count");
+    }
+
+    const PackageRegistrationResult duplicate_entry =
+        RegisterEntry(registry, ENTRY_TEXTURE, TYPE_TEXTURE, "texture_duplicate", "textures/texture_duplicate.bin");
+    if (duplicate_entry.status != PackageStatus::DuplicateEntry) {
+        return Fail("duplicate entry failure status changed");
+    }
+
+    const PackageSnapshot after_duplicate_entry = registry.Snapshot();
+    if (after_duplicate_entry.accepted_operation_count != after_duplicate_dependency.accepted_operation_count) {
+        return Fail("duplicate entry changed accepted operation count");
+    }
+
+    if (after_duplicate_entry.rejected_operation_count != 2U) {
+        return Fail("duplicate entry did not increment rejected operation count");
+    }
+
+    if (after_duplicate_entry.last_status != PackageStatus::DuplicateEntry) {
+        return Fail("duplicate entry did not record last status");
+    }
+
+    const PackageLoadPlanResult plan =
+        registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_TEXTURE, ResourceLogicalKey("texture_a"));
+    if (!plan.Succeeded()) {
+        return Fail("accepted count resolve failed");
+    }
+
+    const PackageSnapshot after_resolve = registry.Snapshot();
+    if (after_resolve.accepted_operation_count != 6U) {
+        return Fail("resolve success did not increment accepted operation count");
+    }
+
+    if (after_resolve.rejected_operation_count != after_duplicate_entry.rejected_operation_count) {
+        return Fail("resolve success changed rejected operation count");
+    }
+
+    if (after_resolve.last_status != PackageStatus::Success) {
+        return Fail("resolve success did not clear last status");
     }
 
     return 0;
@@ -2276,6 +2414,7 @@ int main(int argc, char** argv) {
         {TEST_RESOLVE, PackageResolveEntryByResourceKeyReturnsDeterministicLoadPlan},
         {TEST_RESOLVE_RESOURCE_KEY_TUPLE, PackageResolveEntryByResourceKeyUsesTypeAndLogicalKeyTuple},
         {TEST_INDEXED_LOOKUPS, PackageIndexedLookupsPreserveStatusOrderAndCapacities},
+        {TEST_ACCEPTED_STATUS, PackageAcceptedOperationCountTracksSuccessAfterFailureAndDuplicateDependency},
         {TEST_UNKNOWN_KEY, PackageResolveRejectsUnknownResourceKey},
         {TEST_TYPE_MISMATCH, PackageResolveRejectsTypeMismatchWithoutMutation},
         {TEST_MISSING_DEPENDENCY, PackageDependencyValidationRejectsMissingEntry},
