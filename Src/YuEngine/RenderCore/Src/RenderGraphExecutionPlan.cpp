@@ -339,6 +339,7 @@ RenderGraphExecutionPlanStatus RenderGraphExecutionPlan::ValidateRequest(
     }
 
     if (RemainingFramePacketRecordCapacity(*request.frame_packet) == 0U) {
+        result->frame_status = RenderFramePacketFixtureStatus::PacketCapacityExceeded;
         return RenderGraphExecutionPlanStatus::FramePacketCapacityExceeded;
     }
 

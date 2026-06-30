@@ -15,6 +15,7 @@
 #include "YuEngine/RenderCore/RenderFixturePassSnapshot.h"
 #include "YuEngine/RenderCore/RenderFixturePassStatus.h"
 #include "YuEngine/RenderCore/RenderFramePacketFixture.h"
+#include "YuEngine/RenderCore/RenderFramePacketFixtureDesc.h"
 #include "YuEngine/RenderCore/RenderFramePacketFixtureSnapshot.h"
 #include "YuEngine/RenderCore/RenderFramePacketFixtureStatus.h"
 #include "YuEngine/RenderCore/RenderGraphExecutionPlan.h"
@@ -67,6 +68,7 @@ using RenderFixturePassResult = yuengine::rendercore::RenderFixturePassResult;
 using RenderFixturePassSnapshot = yuengine::rendercore::RenderFixturePassSnapshot;
 using yuengine::rendercore::RenderFixturePassStatus;
 using RenderFramePacketFixture = yuengine::rendercore::RenderFramePacketFixture;
+using RenderFramePacketFixtureDesc = yuengine::rendercore::RenderFramePacketFixtureDesc;
 using RenderFramePacketFixtureSnapshot = yuengine::rendercore::RenderFramePacketFixtureSnapshot;
 using yuengine::rendercore::RenderFramePacketFixtureStatus;
 using RenderGraphExecutionPlan = yuengine::rendercore::RenderGraphExecutionPlan;
@@ -126,6 +128,8 @@ constexpr const char *TEST_INVALID_BATCH = "RenderCore_GraphExecutionPlan_Reject
 constexpr const char *TEST_DUPLICATE_PLAN = "RenderCore_GraphExecutionPlan_RejectsDuplicatePlanIdWithoutMutation";
 constexpr const char *TEST_DUPLICATE_GRAPH = "RenderCore_GraphExecutionPlan_RejectsDuplicateGraphExecutionWithoutMutation";
 constexpr const char *TEST_CAPACITY = "RenderCore_GraphExecutionPlan_RejectsPlanCapacityOverflowWithoutMutation";
+constexpr const char *TEST_FRAME_PACKET_CAPACITY =
+    "RenderCore_GraphExecutionPlan_RejectsFramePacketCapacityWithoutStatusLoss";
 constexpr const char *TEST_FRAME_FAILURE = "RenderCore_GraphExecutionPlan_PropagatesFramePacketFailure";
 constexpr const char *TEST_QUERY = "RenderCore_GraphExecutionPlan_QueryReturnsPlanRecord";
 constexpr const char *TEST_RELEASE = "RenderCore_GraphExecutionPlan_ReleaseClearsPlanRecord";
@@ -755,6 +759,56 @@ int RenderCoreGraphExecutionPlanRejectsPlanCapacityOverflowWithoutMutation() {
     return 0;
 }
 
+int RenderCoreGraphExecutionPlanRejectsFramePacketCapacityWithoutStatusLoss() {
+    PreparedGraphFixture fixture;
+    if (!PrepareFixture(fixture)) {
+        return Fail("frame packet capacity setup failed");
+    }
+
+    RenderFramePacketFixtureDesc frame_desc{};
+    frame_desc.frame_packet_record_capacity = 0U;
+    RenderFramePacketFixture limited_frame_packet(frame_desc);
+    const RenderFramePacketFixtureSnapshot before_frame = limited_frame_packet.Snapshot();
+    const DependencySnapshots before = CaptureDependencySnapshots(fixture);
+
+    RenderGraphExecutionPlanRequest request = ExecutionRequestFrom(fixture);
+    request.frame_packet = &limited_frame_packet;
+
+    RenderGraphExecutionPlan plan;
+    const auto result = plan.Execute(request);
+    if (result.status != RenderGraphExecutionPlanStatus::FramePacketCapacityExceeded) {
+        return Fail("execution plan did not reject frame packet capacity");
+    }
+
+    if (result.frame_status != RenderFramePacketFixtureStatus::PacketCapacityExceeded) {
+        return Fail("execution plan did not preserve frame packet capacity status");
+    }
+
+    const DependencySnapshots after = CaptureDependencySnapshots(fixture);
+    if (!DependencySnapshotsMatch(before, after)) {
+        return Fail("frame packet capacity validation mutated dependency state");
+    }
+
+    const RenderFramePacketFixtureSnapshot after_frame = limited_frame_packet.Snapshot();
+    if (after_frame.frame_packet_record_count != before_frame.frame_packet_record_count ||
+        after_frame.packet_capacity_rejected_count != before_frame.packet_capacity_rejected_count ||
+        after_frame.last_status != before_frame.last_status) {
+        return Fail("frame packet capacity validation mutated frame packet state");
+    }
+
+    const auto snapshot = plan.Snapshot();
+    if (snapshot.plan_record_count != 0U || snapshot.frame_capacity_rejected_count != 1U) {
+        return Fail("execution plan frame packet capacity snapshot counter mismatch");
+    }
+
+    if (snapshot.last_status != RenderGraphExecutionPlanStatus::FramePacketCapacityExceeded ||
+        snapshot.last_frame_status != RenderFramePacketFixtureStatus::PacketCapacityExceeded) {
+        return Fail("execution plan frame packet capacity snapshot status mismatch");
+    }
+
+    return 0;
+}
+
 int RenderCoreGraphExecutionPlanPropagatesFramePacketFailure() {
     PreparedGraphFixture fixture;
     if (!PrepareFixture(fixture)) {
@@ -950,6 +1004,10 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_CAPACITY) {
         return RenderCoreGraphExecutionPlanRejectsPlanCapacityOverflowWithoutMutation();
+    }
+
+    if (name == TEST_FRAME_PACKET_CAPACITY) {
+        return RenderCoreGraphExecutionPlanRejectsFramePacketCapacityWithoutStatusLoss();
     }
 
     if (name == TEST_FRAME_FAILURE) {
