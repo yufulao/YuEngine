@@ -247,6 +247,7 @@ bool SnapshotsEqual(const AudioDeviceSnapshot& left, const AudioDeviceSnapshot& 
            left.mixed_frame_count == right.mixed_frame_count &&
            left.output_sample_write_count == right.output_sample_write_count &&
            left.failed_operation_count == right.failed_operation_count &&
+           left.last_status == right.last_status &&
            left.last_frames_written == right.last_frames_written &&
            left.allocation_accounting_status == right.allocation_accounting_status;
 }
@@ -537,6 +538,10 @@ int AudioCreateTestDeviceReturnsCapabilities() {
         return Fail("capabilities did not report deterministic mix support");
     }
 
+    if (device.Snapshot().last_status != AudioStatus::Success) {
+        return Fail("test device initialize status was not success");
+    }
+
     return 0;
 }
 
@@ -550,6 +555,18 @@ int AudioCreateDeviceRejectsUnsupportedBackend() {
 
     if (device.Snapshot().source_capacity != 0U) {
         return Fail("unsupported backend mutated source capacity");
+    }
+
+    if (device.Snapshot().last_status != AudioStatus::UnsupportedBackend) {
+        return Fail("unsupported backend status was not recorded");
+    }
+
+    if (device.Initialize(AudioDeviceDesc{}) != AudioStatus::Success) {
+        return Fail("device did not recover after unsupported backend");
+    }
+
+    if (device.Snapshot().last_status != AudioStatus::Success) {
+        return Fail("successful initialize did not reset device status");
     }
 
     return 0;
@@ -575,6 +592,10 @@ int AudioCreateDeviceRejectsUnsupportedFormat() {
         return Fail("unsupported channel count was not rejected");
     }
 
+    if (device.Snapshot().last_status != AudioStatus::UnsupportedFormat) {
+        return Fail("unsupported format status was not recorded");
+    }
+
     return 0;
 }
 
@@ -595,6 +616,10 @@ int AudioRegisterSyntheticSourceReturnsStableId() {
 
     if (device.Snapshot().registered_source_count != 1U) {
         return Fail("registered source count was not updated");
+    }
+
+    if (device.Snapshot().last_status != AudioStatus::Success) {
+        return Fail("source registration did not reset device status");
     }
 
     return 0;
@@ -622,6 +647,10 @@ int AudioSourceCapacityOverflowDoesNotMutate() {
         return Fail("source overflow changed source count");
     }
 
+    if (device.Snapshot().last_status != AudioStatus::CapacityExceeded) {
+        return Fail("source overflow status was not recorded");
+    }
+
     return 0;
 }
 
@@ -644,6 +673,10 @@ int AudioStartVoiceReturnsGenerationHandle() {
         return Fail("active voice count was not updated");
     }
 
+    if (device.Snapshot().last_status != AudioStatus::Success) {
+        return Fail("voice start did not reset device status");
+    }
+
     return 0;
 }
 
@@ -656,6 +689,10 @@ int AudioStartVoiceRejectsMissingSource() {
 
     if (device.Snapshot().active_voice_count != 0U) {
         return Fail("missing source changed active voice count");
+    }
+
+    if (device.Snapshot().last_status != AudioStatus::SourceNotFound) {
+        return Fail("missing source status was not recorded");
     }
 
     return 0;
@@ -676,6 +713,18 @@ int AudioStartVoiceRejectsInvalidGainWithoutMutation() {
 
     if (device.Snapshot().active_voice_count != 0U) {
         return Fail("invalid gain changed active voice count");
+    }
+
+    if (device.Snapshot().last_status != AudioStatus::InvalidGain) {
+        return Fail("invalid gain status was not recorded");
+    }
+
+    if (device.StartVoice(source, MAX_Q15_GAIN, voice) != AudioStatus::Success) {
+        return Fail("valid voice start after invalid gain failed");
+    }
+
+    if (device.Snapshot().last_status != AudioStatus::Success) {
+        return Fail("valid voice start did not reset invalid gain status");
     }
 
     return 0;
@@ -705,6 +754,10 @@ int AudioVoiceCapacityOverflowDoesNotMutate() {
         return Fail("voice overflow changed active voice count");
     }
 
+    if (device.Snapshot().last_status != AudioStatus::CapacityExceeded) {
+        return Fail("voice overflow status was not recorded");
+    }
+
     return 0;
 }
 
@@ -725,6 +778,10 @@ int AudioStopVoiceInvalidatesStaleHandle() {
 
     if (device.Snapshot().active_voice_count != 0U) {
         return Fail("stopped voice remained active");
+    }
+
+    if (device.Snapshot().last_status != AudioStatus::InvalidHandle) {
+        return Fail("stale voice status was not recorded");
     }
 
     return 0;
@@ -970,6 +1027,10 @@ int AudioMixRejectsUndersizedBufferWithoutWritingSamples() {
         if (sample != SENTINEL_SAMPLE) {
             return Fail("undersized mix mutated output");
         }
+    }
+
+    if (device.Snapshot().last_status != AudioStatus::CapacityExceeded) {
+        return Fail("undersized mix status was not recorded");
     }
 
     return 0;

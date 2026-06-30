@@ -145,6 +145,7 @@ public:
 
 private:
     AudioStatus RecordFailure(AudioStatus status);
+    void RecordSuccess();
     AudioStatus RecordPcmSamplePacketFailure(AudioStatus status, AudioPcmSamplePacketOperation operation);
     AudioStatus RecordPcmStreamQueueFailure(AudioStatus status, AudioPcmStreamQueueOperation operation);
     AudioStatus ValidatePcmSamplePacketRequest(const AudioPcmSamplePacketRequest& request) const;

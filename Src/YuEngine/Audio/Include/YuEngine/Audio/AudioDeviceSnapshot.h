@@ -7,6 +7,7 @@
 #include <cstdint>
 
 #include "YuEngine/Audio/AudioAccountingStatus.h"
+#include "YuEngine/Audio/AudioStatus.h"
 
 namespace yuengine::audio {
 struct AudioDeviceSnapshot final {
@@ -22,6 +23,7 @@ struct AudioDeviceSnapshot final {
     std::uint64_t mixed_frame_count = 0U;
     std::uint64_t output_sample_write_count = 0U;
     std::uint64_t failed_operation_count = 0U;
+    AudioStatus last_status = AudioStatus::NotInitialized;
     std::size_t last_frames_written = 0U;
     AudioAccountingStatus allocation_accounting_status = AudioAccountingStatus::DeferredUntilYuMemoryIntegration;
 };

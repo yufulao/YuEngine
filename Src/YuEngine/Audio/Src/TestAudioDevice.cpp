@@ -27,27 +27,27 @@ TestAudioDevice::TestAudioDevice()
 
 AudioStatus TestAudioDevice::Initialize(const AudioDeviceDesc& desc) {
     if (desc.backend_kind != AudioBackendKind::Test) {
-        return AudioStatus::UnsupportedBackend;
+        return RecordFailure(AudioStatus::UnsupportedBackend);
     }
 
     if (!IsDeviceFormatSupported(desc)) {
-        return AudioStatus::UnsupportedFormat;
+        return RecordFailure(AudioStatus::UnsupportedFormat);
     }
 
     if (desc.source_capacity == 0U) {
-        return AudioStatus::InvalidDescriptor;
+        return RecordFailure(AudioStatus::InvalidDescriptor);
     }
 
     if (desc.source_capacity > MAX_SOURCES) {
-        return AudioStatus::CapacityExceeded;
+        return RecordFailure(AudioStatus::CapacityExceeded);
     }
 
     if (desc.voice_capacity == 0U) {
-        return AudioStatus::InvalidDescriptor;
+        return RecordFailure(AudioStatus::InvalidDescriptor);
     }
 
     if (desc.voice_capacity > MAX_VOICES) {
-        return AudioStatus::CapacityExceeded;
+        return RecordFailure(AudioStatus::CapacityExceeded);
     }
 
     ++generation_seed_;
@@ -90,6 +90,7 @@ AudioStatus TestAudioDevice::Initialize(const AudioDeviceDesc& desc) {
     snapshot_ = AudioDeviceSnapshot{};
     snapshot_.source_capacity = desc.source_capacity;
     snapshot_.voice_capacity = desc.voice_capacity;
+    RecordSuccess();
     pcm_sample_packet_snapshot_ = AudioPcmSamplePacketSnapshot{};
     pcm_sample_packet_snapshot_.packet_capacity = pcm_sample_packets_.size();
     pcm_sample_packet_snapshot_.last_status = AudioStatus::Success;
@@ -130,6 +131,7 @@ AudioStatus TestAudioDevice::RegisterSyntheticSource(std::span<const std::int16_
         out_source = AudioSourceId{static_cast<std::uint32_t>(index), slot.generation};
         ++snapshot_.source_count;
         ++snapshot_.registered_source_count;
+        RecordSuccess();
         return AudioStatus::Success;
     }
 
@@ -172,6 +174,7 @@ AudioStatus TestAudioDevice::CreatePcmSamplePacket(const AudioPcmSamplePacketReq
         ++pcm_sample_packet_snapshot_.active_packet_count;
         ++pcm_sample_packet_snapshot_.created_packet_count;
         SetPcmSamplePacketLastStatus(AudioStatus::Success, AudioPcmSamplePacketOperation::Create);
+        RecordSuccess();
         return AudioStatus::Success;
     }
 
@@ -193,6 +196,7 @@ AudioStatus TestAudioDevice::QueryPcmSamplePacket(AudioPcmSamplePacketHandle pac
     out_record = slot.record;
     ++pcm_sample_packet_snapshot_.queried_packet_count;
     SetPcmSamplePacketLastStatus(AudioStatus::Success, AudioPcmSamplePacketOperation::Query);
+    RecordSuccess();
     return AudioStatus::Success;
 }
 
@@ -217,6 +221,7 @@ AudioStatus TestAudioDevice::ReleasePcmSamplePacket(AudioPcmSamplePacketHandle p
     --pcm_sample_packet_snapshot_.active_packet_count;
     ++pcm_sample_packet_snapshot_.released_packet_count;
     SetPcmSamplePacketLastStatus(AudioStatus::Success, AudioPcmSamplePacketOperation::Release);
+    RecordSuccess();
     return AudioStatus::Success;
 }
 
@@ -330,6 +335,7 @@ AudioStatus TestAudioDevice::CreatePcmStreamQueue(const AudioPcmStreamQueueReque
         ++pcm_stream_queue_snapshot_.active_queue_count;
         ++pcm_stream_queue_snapshot_.created_queue_count;
         SetPcmStreamQueueLastStatus(AudioStatus::Success, AudioPcmStreamQueueOperation::Create);
+        RecordSuccess();
         return AudioStatus::Success;
     }
 
@@ -354,6 +360,7 @@ AudioStatus TestAudioDevice::QueryPcmStreamQueue(AudioPcmStreamQueueHandle queue
     pcm_stream_queue_snapshot_.last_frame_count = slot.record.frame_count;
     ++pcm_stream_queue_snapshot_.queried_queue_count;
     SetPcmStreamQueueLastStatus(AudioStatus::Success, AudioPcmStreamQueueOperation::Query);
+    RecordSuccess();
     return AudioStatus::Success;
 }
 
@@ -375,6 +382,7 @@ AudioStatus TestAudioDevice::DrainPcmStreamQueue(AudioPcmStreamQueueHandle queue
     pcm_stream_queue_snapshot_.last_frame_count = record.remaining_frame_count;
     if (record.remaining_frame_count == 0U) {
         SetPcmStreamQueueLastStatus(AudioStatus::Success, AudioPcmStreamQueueOperation::Drain);
+        RecordSuccess();
         return AudioStatus::Success;
     }
 
@@ -418,6 +426,7 @@ AudioStatus TestAudioDevice::DrainPcmStreamQueue(AudioPcmStreamQueueHandle queue
     pcm_stream_queue_snapshot_.drained_frame_count += written_frame_count;
     pcm_stream_queue_snapshot_.last_frame_count = written_frame_count;
     SetPcmStreamQueueLastStatus(AudioStatus::Success, AudioPcmStreamQueueOperation::Drain);
+    RecordSuccess();
     return AudioStatus::Success;
 }
 
@@ -445,6 +454,7 @@ AudioStatus TestAudioDevice::ReleasePcmStreamQueue(AudioPcmStreamQueueHandle que
     --pcm_stream_queue_snapshot_.active_queue_count;
     ++pcm_stream_queue_snapshot_.released_queue_count;
     SetPcmStreamQueueLastStatus(AudioStatus::Success, AudioPcmStreamQueueOperation::Release);
+    RecordSuccess();
     return AudioStatus::Success;
 }
 
@@ -474,6 +484,7 @@ AudioStatus TestAudioDevice::StartVoice(AudioSourceId source, std::uint32_t gain
         out_voice = AudioVoiceHandle{static_cast<std::uint32_t>(index), voice.generation};
         ++snapshot_.active_voice_count;
         ++snapshot_.started_voice_count;
+        RecordSuccess();
         return AudioStatus::Success;
     }
 
@@ -490,6 +501,7 @@ AudioStatus TestAudioDevice::StopVoice(AudioVoiceHandle handle) {
     }
 
     StopVoiceSlot(voices_[handle.slot]);
+    RecordSuccess();
     return AudioStatus::Success;
 }
 
@@ -550,6 +562,7 @@ AudioMixResult TestAudioDevice::Mix(std::span<std::int16_t> output_samples, std:
     snapshot_.output_sample_write_count += required_samples;
     snapshot_.last_frames_written = requested_frames;
     snapshot_.voice_storage_capacity_after_last_mix = voices_.capacity();
+    RecordSuccess();
     return AudioMixResult{AudioStatus::Success, requested_frames};
 }
 
@@ -571,7 +584,12 @@ AudioPcmStreamQueueSnapshot TestAudioDevice::PcmStreamQueueSnapshot() const {
 
 AudioStatus TestAudioDevice::RecordFailure(AudioStatus status) {
     ++snapshot_.failed_operation_count;
+    snapshot_.last_status = status;
     return status;
+}
+
+void TestAudioDevice::RecordSuccess() {
+    snapshot_.last_status = AudioStatus::Success;
 }
 
 AudioStatus TestAudioDevice::RecordPcmSamplePacketFailure(AudioStatus status, AudioPcmSamplePacketOperation operation) {
