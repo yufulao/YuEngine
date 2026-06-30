@@ -72,6 +72,7 @@ constexpr const char *TEST_AUDIO_READY =
 constexpr const char *TEST_REFRESH_STATE =
     "Asset_RefreshStateFromResourceMapsUploadedResidentAndFailed";
 constexpr const char *TEST_RELEASE = "Asset_ReleaseRuntimeAssetReleasesResourceAndClearsReadyRecords";
+constexpr const char *TEST_SUCCESS_LAST_STATUS = "Asset_ManagerSuccessClearsLastStatusAfterFailure";
 constexpr const char *TEST_RUNTIME_FIXTURE =
     "Asset_RuntimeFixtureClosesResidentTexturePathAndDependencies";
 constexpr const char *TEST_RUNTIME_FIXTURE_BOUNDARY =
@@ -594,6 +595,109 @@ int AssetReleaseRuntimeAssetReleasesResourceAndClearsReadyRecords() {
     return 0;
 }
 
+int AssetManagerSuccessClearsLastStatusAfterFailure() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(registry, 15U, RESOURCE_TYPE_TEXTURE);
+    if (!resource_result.Succeeded()) {
+        return Fail("success last-status resource registration failed");
+    }
+
+    AssetManager manager;
+    const ResourceHandle invalid_resource{999U, 1U};
+    const AssetDescriptor invalid_descriptor = MakeAssetDescriptor(
+        9001U,
+        ASSET_TYPE_TEXTURE,
+        invalid_resource,
+        RESOURCE_TYPE_TEXTURE);
+    const AssetRegistrationResult failed_register =
+        manager.RegisterRuntimeAsset(&registry, invalid_descriptor);
+    if (failed_register.status != AssetStatus::ResourceAcquireFailed) {
+        return Fail("invalid resource register did not fail through asset status");
+    }
+
+    AssetSnapshot snapshot = manager.Snapshot();
+    if (snapshot.last_status != AssetStatus::ResourceAcquireFailed) {
+        return Fail("resource failure did not set asset last status");
+    }
+
+    if (snapshot.last_resource_status != ResourceStatus::InvalidHandle) {
+        return Fail("resource failure did not set lower resource status");
+    }
+
+    const AssetRegistrationResult asset_result = RegisterAsset(
+        manager,
+        registry,
+        9002U,
+        ASSET_TYPE_TEXTURE,
+        resource_result.handle,
+        RESOURCE_TYPE_TEXTURE);
+    if (!asset_result.Succeeded()) {
+        return Fail("success last-status asset registration failed");
+    }
+
+    snapshot = manager.Snapshot();
+    if (snapshot.last_status != AssetStatus::Success) {
+        return Fail("successful register did not clear asset last status");
+    }
+
+    if (snapshot.last_resource_status != ResourceStatus::Success) {
+        return Fail("successful register did not clear lower resource status");
+    }
+
+    const AssetStatus invalid_acquire = manager.AcquireAsset(AssetHandle{99U, 1U});
+    if (invalid_acquire != AssetStatus::InvalidHandle) {
+        return Fail("invalid acquire did not fail");
+    }
+
+    if (manager.AcquireAsset(asset_result.handle) != AssetStatus::Success) {
+        return Fail("success last-status acquire failed");
+    }
+
+    snapshot = manager.Snapshot();
+    if (snapshot.last_status != AssetStatus::Success) {
+        return Fail("successful acquire did not clear asset last status");
+    }
+
+    ResourceDecodedTextureBridgeResult failed_texture = MakeTextureResult(resource_result.handle, RESOURCE_TYPE_TEXTURE);
+    failed_texture.status = ResourceDecodedTextureBridgeStatus::InvalidArgument;
+    if (manager.MarkTextureReady(asset_result.handle, failed_texture) != AssetStatus::TextureReadyFailed) {
+        return Fail("invalid texture ready did not fail");
+    }
+
+    AssetRecord record{};
+    if (manager.QueryAsset(asset_result.handle, &record) != AssetStatus::Success) {
+        return Fail("success last-status query failed");
+    }
+
+    snapshot = manager.Snapshot();
+    if (snapshot.last_status != AssetStatus::Success) {
+        return Fail("successful query did not clear asset last status");
+    }
+
+    if (snapshot.last_texture_status != ResourceDecodedTextureBridgeStatus::InvalidArgument) {
+        return Fail("successful query cleared subordinate texture status");
+    }
+
+    if (manager.ReleaseRuntimeAsset(&registry, asset_result.handle) != AssetStatus::StillReferenced) {
+        return Fail("referenced release did not fail");
+    }
+
+    if (manager.ReleaseAssetReference(asset_result.handle) != AssetStatus::Success) {
+        return Fail("success last-status release reference failed");
+    }
+
+    snapshot = manager.Snapshot();
+    if (snapshot.last_status != AssetStatus::Success) {
+        return Fail("successful reference release did not clear asset last status");
+    }
+
+    if (snapshot.last_texture_status != ResourceDecodedTextureBridgeStatus::InvalidArgument) {
+        return Fail("successful reference release cleared subordinate texture status");
+    }
+
+    return 0;
+}
+
 int AssetRuntimeFixtureClosesResidentTexturePathAndDependencies() {
     ResourceRegistry registry;
     const ResourceRegistrationResult root_resource = RegisterResource(registry, 11U, RESOURCE_TYPE_TEXTURE);
@@ -776,6 +880,7 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_AUDIO_READY, AssetAudioReadyRecordUsesImportRecordWithoutOwningDevice},
     {TEST_REFRESH_STATE, AssetRefreshStateFromResourceMapsUploadedResidentAndFailed},
     {TEST_RELEASE, AssetReleaseRuntimeAssetReleasesResourceAndClearsReadyRecords},
+    {TEST_SUCCESS_LAST_STATUS, AssetManagerSuccessClearsLastStatusAfterFailure},
     {TEST_RUNTIME_FIXTURE, AssetRuntimeFixtureClosesResidentTexturePathAndDependencies},
     {TEST_RUNTIME_FIXTURE_BOUNDARY, AssetRuntimeFixtureRejectsSmallDependencyOutputBeforeMutation},
     {TEST_NO_UPPER_DEPENDENCY, AssetNoWorldGameAdapterUiDependency},
