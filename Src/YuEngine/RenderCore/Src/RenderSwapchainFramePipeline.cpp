@@ -185,6 +185,7 @@ void RenderSwapchainFramePipeline::Reset() {
     snapshot_.frame_record_capacity = desc_.frame_record_capacity;
     snapshot_.command_capacity = desc_.command_capacity;
     snapshot_.required_command_count = RENDER_SWAPCHAIN_FRAME_COMMAND_COUNT;
+    snapshot_.required_frame_record_count = desc_.frame_record_capacity;
 }
 
 RenderSwapchainFramePipelineStatus RenderSwapchainFramePipeline::ValidateRequest(
@@ -242,6 +243,7 @@ void RenderSwapchainFramePipeline::RecordRejectedResult(
     }
 
     if (result.status == RenderSwapchainFramePipelineStatus::FrameRecordCapacityExceeded) {
+        snapshot_.required_frame_record_count = snapshot_.frame_record_count + 1U;
         ++snapshot_.frame_record_capacity_rejected_count;
         return;
     }

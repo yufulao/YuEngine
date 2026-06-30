@@ -20,6 +20,7 @@ struct RenderSwapchainFramePipelineSnapshot final {
     std::size_t frame_record_count = 0U;
     std::size_t command_capacity = 0U;
     std::size_t required_command_count = 0U;
+    std::size_t required_frame_record_count = 0U;
     std::uint64_t accepted_frame_count = 0U;
     std::uint64_t completed_frame_count = 0U;
     std::uint64_t failed_validation_count = 0U;

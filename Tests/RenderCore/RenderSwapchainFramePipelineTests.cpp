@@ -76,6 +76,8 @@ constexpr const char *TEST_DUPLICATE = "RenderCore_SwapchainFramePipeline_Reject
 constexpr const char *TEST_INVALID_SWAPCHAIN = "RenderCore_SwapchainFramePipeline_RejectsInvalidSwapchainWithoutMutation";
 constexpr const char *TEST_RHI_FAILURE = "RenderCore_SwapchainFramePipeline_TracksRhiFailureWithoutCapture";
 constexpr const char *TEST_CAPACITY = "RenderCore_SwapchainFramePipeline_RejectsCommandCapacityWithoutRhiMutation";
+constexpr const char *TEST_FRAME_RECORD_CAPACITY =
+    "RenderCore_SwapchainFramePipeline_RejectsFrameRecordCapacityWithRequiredCount";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr std::uint32_t FRAME_ID = 1U;
@@ -639,6 +641,55 @@ int RenderCoreSwapchainFramePipelineRejectsCommandCapacityWithoutRhiMutation() {
         return Fail("small command capacity rejection mutated rhi state");
     }
 
+    const RenderSwapchainFramePipelineSnapshot pipeline_snapshot = pipeline.Snapshot();
+    if (pipeline_snapshot.command_capacity_rejected_count != 1U ||
+        pipeline_snapshot.required_command_count != 3U) {
+        return Fail("small command capacity rejection did not expose required command count");
+    }
+
+    return 0;
+}
+
+int RenderCoreSwapchainFramePipelineRejectsFrameRecordCapacityWithRequiredCount() {
+    FakeSwapchainRhiDevice device;
+    std::vector<std::uint8_t> first_capture(CaptureByteCount(DEFAULT_EXTENT, DEFAULT_EXTENT), SENTINEL_BYTE);
+    std::vector<std::uint8_t> second_capture(CaptureByteCount(DEFAULT_EXTENT, DEFAULT_EXTENT), SENTINEL_BYTE);
+    RenderSwapchainFramePipelineDesc desc{};
+    desc.frame_record_capacity = 1U;
+    RenderSwapchainFramePipeline pipeline(desc);
+
+    const auto first_result = pipeline.Execute(MakeRequest(device, first_capture));
+    if (first_result.status != RenderSwapchainFramePipelineStatus::Success) {
+        return Fail("frame record capacity setup frame failed");
+    }
+
+    RenderSwapchainFramePipelineRequest second_request = MakeRequest(device, second_capture);
+    second_request.frame_id = NEXT_FRAME_ID;
+    const RhiDeviceSnapshot before = device.Snapshot();
+    const auto result = pipeline.Execute(second_request);
+    if (result.status != RenderSwapchainFramePipelineStatus::FrameRecordCapacityExceeded) {
+        return Fail("swapchain frame pipeline accepted full frame record storage");
+    }
+
+    const RhiDeviceSnapshot after = device.Snapshot();
+    if (after.recorded_command_count != before.recorded_command_count ||
+        after.submit_count != before.submit_count ||
+        after.capture_count != before.capture_count) {
+        return Fail("frame record capacity rejection mutated rhi state");
+    }
+
+    const RenderSwapchainFramePipelineSnapshot snapshot = pipeline.Snapshot();
+    if (snapshot.frame_record_count != 1U ||
+        snapshot.frame_record_capacity_rejected_count != 1U ||
+        snapshot.required_frame_record_count != 2U) {
+        return Fail("frame record capacity rejection did not expose required count");
+    }
+
+    if (snapshot.last_frame_id != NEXT_FRAME_ID ||
+        snapshot.last_status != RenderSwapchainFramePipelineStatus::FrameRecordCapacityExceeded) {
+        return Fail("frame record capacity rejection did not update last diagnostics");
+    }
+
     return 0;
 }
 
@@ -665,6 +716,10 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_CAPACITY) {
         return RenderCoreSwapchainFramePipelineRejectsCommandCapacityWithoutRhiMutation();
+    }
+
+    if (name == TEST_FRAME_RECORD_CAPACITY) {
+        return RenderCoreSwapchainFramePipelineRejectsFrameRecordCapacityWithRequiredCount();
     }
 
     return Fail(ERROR_UNKNOWN_TEST_NAME);
