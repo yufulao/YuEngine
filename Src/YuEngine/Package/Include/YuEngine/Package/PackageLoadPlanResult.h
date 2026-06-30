@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 #include "YuEngine/Package/PackageLoadPlan.h"
 #include "YuEngine/Package/PackageStatus.h"
 
@@ -10,6 +12,7 @@ namespace yuengine::package {
 struct PackageLoadPlanResult final {
     PackageStatus status;
     PackageLoadPlan plan;
+    std::uint32_t required_load_plan_record_count = 0U;
 
     /**
      * @comment 创建成功 result。

@@ -1387,6 +1387,8 @@ int PackageDependencyClosureDeduplicatesSharedDependenciesAndPreservesDeclaratio
 }
 
 int PackageDependencyClosureRejectsRecordBudgetWithoutMutation() {
+    constexpr std::uint32_t EXPECTED_REQUIRED_RECORD_COUNT = 3U;
+
     PackageRegistryDesc desc{};
     desc.manifest_capacity = 1U;
     desc.entry_capacity = 4U;
@@ -1421,6 +1423,14 @@ int PackageDependencyClosureRejectsRecordBudgetWithoutMutation() {
         return Fail("dependency closure record budget changed last archive byte count");
     }
 
+    if (result.required_load_plan_record_count != EXPECTED_REQUIRED_RECORD_COUNT) {
+        return Fail("dependency closure record budget did not report required record count");
+    }
+
+    if (after_snapshot.required_load_plan_record_count != EXPECTED_REQUIRED_RECORD_COUNT) {
+        return Fail("dependency closure record budget did not snapshot required record count");
+    }
+
     if (result.plan.record_count != 0U) {
         return Fail("dependency closure record budget published partial plan");
     }
@@ -1450,6 +1460,8 @@ int PackageDependencyCapacityOverflowDoesNotMutate() {
 }
 
 int PackageLoadPlanCapacityOverflowDoesNotMutate() {
+    constexpr std::uint32_t EXPECTED_REQUIRED_RECORD_COUNT = 2U;
+
     PackageRegistry registry(PackageRegistryDesc{1U, 4U, 4U, 1U});
     RegisterManifest(registry);
     RegisterEntry(registry, ENTRY_TEXTURE, TYPE_TEXTURE, "texture_a", "textures/texture_a.bin");
@@ -1463,16 +1475,25 @@ int PackageLoadPlanCapacityOverflowDoesNotMutate() {
         return Fail("load-plan capacity overflow did not return explicit status");
     }
 
-    if (registry.Snapshot().load_plan_resolve_count != before_snapshot.load_plan_resolve_count) {
+    const PackageSnapshot after_snapshot = registry.Snapshot();
+    if (after_snapshot.load_plan_resolve_count != before_snapshot.load_plan_resolve_count) {
         return Fail("load-plan capacity overflow changed resolve count");
     }
 
-    if (registry.Snapshot().last_load_plan_record_count != before_snapshot.last_load_plan_record_count) {
+    if (after_snapshot.last_load_plan_record_count != before_snapshot.last_load_plan_record_count) {
         return Fail("load-plan capacity overflow changed plan record count");
     }
 
-    if (registry.Snapshot().last_load_plan_archive_byte_count != before_snapshot.last_load_plan_archive_byte_count) {
+    if (after_snapshot.last_load_plan_archive_byte_count != before_snapshot.last_load_plan_archive_byte_count) {
         return Fail("load-plan capacity overflow changed plan archive byte count");
+    }
+
+    if (result.required_load_plan_record_count != EXPECTED_REQUIRED_RECORD_COUNT) {
+        return Fail("load-plan capacity overflow did not report required record count");
+    }
+
+    if (after_snapshot.required_load_plan_record_count != EXPECTED_REQUIRED_RECORD_COUNT) {
+        return Fail("load-plan capacity overflow did not snapshot required record count");
     }
 
     return 0;

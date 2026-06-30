@@ -23,6 +23,7 @@ struct PackageSnapshot final {
     std::uint32_t dependency_validation_count;
     std::uint32_t load_plan_resolve_count;
     std::uint32_t last_load_plan_record_count;
+    std::uint32_t required_load_plan_record_count = 0U;
     std::uint64_t last_load_plan_archive_byte_count;
     std::uint32_t accepted_operation_count;
     std::uint32_t rejected_operation_count;

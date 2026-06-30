@@ -311,6 +311,7 @@ PackageRegistry::PackageRegistry(PackageRegistryDesc desc)
           0U,
           0U,
           0U,
+          0U,
           0ULL,
           0U,
           0U,
@@ -501,14 +502,23 @@ PackageLoadPlanResult PackageRegistry::ResolveEntryByResourceKey(
     PackageLoadPlan plan{};
     const PackageStatus plan_status = BuildDependencyClosurePlan(package, root_index, plan);
     if (plan_status != PackageStatus::Success) {
-        return PackageLoadPlanResult::Failure(RecordFailure(plan_status));
+        PackageLoadPlanResult result = PackageLoadPlanResult::Failure(RecordFailure(plan_status));
+        if (plan_status == PackageStatus::LoadPlanCapacityExceeded) {
+            result.required_load_plan_record_count = plan.record_count + 1U;
+            snapshot_.required_load_plan_record_count = result.required_load_plan_record_count;
+        }
+
+        return result;
     }
 
     ++snapshot_.load_plan_resolve_count;
     snapshot_.last_load_plan_record_count = plan.record_count;
+    snapshot_.required_load_plan_record_count = plan.record_count;
     snapshot_.last_load_plan_archive_byte_count = plan.archive_byte_count;
     RecordSuccess();
-    return PackageLoadPlanResult::Success(plan);
+    PackageLoadPlanResult result = PackageLoadPlanResult::Success(plan);
+    result.required_load_plan_record_count = plan.record_count;
+    return result;
 }
 
 PackageSnapshot PackageRegistry::Snapshot() const {
