@@ -829,6 +829,21 @@ int AnimationEditorWorkflowOutputCapacityFailureDoesNotMutateOutputs() {
         return Fail("animation editor workflow output capacity layer mismatch");
     }
 
+    if (result.clip_row_count != 1U ||
+        result.track_row_count != 2U ||
+        result.keyframe_marker_count != 4U ||
+        result.preview_feedback_count != 2U ||
+        result.selection_feedback_count != 1U) {
+        return Fail("animation editor workflow output capacity counts mismatch");
+    }
+
+    if (result.timeline_surface.clip_row_count != 1U ||
+        result.timeline_surface.track_row_count != 2U ||
+        result.timeline_surface.keyframe_marker_count != 4U ||
+        result.timeline_surface.preview_feedback_count != 2U) {
+        return Fail("animation editor workflow surface capacity counts mismatch");
+    }
+
     if (!SentinelClipUnchanged(clip_rows[0U]) ||
         !SentinelTrackUnchanged(track_rows[0U]) ||
         !SentinelKeyframeUnchanged(keyframe_markers[0U]) ||
@@ -1243,6 +1258,88 @@ int AnimationEditorStateEventWorkflowOutputCapacityFailureDoesNotMutateOutputs()
         !SentinelPreviewUnchanged(preview_output[0U]) ||
         !SentinelSelectionUnchanged(selection_output[0U])) {
         return Fail("animation editor state event output capacity mutated output");
+    }
+
+    if (result.state_row_count != 1U || result.event_row_count != 2U) {
+        return Fail("animation editor state event output capacity counts mismatch");
+    }
+
+    std::array<AnimationEditorStatePlaybackRow, 1U> timeline_state_rows{};
+    timeline_state_rows[0U].state_id = 9006U;
+    timeline_state_rows[0U].event_marker_count = 55U;
+    timeline_state_rows[0U].active = false;
+    std::array<AnimationEditorEventMarkerRow, 2U> timeline_event_rows{};
+    timeline_event_rows[0U].event_id = 9007U;
+    timeline_event_rows[0U].payload_id = 9008U;
+    timeline_event_rows[0U].visible_on_timeline = false;
+    std::array<AnimationEditorTimelineClipRow, 1U> timeline_clip_rows{
+        AnimationEditorTimelineClipRow{9001U, 0.0F, 0U, 77U, 0U, false, false}};
+    std::array<AnimationEditorTimelineTrackRow, 1U> timeline_track_rows{};
+    timeline_track_rows[0U].track_id = 9002U;
+    timeline_track_rows[0U].keyframe_count = 88U;
+    timeline_track_rows[0U].active = false;
+    std::array<AnimationEditorTimelineKeyframeMarker, 1U> timeline_keyframe_markers{};
+    timeline_keyframe_markers[0U].track_id = 9003U;
+    timeline_keyframe_markers[0U].keyframe_index = 99U;
+    timeline_keyframe_markers[0U].valid = false;
+    std::array<AnimationEditorPreviewFeedbackRecord, 1U> timeline_preview_output{};
+    timeline_preview_output[0U].track_id = 9004U;
+    timeline_preview_output[0U].matched_preview_host_feedback = false;
+    std::array<AnimationEditorTimelineSelectionFeedbackRecord, 1U> timeline_selection_output{};
+    timeline_selection_output[0U].track_id = 9005U;
+    timeline_selection_output[0U].selected_track = false;
+    timeline_selection_output[0U].selected_keyframe = false;
+
+    AnimationEditorStateEventPlaybackWorkflowResult timeline_result{};
+    const AnimationEditorSurfaceStatus timeline_status =
+        BuildAnimationEditorStateEventPlaybackWorkflow(
+            StateEventWorkflowRequest(
+                states,
+                events,
+                clips,
+                tracks,
+                keyframes,
+                preview_feedback,
+                timeline_state_rows,
+                timeline_event_rows,
+                timeline_clip_rows,
+                timeline_track_rows,
+                timeline_keyframe_markers,
+                timeline_preview_output,
+                timeline_selection_output,
+                FrameContextAt(HALF_SECOND_NANOSECONDS),
+                AnimationEditorTimelineWorkflowCommand::Scrub,
+                0.0F,
+                0.5F,
+                TRACK_ID,
+                0U),
+            &timeline_result);
+    if (timeline_status != AnimationEditorSurfaceStatus::OutputCapacityExceeded) {
+        return Fail("animation editor state event timeline output capacity status mismatch");
+    }
+
+    if (timeline_result.blocked_layer != AnimationEditorSurfaceBlockedLayer::TimelineOutput) {
+        return Fail("animation editor state event timeline output capacity layer mismatch");
+    }
+
+    if (timeline_result.state_row_count != 1U ||
+        timeline_result.event_row_count != 2U ||
+        timeline_result.clip_row_count != 1U ||
+        timeline_result.track_row_count != 1U ||
+        timeline_result.keyframe_marker_count != 2U ||
+        timeline_result.preview_feedback_count != 1U ||
+        timeline_result.selection_feedback_count != 1U) {
+        return Fail("animation editor state event timeline capacity counts mismatch");
+    }
+
+    if (!SentinelStateUnchanged(timeline_state_rows[0U]) ||
+        !SentinelEventUnchanged(timeline_event_rows[0U]) ||
+        !SentinelClipUnchanged(timeline_clip_rows[0U]) ||
+        !SentinelTrackUnchanged(timeline_track_rows[0U]) ||
+        !SentinelKeyframeUnchanged(timeline_keyframe_markers[0U]) ||
+        !SentinelPreviewUnchanged(timeline_preview_output[0U]) ||
+        !SentinelSelectionUnchanged(timeline_selection_output[0U])) {
+        return Fail("animation editor state event timeline capacity mutated output");
     }
 
     return 0;

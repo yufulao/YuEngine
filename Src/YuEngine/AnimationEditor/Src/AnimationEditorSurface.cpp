@@ -171,6 +171,20 @@ bool OutputCapacityAvailable(
     return true;
 }
 
+void SetTimelineSurfaceRequiredCounts(
+    const AnimationRuntimeClipRecord &clip,
+    std::size_t keyframe_count,
+    bool preview_feedback_requested,
+    AnimationEditorTimelineSurfaceResult *result) {
+    result->clip_row_count = 1U;
+    result->track_row_count = clip.track_count;
+    result->keyframe_marker_count = keyframe_count;
+    result->preview_feedback_count = 0U;
+    if (preview_feedback_requested) {
+        result->preview_feedback_count = clip.track_count;
+    }
+}
+
 AnimationEditorTimelineClipRow BuildClipRow(
     const AnimationRuntimeClipRecord &clip) {
     AnimationEditorTimelineClipRow row{};
@@ -729,7 +743,10 @@ AnimationEditorSurfaceStatus BuildAnimationEditorTimelineSurface(
     }
 
     result.consumed_runtime_records = true;
+    const bool preview_feedback_requested =
+        request.require_preview_feedback || !request.preview_feedback_output.empty();
     if (clip->track_count > MAX_ANIMATION_EDITOR_TIMELINE_TRACKS) {
+        SetTimelineSurfaceRequiredCounts(*clip, 0U, preview_feedback_requested, &result);
         result.status = AnimationEditorSurfaceStatus::OutputCapacityExceeded;
         result.blocked_layer = AnimationEditorSurfaceBlockedLayer::TimelineOutput;
         *out_result = result;
@@ -770,6 +787,13 @@ AnimationEditorSurfaceStatus BuildAnimationEditorTimelineSurface(
         const std::size_t track_index = clip->first_track_index + track_offset;
         const AnimationRuntimeTrackRecord &track = request.tracks[track_index];
         if (keyframe_count > MAX_ANIMATION_EDITOR_TIMELINE_KEYFRAMES - track.keyframe_count) {
+            const std::size_t required_keyframe_count =
+                keyframe_count + track.keyframe_count;
+            SetTimelineSurfaceRequiredCounts(
+                *clip,
+                required_keyframe_count,
+                preview_feedback_requested,
+                &result);
             result.status = AnimationEditorSurfaceStatus::OutputCapacityExceeded;
             result.blocked_layer = AnimationEditorSurfaceBlockedLayer::TimelineOutput;
             *out_result = result;
@@ -779,9 +803,8 @@ AnimationEditorSurfaceStatus BuildAnimationEditorTimelineSurface(
         keyframe_count += track.keyframe_count;
     }
 
-    const bool preview_feedback_requested =
-        request.require_preview_feedback || !request.preview_feedback_output.empty();
     if (!OutputCapacityAvailable(request, *clip, keyframe_count, preview_feedback_requested)) {
+        SetTimelineSurfaceRequiredCounts(*clip, keyframe_count, preview_feedback_requested, &result);
         result.status = AnimationEditorSurfaceStatus::OutputCapacityExceeded;
         result.blocked_layer = AnimationEditorSurfaceBlockedLayer::TimelineOutput;
         *out_result = result;
@@ -974,6 +997,7 @@ AnimationEditorSurfaceStatus BuildAnimationEditorTimelineWorkflow(
     if (!WorkflowOutputCapacityAvailable(request, surface_result)) {
         result.status = AnimationEditorSurfaceStatus::OutputCapacityExceeded;
         result.blocked_layer = AnimationEditorSurfaceBlockedLayer::TimelineOutput;
+        result.selection_feedback_count = 1U;
         *out_result = result;
         return result.status;
     }
@@ -1157,6 +1181,8 @@ AnimationEditorSurfaceStatus BuildAnimationEditorStateEventPlaybackWorkflow(
 
         result.consumed_event_records = true;
         if (event_count >= MAX_ANIMATION_EDITOR_EVENT_MARKERS) {
+            result.state_row_count = 1U;
+            result.event_row_count = event_count + 1U;
             result.status = AnimationEditorSurfaceStatus::OutputCapacityExceeded;
             result.blocked_layer = AnimationEditorSurfaceBlockedLayer::EventRecords;
             *out_result = result;
@@ -1181,6 +1207,8 @@ AnimationEditorSurfaceStatus BuildAnimationEditorStateEventPlaybackWorkflow(
     }
 
     if (request.state_rows.empty()) {
+        result.state_row_count = 1U;
+        result.event_row_count = event_count;
         result.status = AnimationEditorSurfaceStatus::OutputCapacityExceeded;
         result.blocked_layer = AnimationEditorSurfaceBlockedLayer::StatePreviewRecords;
         *out_result = result;
@@ -1188,6 +1216,8 @@ AnimationEditorSurfaceStatus BuildAnimationEditorStateEventPlaybackWorkflow(
     }
 
     if (request.event_rows.size() < event_count) {
+        result.state_row_count = 1U;
+        result.event_row_count = event_count;
         result.status = AnimationEditorSurfaceStatus::OutputCapacityExceeded;
         result.blocked_layer = AnimationEditorSurfaceBlockedLayer::EventRecords;
         *out_result = result;
@@ -1236,6 +1266,8 @@ AnimationEditorSurfaceStatus BuildAnimationEditorStateEventPlaybackWorkflow(
     }
 
     if (!TimelineWorkflowOutputCapacityAvailable(request, workflow_result)) {
+        result.state_row_count = 1U;
+        result.event_row_count = event_count;
         result.status = AnimationEditorSurfaceStatus::OutputCapacityExceeded;
         result.blocked_layer = AnimationEditorSurfaceBlockedLayer::TimelineOutput;
         *out_result = result;
