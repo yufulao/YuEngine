@@ -139,15 +139,30 @@ int RenderCoreCameraShaderConstantsRejectsInvalidFrameWithoutOutputMutation() {
 
 int RenderCoreCameraShaderConstantsSnapshotTracksCounters() {
     RenderCameraShaderConstantsWriter writer;
-    RenderCameraShaderConstants constants{};
-    if (writer.WriteViewProjection(BuildDefaultFrame(), &constants) != RenderCameraShaderConstantsStatus::Success) {
-        return Fail("camera constants failed snapshot setup");
-    }
-
     RenderCameraFrame frame = BuildDefaultFrame();
     frame.view_projection.values[2U] = NAN;
+
+    RenderCameraShaderConstants constants = SentinelConstants();
     if (writer.WriteViewProjection(frame, &constants) != RenderCameraShaderConstantsStatus::InvalidFrame) {
         return Fail("camera constants failed rejection setup");
+    }
+
+    const auto rejected_snapshot = writer.Snapshot();
+    if (rejected_snapshot.accepted_write_count != 0U || rejected_snapshot.rejected_write_count != 1U) {
+        return Fail("camera constants snapshot missed rejected write");
+    }
+
+    if (rejected_snapshot.last_status != RenderCameraShaderConstantsStatus::InvalidFrame) {
+        return Fail("camera constants snapshot missed rejected status");
+    }
+
+    if (!ConstantsMatchSentinel(constants)) {
+        return Fail("camera constants mutated output during rejected write");
+    }
+
+    const RenderCameraFrame valid_frame = BuildDefaultFrame();
+    if (writer.WriteViewProjection(valid_frame, &constants) != RenderCameraShaderConstantsStatus::Success) {
+        return Fail("camera constants failed success after rejection");
     }
 
     const auto snapshot = writer.Snapshot();
@@ -155,10 +170,18 @@ int RenderCoreCameraShaderConstantsSnapshotTracksCounters() {
         return Fail("camera constants snapshot counters were not stable");
     }
 
+    if (snapshot.last_status != RenderCameraShaderConstantsStatus::Success) {
+        return Fail("camera constants snapshot did not clear status after success");
+    }
+
     writer.Reset();
     const auto reset_snapshot = writer.Snapshot();
     if (reset_snapshot.accepted_write_count != 0U || reset_snapshot.rejected_write_count != 0U) {
         return Fail("camera constants reset did not clear counters");
+    }
+
+    if (reset_snapshot.last_status != RenderCameraShaderConstantsStatus::InvalidArgument) {
+        return Fail("camera constants reset did not restore status");
     }
 
     return 0;
