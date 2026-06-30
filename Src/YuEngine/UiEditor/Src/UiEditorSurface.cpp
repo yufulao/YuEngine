@@ -909,6 +909,73 @@ bool SerializationWorkflowOutputCapacityReady(
     return true;
 }
 
+void SetSurfaceRequiredCounts(
+    UiEditorRuntimeDocumentSurfaceResult *result,
+    std::size_t node_count,
+    bool preview_feedback_requested) {
+    if (result == nullptr) {
+        return;
+    }
+
+    result->hierarchy_row_count = node_count;
+    if (preview_feedback_requested) {
+        result->preview_feedback_count = 1U;
+    }
+}
+
+void SetDesignWorkflowRequiredCounts(
+    UiEditorDesignInspectorWorkflowResult *result,
+    std::size_t node_count) {
+    if (result == nullptr) {
+        return;
+    }
+
+    result->hierarchy_row_count = node_count;
+    result->design_surface_row_count = node_count;
+    result->inspector_field_count = UI_EDITOR_INSPECTOR_FIELD_COUNT;
+    result->preview_feedback_count = 1U;
+    result->staged_node_count = node_count;
+    result->command_ledger_count = 1U;
+}
+
+void SetRuntimePreviewWorkflowRequiredCounts(
+    UiEditorRuntimePreviewWorkflowResult *result,
+    const UiEditorDesignInspectorWorkflowResult &design_result) {
+    if (result == nullptr) {
+        return;
+    }
+
+    result->hierarchy_row_count = design_result.hierarchy_row_count;
+    result->design_surface_row_count = design_result.design_surface_row_count;
+    result->inspector_field_count = design_result.inspector_field_count;
+    result->preview_feedback_count = design_result.preview_feedback_count;
+    result->staged_node_count = design_result.staged_node_count;
+    result->command_ledger_count = design_result.command_ledger_count;
+    result->runtime_preview_row_count = 1U;
+    result->style_template_state_ledger_count = 1U;
+}
+
+void SetSerializationWorkflowRequiredCounts(
+    UiEditorStyleThemeTemplateSerializationWorkflowResult *result,
+    const UiEditorRuntimePreviewWorkflowResult &runtime_preview_result) {
+    if (result == nullptr) {
+        return;
+    }
+
+    result->hierarchy_row_count = runtime_preview_result.hierarchy_row_count;
+    result->design_surface_row_count =
+        runtime_preview_result.design_surface_row_count;
+    result->inspector_field_count = runtime_preview_result.inspector_field_count;
+    result->preview_feedback_count = runtime_preview_result.preview_feedback_count;
+    result->staged_node_count = runtime_preview_result.staged_node_count;
+    result->command_ledger_count = runtime_preview_result.command_ledger_count;
+    result->runtime_preview_row_count =
+        runtime_preview_result.runtime_preview_row_count;
+    result->style_template_state_ledger_count =
+        runtime_preview_result.style_template_state_ledger_count;
+    result->serialization_row_count = 1U;
+}
+
 bool FileVfsRequestAvailable(
     const UiEditorStyleThemeTemplateSerializationWorkflowRequest &request) {
     if (request.file_mount_table == nullptr) {
@@ -1279,18 +1346,26 @@ UiEditorSurfaceStatus BuildUiEditorRuntimeDocumentSurface(
     const UiEditorRuntimeDocument &document = *request.document;
     result.consumed_runtime_ui_document = true;
 
+    const bool preview_feedback_requested =
+        request.require_preview_feedback || !request.preview_feedback_output.empty();
     if (request.hierarchy_output.size() < document.header.node_count) {
         result.status = UiEditorSurfaceStatus::OutputCapacityExceeded;
         result.blocked_layer = UiEditorSurfaceBlockedLayer::Output;
+        SetSurfaceRequiredCounts(
+            &result,
+            document.header.node_count,
+            preview_feedback_requested);
         *out_result = result;
         return result.status;
     }
 
-    const bool preview_feedback_requested =
-        request.require_preview_feedback || !request.preview_feedback_output.empty();
     if (preview_feedback_requested && request.preview_feedback_output.empty()) {
         result.status = UiEditorSurfaceStatus::OutputCapacityExceeded;
         result.blocked_layer = UiEditorSurfaceBlockedLayer::Output;
+        SetSurfaceRequiredCounts(
+            &result,
+            document.header.node_count,
+            preview_feedback_requested);
         *out_result = result;
         return result.status;
     }
@@ -1438,6 +1513,7 @@ UiEditorDesignWorkflowStatus BuildUiEditorDesignInspectorWorkflowSurface(
     if (!DesignWorkflowOutputCapacityReady(request, node_count)) {
         result.status = UiEditorDesignWorkflowStatus::OutputCapacityExceeded;
         result.blocked_layer = UiEditorDesignWorkflowBlockedLayer::Output;
+        SetDesignWorkflowRequiredCounts(&result, node_count);
         *out_result = result;
         return result.status;
     }
@@ -1618,6 +1694,7 @@ BuildUiEditorRuntimePreviewStyleTemplateStateWorkflow(
         result.status =
             UiEditorRuntimePreviewWorkflowStatus::OutputCapacityExceeded;
         result.blocked_layer = UiEditorRuntimePreviewWorkflowBlockedLayer::Output;
+        SetRuntimePreviewWorkflowRequiredCounts(&result, design_result);
         *out_result = result;
         return result.status;
     }
@@ -1845,6 +1922,7 @@ BuildUiEditorStyleThemeTemplateSerializationWorkflow(
             UiEditorStyleThemeTemplateSerializationStatus::OutputCapacityExceeded;
         result.blocked_layer =
             UiEditorStyleThemeTemplateSerializationBlockedLayer::Output;
+        SetSerializationWorkflowRequiredCounts(&result, runtime_preview_result);
         *out_result = result;
         return result.status;
     }

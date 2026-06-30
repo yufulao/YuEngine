@@ -905,6 +905,18 @@ int UiEditorWorkflowOutputCapacityDoesNotMutateOutputs() {
         return Fail("ui editor workflow capacity result mismatch");
     }
 
+    if (result.surface.runtime_node_count != 2U ||
+        result.surface.hierarchy_row_count != 2U ||
+        result.surface.preview_feedback_count != 1U ||
+        result.hierarchy_row_count != 2U ||
+        result.design_surface_row_count != 2U ||
+        result.inspector_field_count != 7U ||
+        result.preview_feedback_count != 1U ||
+        result.staged_node_count != 2U ||
+        result.command_ledger_count != 1U) {
+        return Fail("ui editor workflow capacity required counts mismatch");
+    }
+
     if (!SentinelHierarchyUnchanged(hierarchy_output[0U]) ||
         !SentinelDesignUnchanged(design_output[0U]) ||
         !SentinelInspectorUnchanged(inspector_output[0U]) ||
@@ -1236,6 +1248,24 @@ int UiEditorRuntimePreviewWorkflowOutputCapacityDoesNotMutateOutputs() {
         return Fail("ui editor runtime preview capacity result mismatch");
     }
 
+    if (result.design_workflow.hierarchy_row_count != 2U ||
+        result.design_workflow.design_surface_row_count != 2U ||
+        result.design_workflow.inspector_field_count != 7U ||
+        result.design_workflow.preview_feedback_count != 1U ||
+        result.design_workflow.staged_node_count != 2U ||
+        result.design_workflow.command_ledger_count != 1U ||
+        result.hierarchy_row_count != 2U ||
+        result.design_surface_row_count != 2U ||
+        result.inspector_field_count != 7U ||
+        result.preview_feedback_count != 1U ||
+        result.staged_node_count != 2U ||
+        result.command_ledger_count != 1U ||
+        result.runtime_preview_row_count != 1U ||
+        result.style_template_state_ledger_count != 1U ||
+        result.style_template_state_record_count != 1U) {
+        return Fail("ui editor runtime preview capacity required counts mismatch");
+    }
+
     if (!SentinelHierarchyUnchanged(hierarchy_output[0U]) ||
         !SentinelDesignUnchanged(design_output[0U]) ||
         !SentinelInspectorUnchanged(inspector_output[0U]) ||
@@ -1524,6 +1554,27 @@ int UiEditorStyleThemeTemplateSerializationWorkflowOutputCapacityDoesNotMutateOu
             UiEditorStyleThemeTemplateSerializationBlockedLayer::Output) {
         std::filesystem::remove_all(root);
         return Fail("ui editor serialization capacity result mismatch");
+    }
+
+    if (result.runtime_preview_workflow.hierarchy_row_count != 2U ||
+        result.runtime_preview_workflow.design_surface_row_count != 2U ||
+        result.runtime_preview_workflow.inspector_field_count != 7U ||
+        result.runtime_preview_workflow.preview_feedback_count != 1U ||
+        result.runtime_preview_workflow.staged_node_count != 2U ||
+        result.runtime_preview_workflow.command_ledger_count != 1U ||
+        result.runtime_preview_workflow.runtime_preview_row_count != 1U ||
+        result.runtime_preview_workflow.style_template_state_ledger_count != 1U ||
+        result.hierarchy_row_count != 2U ||
+        result.design_surface_row_count != 2U ||
+        result.inspector_field_count != 7U ||
+        result.preview_feedback_count != 1U ||
+        result.staged_node_count != 2U ||
+        result.command_ledger_count != 1U ||
+        result.runtime_preview_row_count != 1U ||
+        result.style_template_state_ledger_count != 1U ||
+        result.serialization_row_count != 1U) {
+        std::filesystem::remove_all(root);
+        return Fail("ui editor serialization capacity required counts mismatch");
     }
 
     if (!SentinelHierarchyUnchanged(hierarchy_output[0U]) ||
