@@ -587,6 +587,24 @@ ExternalAuthoringBridgeStatus CommitResult(
     return result.status;
 }
 
+void RecordFailedRuntimeAssetInput(
+    const ManifestDocument &document,
+    std::uint32_t entry_index,
+    ExternalAuthoringBridgeResult *result) {
+    if (result == nullptr) {
+        return;
+    }
+
+    result->failed_runtime_asset_input_index = entry_index;
+    if (entry_index >= document.entry_count) {
+        return;
+    }
+
+    const ManifestEntry &entry = document.entries[entry_index];
+    result->failed_runtime_asset_input_stable_id = entry.stable_id;
+    result->failed_runtime_asset_input_kind = ParseRuntimeAssetKind(entry.target_kind);
+}
+
 bool ConfigureRuntimeAssetRow(
     const ManifestDocument &document,
     const ManifestEntry &entry,
@@ -688,6 +706,8 @@ ExternalAuthoringBridgeStatus BuildExternalAuthoringRuntimeAssetImportBridge(
     if (request.runtime_asset_inputs.empty()) {
         result.status = ExternalAuthoringBridgeStatus::OutputCapacityExceeded;
         result.blocked_layer = ExternalAuthoringBridgeBlockedLayer::RuntimeAssetInput;
+        result.runtime_asset_input_count = 1U;
+        result.failed_runtime_asset_input_index = 0U;
         return CommitResult(result, out_result);
     }
 
@@ -765,6 +785,9 @@ ExternalAuthoringBridgeStatus BuildExternalAuthoringRuntimeAssetImportBridge(
     if (request.runtime_asset_inputs.size() < document.entry_count) {
         result.status = ExternalAuthoringBridgeStatus::OutputCapacityExceeded;
         result.blocked_layer = ExternalAuthoringBridgeBlockedLayer::RuntimeAssetInput;
+        const std::uint32_t failed_input_index =
+            static_cast<std::uint32_t>(request.runtime_asset_inputs.size());
+        RecordFailedRuntimeAssetInput(document, failed_input_index, &result);
         return CommitResult(result, out_result);
     }
 
@@ -797,6 +820,7 @@ ExternalAuthoringBridgeStatus BuildExternalAuthoringRuntimeAssetImportBridge(
                 &staged_rows[entry_index])) {
             result.status = ExternalAuthoringBridgeStatus::OutputCapacityExceeded;
             result.blocked_layer = ExternalAuthoringBridgeBlockedLayer::RuntimeAssetInput;
+            RecordFailedRuntimeAssetInput(document, entry_index, &result);
             return CommitResult(result, out_result);
         }
 

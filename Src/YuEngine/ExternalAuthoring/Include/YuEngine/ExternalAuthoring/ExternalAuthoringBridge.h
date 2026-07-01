@@ -102,6 +102,10 @@ struct ExternalAuthoringBridgeResult final {
     std::uint32_t manifest_entry_count = 0U;
     std::uint32_t payload_read_count = 0U;
     std::uint32_t runtime_asset_input_count = 0U;
+    std::uint32_t failed_runtime_asset_input_index = 0U;
+    std::uint64_t failed_runtime_asset_input_stable_id = 0U;
+    yuengine::runtimeasset::RuntimeAssetFileKind failed_runtime_asset_input_kind =
+        yuengine::runtimeasset::RuntimeAssetFileKind::Unknown;
     std::uint32_t unsupported_feature_count = 0U;
     std::uint32_t dependency_count = 0U;
     bool manifest_read = false;

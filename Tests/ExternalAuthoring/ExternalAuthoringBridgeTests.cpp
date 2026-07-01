@@ -205,6 +205,12 @@ void SetSentinel(BridgeHarness *harness) {
     harness->command.command = RuntimeAssetImportCookCommandKind::Unknown;
 }
 
+void SetFailedInputSentinel(ExternalAuthoringBridgeResult *result) {
+    result->failed_runtime_asset_input_index = 99U;
+    result->failed_runtime_asset_input_stable_id = 8888U;
+    result->failed_runtime_asset_input_kind = RuntimeAssetFileKind::Mesh;
+}
+
 bool SentinelUnchanged(const BridgeHarness &harness) {
     if (harness.rows[0].stable_id != 424242U) {
         return false;
@@ -215,6 +221,18 @@ bool SentinelUnchanged(const BridgeHarness &harness) {
     }
 
     return harness.command.command == RuntimeAssetImportCookCommandKind::Unknown;
+}
+
+bool ResultHasNoFailedInput(const ExternalAuthoringBridgeResult &result) {
+    if (result.failed_runtime_asset_input_index != 0U) {
+        return false;
+    }
+
+    if (result.failed_runtime_asset_input_stable_id != 0U) {
+        return false;
+    }
+
+    return result.failed_runtime_asset_input_kind == RuntimeAssetFileKind::Unknown;
 }
 
 int ExternalAuthoringBridgeAcceptsManifestAndEmitsRuntimeAssetImportCookInputs() {
@@ -232,6 +250,7 @@ int ExternalAuthoringBridgeAcceptsManifestAndEmitsRuntimeAssetImportCookInputs()
     }
 
     BridgeHarness harness{};
+    SetFailedInputSentinel(&harness.result);
     const ExternalAuthoringBridgeRequest request = MakeRequest(table, harness);
     const ExternalAuthoringBridgeStatus status =
         BuildExternalAuthoringRuntimeAssetImportBridge(request, &harness.result);
@@ -249,6 +268,10 @@ int ExternalAuthoringBridgeAcceptsManifestAndEmitsRuntimeAssetImportCookInputs()
 
     if (harness.result.runtime_asset_input_count != 2U) {
         return Fail("runtime asset input count mismatch");
+    }
+
+    if (!ResultHasNoFailedInput(harness.result)) {
+        return Fail("success kept failed input identity");
     }
 
     if (harness.result.dependency_count != 1U) {
@@ -315,6 +338,7 @@ int ExternalAuthoringBridgeRejectsMissingPayloadWithoutMutation() {
 
     BridgeHarness harness{};
     SetSentinel(&harness);
+    SetFailedInputSentinel(&harness.result);
     const ExternalAuthoringBridgeRequest request = MakeRequest(table, harness);
     const ExternalAuthoringBridgeStatus status =
         BuildExternalAuthoringRuntimeAssetImportBridge(request, &harness.result);
@@ -328,6 +352,10 @@ int ExternalAuthoringBridgeRejectsMissingPayloadWithoutMutation() {
 
     if (!SentinelUnchanged(harness)) {
         return Fail("missing payload mutated output");
+    }
+
+    if (!ResultHasNoFailedInput(harness.result)) {
+        return Fail("missing payload kept failed input identity");
     }
 
     return 0;
@@ -477,6 +505,18 @@ int ExternalAuthoringBridgeRejectsOutputCapacityWithoutMutation() {
 
     if (harness.result.runtime_asset_input_count != 2U) {
         return Fail("capacity required input count mismatch");
+    }
+
+    if (harness.result.failed_runtime_asset_input_index != 1U) {
+        return Fail("capacity failed input index mismatch");
+    }
+
+    if (harness.result.failed_runtime_asset_input_stable_id != 7001U) {
+        return Fail("capacity failed input stable id mismatch");
+    }
+
+    if (harness.result.failed_runtime_asset_input_kind != RuntimeAssetFileKind::Scene) {
+        return Fail("capacity failed input kind mismatch");
     }
 
     if (harness.result.payload_read_count != 0U) {
