@@ -259,6 +259,7 @@ using yuengine::world::WorldComponentAttachmentBridge;
 using yuengine::world::WorldComponentAttachmentBridgeDesc;
 using yuengine::world::WorldComponentAttachment;
 using yuengine::world::WorldComponentAttachmentResult;
+using yuengine::world::WorldComponentAttachmentExportResult;
 using yuengine::world::WorldComponentAttachmentSnapshot;
 using yuengine::world::WorldComponentAttachmentSnapshotBridge;
 using yuengine::world::WorldComponentAttachmentSnapshotBridgeDesc;
@@ -279,6 +280,7 @@ using yuengine::world::WorldComponentQueryTypeDesc;
 using yuengine::world::WorldComponentResourceBinding;
 using yuengine::world::WorldComponentResourceBindingBridge;
 using yuengine::world::WorldComponentResourceBindingBridgeDesc;
+using yuengine::world::WorldComponentResourceBindingExportResult;
 using yuengine::world::WorldComponentResourceBindingResult;
 using yuengine::world::WorldComponentResourceBindingRestoreBridge;
 using yuengine::world::WorldComponentResourceBindingRestoreResult;
@@ -547,6 +549,10 @@ constexpr const char *TEST_COMPONENT_RESOURCE_BIND_DUPLICATE =
     "WorldComponentResourceBindingBridge_BindRejectsDuplicateComponentBinding";
 constexpr const char *TEST_COMPONENT_RESOURCE_BIND_CAPACITY =
     "WorldComponentResourceBindingBridge_BindRejectsCapacityOverflowWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_EXPORT_REQUIRED =
+    "WorldComponentResourceBindingBridge_ExportBindingsCheckedReportsRequiredCount";
+constexpr const char *TEST_COMPONENT_RESOURCE_EXPORT_CAPACITY =
+    "WorldComponentResourceBindingBridge_ExportBindingsCheckedRejectsCapacityWithoutMutation";
 constexpr const char *TEST_COMPONENT_RESOURCE_REMOVE_RELEASES =
     "WorldComponentResourceBindingBridge_RemoveReleasesHandle";
 constexpr const char *TEST_COMPONENT_RESOURCE_REMOVE_NULL_REGISTRY =
@@ -1103,6 +1109,9 @@ constexpr const char *TEST_COMPONENT_QUERY_READ_ONLY = "WorldComponentAttachment
 constexpr const char *TEST_COMPONENT_REMOVE_CLEARS = "WorldComponentAttachmentBridge_RemoveClearsAttachment";
 constexpr const char *TEST_COMPONENT_REMOVE_MISSING = "WorldComponentAttachmentBridge_RemoveRejectsMissingAttachmentWithoutMutation";
 constexpr const char *TEST_COMPONENT_CLEAR_ALL = "WorldComponentAttachmentBridge_ClearRemovesAllAttachmentsInSlotOrder";
+constexpr const char *TEST_COMPONENT_EXPORT_REQUIRED = "WorldComponentAttachmentBridge_ExportAttachmentsCheckedReportsRequiredCount";
+constexpr const char *TEST_COMPONENT_EXPORT_CAPACITY =
+    "WorldComponentAttachmentBridge_ExportAttachmentsCheckedRejectsCapacityWithoutMutation";
 constexpr const char *TEST_COMPONENT_UPDATE_PATH = "WorldComponentAttachmentBridge_UpdatePathDoesNotGrowStorage";
 constexpr const char *TEST_COMPONENT_SNAPSHOT = "WorldComponentAttachmentBridge_SnapshotReportsCountsAndLastStatus";
 constexpr const char *TEST_COMPONENT_NO_WORLD_QUERY = "WorldComponentAttachmentBridge_DoesNotQueryOrMutateWorldInstance";
@@ -1954,6 +1963,24 @@ int RequireObjectQueryCapacityEntry(const WorldComponentQueryResult &result,
     }
 
     return 0;
+}
+
+bool ComponentAttachmentsMatch(
+    const WorldComponentAttachment &left,
+    const WorldComponentAttachment &right) {
+    if (left.world_object_id.value != right.world_object_id.value) {
+        return false;
+    }
+
+    if (left.component_type_id.value != right.component_type_id.value) {
+        return false;
+    }
+
+    if (left.component_slot_id.value != right.component_slot_id.value) {
+        return false;
+    }
+
+    return left.is_attached == right.is_attached;
 }
 
 bool ComponentAttachmentSnapshotBridgeSnapshotsMatch(
@@ -8535,6 +8562,159 @@ int WorldComponentResourceBindingBridgeBindRejectsCapacityOverflowWithoutMutatio
 
     if (registry.Snapshot().acquired_handle_count != before_registry.acquired_handle_count) {
         return Fail("component resource binding capacity acquired resource");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingBridgeExportBindingsCheckedReportsRequiredCount() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    ResourceRegistry registry = MakeResourceRegistry();
+    WorldComponentResourceBindingBridge bridge;
+    ResourceHandle first_handle{};
+    ResourceHandle second_handle{};
+    if (AddComponentResourceBindingFixture(
+            attachment_bridge,
+            registry,
+            bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            RESOURCE_TYPE_TEXTURE,
+            "texture_export_checked_a",
+            &first_handle) != 0) {
+        return 1;
+    }
+
+    if (AddComponentResourceBindingFixture(
+            attachment_bridge,
+            registry,
+            bridge,
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            RESOURCE_TYPE_MATERIAL,
+            "material_export_checked_a",
+            &second_handle) != 0) {
+        return 1;
+    }
+
+    std::array<WorldComponentResourceBinding, 2U> legacy_bindings{};
+    const std::uint32_t legacy_count = bridge.ExportBindings(
+        legacy_bindings.data(),
+        static_cast<std::uint32_t>(legacy_bindings.size()));
+    if (legacy_count != 2U) {
+        return Fail("component resource binding checked export legacy count wrong");
+    }
+
+    const WorldComponentResourceBindingSnapshot before_bridge = bridge.Snapshot();
+    const ResourceSnapshot before_registry = registry.Snapshot();
+    std::array<WorldComponentResourceBinding, 2U> output_bindings{};
+    const WorldComponentResourceBindingExportResult result = bridge.ExportBindingsChecked(
+        output_bindings.data(),
+        static_cast<std::uint32_t>(output_bindings.size()));
+    if (!result.Succeeded()) {
+        return Fail("component resource binding checked export failed");
+    }
+
+    if (result.required_binding_count != legacy_count) {
+        return Fail("component resource binding checked export required count wrong");
+    }
+
+    if (result.exported_binding_count != legacy_count) {
+        return Fail("component resource binding checked export written count wrong");
+    }
+
+    if (!ComponentResourceBindingsMatch(output_bindings[0], legacy_bindings[0])) {
+        return Fail("component resource binding checked export first binding wrong");
+    }
+
+    if (!ComponentResourceBindingsMatch(output_bindings[1], legacy_bindings[1])) {
+        return Fail("component resource binding checked export second binding wrong");
+    }
+
+    if (!ComponentResourceBindingSnapshotsMatch(before_bridge, bridge.Snapshot())) {
+        return Fail("component resource binding checked export mutated bridge");
+    }
+
+    if (!ResourceSnapshotsMatch(before_registry, registry.Snapshot())) {
+        return Fail("component resource binding checked export mutated registry");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingBridgeExportBindingsCheckedRejectsCapacityWithoutMutation() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    ResourceRegistry registry = MakeResourceRegistry();
+    WorldComponentResourceBindingBridge bridge;
+    if (AddComponentResourceBindingFixture(
+            attachment_bridge,
+            registry,
+            bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            RESOURCE_TYPE_TEXTURE,
+            "texture_export_capacity_a",
+            nullptr) != 0) {
+        return 1;
+    }
+
+    if (AddComponentResourceBindingFixture(
+            attachment_bridge,
+            registry,
+            bridge,
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            RESOURCE_TYPE_MATERIAL,
+            "material_export_capacity_a",
+            nullptr) != 0) {
+        return 1;
+    }
+
+    const WorldComponentResourceBinding sentinel_binding = SentinelComponentResourceBinding();
+    std::array<WorldComponentResourceBinding, 1U> output_bindings{sentinel_binding};
+    const WorldComponentResourceBindingSnapshot before_bridge = bridge.Snapshot();
+    const ResourceSnapshot before_registry = registry.Snapshot();
+    const WorldComponentResourceBindingExportResult result = bridge.ExportBindingsChecked(
+        output_bindings.data(),
+        static_cast<std::uint32_t>(output_bindings.size()));
+    if (result.status != WorldComponentResourceBindingStatus::CapacityExceeded) {
+        return Fail("component resource binding checked export capacity status wrong");
+    }
+
+    if (result.required_binding_count != 2U) {
+        return Fail("component resource binding checked export capacity required count wrong");
+    }
+
+    if (result.exported_binding_count != 0U) {
+        return Fail("component resource binding checked export capacity wrote count");
+    }
+
+    if (!ComponentResourceBindingsMatch(output_bindings[0], sentinel_binding)) {
+        return Fail("component resource binding checked export capacity mutated output");
+    }
+
+    if (!ComponentResourceBindingSnapshotsMatch(before_bridge, bridge.Snapshot())) {
+        return Fail("component resource binding checked export capacity mutated bridge");
+    }
+
+    if (!ResourceSnapshotsMatch(before_registry, registry.Snapshot())) {
+        return Fail("component resource binding checked export capacity mutated registry");
+    }
+
+    std::array<WorldComponentResourceBinding, 2U> retry_bindings{};
+    const WorldComponentResourceBindingExportResult retry_result = bridge.ExportBindingsChecked(
+        retry_bindings.data(),
+        static_cast<std::uint32_t>(retry_bindings.size()));
+    if (!retry_result.Succeeded()) {
+        return Fail("component resource binding checked export capacity retry failed");
+    }
+
+    if (retry_result.exported_binding_count != 2U) {
+        return Fail("component resource binding checked export capacity retry count wrong");
     }
 
     return 0;
@@ -20609,6 +20789,131 @@ int WorldComponentAttachmentBridgeClearRemovesAllAttachmentsInSlotOrder() {
     return 0;
 }
 
+int WorldComponentAttachmentBridgeExportAttachmentsCheckedReportsRequiredCount() {
+    WorldComponentAttachmentBridge bridge;
+    if (AddComponentAttachment(
+            bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component attachment checked export first add failed") != 0) {
+        return 1;
+    }
+
+    if (AddComponentAttachment(
+            bridge,
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            "component attachment checked export second add failed") != 0) {
+        return 1;
+    }
+
+    std::array<WorldComponentAttachment, 2U> legacy_attachments{};
+    const std::uint32_t legacy_count = bridge.ExportAttachments(
+        legacy_attachments.data(),
+        static_cast<std::uint32_t>(legacy_attachments.size()));
+    if (legacy_count != 2U) {
+        return Fail("component attachment checked export legacy count wrong");
+    }
+
+    const WorldComponentAttachmentSnapshot before_snapshot = bridge.Snapshot();
+    std::array<WorldComponentAttachment, 2U> output_attachments{};
+    const WorldComponentAttachmentExportResult result = bridge.ExportAttachmentsChecked(
+        output_attachments.data(),
+        static_cast<std::uint32_t>(output_attachments.size()));
+    if (!result.Succeeded()) {
+        return Fail("component attachment checked export failed");
+    }
+
+    if (result.required_attachment_count != legacy_count) {
+        return Fail("component attachment checked export required count wrong");
+    }
+
+    if (result.exported_attachment_count != legacy_count) {
+        return Fail("component attachment checked export written count wrong");
+    }
+
+    if (!ComponentAttachmentsMatch(output_attachments[0], legacy_attachments[0])) {
+        return Fail("component attachment checked export first attachment wrong");
+    }
+
+    if (!ComponentAttachmentsMatch(output_attachments[1], legacy_attachments[1])) {
+        return Fail("component attachment checked export second attachment wrong");
+    }
+
+    if (!ComponentAttachmentSnapshotsMatch(before_snapshot, bridge.Snapshot())) {
+        return Fail("component attachment checked export mutated bridge");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeExportAttachmentsCheckedRejectsCapacityWithoutMutation() {
+    WorldComponentAttachmentBridge bridge;
+    if (AddComponentAttachment(
+            bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component attachment checked export capacity first add failed") != 0) {
+        return 1;
+    }
+
+    if (AddComponentAttachment(
+            bridge,
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            "component attachment checked export capacity second add failed") != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachment sentinel_attachment{};
+    sentinel_attachment.world_object_id = OBJECT_EFFECT;
+    sentinel_attachment.component_type_id = COMPONENT_TYPE_TERTIARY;
+    sentinel_attachment.component_slot_id = COMPONENT_SLOT_TERTIARY;
+    sentinel_attachment.is_attached = true;
+    std::array<WorldComponentAttachment, 1U> output_attachments{sentinel_attachment};
+    const WorldComponentAttachmentSnapshot before_snapshot = bridge.Snapshot();
+    const WorldComponentAttachmentExportResult result = bridge.ExportAttachmentsChecked(
+        output_attachments.data(),
+        static_cast<std::uint32_t>(output_attachments.size()));
+    if (result.status != WorldComponentAttachmentStatus::CapacityExceeded) {
+        return Fail("component attachment checked export capacity status wrong");
+    }
+
+    if (result.required_attachment_count != 2U) {
+        return Fail("component attachment checked export capacity required count wrong");
+    }
+
+    if (result.exported_attachment_count != 0U) {
+        return Fail("component attachment checked export capacity wrote count");
+    }
+
+    if (!ComponentAttachmentsMatch(output_attachments[0], sentinel_attachment)) {
+        return Fail("component attachment checked export capacity mutated output");
+    }
+
+    if (!ComponentAttachmentSnapshotsMatch(before_snapshot, bridge.Snapshot())) {
+        return Fail("component attachment checked export capacity mutated bridge");
+    }
+
+    std::array<WorldComponentAttachment, 2U> retry_attachments{};
+    const WorldComponentAttachmentExportResult retry_result = bridge.ExportAttachmentsChecked(
+        retry_attachments.data(),
+        static_cast<std::uint32_t>(retry_attachments.size()));
+    if (!retry_result.Succeeded()) {
+        return Fail("component attachment checked export capacity retry failed");
+    }
+
+    if (retry_result.exported_attachment_count != 2U) {
+        return Fail("component attachment checked export capacity retry count wrong");
+    }
+
+    return 0;
+}
+
 int WorldComponentAttachmentBridgeUpdatePathDoesNotGrowStorage() {
     WorldComponentAttachmentBridgeDesc desc{};
     desc.attachment_capacity = 2U;
@@ -22673,6 +22978,10 @@ int main(int argc, char **argv) {
             WorldComponentResourceBindingBridgeBindRejectsDuplicateComponentBinding},
         {TEST_COMPONENT_RESOURCE_BIND_CAPACITY,
             WorldComponentResourceBindingBridgeBindRejectsCapacityOverflowWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_EXPORT_REQUIRED,
+            WorldComponentResourceBindingBridgeExportBindingsCheckedReportsRequiredCount},
+        {TEST_COMPONENT_RESOURCE_EXPORT_CAPACITY,
+            WorldComponentResourceBindingBridgeExportBindingsCheckedRejectsCapacityWithoutMutation},
         {TEST_COMPONENT_RESOURCE_REMOVE_RELEASES,
             WorldComponentResourceBindingBridgeRemoveReleasesHandle},
         {TEST_COMPONENT_RESOURCE_REMOVE_NULL_REGISTRY,
@@ -23229,6 +23538,9 @@ int main(int argc, char **argv) {
         {TEST_COMPONENT_REMOVE_CLEARS, WorldComponentAttachmentBridgeRemoveClearsAttachment},
         {TEST_COMPONENT_REMOVE_MISSING, WorldComponentAttachmentBridgeRemoveRejectsMissingAttachmentWithoutMutation},
         {TEST_COMPONENT_CLEAR_ALL, WorldComponentAttachmentBridgeClearRemovesAllAttachmentsInSlotOrder},
+        {TEST_COMPONENT_EXPORT_REQUIRED, WorldComponentAttachmentBridgeExportAttachmentsCheckedReportsRequiredCount},
+        {TEST_COMPONENT_EXPORT_CAPACITY,
+            WorldComponentAttachmentBridgeExportAttachmentsCheckedRejectsCapacityWithoutMutation},
         {TEST_COMPONENT_UPDATE_PATH, WorldComponentAttachmentBridgeUpdatePathDoesNotGrowStorage},
         {TEST_COMPONENT_SNAPSHOT, WorldComponentAttachmentBridgeSnapshotReportsCountsAndLastStatus},
         {TEST_COMPONENT_NO_WORLD_QUERY, WorldComponentAttachmentBridgeDoesNotQueryOrMutateWorldInstance},

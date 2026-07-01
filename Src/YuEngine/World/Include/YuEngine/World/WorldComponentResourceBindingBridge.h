@@ -24,6 +24,20 @@ class ResourceRegistry;
 namespace yuengine::world {
 class WorldComponentAttachmentBridge;
 
+struct WorldComponentResourceBindingExportResult final {
+    WorldComponentResourceBindingStatus status = WorldComponentResourceBindingStatus::Success;
+    std::uint32_t required_binding_count = 0U;
+    std::uint32_t exported_binding_count = 0U;
+
+    /**
+     * @comment 检查 export result 是否成功。
+     * @return result 成功时返回 true，否则返回 false。
+     */
+    bool Succeeded() const {
+        return status == WorldComponentResourceBindingStatus::Success;
+    }
+};
+
 class WorldComponentResourceBindingBridge final {
 public:
     /**
@@ -101,6 +115,15 @@ public:
      * @return active binding 总数。
      */
     std::uint32_t ExportBindings(
+        WorldComponentResourceBinding *output_bindings,
+        std::uint32_t output_capacity) const;
+    /**
+     * @comment 按 deterministic slot order 复制 active component resource binding records，容量不足时不写 output buffer。
+     * @param output_bindings 调用方持有的 output binding buffer。
+     * @param output_capacity 输出 binding buffer capacity。
+     * @return 显式 export 结果，包含 required binding count。
+     */
+    WorldComponentResourceBindingExportResult ExportBindingsChecked(
         WorldComponentResourceBinding *output_bindings,
         std::uint32_t output_capacity) const;
 

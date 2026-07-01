@@ -14,6 +14,20 @@
 #include "YuEngine/World/WorldObjectId.h"
 
 namespace yuengine::world {
+struct WorldComponentAttachmentExportResult final {
+    WorldComponentAttachmentStatus status = WorldComponentAttachmentStatus::Success;
+    std::uint32_t required_attachment_count = 0U;
+    std::uint32_t exported_attachment_count = 0U;
+
+    /**
+     * @comment 检查 export result 是否成功。
+     * @return result 成功时返回 true，否则返回 false。
+     */
+    bool Succeeded() const {
+        return status == WorldComponentAttachmentStatus::Success;
+    }
+};
+
 class WorldComponentAttachmentBridge final {
 public:
     /**
@@ -76,6 +90,15 @@ public:
      * @return active attachment 总数。
      */
     std::uint32_t ExportAttachments(
+        WorldComponentAttachment *output_attachments,
+        std::uint32_t output_capacity) const;
+    /**
+     * @comment 按 deterministic slot order 复制 active attachment records，容量不足时不写 output buffer。
+     * @param output_attachments 调用方持有的 output attachment buffer。
+     * @param output_capacity 输出 attachment buffer capacity。
+     * @return 显式 export 结果，包含 required attachment count。
+     */
+    WorldComponentAttachmentExportResult ExportAttachmentsChecked(
         WorldComponentAttachment *output_attachments,
         std::uint32_t output_capacity) const;
 
