@@ -63,6 +63,10 @@ struct WindowsPlatformWindowAccess {
     static PlatformWindowStatus PushPlatformEvent(WindowsPlatformWindow& window, const PlatformWindowEvent& event) {
         return window.PushPlatformEvent(event);
     }
+
+    static void ResetEventQueue(WindowsPlatformWindow& window) {
+        window.ResetEventQueue();
+    }
 };
 }
 
@@ -459,10 +463,14 @@ int PlatformWindowEventOverflowReportsSnapshotStatus() {
         }
     }
 
-    PlatformWindowEvent second_event{};
-    second_event.type = yuengine::platform::PlatformWindowEventType::FocusLost;
-    const PlatformWindowStatus second_status = yuengine::platform::WindowsPlatformWindowAccess::PushPlatformEvent(window, second_event);
-    if (second_status != PlatformWindowStatus::EventQueueOverflow) {
+    PlatformWindowEvent failed_event{};
+    failed_event.type = yuengine::platform::PlatformWindowEventType::RawMouseButtonDown;
+    failed_event.raw_code = 1U;
+    failed_event.pointer_x = -17;
+    failed_event.pointer_y = 23;
+    const PlatformWindowStatus failed_status =
+        yuengine::platform::WindowsPlatformWindowAccess::PushPlatformEvent(window, failed_event);
+    if (failed_status != PlatformWindowStatus::EventQueueOverflow) {
         return Fail("internal platform event overflow did not return overflow status");
     }
 
@@ -479,8 +487,72 @@ int PlatformWindowEventOverflowReportsSnapshotStatus() {
         return Fail("internal platform event overflow did not expose required queue count");
     }
 
+    if (snapshot.last_failed_event.type != failed_event.type) {
+        return Fail("internal platform event overflow did not record failed event");
+    }
+
+    if (snapshot.last_failed_event.raw_code != failed_event.raw_code ||
+        snapshot.last_failed_event.pointer_x != failed_event.pointer_x ||
+        snapshot.last_failed_event.pointer_y != failed_event.pointer_y) {
+        return Fail("internal platform event overflow did not record failed event data");
+    }
+
+    if (snapshot.last_failed_event_type != failed_event.type) {
+        return Fail("internal platform event overflow did not record failed event type");
+    }
+
+    if (snapshot.last_failed_event_index != PlatformWindowDesc::DEFAULT_EVENT_QUEUE_CAPACITY) {
+        return Fail("internal platform event overflow did not record failed event index");
+    }
+
+    if (snapshot.last_failed_event_queue_capacity != PlatformWindowDesc::DEFAULT_EVENT_QUEUE_CAPACITY) {
+        return Fail("internal platform event overflow did not record failed event queue capacity");
+    }
+
+    if (snapshot.last_failed_queued_event_count != PlatformWindowDesc::DEFAULT_EVENT_QUEUE_CAPACITY) {
+        return Fail("internal platform event overflow did not record failed queued event count");
+    }
+
+    if (snapshot.last_required_queued_event_count != PlatformWindowDesc::DEFAULT_EVENT_QUEUE_CAPACITY + 1U) {
+        return Fail("internal platform event overflow did not record last required queue count");
+    }
+
     if (snapshot.last_status != PlatformWindowStatus::EventQueueOverflow) {
         return Fail("internal platform event overflow did not record snapshot status");
+    }
+
+    const PlatformWindowPollResult null_poll = window.PollEvents(nullptr, 1U);
+    if (null_poll.status != PlatformWindowStatus::NullPointer) {
+        return Fail("platform window null poll did not return null pointer");
+    }
+
+    snapshot = window.GetSnapshot();
+    if (snapshot.last_failed_event_type != yuengine::platform::PlatformWindowEventType::None ||
+        snapshot.last_failed_event_index != 0U ||
+        snapshot.last_failed_event_queue_capacity != 0U ||
+        snapshot.last_failed_queued_event_count != 0U ||
+        snapshot.last_required_queued_event_count != 0U ||
+        snapshot.last_failed_event.type != yuengine::platform::PlatformWindowEventType::None) {
+        return Fail("platform window null poll kept failed event identity");
+    }
+
+    yuengine::platform::WindowsPlatformWindowAccess::ResetEventQueue(window);
+    PlatformWindowEvent reset_event{};
+    reset_event.type = yuengine::platform::PlatformWindowEventType::RawMouseMove;
+    const PlatformWindowStatus reset_status =
+        yuengine::platform::WindowsPlatformWindowAccess::PushPlatformEvent(window, reset_event);
+    if (reset_status != PlatformWindowStatus::Success) {
+        return Fail("platform window reset enqueue failed");
+    }
+
+    snapshot = window.GetSnapshot();
+    if (snapshot.last_failed_event_type != yuengine::platform::PlatformWindowEventType::None ||
+        snapshot.last_failed_event_index != 0U ||
+        snapshot.last_failed_event_queue_capacity != 0U ||
+        snapshot.last_failed_queued_event_count != 0U ||
+        snapshot.last_required_queued_event_count != 0U ||
+        snapshot.last_failed_event.type != yuengine::platform::PlatformWindowEventType::None) {
+        return Fail("platform window successful enqueue reported failed event identity");
     }
 
     return 0;

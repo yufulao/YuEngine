@@ -420,6 +420,12 @@ PlatformWindowSnapshot WindowsPlatformWindow::GetSnapshot() const {
         snapshot.required_queued_event_count = event_queue_capacity_ + dropped_event_count_;
     }
 
+    snapshot.last_failed_event = last_failed_event_;
+    snapshot.last_failed_event_type = last_failed_event_type_;
+    snapshot.last_failed_event_index = last_failed_event_index_;
+    snapshot.last_failed_event_queue_capacity = last_failed_event_queue_capacity_;
+    snapshot.last_failed_queued_event_count = last_failed_queued_event_count_;
+    snapshot.last_required_queued_event_count = last_required_queued_event_count_;
     snapshot.dropped_event_count = dropped_event_count_;
     snapshot.last_poll_output_capacity = last_poll_output_capacity_;
     snapshot.last_poll_output_event_count = last_poll_output_event_count_;
@@ -477,18 +483,24 @@ bool WindowsPlatformWindow::IsValidDescriptor(const PlatformWindowDesc& desc) co
 }
 
 PlatformWindowStatus WindowsPlatformWindow::SetLastStatus(PlatformWindowStatus status) {
+    if (status != PlatformWindowStatus::EventQueueOverflow) {
+        ClearEventQueueCapacityFailure();
+    }
+
     last_status_ = status;
     return status;
 }
 
 PlatformWindowStatus WindowsPlatformWindow::PushPlatformEvent(const PlatformWindowEvent& event) {
     if (event_queue_capacity_ == 0U) {
+        RecordEventQueueCapacityFailure(event);
         ++dropped_event_count_;
         ClearPollOutputCapacityFailure();
         return SetLastStatus(PlatformWindowStatus::EventQueueOverflow);
     }
 
     if (event_count_ >= event_queue_capacity_) {
+        RecordEventQueueCapacityFailure(event);
         ++dropped_event_count_;
         ClearPollOutputCapacityFailure();
         return SetLastStatus(PlatformWindowStatus::EventQueueOverflow);
@@ -523,7 +535,29 @@ void WindowsPlatformWindow::ResetEventQueue() {
     event_write_index_ = 0U;
     event_count_ = 0U;
     dropped_event_count_ = 0U;
+    ClearEventQueueCapacityFailure();
     ClearPollOutputCapacityFailure();
+}
+
+void WindowsPlatformWindow::RecordEventQueueCapacityFailure(const PlatformWindowEvent& event) {
+    const std::size_t dropped_event_count = static_cast<std::size_t>(dropped_event_count_);
+    const std::size_t failed_event_index = event_count_ + dropped_event_count;
+    const std::size_t required_queued_event_count = failed_event_index + 1U;
+    last_failed_event_ = event;
+    last_failed_event_type_ = event.type;
+    last_failed_event_index_ = failed_event_index;
+    last_failed_event_queue_capacity_ = event_queue_capacity_;
+    last_failed_queued_event_count_ = event_count_;
+    last_required_queued_event_count_ = required_queued_event_count;
+}
+
+void WindowsPlatformWindow::ClearEventQueueCapacityFailure() {
+    last_failed_event_ = PlatformWindowEvent{};
+    last_failed_event_type_ = PlatformWindowEventType::None;
+    last_failed_event_index_ = 0U;
+    last_failed_event_queue_capacity_ = 0U;
+    last_failed_queued_event_count_ = 0U;
+    last_required_queued_event_count_ = 0U;
 }
 
 void WindowsPlatformWindow::InvalidateNativeSurface() {

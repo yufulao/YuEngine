@@ -100,6 +100,8 @@ private:
     void ApplyMinimizedState(bool minimized);
     void ApplyCloseRequest();
     void ResetEventQueue();
+    void RecordEventQueueCapacityFailure(const PlatformWindowEvent& event);
+    void ClearEventQueueCapacityFailure();
     void InvalidateNativeSurface();
     void ClearPollOutputCapacityFailure();
     void RecordPollOutputCapacityFailure(
@@ -113,6 +115,12 @@ private:
     std::size_t event_write_index_ = 0U;
     std::size_t event_count_ = 0U;
     std::uint32_t dropped_event_count_ = 0U;
+    PlatformWindowEvent last_failed_event_{};
+    PlatformWindowEventType last_failed_event_type_ = PlatformWindowEventType::None;
+    std::size_t last_failed_event_index_ = 0U;
+    std::size_t last_failed_event_queue_capacity_ = 0U;
+    std::size_t last_failed_queued_event_count_ = 0U;
+    std::size_t last_required_queued_event_count_ = 0U;
     std::size_t last_poll_output_capacity_ = 0U;
     std::size_t last_poll_output_event_count_ = 0U;
     std::size_t last_poll_queued_event_count_ = 0U;
