@@ -65,8 +65,12 @@ public:
     WorldTransformSnapshot Snapshot() const;
 
 private:
+    WorldTransformStatus RecordCapacityFailure(WorldObjectId world_object_id,
+        const WorldTransformState &transform_state,
+        std::uint32_t transform_slot);
     WorldTransformStatus RecordFailure(WorldTransformStatus status);
     void RecordSuccess();
+    void ClearCapacityEntry();
     WorldTransformStatus ValidateBridgeCapacity() const;
     WorldTransformBinding *FindBindingByWorldObjectId(WorldObjectId world_object_id);
     const WorldTransformBinding *FindBindingByWorldObjectId(WorldObjectId world_object_id) const;

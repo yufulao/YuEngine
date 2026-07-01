@@ -458,6 +458,7 @@ constexpr const char *TEST_TRANSFORM_INVALID_WORLD_ID = "WorldTransformBridge_Re
 constexpr const char *TEST_TRANSFORM_MISSING_WORLD_OBJECT = "WorldTransformBridge_RegisterRejectsMissingWorldObjectWithoutMutation";
 constexpr const char *TEST_TRANSFORM_DUPLICATE_WORLD_ID = "WorldTransformBridge_RegisterRejectsDuplicateWorldObjectId";
 constexpr const char *TEST_TRANSFORM_CAPACITY_OVERFLOW = "WorldTransformBridge_RegisterRejectsCapacityOverflowWithoutMutation";
+constexpr const char *TEST_TRANSFORM_CAPACITY_ENTRY = "WorldTransformBridge_RegisterCapacityReportsRejectedTransformEntry";
 constexpr const char *TEST_TRANSFORM_SET_EXISTING = "WorldTransformBridge_SetUpdatesExistingRecord";
 constexpr const char *TEST_TRANSFORM_SET_MISSING = "WorldTransformBridge_SetRejectsMissingRecordWithoutMutation";
 constexpr const char *TEST_TRANSFORM_QUERY = "WorldTransformBridge_QueryReturnsStoredTransform";
@@ -1445,6 +1446,52 @@ bool TransformMatches(const WorldTransformState &left, const WorldTransformState
     return left.scale_z == right.scale_z;
 }
 
+int RequireTransformCapacityEntry(const WorldTransformSnapshot &snapshot,
+    WorldObjectId world_object_id,
+    std::uint32_t transform_slot,
+    const WorldTransformState &transform_state,
+    const char *message) {
+    if (snapshot.last_failed_world_object_id.value != world_object_id.value) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_transform_slot != transform_slot) {
+        return Fail(message);
+    }
+
+    const std::uint32_t required_capacity = transform_slot + 1U;
+    if (snapshot.last_required_transform_capacity != required_capacity) {
+        return Fail(message);
+    }
+
+    if (!TransformMatches(snapshot.last_failed_transform_state, transform_state)) {
+        return Fail(message);
+    }
+
+    return 0;
+}
+
+int RequireTransformCapacityEntryCleared(const WorldTransformSnapshot &snapshot, const char *message) {
+    if (snapshot.last_failed_world_object_id.IsValid()) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_transform_slot != 0U) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_required_transform_capacity != 0U) {
+        return Fail(message);
+    }
+
+    const WorldTransformState empty_transform{};
+    if (!TransformMatches(snapshot.last_failed_transform_state, empty_transform)) {
+        return Fail(message);
+    }
+
+    return 0;
+}
+
 ScriptStatus AppendDispatchCode(const ScriptValue *arguments,
     std::uint32_t argument_count,
     ScriptValue *results,
@@ -2023,6 +2070,22 @@ bool TransformSnapshotsMatch(const WorldTransformSnapshot &left, const WorldTran
     }
 
     if (left.allocation_accounting_status != right.allocation_accounting_status) {
+        return false;
+    }
+
+    if (left.last_failed_world_object_id.value != right.last_failed_world_object_id.value) {
+        return false;
+    }
+
+    if (left.last_failed_transform_slot != right.last_failed_transform_slot) {
+        return false;
+    }
+
+    if (left.last_required_transform_capacity != right.last_required_transform_capacity) {
+        return false;
+    }
+
+    if (!TransformMatches(left.last_failed_transform_state, right.last_failed_transform_state)) {
         return false;
     }
 
@@ -5266,6 +5329,179 @@ int WorldTransformBridgeRegisterRejectsCapacityOverflowWithoutMutation() {
 
     if (bridge.Snapshot().record_count != 1U) {
         return Fail("transform overflow mutated record count");
+    }
+
+    return 0;
+}
+
+int WorldTransformBridgeRegisterCapacityReportsRejectedTransformEntry() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("transform capacity entry player registration failed");
+    }
+
+    if (!Register(world, OBJECT_CAMERA).Succeeded()) {
+        return Fail("transform capacity entry camera registration failed");
+    }
+
+    WorldTransformBridgeDesc desc{};
+    desc.bridge_capacity = 1U;
+    WorldTransformBridge bridge(world, desc);
+    const WorldTransformState first_state = Transform(72.0F);
+    if (!bridge.Register(OBJECT_PLAYER, first_state).Succeeded()) {
+        return Fail("transform capacity entry first registration failed");
+    }
+
+    const WorldTransformState overflow_state = Transform(82.0F);
+    const WorldTransformResult overflow_result = bridge.Register(OBJECT_CAMERA, overflow_state);
+    if (overflow_result.status != WorldTransformStatus::CapacityExceeded) {
+        return Fail("transform capacity entry overflow returned wrong status");
+    }
+
+    const WorldTransformSnapshot overflow_snapshot = bridge.Snapshot();
+    if (overflow_snapshot.record_count != 1U) {
+        return Fail("transform capacity entry overflow mutated record count");
+    }
+
+    if (overflow_snapshot.failed_operation_count != 1U) {
+        return Fail("transform capacity entry overflow did not count failure");
+    }
+
+    const int first_entry_result = RequireTransformCapacityEntry(
+        overflow_snapshot,
+        OBJECT_CAMERA,
+        1U,
+        overflow_state,
+        "transform capacity entry did not record rejected transform");
+    if (first_entry_result != 0) {
+        return 1;
+    }
+
+    const WorldObjectId invalid_world_object_id{};
+    const WorldTransformState invalid_state = Transform(92.0F);
+    const WorldTransformResult invalid_result = bridge.Register(invalid_world_object_id, invalid_state);
+    if (invalid_result.status != WorldTransformStatus::InvalidWorldObjectId) {
+        return Fail("transform capacity entry invalid id returned wrong status");
+    }
+
+    const WorldTransformSnapshot invalid_snapshot = bridge.Snapshot();
+    const int invalid_clear_result = RequireTransformCapacityEntryCleared(
+        invalid_snapshot,
+        "transform invalid id did not clear capacity entry");
+    if (invalid_clear_result != 0) {
+        return 1;
+    }
+
+    const WorldTransformResult second_overflow_result = bridge.Register(OBJECT_CAMERA, overflow_state);
+    if (second_overflow_result.status != WorldTransformStatus::CapacityExceeded) {
+        return Fail("transform capacity entry second overflow returned wrong status");
+    }
+
+    const WorldTransformState missing_world_object_state = Transform(102.0F);
+    const WorldTransformResult missing_world_object_result =
+        bridge.Register(OBJECT_EFFECT, missing_world_object_state);
+    if (missing_world_object_result.status != WorldTransformStatus::MissingWorldObject) {
+        return Fail("transform capacity entry missing object returned wrong status");
+    }
+
+    const WorldTransformSnapshot missing_world_object_snapshot = bridge.Snapshot();
+    const int missing_world_object_clear_result = RequireTransformCapacityEntryCleared(
+        missing_world_object_snapshot,
+        "transform missing object did not clear capacity entry");
+    if (missing_world_object_clear_result != 0) {
+        return 1;
+    }
+
+    const WorldTransformResult third_overflow_result = bridge.Register(OBJECT_CAMERA, overflow_state);
+    if (third_overflow_result.status != WorldTransformStatus::CapacityExceeded) {
+        return Fail("transform capacity entry third overflow returned wrong status");
+    }
+
+    const WorldTransformState duplicate_state = Transform(112.0F);
+    const WorldTransformResult duplicate_result = bridge.Register(OBJECT_PLAYER, duplicate_state);
+    if (duplicate_result.status != WorldTransformStatus::DuplicateWorldObjectId) {
+        return Fail("transform capacity entry duplicate returned wrong status");
+    }
+
+    const WorldTransformSnapshot duplicate_snapshot = bridge.Snapshot();
+    const int duplicate_clear_result = RequireTransformCapacityEntryCleared(
+        duplicate_snapshot,
+        "transform duplicate did not clear capacity entry");
+    if (duplicate_clear_result != 0) {
+        return 1;
+    }
+
+    const WorldTransformResult fourth_overflow_result = bridge.Register(OBJECT_CAMERA, overflow_state);
+    if (fourth_overflow_result.status != WorldTransformStatus::CapacityExceeded) {
+        return Fail("transform capacity entry fourth overflow returned wrong status");
+    }
+
+    const WorldTransformState set_state = Transform(122.0F);
+    const WorldTransformStatus set_status = bridge.Set(OBJECT_CAMERA, set_state);
+    if (set_status != WorldTransformStatus::TransformNotFound) {
+        return Fail("transform capacity entry set missing returned wrong status");
+    }
+
+    const WorldTransformSnapshot set_snapshot = bridge.Snapshot();
+    const int set_clear_result = RequireTransformCapacityEntryCleared(
+        set_snapshot,
+        "transform set missing did not clear capacity entry");
+    if (set_clear_result != 0) {
+        return 1;
+    }
+
+    const WorldTransformResult fifth_overflow_result = bridge.Register(OBJECT_CAMERA, overflow_state);
+    if (fifth_overflow_result.status != WorldTransformStatus::CapacityExceeded) {
+        return Fail("transform capacity entry fifth overflow returned wrong status");
+    }
+
+    const WorldTransformResult query_result = bridge.Query(OBJECT_CAMERA);
+    if (query_result.status != WorldTransformStatus::TransformNotFound) {
+        return Fail("transform capacity entry query missing returned wrong status");
+    }
+
+    const WorldTransformSnapshot query_snapshot = bridge.Snapshot();
+    const int query_clear_result = RequireTransformCapacityEntryCleared(
+        query_snapshot,
+        "transform query missing did not clear capacity entry");
+    if (query_clear_result != 0) {
+        return 1;
+    }
+
+    const WorldTransformResult sixth_overflow_result = bridge.Register(OBJECT_CAMERA, overflow_state);
+    if (sixth_overflow_result.status != WorldTransformStatus::CapacityExceeded) {
+        return Fail("transform capacity entry sixth overflow returned wrong status");
+    }
+
+    const WorldTransformStatus remove_missing_status = bridge.Remove(OBJECT_CAMERA);
+    if (remove_missing_status != WorldTransformStatus::TransformNotFound) {
+        return Fail("transform capacity entry remove missing returned wrong status");
+    }
+
+    const WorldTransformSnapshot remove_missing_snapshot = bridge.Snapshot();
+    const int remove_missing_clear_result = RequireTransformCapacityEntryCleared(
+        remove_missing_snapshot,
+        "transform remove missing did not clear capacity entry");
+    if (remove_missing_clear_result != 0) {
+        return 1;
+    }
+
+    const WorldTransformResult final_overflow_result = bridge.Register(OBJECT_CAMERA, overflow_state);
+    if (final_overflow_result.status != WorldTransformStatus::CapacityExceeded) {
+        return Fail("transform capacity entry final overflow returned wrong status");
+    }
+
+    const WorldTransformStatus remove_status = bridge.Remove(OBJECT_PLAYER);
+    if (remove_status != WorldTransformStatus::Success) {
+        return Fail("transform capacity entry remove success failed");
+    }
+
+    const WorldTransformSnapshot remove_snapshot = bridge.Snapshot();
+    const int remove_clear_result = RequireTransformCapacityEntryCleared(
+        remove_snapshot,
+        "transform remove success did not clear capacity entry");
+    if (remove_clear_result != 0) {
+        return 1;
     }
 
     return 0;
@@ -22006,6 +22242,7 @@ int main(int argc, char **argv) {
         {TEST_TRANSFORM_MISSING_WORLD_OBJECT, WorldTransformBridgeRegisterRejectsMissingWorldObjectWithoutMutation},
         {TEST_TRANSFORM_DUPLICATE_WORLD_ID, WorldTransformBridgeRegisterRejectsDuplicateWorldObjectId},
         {TEST_TRANSFORM_CAPACITY_OVERFLOW, WorldTransformBridgeRegisterRejectsCapacityOverflowWithoutMutation},
+        {TEST_TRANSFORM_CAPACITY_ENTRY, WorldTransformBridgeRegisterCapacityReportsRejectedTransformEntry},
         {TEST_TRANSFORM_SET_EXISTING, WorldTransformBridgeSetUpdatesExistingRecord},
         {TEST_TRANSFORM_SET_MISSING, WorldTransformBridgeSetRejectsMissingRecordWithoutMutation},
         {TEST_TRANSFORM_QUERY, WorldTransformBridgeQueryReturnsStoredTransform},

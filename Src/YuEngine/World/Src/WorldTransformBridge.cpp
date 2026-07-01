@@ -26,6 +26,10 @@ WorldTransformBridge::WorldTransformBridge(WorldInstance &world, WorldTransformB
           0U,
           0U,
           MemoryAccountingStatus::ExplicitlyTrackedOnly,
+          WorldObjectId{},
+          0U,
+          0U,
+          WorldTransformState{},
           WorldTransformStatus::Success} {
     if (desc.bridge_capacity == 0U) {
         snapshot_.last_status = WorldTransformStatus::InvalidBridgeCapacity;
@@ -53,12 +57,18 @@ WorldTransformResult WorldTransformBridge::Register(WorldObjectId world_object_i
     }
 
     if (snapshot_.record_count >= snapshot_.bridge_capacity) {
-        return WorldTransformResult::Failure(RecordFailure(WorldTransformStatus::CapacityExceeded));
+        const std::uint32_t transform_slot = snapshot_.record_count;
+        const WorldTransformStatus status =
+            RecordCapacityFailure(world_object_id, transform_state, transform_slot);
+        return WorldTransformResult::Failure(status);
     }
 
     WorldTransformBinding *binding = FindFreeBinding();
     if (binding == nullptr) {
-        return WorldTransformResult::Failure(RecordFailure(WorldTransformStatus::CapacityExceeded));
+        const std::uint32_t transform_slot = snapshot_.bridge_capacity;
+        const WorldTransformStatus status =
+            RecordCapacityFailure(world_object_id, transform_state, transform_slot);
+        return WorldTransformResult::Failure(status);
     }
 
     binding->world_object_id = world_object_id;
@@ -157,14 +167,35 @@ WorldTransformSnapshot WorldTransformBridge::Snapshot() const {
     return snapshot_;
 }
 
+WorldTransformStatus WorldTransformBridge::RecordCapacityFailure(WorldObjectId world_object_id,
+    const WorldTransformState &transform_state,
+    std::uint32_t transform_slot) {
+    ++snapshot_.failed_operation_count;
+    snapshot_.last_failed_world_object_id = world_object_id;
+    snapshot_.last_failed_transform_slot = transform_slot;
+    snapshot_.last_required_transform_capacity = transform_slot + 1U;
+    snapshot_.last_failed_transform_state = transform_state;
+    snapshot_.last_status = WorldTransformStatus::CapacityExceeded;
+    return WorldTransformStatus::CapacityExceeded;
+}
+
 WorldTransformStatus WorldTransformBridge::RecordFailure(WorldTransformStatus status) {
+    ClearCapacityEntry();
     ++snapshot_.failed_operation_count;
     snapshot_.last_status = status;
     return status;
 }
 
 void WorldTransformBridge::RecordSuccess() {
+    ClearCapacityEntry();
     snapshot_.last_status = WorldTransformStatus::Success;
+}
+
+void WorldTransformBridge::ClearCapacityEntry() {
+    snapshot_.last_failed_world_object_id = WorldObjectId{};
+    snapshot_.last_failed_transform_slot = 0U;
+    snapshot_.last_required_transform_capacity = 0U;
+    snapshot_.last_failed_transform_state = WorldTransformState{};
 }
 
 WorldTransformStatus WorldTransformBridge::ValidateBridgeCapacity() const {
