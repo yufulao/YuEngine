@@ -411,16 +411,30 @@ bool ObjectSnapshotsMatch(const ObjectSnapshot &left, const ObjectSnapshot &righ
 int ExpectFailureWithoutOutputMutation(
     AdapterFixture &fixture,
     RuntimeAssetWorldObjectAdapterRequest request,
-    RuntimeAssetWorldObjectAdapterStatus expected_status) {
+    RuntimeAssetWorldObjectAdapterStatus expected_status,
+    std::uint32_t expected_required_identity_output_count=0U,
+    std::uint32_t expected_required_transform_output_count=0U) {
     const std::array<WorldSceneObjectTransformRestoreIdentityRecord, OUTPUT_RECORD_COUNT> identity_before =
         fixture.output_identities;
     const std::array<WorldSceneObjectTransformRestoreTransformRecord, OUTPUT_RECORD_COUNT> transform_before =
         fixture.output_transforms;
+    const std::uint64_t expected_required_identity_output_count_64 =
+        static_cast<std::uint64_t>(expected_required_identity_output_count);
+    const std::uint64_t expected_required_transform_output_count_64 =
+        static_cast<std::uint64_t>(expected_required_transform_output_count);
 
     RuntimeAssetWorldObjectAdapterBridge bridge{};
     const RuntimeAssetWorldObjectAdapterResult result = bridge.BuildRestoreRecords(request);
     if (result.status != expected_status) {
         return Fail("unexpected failure status");
+    }
+
+    if (result.required_identity_output_count != expected_required_identity_output_count) {
+        return Fail("required identity output count mismatch");
+    }
+
+    if (result.required_transform_output_count != expected_required_transform_output_count) {
+        return Fail("required transform output count mismatch");
     }
 
     if (!OutputIdentitiesMatch(fixture.output_identities, identity_before)) {
@@ -440,6 +454,14 @@ int ExpectFailureWithoutOutputMutation(
         return Fail("rejected record count mismatch");
     }
 
+    if (snapshot.required_identity_output_count != expected_required_identity_output_count_64) {
+        return Fail("snapshot required identity output count mismatch");
+    }
+
+    if (snapshot.required_transform_output_count != expected_required_transform_output_count_64) {
+        return Fail("snapshot required transform output count mismatch");
+    }
+
     return 0;
 }
 
@@ -457,6 +479,14 @@ int TestBuildRestoreRecords() {
 
     if (result.state.output_transform_count != OUTPUT_RECORD_COUNT) {
         return Fail("transform output count mismatch");
+    }
+
+    if (result.required_identity_output_count != 0U) {
+        return Fail("success required identity output count mismatch");
+    }
+
+    if (result.required_transform_output_count != 0U) {
+        return Fail("success required transform output count mismatch");
     }
 
     if (fixture.output_identities[0U].world_object_id.value != WORLD_OBJECT_A.value) {
@@ -482,6 +512,14 @@ int TestBuildRestoreRecords() {
 
     if (snapshot.built_transform_count != OUTPUT_RECORD_COUNT) {
         return Fail("built transform snapshot mismatch");
+    }
+
+    if (snapshot.required_identity_output_count != 0U) {
+        return Fail("success snapshot required identity output count mismatch");
+    }
+
+    if (snapshot.required_transform_output_count != 0U) {
+        return Fail("success snapshot required transform output count mismatch");
     }
 
     return 0;
@@ -623,7 +661,9 @@ int TestRejectSmallIdentityOutput() {
     return ExpectFailureWithoutOutputMutation(
         fixture,
         request,
-        RuntimeAssetWorldObjectAdapterStatus::IdentityOutputCapacityExceeded);
+        RuntimeAssetWorldObjectAdapterStatus::IdentityOutputCapacityExceeded,
+        OUTPUT_RECORD_COUNT,
+        0U);
 }
 
 int TestRejectSmallTransformOutput() {
@@ -633,7 +673,9 @@ int TestRejectSmallTransformOutput() {
     return ExpectFailureWithoutOutputMutation(
         fixture,
         request,
-        RuntimeAssetWorldObjectAdapterStatus::TransformOutputCapacityExceeded);
+        RuntimeAssetWorldObjectAdapterStatus::TransformOutputCapacityExceeded,
+        0U,
+        OUTPUT_RECORD_COUNT);
 }
 
 int TestDoesNotMutateWorldOrObjectRegistryDuringBuild() {

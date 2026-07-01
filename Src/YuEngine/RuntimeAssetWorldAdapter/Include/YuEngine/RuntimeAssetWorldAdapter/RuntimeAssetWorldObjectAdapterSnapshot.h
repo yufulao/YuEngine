@@ -13,6 +13,8 @@ struct RuntimeAssetWorldObjectAdapterSnapshot final {
     std::uint64_t build_attempt_count = 0U;
     std::uint64_t built_identity_count = 0U;
     std::uint64_t built_transform_count = 0U;
+    std::uint64_t required_identity_output_count = 0U;
+    std::uint64_t required_transform_output_count = 0U;
     std::uint64_t failed_operation_count = 0U;
     std::uint64_t rejected_record_count = 0U;
     yuengine::memory::MemoryAccountingStatus allocation_accounting_status =

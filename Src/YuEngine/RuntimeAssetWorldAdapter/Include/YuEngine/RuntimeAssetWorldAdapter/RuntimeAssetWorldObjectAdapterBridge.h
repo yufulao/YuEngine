@@ -39,13 +39,17 @@ private:
     RuntimeAssetWorldObjectAdapterResult RecordFailure(
         RuntimeAssetWorldObjectAdapterStatus status,
         std::uint32_t failed_mapping_index,
-        std::uint64_t failed_target_id);
+        std::uint64_t failed_target_id,
+        std::uint32_t required_identity_output_count,
+        std::uint32_t required_transform_output_count);
     RuntimeAssetWorldObjectAdapterResult RecordSuccess(
         const RuntimeAssetWorldObjectAdapterState &state);
     RuntimeAssetWorldObjectAdapterStatus ValidateRequest(
         const RuntimeAssetWorldObjectAdapterRequest &request,
         std::uint32_t *out_failed_mapping_index,
-        std::uint64_t *out_failed_target_id) const;
+        std::uint64_t *out_failed_target_id,
+        std::uint32_t *out_required_identity_output_count,
+        std::uint32_t *out_required_transform_output_count) const;
     RuntimeAssetWorldObjectAdapterStatus ValidateRuntimeInstanceMapping(
         const RuntimeAssetWorldObjectAdapterRequest &request,
         std::uint32_t mapping_index) const;

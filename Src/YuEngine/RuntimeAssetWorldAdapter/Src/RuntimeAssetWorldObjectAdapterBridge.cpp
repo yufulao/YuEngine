@@ -39,12 +39,20 @@ RuntimeAssetWorldObjectAdapterResult RuntimeAssetWorldObjectAdapterResult::Succe
         RuntimeAssetWorldObjectAdapterStatus::Success,
         state,
         0U,
+        0U,
+        0U,
         0U};
 }
 
 RuntimeAssetWorldObjectAdapterResult RuntimeAssetWorldObjectAdapterResult::Failure(
     RuntimeAssetWorldObjectAdapterStatus status) {
-    return RuntimeAssetWorldObjectAdapterResult{status, RuntimeAssetWorldObjectAdapterState{}, 0U, 0U};
+    return RuntimeAssetWorldObjectAdapterResult{
+        status,
+        RuntimeAssetWorldObjectAdapterState{},
+        0U,
+        0U,
+        0U,
+        0U};
 }
 
 RuntimeAssetWorldObjectAdapterResult RuntimeAssetWorldObjectAdapterResult::Failure(
@@ -55,7 +63,9 @@ RuntimeAssetWorldObjectAdapterResult RuntimeAssetWorldObjectAdapterResult::Failu
         status,
         RuntimeAssetWorldObjectAdapterState{},
         failed_mapping_index,
-        failed_target_id};
+        failed_target_id,
+        0U,
+        0U};
 }
 
 bool RuntimeAssetWorldObjectAdapterResult::Succeeded() const {
@@ -68,12 +78,21 @@ RuntimeAssetWorldObjectAdapterResult RuntimeAssetWorldObjectAdapterBridge::Build
 
     std::uint32_t failed_mapping_index = 0U;
     std::uint64_t failed_target_id = 0U;
+    std::uint32_t required_identity_output_count = 0U;
+    std::uint32_t required_transform_output_count = 0U;
     const RuntimeAssetWorldObjectAdapterStatus request_status = ValidateRequest(
         request,
         &failed_mapping_index,
-        &failed_target_id);
+        &failed_target_id,
+        &required_identity_output_count,
+        &required_transform_output_count);
     if (request_status != RuntimeAssetWorldObjectAdapterStatus::Success) {
-        return RecordFailure(request_status, failed_mapping_index, failed_target_id);
+        return RecordFailure(
+            request_status,
+            failed_mapping_index,
+            failed_target_id,
+            required_identity_output_count,
+            required_transform_output_count);
     }
 
     std::uint32_t mapping_index = 0U;
@@ -109,23 +128,33 @@ RuntimeAssetWorldObjectAdapterSnapshot RuntimeAssetWorldObjectAdapterBridge::Sna
 
 RuntimeAssetWorldObjectAdapterResult RuntimeAssetWorldObjectAdapterBridge::RecordFailure(
     RuntimeAssetWorldObjectAdapterStatus status) {
-    return RecordFailure(status, 0U, 0U);
+    return RecordFailure(status, 0U, 0U, 0U, 0U);
 }
 
 RuntimeAssetWorldObjectAdapterResult RuntimeAssetWorldObjectAdapterBridge::RecordFailure(
     RuntimeAssetWorldObjectAdapterStatus status,
     std::uint32_t failed_mapping_index,
-    std::uint64_t failed_target_id) {
+    std::uint64_t failed_target_id,
+    std::uint32_t required_identity_output_count,
+    std::uint32_t required_transform_output_count) {
     ++snapshot_.failed_operation_count;
     ++snapshot_.rejected_record_count;
+    snapshot_.required_identity_output_count = required_identity_output_count;
+    snapshot_.required_transform_output_count = required_transform_output_count;
     snapshot_.last_status = status;
-    return RuntimeAssetWorldObjectAdapterResult::Failure(status, failed_mapping_index, failed_target_id);
+    RuntimeAssetWorldObjectAdapterResult result =
+        RuntimeAssetWorldObjectAdapterResult::Failure(status, failed_mapping_index, failed_target_id);
+    result.required_identity_output_count = required_identity_output_count;
+    result.required_transform_output_count = required_transform_output_count;
+    return result;
 }
 
 RuntimeAssetWorldObjectAdapterResult RuntimeAssetWorldObjectAdapterBridge::RecordSuccess(
     const RuntimeAssetWorldObjectAdapterState &state) {
     snapshot_.built_identity_count += state.output_identity_count;
     snapshot_.built_transform_count += state.output_transform_count;
+    snapshot_.required_identity_output_count = 0U;
+    snapshot_.required_transform_output_count = 0U;
     snapshot_.last_status = RuntimeAssetWorldObjectAdapterStatus::Success;
     return RuntimeAssetWorldObjectAdapterResult::Success(state);
 }
@@ -133,7 +162,9 @@ RuntimeAssetWorldObjectAdapterResult RuntimeAssetWorldObjectAdapterBridge::Recor
 RuntimeAssetWorldObjectAdapterStatus RuntimeAssetWorldObjectAdapterBridge::ValidateRequest(
     const RuntimeAssetWorldObjectAdapterRequest &request,
     std::uint32_t *out_failed_mapping_index,
-    std::uint64_t *out_failed_target_id) const {
+    std::uint64_t *out_failed_target_id,
+    std::uint32_t *out_required_identity_output_count,
+    std::uint32_t *out_required_transform_output_count) const {
     if (request.runtime_instance_mapping_count > 0U && request.runtime_instance_mappings == nullptr) {
         return RuntimeAssetWorldObjectAdapterStatus::InvalidRuntimeInstanceInput;
     }
@@ -159,10 +190,18 @@ RuntimeAssetWorldObjectAdapterStatus RuntimeAssetWorldObjectAdapterBridge::Valid
     }
 
     if (request.runtime_instance_mapping_count > request.output_identity_capacity) {
+        if (out_required_identity_output_count != nullptr) {
+            *out_required_identity_output_count = request.runtime_instance_mapping_count;
+        }
+
         return RuntimeAssetWorldObjectAdapterStatus::IdentityOutputCapacityExceeded;
     }
 
     if (request.runtime_instance_mapping_count > request.output_transform_capacity) {
+        if (out_required_transform_output_count != nullptr) {
+            *out_required_transform_output_count = request.runtime_instance_mapping_count;
+        }
+
         return RuntimeAssetWorldObjectAdapterStatus::TransformOutputCapacityExceeded;
     }
 
