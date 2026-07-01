@@ -53,8 +53,11 @@ using yuengine::resource::ResourceCachePayloadSnapshot;
 using yuengine::resource::ResourceCachePayloadStatus;
 using yuengine::resource::ResourceDependencyBatchResult;
 using yuengine::resource::ResourceDependencyRequest;
+using yuengine::resource::ResourceDescriptorBatchLookupResult;
 using yuengine::resource::ResourceDescriptorBatchResult;
 using yuengine::resource::ResourceDescriptor;
+using yuengine::resource::ResourceDescriptorLookupQuery;
+using yuengine::resource::ResourceDescriptorLookupRecord;
 using yuengine::resource::ResourceDecodedPayloadBudgetDesc;
 using yuengine::resource::ResourceDecodedPayloadOperation;
 using yuengine::resource::ResourceDecodedPayloadRecord;
@@ -115,6 +118,8 @@ constexpr const char *TEST_DESCRIPTOR_ENUMERATION =
     "Resource_DescriptorEnumerationReportsRegisteredSyntheticDescriptors";
 constexpr const char *TEST_DESCRIPTOR_EXACT_LOOKUP =
     "Resource_DescriptorExactLookupFindsRegisteredSyntheticDescriptor";
+constexpr const char *TEST_DESCRIPTOR_BATCH_EXACT_LOOKUP =
+    "Resource_DescriptorBatchExactLookupReturnsAtomicRows";
 constexpr const char* TEST_INVALID_DESCRIPTOR =
     "Resource_RegisterRejectsInvalidDescriptorWithoutMutation";
 constexpr const char* TEST_DUPLICATE = "Resource_RegisterDuplicate_ReturnsExplicitStatus";
@@ -392,6 +397,49 @@ bool DescriptorMatches(
     }
 
     return descriptor.initial_reference_count == reference_count;
+}
+
+ResourceDescriptorLookupQuery DescriptorLookupQuery(ResourceTypeId type, const char *key) {
+    return ResourceDescriptorLookupQuery{type, ResourceLogicalKey(key)};
+}
+
+bool LookupRecordMatches(
+    const ResourceDescriptorLookupRecord &record,
+    ResourceHandle handle,
+    ResourceTypeId type,
+    const char *key,
+    std::uint32_t reference_count) {
+    if (record.handle.slot != handle.slot) {
+        return false;
+    }
+
+    if (record.handle.generation != handle.generation) {
+        return false;
+    }
+
+    return DescriptorMatches(record.descriptor, type, key, reference_count);
+}
+
+bool LookupRecordEquals(
+    const ResourceDescriptorLookupRecord &left,
+    const ResourceDescriptorLookupRecord &right) {
+    if (left.handle.slot != right.handle.slot) {
+        return false;
+    }
+
+    if (left.handle.generation != right.handle.generation) {
+        return false;
+    }
+
+    if (left.descriptor.type.value != right.descriptor.type.value) {
+        return false;
+    }
+
+    if (!left.descriptor.logical_key.Equals(right.descriptor.logical_key)) {
+        return false;
+    }
+
+    return left.descriptor.initial_reference_count == right.descriptor.initial_reference_count;
 }
 
 ResourceRegistrationResult Register(ResourceRegistry& registry, ResourceTypeId type, const char* key) {
@@ -1783,6 +1831,149 @@ int ResourceDescriptorExactLookupFindsRegisteredSyntheticDescriptor() {
     if (!DescriptorMatches(enumerated_descriptors[0U], TYPE_TEXTURE, "lookup_texture", 2U) ||
         !DescriptorMatches(enumerated_descriptors[1U], TYPE_MATERIAL, "lookup_material", 1U)) {
         return Fail("descriptor exact lookup exposed failed descriptor rows");
+    }
+
+    return 0;
+}
+
+int ResourceDescriptorBatchExactLookupReturnsAtomicRows() {
+    ResourceRegistry registry;
+    const std::array<ResourceDescriptor, 2U> descriptors{{
+        DescriptorWithReferenceCount(TYPE_TEXTURE, "batch_lookup_texture", 2U),
+        DescriptorWithReferenceCount(TYPE_MATERIAL, "batch_lookup_material", 1U)}};
+    const ResourceDescriptorBatchResult registration_result = registry.RegisterSyntheticDescriptors(
+        descriptors.data(),
+        static_cast<std::uint32_t>(descriptors.size()));
+    if (!registration_result.Succeeded()) {
+        return Fail("descriptor batch lookup fixture registration failed");
+    }
+
+    const std::array<ResourceDescriptorLookupQuery, 3U> success_queries{{
+        DescriptorLookupQuery(TYPE_TEXTURE, "batch_lookup_texture"),
+        DescriptorLookupQuery(TYPE_MATERIAL, "batch_lookup_material"),
+        DescriptorLookupQuery(TYPE_TEXTURE, "batch_lookup_texture")}};
+    std::array<ResourceDescriptorLookupRecord, 3U> output_records{};
+    std::uint32_t output_record_count = 99U;
+    const ResourceSnapshot before_success_snapshot = registry.Snapshot();
+    const ResourceDescriptorBatchLookupResult success_result = registry.FindSyntheticDescriptors(
+        success_queries.data(),
+        static_cast<std::uint32_t>(success_queries.size()),
+        output_records.data(),
+        static_cast<std::uint32_t>(output_records.size()),
+        &output_record_count);
+    if (!success_result.Succeeded() ||
+        success_result.matched_descriptor_count != 3U ||
+        output_record_count != 3U) {
+        return Fail("descriptor batch lookup success returned wrong counts");
+    }
+
+    const ResourceHandle texture_handle{0U, 1U};
+    const ResourceHandle material_handle{1U, 1U};
+    if (!LookupRecordMatches(output_records[0U], texture_handle, TYPE_TEXTURE, "batch_lookup_texture", 2U) ||
+        !LookupRecordMatches(output_records[1U], material_handle, TYPE_MATERIAL, "batch_lookup_material", 1U) ||
+        !LookupRecordMatches(output_records[2U], texture_handle, TYPE_TEXTURE, "batch_lookup_texture", 2U)) {
+        return Fail("descriptor batch lookup did not preserve query order");
+    }
+
+    const ResourceSnapshot after_success_snapshot = registry.Snapshot();
+    if (after_success_snapshot.registered_resource_count != before_success_snapshot.registered_resource_count ||
+        after_success_snapshot.type_count != before_success_snapshot.type_count ||
+        after_success_snapshot.dependency_validation_count != before_success_snapshot.dependency_validation_count) {
+        return Fail("descriptor batch lookup success mutated counters");
+    }
+
+    const std::array<ResourceDescriptorLookupRecord, 3U> stable_records = output_records;
+    const std::uint32_t stable_output_record_count = output_record_count;
+    const ResourceDescriptorBatchLookupResult capacity_result = registry.FindSyntheticDescriptors(
+        success_queries.data(),
+        static_cast<std::uint32_t>(success_queries.size()),
+        output_records.data(),
+        2U,
+        &output_record_count);
+    if (capacity_result.status != ResourceStatus::CapacityExceeded ||
+        capacity_result.required_descriptor_count != 3U ||
+        output_record_count != stable_output_record_count) {
+        return Fail("descriptor batch lookup capacity failure missed atomic count or required count");
+    }
+
+    if (!LookupRecordEquals(output_records[0U], stable_records[0U]) ||
+        !LookupRecordEquals(output_records[1U], stable_records[1U]) ||
+        !LookupRecordEquals(output_records[2U], stable_records[2U])) {
+        return Fail("descriptor batch lookup capacity failure mutated output rows");
+    }
+
+    const std::array<ResourceDescriptorLookupQuery, 3U> missing_queries{{
+        DescriptorLookupQuery(TYPE_TEXTURE, "batch_lookup_texture"),
+        DescriptorLookupQuery(TYPE_TEXTURE, "batch_lookup_missing"),
+        DescriptorLookupQuery(TYPE_MATERIAL, "batch_lookup_material")}};
+    const ResourceDescriptorBatchLookupResult missing_result = registry.FindSyntheticDescriptors(
+        missing_queries.data(),
+        static_cast<std::uint32_t>(missing_queries.size()),
+        output_records.data(),
+        static_cast<std::uint32_t>(output_records.size()),
+        &output_record_count);
+    if (missing_result.status != ResourceStatus::NotFound ||
+        missing_result.failed_query_index != 1U ||
+        output_record_count != stable_output_record_count) {
+        return Fail("descriptor batch lookup missing query missed failed index or mutated count");
+    }
+
+    if (!LookupRecordEquals(output_records[0U], stable_records[0U]) ||
+        !LookupRecordEquals(output_records[1U], stable_records[1U]) ||
+        !LookupRecordEquals(output_records[2U], stable_records[2U])) {
+        return Fail("descriptor batch lookup missing query mutated output rows");
+    }
+
+    const ResourceTypeId invalid_type{};
+    const std::array<ResourceDescriptorLookupQuery, 2U> invalid_type_queries{{
+        DescriptorLookupQuery(TYPE_TEXTURE, "batch_lookup_texture"),
+        DescriptorLookupQuery(invalid_type, "batch_lookup_invalid")}};
+    const ResourceDescriptorBatchLookupResult invalid_type_result = registry.FindSyntheticDescriptors(
+        invalid_type_queries.data(),
+        static_cast<std::uint32_t>(invalid_type_queries.size()),
+        output_records.data(),
+        static_cast<std::uint32_t>(output_records.size()),
+        &output_record_count);
+    if (invalid_type_result.status != ResourceStatus::InvalidDescriptor ||
+        invalid_type_result.failed_query_index != 1U ||
+        output_record_count != stable_output_record_count) {
+        return Fail("descriptor batch lookup invalid type missed failed index or mutated count");
+    }
+
+    const std::array<ResourceDescriptorLookupQuery, 1U> invalid_key_queries{{
+        DescriptorLookupQuery(TYPE_TEXTURE, "")}};
+    const ResourceDescriptorBatchLookupResult invalid_key_result = registry.FindSyntheticDescriptors(
+        invalid_key_queries.data(),
+        static_cast<std::uint32_t>(invalid_key_queries.size()),
+        output_records.data(),
+        static_cast<std::uint32_t>(output_records.size()),
+        &output_record_count);
+    if (invalid_key_result.status != ResourceStatus::InvalidDescriptor ||
+        invalid_key_result.failed_query_index != 0U ||
+        output_record_count != stable_output_record_count) {
+        return Fail("descriptor batch lookup invalid key missed failed index or mutated count");
+    }
+
+    const ResourceDescriptorBatchLookupResult null_output_result = registry.FindSyntheticDescriptors(
+        success_queries.data(),
+        static_cast<std::uint32_t>(success_queries.size()),
+        nullptr,
+        static_cast<std::uint32_t>(output_records.size()),
+        &output_record_count);
+    if (null_output_result.status != ResourceStatus::InvalidHandle ||
+        output_record_count != stable_output_record_count) {
+        return Fail("descriptor batch lookup null output missed invalid handle or mutated count");
+    }
+
+    std::uint32_t empty_output_count = 44U;
+    const ResourceDescriptorBatchLookupResult empty_result = registry.FindSyntheticDescriptors(
+        nullptr,
+        0U,
+        nullptr,
+        0U,
+        &empty_output_count);
+    if (!empty_result.Succeeded() || empty_output_count != 0U) {
+        return Fail("descriptor batch lookup empty query did not succeed");
     }
 
     return 0;
@@ -8712,6 +8903,7 @@ int main(int argc, char** argv) {
         {TEST_DESCRIPTOR_BATCH, ResourceDescriptorBatchRegistrationSubmitsRowsAndStopsOnFirstFailure},
         {TEST_DESCRIPTOR_ENUMERATION, ResourceDescriptorEnumerationReportsRegisteredSyntheticDescriptors},
         {TEST_DESCRIPTOR_EXACT_LOOKUP, ResourceDescriptorExactLookupFindsRegisteredSyntheticDescriptor},
+        {TEST_DESCRIPTOR_BATCH_EXACT_LOOKUP, ResourceDescriptorBatchExactLookupReturnsAtomicRows},
         {TEST_INVALID_DESCRIPTOR, ResourceRegisterRejectsInvalidDescriptorWithoutMutation},
         {TEST_DUPLICATE, ResourceRegisterDuplicateReturnsExplicitStatus},
         {TEST_CAPACITY, ResourceRegistryRejectsCapacityOverflowWithoutMutation},

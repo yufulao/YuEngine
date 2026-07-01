@@ -69,6 +69,31 @@ struct ResourceDescriptorBatchResult final {
     }
 };
 
+struct ResourceDescriptorLookupQuery final {
+    ResourceTypeId type{};
+    ResourceLogicalKey logical_key{};
+};
+
+struct ResourceDescriptorLookupRecord final {
+    ResourceHandle handle{};
+    ResourceDescriptor descriptor{};
+};
+
+struct ResourceDescriptorBatchLookupResult final {
+    ResourceStatus status = ResourceStatus::InvalidHandle;
+    std::uint32_t matched_descriptor_count = 0U;
+    std::uint32_t failed_query_index = 0U;
+    std::uint32_t required_descriptor_count = 0U;
+
+    /**
+     * @comment 检查 batch lookup 结果是否成功。
+     * @return 条件满足时返回 true，否则返回 false。
+     */
+    bool Succeeded() const {
+        return status == ResourceStatus::Success;
+    }
+};
+
 struct ResourceDependencyRequest final {
     ResourceHandle dependent{};
     ResourceHandle dependency{};
@@ -137,6 +162,21 @@ public:
         ResourceTypeId type,
         const ResourceLogicalKey &logical_key,
         ResourceDescriptor *output_descriptor);
+    /**
+     * @comment 按调用方 query 顺序批量精确查找 synthetic 描述。
+     * @param queries 输入 query 数组。
+     * @param query_count 输入 query 数量。
+     * @param output_records 输出记录存储。
+     * @param output_record_capacity 输出记录容量。
+     * @param output_record_count 输出记录数量。
+     * @return 显式 batch lookup 结果。
+     */
+    ResourceDescriptorBatchLookupResult FindSyntheticDescriptors(
+        const ResourceDescriptorLookupQuery *queries,
+        std::uint32_t query_count,
+        ResourceDescriptorLookupRecord *output_records,
+        std::uint32_t output_record_capacity,
+        std::uint32_t *output_record_count);
     /**
      * @comment 添加依赖。
      * @param dependent 输入 dependent。
@@ -574,6 +614,10 @@ private:
     ResourceStatus RegisterTypeIfNeeded(ResourceTypeId type);
     bool HasType(ResourceTypeId type) const;
     bool HasDuplicateActiveResource(const ResourceDescriptor& descriptor) const;
+    bool FindSyntheticDescriptorSlot(
+        ResourceTypeId type,
+        const ResourceLogicalKey &logical_key,
+        std::uint32_t *output_slot_index) const;
     bool HasLoadCommitId(std::uint64_t commit_id) const;
     bool HasCachePayloadId(std::uint64_t payload_id) const;
     bool HasDecodePlanId(std::uint64_t decode_plan_id) const;

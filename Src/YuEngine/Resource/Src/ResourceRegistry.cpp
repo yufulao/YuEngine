@@ -515,36 +515,112 @@ ResourceStatus ResourceRegistry::FindSyntheticDescriptor(
     }
 
     std::uint32_t slot_index = 0U;
-    for (const ResourceSlot &slot : slots_) {
-        if (slot_index >= snapshot_.resource_capacity) {
-            break;
-        }
-
-        if (!slot.is_active) {
-            ++slot_index;
-            continue;
-        }
-
-        if (slot.type.value != type.value) {
-            ++slot_index;
-            continue;
-        }
-
-        if (!slot.logical_key.Equals(logical_key)) {
-            ++slot_index;
-            continue;
-        }
-
-        ResourceDescriptor descriptor{};
-        descriptor.type = slot.type;
-        descriptor.logical_key = slot.logical_key;
-        descriptor.initial_reference_count = slot.reference_count;
-        *output_descriptor = descriptor;
+    if (FindSyntheticDescriptorSlot(type, logical_key, &slot_index)) {
+        const ResourceSlot &slot = slots_[slot_index];
+        output_descriptor->type = slot.type;
+        output_descriptor->logical_key = slot.logical_key;
+        output_descriptor->initial_reference_count = slot.reference_count;
         RecordSuccess();
         return ResourceStatus::Success;
     }
 
     return RecordFailure(ResourceStatus::NotFound);
+}
+
+ResourceDescriptorBatchLookupResult ResourceRegistry::FindSyntheticDescriptors(
+    const ResourceDescriptorLookupQuery *queries,
+    std::uint32_t query_count,
+    ResourceDescriptorLookupRecord *output_records,
+    std::uint32_t output_record_capacity,
+    std::uint32_t *output_record_count) {
+    ResourceDescriptorBatchLookupResult result{};
+    result.status = ResourceStatus::Success;
+
+    if (output_record_count == nullptr) {
+        result.status = RecordFailure(ResourceStatus::InvalidHandle);
+        return result;
+    }
+
+    if (query_count == 0U) {
+        *output_record_count = 0U;
+        RecordSuccess();
+        return result;
+    }
+
+    if (queries == nullptr) {
+        result.status = RecordFailure(ResourceStatus::InvalidDescriptor);
+        return result;
+    }
+
+    if (query_count > output_record_capacity) {
+        result.status = RecordFailure(ResourceStatus::CapacityExceeded);
+        result.required_descriptor_count = query_count;
+        snapshot_.last_required_resource_count = query_count;
+        return result;
+    }
+
+    if (query_count > MAX_RESOURCE_COUNT) {
+        result.status = RecordFailure(ResourceStatus::CapacityExceeded);
+        result.required_descriptor_count = query_count;
+        snapshot_.last_required_resource_count = query_count;
+        return result;
+    }
+
+    if (output_records == nullptr) {
+        result.status = RecordFailure(ResourceStatus::InvalidHandle);
+        return result;
+    }
+
+    std::array<std::uint32_t, MAX_RESOURCE_COUNT> matched_slot_indices{};
+    for (std::uint32_t query_index = 0U;
+        query_index < query_count;
+        ++query_index) {
+        const ResourceDescriptorLookupQuery &query = queries[query_index];
+        if (!query.type.IsValid()) {
+            result.status = RecordFailure(ResourceStatus::InvalidDescriptor);
+            result.failed_query_index = query_index;
+            return result;
+        }
+
+        if (!query.logical_key.IsWithinBounds()) {
+            result.status = RecordFailure(ResourceStatus::InvalidDescriptor);
+            result.failed_query_index = query_index;
+            return result;
+        }
+
+        if (!query.logical_key.IsValid()) {
+            result.status = RecordFailure(ResourceStatus::InvalidDescriptor);
+            result.failed_query_index = query_index;
+            return result;
+        }
+
+        std::uint32_t slot_index = 0U;
+        if (!FindSyntheticDescriptorSlot(query.type, query.logical_key, &slot_index)) {
+            result.status = RecordFailure(ResourceStatus::NotFound);
+            result.failed_query_index = query_index;
+            return result;
+        }
+
+        matched_slot_indices[query_index] = slot_index;
+    }
+
+    for (std::uint32_t query_index = 0U;
+        query_index < query_count;
+        ++query_index) {
+        const std::uint32_t slot_index = matched_slot_indices[query_index];
+        const ResourceSlot &slot = slots_[slot_index];
+        ResourceDescriptorLookupRecord record{};
+        record.handle = ResourceHandle{slot_index, slot.generation};
+        record.descriptor.type = slot.type;
+        record.descriptor.logical_key = slot.logical_key;
+        record.descriptor.initial_reference_count = slot.reference_count;
+        output_records[query_index] = record;
+    }
+
+    *output_record_count = query_count;
+    result.matched_descriptor_count = query_count;
+    RecordSuccess();
+    return result;
 }
 
 ResourceStatus ResourceRegistry::AddDependency(ResourceHandle dependent, ResourceHandle dependency) {
@@ -3895,6 +3971,43 @@ bool ResourceRegistry::HasDuplicateActiveResource(const ResourceDescriptor& desc
         }
 
         ++index;
+    }
+
+    return false;
+}
+
+bool ResourceRegistry::FindSyntheticDescriptorSlot(
+    ResourceTypeId type,
+    const ResourceLogicalKey &logical_key,
+    std::uint32_t *output_slot_index) const {
+    if (output_slot_index == nullptr) {
+        return false;
+    }
+
+    *output_slot_index = 0U;
+    std::uint32_t slot_index = 0U;
+    for (const ResourceSlot &slot : slots_) {
+        if (slot_index >= snapshot_.resource_capacity) {
+            return false;
+        }
+
+        if (!slot.is_active) {
+            ++slot_index;
+            continue;
+        }
+
+        if (slot.type.value != type.value) {
+            ++slot_index;
+            continue;
+        }
+
+        if (!slot.logical_key.Equals(logical_key)) {
+            ++slot_index;
+            continue;
+        }
+
+        *output_slot_index = slot_index;
+        return true;
     }
 
     return false;
