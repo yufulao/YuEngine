@@ -12,6 +12,7 @@
 #include "YuEngine/Rhi/RhiShaderStage.h"
 #include "YuEngine/Rhi/RhiStatus.h"
 #include "YuEngine/Rhi/RhiSwapchainSnapshot.h"
+#include "YuEngine/Rhi/RhiTextureHandle.h"
 
 namespace yuengine::rhi {
 struct RhiDeviceSnapshot final {
@@ -51,6 +52,11 @@ struct RhiDeviceSnapshot final {
     std::size_t last_bound_index_buffer_size_bytes = 0U;
     std::size_t last_capture_bytes_written = 0U;
     RhiExtent2D last_capture_extent{};
+    std::size_t last_failed_capture_byte_capacity = 0U;
+    std::size_t last_failed_capture_current_byte_count = 0U;
+    std::size_t last_failed_capture_required_byte_count = 0U;
+    RhiExtent2D last_failed_capture_extent{};
+    RhiTextureHandle last_failed_capture_target{};
     RhiSwapchainSnapshot swapchain{};
     RhiResourceSnapshot resources{};
     RhiAccountingStatus allocation_accounting_status = RhiAccountingStatus::DeferredUntilYuMemoryIntegration;

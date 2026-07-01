@@ -39,6 +39,38 @@ RhiStatus RecordDeviceSuccess(RhiDeviceSnapshot &snapshot) {
     return RhiStatus::Success;
 }
 
+void ClearCaptureCapacityFailure(RhiDeviceSnapshot &snapshot) {
+    snapshot.last_failed_capture_byte_capacity = 0U;
+    snapshot.last_failed_capture_current_byte_count = 0U;
+    snapshot.last_failed_capture_required_byte_count = 0U;
+    snapshot.last_failed_capture_extent = RhiExtent2D{};
+    snapshot.last_failed_capture_target = RhiTextureHandle{};
+}
+
+RhiCaptureResult MakeCaptureCapacityFailureResult(
+    std::size_t capture_byte_capacity,
+    std::size_t current_byte_count,
+    std::size_t required_byte_count,
+    RhiExtent2D extent,
+    RhiTextureHandle target) {
+    RhiCaptureResult result{};
+    result.status = RhiStatus::CapacityExceeded;
+    result.capture_byte_capacity = capture_byte_capacity;
+    result.current_byte_count = current_byte_count;
+    result.required_byte_count = required_byte_count;
+    result.extent = extent;
+    result.target = target;
+    return result;
+}
+
+void RecordCaptureCapacityFailure(RhiDeviceSnapshot &snapshot, const RhiCaptureResult &result) {
+    snapshot.last_failed_capture_byte_capacity = result.capture_byte_capacity;
+    snapshot.last_failed_capture_current_byte_count = result.current_byte_count;
+    snapshot.last_failed_capture_required_byte_count = result.required_byte_count;
+    snapshot.last_failed_capture_extent = result.extent;
+    snapshot.last_failed_capture_target = result.target;
+}
+
 std::size_t InputElementFormatByteCount(RhiInputElementFormat format) {
     if (format == RhiInputElementFormat::Float32x2) {
         return sizeof(float) * 2U;
@@ -978,6 +1010,7 @@ RhiStatus D3D11RhiDevice::Present() {
 RhiCaptureResult D3D11RhiDevice::CapturePresentedTarget(std::span<std::uint8_t> destination) {
     if (!presented_) {
         RecordFailure(RhiStatus::InvalidLifecycle);
+        ClearCaptureCapacityFailure(snapshot_);
         return RhiCaptureResult{RhiStatus::InvalidLifecycle, 0U};
     }
 
@@ -986,7 +1019,15 @@ RhiCaptureResult D3D11RhiDevice::CapturePresentedTarget(std::span<std::uint8_t> 
         RecordFailure(RhiStatus::CapacityExceeded);
         snapshot_.last_capture_bytes_written = 0U;
         snapshot_.last_capture_extent = RhiExtent2D{};
-        return RhiCaptureResult{RhiStatus::CapacityExceeded, 0U};
+        const std::size_t capture_byte_capacity = destination.size();
+        const RhiCaptureResult result = MakeCaptureCapacityFailureResult(
+            capture_byte_capacity,
+            0U,
+            byte_count,
+            swapchain_desc_.extent,
+            swapchain_target_);
+        RecordCaptureCapacityFailure(snapshot_, result);
+        return result;
     }
 
     D3D11_MAPPED_SUBRESOURCE mapped_resource{};
@@ -996,6 +1037,7 @@ RhiCaptureResult D3D11RhiDevice::CapturePresentedTarget(std::span<std::uint8_t> 
         RecordFailure(status);
         snapshot_.last_capture_bytes_written = 0U;
         snapshot_.last_capture_extent = RhiExtent2D{};
+        ClearCaptureCapacityFailure(snapshot_);
         return RhiCaptureResult{status, 0U};
     }
 
@@ -1011,6 +1053,7 @@ RhiCaptureResult D3D11RhiDevice::CapturePresentedTarget(std::span<std::uint8_t> 
     ++snapshot_.capture_count;
     snapshot_.last_capture_bytes_written = byte_count;
     snapshot_.last_capture_extent = swapchain_desc_.extent;
+    ClearCaptureCapacityFailure(snapshot_);
     snapshot_.last_status = RhiStatus::Success;
     return RhiCaptureResult{RhiStatus::Success, byte_count, swapchain_desc_.extent};
 }

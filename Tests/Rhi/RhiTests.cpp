@@ -67,6 +67,7 @@ using RhiDeviceFactory = yuengine::rhi::RhiDeviceFactory;
 using RhiDeviceSnapshot = yuengine::rhi::RhiDeviceSnapshot;
 using RhiDrawDesc = yuengine::rhi::RhiDrawDesc;
 using RhiDrawIndexedDesc = yuengine::rhi::RhiDrawIndexedDesc;
+using RhiExtent2D = yuengine::rhi::RhiExtent2D;
 using RhiFenceHandle = yuengine::rhi::RhiFenceHandle;
 using yuengine::rhi::RhiFormat;
 using RhiIndexBufferView = yuengine::rhi::RhiIndexBufferView;
@@ -862,6 +863,34 @@ bool DeviceSnapshotsEqual(const RhiDeviceSnapshot &left, const RhiDeviceSnapshot
         return false;
     }
 
+    if (left.last_failed_capture_byte_capacity != right.last_failed_capture_byte_capacity) {
+        return false;
+    }
+
+    if (left.last_failed_capture_current_byte_count != right.last_failed_capture_current_byte_count) {
+        return false;
+    }
+
+    if (left.last_failed_capture_required_byte_count != right.last_failed_capture_required_byte_count) {
+        return false;
+    }
+
+    if (left.last_failed_capture_extent.width != right.last_failed_capture_extent.width) {
+        return false;
+    }
+
+    if (left.last_failed_capture_extent.height != right.last_failed_capture_extent.height) {
+        return false;
+    }
+
+    if (left.last_failed_capture_target.slot != right.last_failed_capture_target.slot) {
+        return false;
+    }
+
+    if (left.last_failed_capture_target.generation != right.last_failed_capture_target.generation) {
+        return false;
+    }
+
     if (left.swapchain.extent.width != right.swapchain.extent.width) {
         return false;
     }
@@ -955,6 +984,119 @@ bool DeviceSnapshotsEqual(const RhiDeviceSnapshot &left, const RhiDeviceSnapshot
     }
 
     return true;
+}
+
+bool IsCaptureCapacityFailureClear(const RhiDeviceSnapshot &snapshot) {
+    if (snapshot.last_failed_capture_byte_capacity != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_capture_current_byte_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_capture_required_byte_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_capture_extent.width != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_capture_extent.height != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_capture_target.slot != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_capture_target.generation != 0U) {
+        return false;
+    }
+
+    return true;
+}
+
+bool CaptureCapacityFailureMatches(
+    const RhiCaptureResult &result,
+    const RhiDeviceSnapshot &snapshot,
+    std::size_t capture_byte_capacity,
+    std::size_t current_byte_count,
+    std::size_t required_byte_count,
+    RhiExtent2D extent,
+    RhiTextureHandle target) {
+    if (result.capture_byte_capacity != capture_byte_capacity) {
+        return false;
+    }
+
+    if (result.current_byte_count != current_byte_count) {
+        return false;
+    }
+
+    if (result.required_byte_count != required_byte_count) {
+        return false;
+    }
+
+    if (result.extent.width != extent.width) {
+        return false;
+    }
+
+    if (result.extent.height != extent.height) {
+        return false;
+    }
+
+    if (result.target.slot != target.slot) {
+        return false;
+    }
+
+    if (result.target.generation != target.generation) {
+        return false;
+    }
+
+    if (snapshot.last_failed_capture_byte_capacity != capture_byte_capacity) {
+        return false;
+    }
+
+    if (snapshot.last_failed_capture_current_byte_count != current_byte_count) {
+        return false;
+    }
+
+    if (snapshot.last_failed_capture_required_byte_count != required_byte_count) {
+        return false;
+    }
+
+    if (snapshot.last_failed_capture_extent.width != extent.width) {
+        return false;
+    }
+
+    if (snapshot.last_failed_capture_extent.height != extent.height) {
+        return false;
+    }
+
+    if (snapshot.last_failed_capture_target.slot != target.slot) {
+        return false;
+    }
+
+    if (snapshot.last_failed_capture_target.generation != target.generation) {
+        return false;
+    }
+
+    return true;
+}
+
+std::uint16_t CaptureFixtureExtentCapacity(std::uint16_t extent_value) {
+    if (extent_value > MAX_CAPTURE_FIXTURE_EXTENT) {
+        return MAX_CAPTURE_FIXTURE_EXTENT;
+    }
+
+    return extent_value;
+}
+
+std::size_t CaptureFixtureByteCapacity(const RhiExtent2D &extent) {
+    const std::uint16_t width = CaptureFixtureExtentCapacity(extent.width);
+    const std::uint16_t height = CaptureFixtureExtentCapacity(extent.height);
+    return static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * RGBA8_BYTES_PER_PIXEL;
 }
 
 int RhiCreateNullDeviceReturnsCapabilities() {
@@ -2145,6 +2287,10 @@ int RhiCaptureBeforePresentReturnsExplicitStatus() {
         return Fail("capture before present wrote bytes");
     }
 
+    if (!IsCaptureCapacityFailureClear(device.Snapshot())) {
+        return Fail("capture before present did not clear capacity failure identity");
+    }
+
     return 0;
 }
 
@@ -2217,6 +2363,10 @@ int RhiCapturePresentedTargetWritesDeterministicRgba8Bytes() {
         return Fail("deterministic capture snapshot did not report target extent");
     }
 
+    if (!IsCaptureCapacityFailureClear(snapshot)) {
+        return Fail("deterministic capture did not clear capacity failure identity");
+    }
+
     return 0;
 }
 
@@ -2262,6 +2412,10 @@ int RhiCapturePresentedTargetWritesUserVisibleResolution() {
         snapshot.last_capture_extent.width != USER_VISIBLE_CAPTURE_WIDTH ||
         snapshot.last_capture_extent.height != USER_VISIBLE_CAPTURE_HEIGHT) {
         return Fail("user-visible capture snapshot mismatch");
+    }
+
+    if (!IsCaptureCapacityFailureClear(snapshot)) {
+        return Fail("user-visible capture did not clear capacity failure identity");
     }
 
     return 0;
@@ -2318,13 +2472,18 @@ int RhiCaptureRejectsDestroyedPresentedTargetWithoutMutation() {
         return Fail(CAPTURE_DESTROYED_DESTROY_COUNT_MESSAGE);
     }
 
+    if (!IsCaptureCapacityFailureClear(after_capture_snapshot)) {
+        return Fail("destroyed presented target did not clear capacity failure identity");
+    }
+
     return 0;
 }
 
 int RhiCaptureRejectsUndersizedBufferWithoutWritingBytes() {
     NullRhiDevice device = CreateInitializedDevice();
     RhiTextureHandle handle{};
-    if (!CreateTarget(device, handle)) {
+    const RhiColorTargetDesc desc = SmallTargetDesc();
+    if (device.CreateColorTarget(desc, handle) != RhiStatus::Success) {
         return Fail("target creation failed");
     }
 
@@ -2332,7 +2491,11 @@ int RhiCaptureRejectsUndersizedBufferWithoutWritingBytes() {
         return Fail("clear submit present failed");
     }
 
-    std::vector<std::uint8_t> destination((2U * 2U * RGBA8_BYTES_PER_PIXEL) - 1U, SENTINEL_BYTE);
+    const std::size_t required_byte_count =
+        static_cast<std::size_t>(desc.extent.width) *
+        static_cast<std::size_t>(desc.extent.height) *
+        RGBA8_BYTES_PER_PIXEL;
+    std::vector<std::uint8_t> destination(required_byte_count - 1U, SENTINEL_BYTE);
     const RhiCaptureResult result = device.CapturePresentedTarget(std::span<std::uint8_t>(destination.data(), destination.size()));
     if (result.status != RhiStatus::CapacityExceeded) {
         return Fail("undersized capture did not return capacity status");
@@ -2350,6 +2513,49 @@ int RhiCaptureRejectsUndersizedBufferWithoutWritingBytes() {
 
     if (device.Snapshot().last_capture_bytes_written != 0U) {
         return Fail("undersized capture did not record zero bytes written");
+    }
+
+    const RhiDeviceSnapshot capacity_snapshot = device.Snapshot();
+    if (!CaptureCapacityFailureMatches(result, capacity_snapshot, destination.size(), 0U, required_byte_count, desc.extent, handle)) {
+        return Fail("undersized capture did not record rejected capture identity");
+    }
+
+    std::vector<std::uint8_t> accepted_destination(required_byte_count, SENTINEL_BYTE);
+    const RhiCaptureResult accepted_result =
+        device.CapturePresentedTarget(std::span<std::uint8_t>(accepted_destination.data(), accepted_destination.size()));
+    if (accepted_result.status != RhiStatus::Success) {
+        return Fail("undersized capture stale clear baseline failed");
+    }
+
+    if (!IsCaptureCapacityFailureClear(device.Snapshot())) {
+        return Fail("successful capture did not clear capacity failure identity");
+    }
+
+    std::vector<std::uint8_t> rejected_destination(required_byte_count - 1U, SENTINEL_BYTE);
+    const RhiCaptureResult stale_result =
+        device.CapturePresentedTarget(std::span<std::uint8_t>(rejected_destination.data(), rejected_destination.size()));
+    if (stale_result.status != RhiStatus::CapacityExceeded) {
+        return Fail("undersized capture stale setup did not return capacity status");
+    }
+
+    const RhiDeviceSnapshot stale_snapshot = device.Snapshot();
+    if (!CaptureCapacityFailureMatches(stale_result, stale_snapshot, rejected_destination.size(), 0U, required_byte_count, desc.extent, handle)) {
+        return Fail("undersized capture stale setup did not record rejected identity");
+    }
+
+    if (device.DestroyTarget(handle) != RhiStatus::Success) {
+        return Fail("undersized capture destroy failed");
+    }
+
+    std::vector<std::uint8_t> invalid_destination(required_byte_count, SENTINEL_BYTE);
+    const RhiCaptureResult invalid_result =
+        device.CapturePresentedTarget(std::span<std::uint8_t>(invalid_destination.data(), invalid_destination.size()));
+    if (invalid_result.status != RhiStatus::InvalidHandle) {
+        return Fail("invalid capture did not return invalid handle");
+    }
+
+    if (!IsCaptureCapacityFailureClear(device.Snapshot())) {
+        return Fail("invalid handle capture did not clear capacity failure identity");
     }
 
     return 0;
@@ -2392,6 +2598,11 @@ int RhiCaptureRejectsTargetLargerThanFixtureCapWithoutWritingBytes() {
 
     if (snapshot.capture_count != 0U) {
         return Fail("oversized capture fixture incremented capture count");
+    }
+
+    const std::size_t capture_byte_capacity = CaptureFixtureByteCapacity(desc.extent);
+    if (!CaptureCapacityFailureMatches(result, snapshot, capture_byte_capacity, 0U, full_target_bytes, desc.extent, handle)) {
+        return Fail("oversized capture fixture did not record rejected capture identity");
     }
 
     return 0;

@@ -97,6 +97,52 @@ RhiStatus RecordDeviceSuccess(RhiDeviceSnapshot &snapshot) {
     return RhiStatus::Success;
 }
 
+void ClearCaptureCapacityFailure(RhiDeviceSnapshot &snapshot) {
+    snapshot.last_failed_capture_byte_capacity = 0U;
+    snapshot.last_failed_capture_current_byte_count = 0U;
+    snapshot.last_failed_capture_required_byte_count = 0U;
+    snapshot.last_failed_capture_extent = RhiExtent2D{};
+    snapshot.last_failed_capture_target = RhiTextureHandle{};
+}
+
+RhiCaptureResult MakeCaptureCapacityFailureResult(
+    std::size_t capture_byte_capacity,
+    std::size_t current_byte_count,
+    std::size_t required_byte_count,
+    RhiExtent2D extent,
+    RhiTextureHandle target) {
+    RhiCaptureResult result{};
+    result.status = RhiStatus::CapacityExceeded;
+    result.capture_byte_capacity = capture_byte_capacity;
+    result.current_byte_count = current_byte_count;
+    result.required_byte_count = required_byte_count;
+    result.extent = extent;
+    result.target = target;
+    return result;
+}
+
+void RecordCaptureCapacityFailure(RhiDeviceSnapshot &snapshot, const RhiCaptureResult &result) {
+    snapshot.last_failed_capture_byte_capacity = result.capture_byte_capacity;
+    snapshot.last_failed_capture_current_byte_count = result.current_byte_count;
+    snapshot.last_failed_capture_required_byte_count = result.required_byte_count;
+    snapshot.last_failed_capture_extent = result.extent;
+    snapshot.last_failed_capture_target = result.target;
+}
+
+std::uint16_t CaptureFixtureExtentCapacity(std::uint16_t extent_value) {
+    if (extent_value > MAX_CAPTURE_FIXTURE_EXTENT) {
+        return MAX_CAPTURE_FIXTURE_EXTENT;
+    }
+
+    return extent_value;
+}
+
+std::size_t CaptureFixtureByteCapacity(const RhiExtent2D &extent) {
+    const std::uint16_t width = CaptureFixtureExtentCapacity(extent.width);
+    const std::uint16_t height = CaptureFixtureExtentCapacity(extent.height);
+    return static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * RGBA8_BYTES_PER_PIXEL;
+}
+
 std::size_t RequiredColorTargetCount(std::size_t color_target_count) {
     if (color_target_count == 0U) {
         return 1U;
@@ -797,34 +843,53 @@ RhiStatus NullRhiDevice::Present() {
 RhiCaptureResult NullRhiDevice::CapturePresentedTarget(std::span<std::uint8_t> destination) {
     if (!has_presented_frame_) {
         RecordFailure(RhiStatus::InvalidLifecycle);
+        ClearCaptureCapacityFailure(snapshot_);
         return RhiCaptureResult{RhiStatus::InvalidLifecycle, 0U};
     }
 
     if (!IsTargetHandleValid(presented_handle_)) {
         RecordFailure(RhiStatus::InvalidHandle);
+        ClearCaptureCapacityFailure(snapshot_);
         return RhiCaptureResult{RhiStatus::InvalidHandle, 0U};
     }
 
     const RhiTargetSlot &slot = targets_[presented_handle_.slot];
+    const std::size_t byte_count = slot.bytes.size();
     if (slot.desc.extent.width > MAX_CAPTURE_FIXTURE_EXTENT || slot.desc.extent.height > MAX_CAPTURE_FIXTURE_EXTENT) {
         RecordFailure(RhiStatus::CapacityExceeded);
         snapshot_.last_capture_bytes_written = 0U;
         snapshot_.last_capture_extent = RhiExtent2D{};
-        return RhiCaptureResult{RhiStatus::CapacityExceeded, 0U};
+        const std::size_t capture_byte_capacity = CaptureFixtureByteCapacity(slot.desc.extent);
+        const RhiCaptureResult result = MakeCaptureCapacityFailureResult(
+            capture_byte_capacity,
+            0U,
+            byte_count,
+            slot.desc.extent,
+            presented_handle_);
+        RecordCaptureCapacityFailure(snapshot_, result);
+        return result;
     }
 
-    const std::size_t byte_count = slot.bytes.size();
     if (destination.size() < byte_count) {
         RecordFailure(RhiStatus::CapacityExceeded);
         snapshot_.last_capture_bytes_written = 0U;
         snapshot_.last_capture_extent = RhiExtent2D{};
-        return RhiCaptureResult{RhiStatus::CapacityExceeded, 0U};
+        const std::size_t capture_byte_capacity = destination.size();
+        const RhiCaptureResult result = MakeCaptureCapacityFailureResult(
+            capture_byte_capacity,
+            0U,
+            byte_count,
+            slot.desc.extent,
+            presented_handle_);
+        RecordCaptureCapacityFailure(snapshot_, result);
+        return result;
     }
 
     std::copy(slot.bytes.begin(), slot.bytes.end(), destination.begin());
     ++snapshot_.capture_count;
     snapshot_.last_capture_bytes_written = byte_count;
     snapshot_.last_capture_extent = slot.desc.extent;
+    ClearCaptureCapacityFailure(snapshot_);
     snapshot_.last_status = RhiStatus::Success;
     return RhiCaptureResult{RhiStatus::Success, byte_count, slot.desc.extent};
 }
