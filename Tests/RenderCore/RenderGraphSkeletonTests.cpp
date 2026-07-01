@@ -19,6 +19,7 @@
 #include "YuEngine/RenderCore/RenderGraphSkeletonPassDeclaration.h"
 #include "YuEngine/RenderCore/RenderGraphSkeletonRecord.h"
 #include "YuEngine/RenderCore/RenderGraphSkeletonRequest.h"
+#include "YuEngine/RenderCore/RenderGraphSkeletonSnapshot.h"
 #include "YuEngine/RenderCore/RenderGraphSkeletonStatus.h"
 #include "YuEngine/RenderCore/RenderSubmissionBatchFixture.h"
 #include "YuEngine/RenderCore/RenderSubmissionBatchFixtureStatus.h"
@@ -58,6 +59,7 @@ using RenderGraphSkeletonDesc = yuengine::rendercore::RenderGraphSkeletonDesc;
 using RenderGraphSkeletonPassDeclaration = yuengine::rendercore::RenderGraphSkeletonPassDeclaration;
 using RenderGraphSkeletonRecord = yuengine::rendercore::RenderGraphSkeletonRecord;
 using RenderGraphSkeletonRequest = yuengine::rendercore::RenderGraphSkeletonRequest;
+using RenderGraphSkeletonSnapshot = yuengine::rendercore::RenderGraphSkeletonSnapshot;
 using yuengine::rendercore::RenderGraphSkeletonStatus;
 using RenderSubmissionBatchFixture = yuengine::rendercore::RenderSubmissionBatchFixture;
 using yuengine::rendercore::RenderSubmissionBatchFixtureStatus;
@@ -127,6 +129,143 @@ int Fail(std::string_view message) {
     std::fwrite(message.data(), sizeof(char), message.size(), stderr);
     std::fputc('\n', stderr);
     return 1;
+}
+
+bool GraphCapacityFailureIsClear(const RenderGraphSkeletonSnapshot &snapshot) {
+    if (snapshot.last_capacity_graph_id != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_pass_record_capacity != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_current_pass_record_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_dependency_record_capacity != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_current_dependency_record_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_failed_pass_index != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_pass_id != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_failed_dependency_index != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_dependency_before_pass_id != 0U) {
+        return false;
+    }
+
+    return snapshot.last_capacity_dependency_after_pass_id == 0U;
+}
+
+bool GraphPassCapacityFailureMatches(
+    const RenderGraphSkeletonSnapshot &snapshot,
+    std::uint32_t graph_id,
+    std::size_t pass_record_capacity,
+    std::size_t current_pass_record_count,
+    std::size_t dependency_record_capacity,
+    std::size_t current_dependency_record_count,
+    std::size_t failed_pass_index,
+    std::uint32_t pass_id) {
+    if (snapshot.last_capacity_graph_id != graph_id) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_pass_record_capacity != pass_record_capacity) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_current_pass_record_count != current_pass_record_count) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_dependency_record_capacity != dependency_record_capacity) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_current_dependency_record_count != current_dependency_record_count) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_failed_pass_index != failed_pass_index) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_pass_id != pass_id) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_failed_dependency_index != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_dependency_before_pass_id != 0U) {
+        return false;
+    }
+
+    return snapshot.last_capacity_dependency_after_pass_id == 0U;
+}
+
+bool GraphDependencyCapacityFailureMatches(
+    const RenderGraphSkeletonSnapshot &snapshot,
+    std::uint32_t graph_id,
+    std::size_t pass_record_capacity,
+    std::size_t current_pass_record_count,
+    std::size_t dependency_record_capacity,
+    std::size_t current_dependency_record_count,
+    std::size_t failed_dependency_index,
+    std::uint32_t before_pass_id,
+    std::uint32_t after_pass_id) {
+    if (snapshot.last_capacity_graph_id != graph_id) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_pass_record_capacity != pass_record_capacity) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_current_pass_record_count != current_pass_record_count) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_dependency_record_capacity != dependency_record_capacity) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_current_dependency_record_count != current_dependency_record_count) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_failed_pass_index != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_pass_id != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_failed_dependency_index != failed_dependency_index) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_dependency_before_pass_id != before_pass_id) {
+        return false;
+    }
+
+    return snapshot.last_capacity_dependency_after_pass_id == after_pass_id;
 }
 
 RhiColorTargetDesc SmallTargetDesc() {
@@ -771,6 +910,7 @@ int RenderCoreGraphSkeletonRejectsPassCapacityOverflowWithoutMutation() {
     RenderGraphSkeletonDesc desc{};
     desc.pass_record_capacity = 1U;
     RenderGraphSkeleton graph(desc);
+    const auto before_capacity_snapshot = graph.Snapshot();
     const std::span<const RenderGraphSkeletonDependencyDeclaration> empty_dependencies{};
     const RenderGraphSkeletonRequest request = GraphRequestFrom(
         GRAPH_ID,
@@ -793,6 +933,13 @@ int RenderCoreGraphSkeletonRejectsPassCapacityOverflowWithoutMutation() {
         return Fail("pass capacity overflow required counts mismatch");
     }
 
+    if (result.pass_record_capacity != 1U ||
+        result.current_pass_record_count != 1U ||
+        result.dependency_record_capacity != before_capacity_snapshot.dependency_record_capacity ||
+        result.current_dependency_record_count != 0U) {
+        return Fail("pass capacity overflow record counts mismatch");
+    }
+
     if (!PreparedSentinelUnchanged(std::span<const RenderFixturePassRequest>(prepared_requests.data(), prepared_requests.size()))) {
         return Fail("pass capacity overflow mutated prepared requests");
     }
@@ -804,6 +951,30 @@ int RenderCoreGraphSkeletonRejectsPassCapacityOverflowWithoutMutation() {
         snapshot.last_required_dependency_record_count != 0U ||
         snapshot.pass_capacity_rejected_count != 1U) {
         return Fail("pass capacity overflow snapshot mismatch");
+    }
+
+    if (!GraphPassCapacityFailureMatches(
+        snapshot,
+        GRAPH_ID,
+        1U,
+        1U,
+        before_capacity_snapshot.dependency_record_capacity,
+        0U,
+        1U,
+        SECOND_PASS_ID)) {
+        return Fail("pass capacity overflow snapshot missed capacity identity");
+    }
+
+    RenderGraphSkeletonRequest invalid_request = request;
+    invalid_request.graph_id = 0U;
+    const auto invalid_result = graph.Prepare(invalid_request);
+    if (invalid_result.status != RenderGraphSkeletonStatus::InvalidGraphId) {
+        return Fail("pass capacity stale clear did not hit invalid graph");
+    }
+
+    const auto clear_snapshot = graph.Snapshot();
+    if (!GraphCapacityFailureIsClear(clear_snapshot)) {
+        return Fail("non-capacity graph failure did not clear pass capacity identity");
     }
 
     return 0;
@@ -827,6 +998,7 @@ int RenderCoreGraphSkeletonRejectsDependencyCapacityOverflowWithoutMutation() {
     RenderGraphSkeletonDesc desc{};
     desc.dependency_record_capacity = 0U;
     RenderGraphSkeleton graph(desc);
+    const auto before_capacity_snapshot = graph.Snapshot();
     const RenderGraphSkeletonRequest request = GraphRequestFrom(
         GRAPH_ID,
         pass,
@@ -850,6 +1022,13 @@ int RenderCoreGraphSkeletonRejectsDependencyCapacityOverflowWithoutMutation() {
         return Fail("dependency capacity overflow required counts mismatch");
     }
 
+    if (result.pass_record_capacity != before_capacity_snapshot.pass_record_capacity ||
+        result.current_pass_record_count != 2U ||
+        result.dependency_record_capacity != 0U ||
+        result.current_dependency_record_count != 0U) {
+        return Fail("dependency capacity overflow record counts mismatch");
+    }
+
     if (!PreparedSentinelUnchanged(std::span<const RenderFixturePassRequest>(prepared_requests.data(), prepared_requests.size()))) {
         return Fail("dependency capacity overflow mutated prepared requests");
     }
@@ -862,6 +1041,37 @@ int RenderCoreGraphSkeletonRejectsDependencyCapacityOverflowWithoutMutation() {
         snapshot.last_required_dependency_record_count != 1U ||
         snapshot.dependency_capacity_rejected_count != 1U) {
         return Fail("dependency capacity overflow snapshot mismatch");
+    }
+
+    if (!GraphDependencyCapacityFailureMatches(
+        snapshot,
+        GRAPH_ID,
+        before_capacity_snapshot.pass_record_capacity,
+        2U,
+        0U,
+        0U,
+        0U,
+        FIRST_PASS_ID,
+        SECOND_PASS_ID)) {
+        return Fail("dependency capacity overflow snapshot missed capacity identity");
+    }
+
+    const std::span<const RenderGraphSkeletonDependencyDeclaration> empty_dependencies{};
+    const RenderGraphSkeletonRequest success_request = GraphRequestFrom(
+        GRAPH_ID,
+        pass,
+        std::span<const RenderGraphSkeletonPassDeclaration>(declarations.data(), declarations.size()),
+        empty_dependencies,
+        std::span<RenderFixturePassRequest>(prepared_requests.data(), prepared_requests.size()),
+        std::span<RenderFixturePassResult>(pass_results.data(), pass_results.size()));
+    const auto success_result = graph.Prepare(success_request);
+    if (success_result.status != RenderGraphSkeletonStatus::Success) {
+        return Fail("dependency capacity stale clear success prepare failed");
+    }
+
+    const auto clear_snapshot = graph.Snapshot();
+    if (!GraphCapacityFailureIsClear(clear_snapshot)) {
+        return Fail("successful graph prepare did not clear dependency capacity identity");
     }
 
     return 0;

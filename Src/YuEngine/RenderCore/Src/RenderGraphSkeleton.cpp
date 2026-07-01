@@ -212,6 +212,49 @@ bool HasDependencyCycle(
 
     return false;
 }
+
+void ClearCapacityFailure(RenderGraphSkeletonSnapshot &snapshot) {
+    snapshot.last_capacity_graph_id = 0U;
+    snapshot.last_capacity_pass_record_capacity = 0U;
+    snapshot.last_capacity_current_pass_record_count = 0U;
+    snapshot.last_capacity_dependency_record_capacity = 0U;
+    snapshot.last_capacity_current_dependency_record_count = 0U;
+    snapshot.last_capacity_failed_pass_index = 0U;
+    snapshot.last_capacity_pass_id = 0U;
+    snapshot.last_capacity_failed_dependency_index = 0U;
+    snapshot.last_capacity_dependency_before_pass_id = 0U;
+    snapshot.last_capacity_dependency_after_pass_id = 0U;
+}
+
+void RecordPassCapacityFailure(
+    RenderGraphSkeletonSnapshot &snapshot,
+    const RenderGraphSkeletonResult &result) {
+    snapshot.last_capacity_graph_id = result.graph_id;
+    snapshot.last_capacity_pass_record_capacity = result.pass_record_capacity;
+    snapshot.last_capacity_current_pass_record_count = result.current_pass_record_count;
+    snapshot.last_capacity_dependency_record_capacity = result.dependency_record_capacity;
+    snapshot.last_capacity_current_dependency_record_count = result.current_dependency_record_count;
+    snapshot.last_capacity_failed_pass_index = result.failed_pass_index;
+    snapshot.last_capacity_pass_id = result.pass_id;
+    snapshot.last_capacity_failed_dependency_index = 0U;
+    snapshot.last_capacity_dependency_before_pass_id = 0U;
+    snapshot.last_capacity_dependency_after_pass_id = 0U;
+}
+
+void RecordDependencyCapacityFailure(
+    RenderGraphSkeletonSnapshot &snapshot,
+    const RenderGraphSkeletonResult &result) {
+    snapshot.last_capacity_graph_id = result.graph_id;
+    snapshot.last_capacity_pass_record_capacity = result.pass_record_capacity;
+    snapshot.last_capacity_current_pass_record_count = result.current_pass_record_count;
+    snapshot.last_capacity_dependency_record_capacity = result.dependency_record_capacity;
+    snapshot.last_capacity_current_dependency_record_count = result.current_dependency_record_count;
+    snapshot.last_capacity_failed_pass_index = 0U;
+    snapshot.last_capacity_pass_id = 0U;
+    snapshot.last_capacity_failed_dependency_index = result.failed_dependency_index;
+    snapshot.last_capacity_dependency_before_pass_id = result.dependency_before_pass_id;
+    snapshot.last_capacity_dependency_after_pass_id = result.dependency_after_pass_id;
+}
 }
 
 RenderGraphSkeleton::RenderGraphSkeleton(const RenderGraphSkeletonDesc &desc)
@@ -227,6 +270,8 @@ RenderGraphSkeletonResult RenderGraphSkeleton::Prepare(const RenderGraphSkeleton
     result.dependency_count = request.dependency_declarations.size();
     result.required_pass_record_count = request.pass_declarations.size();
     result.required_dependency_record_count = request.dependency_declarations.size();
+    result.pass_record_capacity = desc_.pass_record_capacity;
+    result.dependency_record_capacity = desc_.dependency_record_capacity;
 
     result.status = ValidateRequest(request, &result);
     if (result.status != RenderGraphSkeletonStatus::Success) {
@@ -346,6 +391,8 @@ RenderGraphSkeletonStatus RenderGraphSkeleton::ValidateRequest(
     if (request.pass_declarations.size() > desc_.pass_record_capacity) {
         const std::size_t failed_index = desc_.pass_record_capacity;
         const RenderGraphSkeletonPassDeclaration &declaration = request.pass_declarations[failed_index];
+        result->current_pass_record_count = desc_.pass_record_capacity;
+        result->current_dependency_record_count = 0U;
         result->failed_pass_index = failed_index;
         result->pass_id = declaration.pass_id;
         return RenderGraphSkeletonStatus::PassCapacityExceeded;
@@ -354,6 +401,8 @@ RenderGraphSkeletonStatus RenderGraphSkeleton::ValidateRequest(
     if (request.dependency_declarations.size() > desc_.dependency_record_capacity) {
         const std::size_t failed_index = desc_.dependency_record_capacity;
         const RenderGraphSkeletonDependencyDeclaration &dependency = request.dependency_declarations[failed_index];
+        result->current_pass_record_count = request.pass_declarations.size();
+        result->current_dependency_record_count = desc_.dependency_record_capacity;
         result->failed_dependency_index = failed_index;
         result->dependency_before_pass_id = dependency.before_pass_id;
         result->dependency_after_pass_id = dependency.after_pass_id;
@@ -441,6 +490,7 @@ bool RenderGraphSkeleton::HasRecordCapacity() const {
 }
 
 void RenderGraphSkeleton::RecordRejectedResult(const RenderGraphSkeletonResult &result) {
+    ClearCapacityFailure(snapshot_);
     snapshot_.last_graph_id = result.graph_id;
     snapshot_.last_pass_count = result.pass_count;
     snapshot_.last_dependency_count = result.dependency_count;
@@ -482,11 +532,13 @@ void RenderGraphSkeleton::RecordRejectedResult(const RenderGraphSkeletonResult &
     }
 
     if (result.status == RenderGraphSkeletonStatus::PassCapacityExceeded) {
+        RecordPassCapacityFailure(snapshot_, result);
         ++snapshot_.pass_capacity_rejected_count;
         return;
     }
 
     if (result.status == RenderGraphSkeletonStatus::DependencyCapacityExceeded) {
+        RecordDependencyCapacityFailure(snapshot_, result);
         ++snapshot_.dependency_capacity_rejected_count;
         return;
     }
@@ -500,6 +552,7 @@ void RenderGraphSkeleton::RecordRejectedResult(const RenderGraphSkeletonResult &
 }
 
 void RenderGraphSkeleton::RecordPreparedResult(const RenderGraphSkeletonResult &result) {
+    ClearCapacityFailure(snapshot_);
     if (snapshot_.graph_record_count < records_.size()) {
         RenderGraphSkeletonRecord record{};
         record.graph_id = result.graph_id;
@@ -527,6 +580,7 @@ void RenderGraphSkeleton::RecordPreparedResult(const RenderGraphSkeletonResult &
 }
 
 void RenderGraphSkeleton::RecordReleaseResult(std::uint32_t graph_id, RenderGraphSkeletonStatus status) {
+    ClearCapacityFailure(snapshot_);
     if (status == RenderGraphSkeletonStatus::Success) {
         ++snapshot_.released_graph_count;
     }

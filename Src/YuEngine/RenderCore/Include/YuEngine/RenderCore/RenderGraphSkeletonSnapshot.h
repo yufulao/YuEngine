@@ -41,6 +41,16 @@ struct RenderGraphSkeletonSnapshot final {
     std::uint32_t last_pass_id = 0U;
     std::uint32_t last_dependency_before_pass_id = 0U;
     std::uint32_t last_dependency_after_pass_id = 0U;
+    std::uint32_t last_capacity_graph_id = 0U;
+    std::size_t last_capacity_pass_record_capacity = 0U;
+    std::size_t last_capacity_current_pass_record_count = 0U;
+    std::size_t last_capacity_dependency_record_capacity = 0U;
+    std::size_t last_capacity_current_dependency_record_count = 0U;
+    std::size_t last_capacity_failed_pass_index = 0U;
+    std::uint32_t last_capacity_pass_id = 0U;
+    std::size_t last_capacity_failed_dependency_index = 0U;
+    std::uint32_t last_capacity_dependency_before_pass_id = 0U;
+    std::uint32_t last_capacity_dependency_after_pass_id = 0U;
     RenderGraphSkeletonStatus last_status = RenderGraphSkeletonStatus::InvalidArgument;
     RenderGraphSkeletonOperation last_operation = RenderGraphSkeletonOperation::None;
     RenderFixturePassStatus last_pass_status = RenderFixturePassStatus::InvalidArgument;
