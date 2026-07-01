@@ -16,6 +16,7 @@
 #include "YuEngine/RenderCore/RenderFixturePassDesc.h"
 #include "YuEngine/RenderCore/RenderFixturePassRequest.h"
 #include "YuEngine/RenderCore/RenderFixturePassStatus.h"
+#include "YuEngine/RenderCore/RenderFixturePassSnapshot.h"
 #include "YuEngine/RenderCore/RenderFramePacketFixture.h"
 #include "YuEngine/RenderCore/RenderFramePacketFixtureDesc.h"
 #include "YuEngine/RenderCore/RenderFramePacketFixtureRequest.h"
@@ -33,6 +34,7 @@
 #include "YuEngine/Rhi/RhiBufferHandle.h"
 #include "YuEngine/Rhi/RhiBufferUsage.h"
 #include "YuEngine/Rhi/RhiColorTargetDesc.h"
+#include "YuEngine/Rhi/RhiCommandType.h"
 #include "YuEngine/Rhi/RhiConstantBufferBinding.h"
 #include "YuEngine/Rhi/RhiConstants.h"
 #include "YuEngine/Rhi/RhiDeviceDesc.h"
@@ -65,6 +67,7 @@ using yuengine::rendercore::MAX_MATERIAL_BINDING_FIXTURE_CONSTANT_BYTES;
 using RenderFixturePassDesc = yuengine::rendercore::RenderFixturePassDesc;
 using RenderFixturePassRequest = yuengine::rendercore::RenderFixturePassRequest;
 using RenderFixturePassResult = yuengine::rendercore::RenderFixturePassResult;
+using RenderFixturePassSnapshot = yuengine::rendercore::RenderFixturePassSnapshot;
 using yuengine::rendercore::RenderFixturePassStatus;
 using yuengine::rendercore::RENDER_FIXTURE_PASS_COMMAND_COUNT;
 using RenderFramePacketFixture = yuengine::rendercore::RenderFramePacketFixture;
@@ -86,6 +89,7 @@ using RhiBufferHandle = yuengine::rhi::RhiBufferHandle;
 using yuengine::rhi::RhiBufferUsage;
 using RhiColor = yuengine::rhi::RhiColor;
 using RhiColorTargetDesc = yuengine::rhi::RhiColorTargetDesc;
+using yuengine::rhi::RhiCommandType;
 using RhiConstantBufferBinding = yuengine::rhi::RhiConstantBufferBinding;
 using RhiDeviceDesc = yuengine::rhi::RhiDeviceDesc;
 using RhiDeviceSnapshot = yuengine::rhi::RhiDeviceSnapshot;
@@ -423,6 +427,141 @@ bool WorkCountersMatch(const RhiDeviceSnapshot &left, const RhiDeviceSnapshot &r
     return left.failed_operation_count == right.failed_operation_count;
 }
 
+bool FixturePassCapacityFailureIsClear(const RenderFixturePassSnapshot &snapshot) {
+    if (snapshot.last_capacity_entry_command_capacity != 0U ||
+        snapshot.last_capacity_entry_current_command_count != 0U ||
+        snapshot.last_capacity_entry_required_command_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_pass_record_capacity != 0U ||
+        snapshot.last_capacity_entry_current_pass_record_count != 0U ||
+        snapshot.last_capacity_entry_required_pass_record_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_failed_command_index != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_failed_command_type != RhiCommandType::BeginFrame) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_failed_pass_record_index != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_pass_id != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_status != RenderFixturePassStatus::InvalidArgument) {
+        return false;
+    }
+
+    if (snapshot.last_failed_command_index != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_command_type != RhiCommandType::BeginFrame) {
+        return false;
+    }
+
+    if (snapshot.last_failed_pass_record_index != 0U) {
+        return false;
+    }
+
+    return snapshot.last_failed_pass_id == 0U;
+}
+
+bool FixturePassCommandCapacityFailureMatches(
+    const RenderFixturePassSnapshot &snapshot,
+    const RenderFixturePassResult &result,
+    std::size_t failed_command_index,
+    RhiCommandType failed_command_type,
+    std::uint32_t pass_id) {
+    if (snapshot.last_capacity_entry_command_capacity != result.command_capacity ||
+        snapshot.last_capacity_entry_current_command_count != result.current_command_count ||
+        snapshot.last_capacity_entry_required_command_count != result.required_command_count) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_pass_record_capacity != result.pass_record_capacity ||
+        snapshot.last_capacity_entry_current_pass_record_count != result.current_pass_record_count ||
+        snapshot.last_capacity_entry_required_pass_record_count != result.required_pass_record_count) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_failed_command_index != failed_command_index ||
+        snapshot.last_capacity_entry_failed_command_type != failed_command_type) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_failed_pass_record_index != 0U ||
+        snapshot.last_capacity_entry_pass_id != pass_id ||
+        snapshot.last_capacity_entry_status != result.status) {
+        return false;
+    }
+
+    if (snapshot.last_failed_command_index != failed_command_index) {
+        return false;
+    }
+
+    if (snapshot.last_failed_command_type != failed_command_type) {
+        return false;
+    }
+
+    if (snapshot.last_failed_pass_record_index != 0U) {
+        return false;
+    }
+
+    return snapshot.last_failed_pass_id == pass_id;
+}
+
+bool FixturePassRecordCapacityFailureMatches(
+    const RenderFixturePassSnapshot &snapshot,
+    const RenderFixturePassResult &result,
+    std::size_t failed_pass_record_index,
+    std::uint32_t pass_id) {
+    if (snapshot.last_capacity_entry_command_capacity != result.command_capacity ||
+        snapshot.last_capacity_entry_current_command_count != result.current_command_count ||
+        snapshot.last_capacity_entry_required_command_count != result.required_command_count) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_pass_record_capacity != result.pass_record_capacity ||
+        snapshot.last_capacity_entry_current_pass_record_count != result.current_pass_record_count ||
+        snapshot.last_capacity_entry_required_pass_record_count != result.required_pass_record_count) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_failed_command_index != 0U ||
+        snapshot.last_capacity_entry_failed_command_type != RhiCommandType::BeginFrame) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_failed_pass_record_index != failed_pass_record_index ||
+        snapshot.last_capacity_entry_pass_id != pass_id ||
+        snapshot.last_capacity_entry_status != result.status) {
+        return false;
+    }
+
+    if (snapshot.last_failed_command_index != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_command_type != RhiCommandType::BeginFrame) {
+        return false;
+    }
+
+    if (snapshot.last_failed_pass_record_index != failed_pass_record_index) {
+        return false;
+    }
+
+    return snapshot.last_failed_pass_id == pass_id;
+}
+
 bool PipelineHandleMatches(RhiPipelineHandle left, RhiPipelineHandle right) {
     if (left.slot != right.slot) {
         return false;
@@ -716,6 +855,10 @@ int ExpectValidationFailure(RenderFixturePassStatus expected_status, RenderFixtu
         return Fail("validation failure counter was not updated");
     }
 
+    if (!FixturePassCapacityFailureIsClear(snapshot)) {
+        return Fail("validation failure reported stale fixture pass capacity identity");
+    }
+
     return 0;
 }
 
@@ -974,6 +1117,18 @@ int RenderCoreFixturePassRejectsCommandCapacityWithoutRhiMutation() {
         return Fail("fixture pass accepted small command capacity");
     }
 
+    constexpr std::size_t expected_failed_command_index = RENDER_FIXTURE_PASS_COMMAND_COUNT - 1U;
+    if (result.command_capacity != desc.command_capacity ||
+        result.current_command_count != 0U ||
+        result.required_command_count != RENDER_FIXTURE_PASS_COMMAND_COUNT ||
+        result.pass_record_capacity != desc.pass_record_capacity ||
+        result.current_pass_record_count != 0U ||
+        result.required_pass_record_count != 1U ||
+        result.failed_command_index != expected_failed_command_index ||
+        result.failed_command_type != RhiCommandType::EndFrame) {
+        return Fail("command capacity rejection missed capacity entry");
+    }
+
     if (!CaptureUnchanged(capture)) {
         return Fail("command capacity rejection wrote capture output");
     }
@@ -986,6 +1141,31 @@ int RenderCoreFixturePassRejectsCommandCapacityWithoutRhiMutation() {
     const auto snapshot = pass.Snapshot();
     if (snapshot.command_capacity_rejected_count != 1U) {
         return Fail("command capacity rejection counter was not updated");
+    }
+
+    if (snapshot.required_command_count != RENDER_FIXTURE_PASS_COMMAND_COUNT) {
+        return Fail("command capacity rejection missed required command count");
+    }
+
+    if (!FixturePassCommandCapacityFailureMatches(
+        snapshot,
+        result,
+        expected_failed_command_index,
+        RhiCommandType::EndFrame,
+        request.pass_id)) {
+        return Fail("command capacity snapshot missed failed command identity");
+    }
+
+    RenderFixturePassRequest invalid_request = request;
+    invalid_request.target = RhiTextureHandle{};
+    const auto invalid_result = pass.Execute(invalid_request);
+    if (invalid_result.status != RenderFixturePassStatus::InvalidTarget) {
+        return Fail("command capacity stale clear did not hit invalid target");
+    }
+
+    const auto clear_snapshot = pass.Snapshot();
+    if (!FixturePassCapacityFailureIsClear(clear_snapshot)) {
+        return Fail("non-capacity fixture pass failure did not clear command capacity identity");
     }
 
     return 0;
@@ -1013,6 +1193,19 @@ int RenderCoreFixturePassRejectsPassRecordCapacityWithoutRhiMutation() {
         return Fail("fixture pass accepted record capacity overflow");
     }
 
+    constexpr std::size_t expected_required_pass_record_count = 2U;
+    constexpr std::size_t expected_failed_pass_record_index = 1U;
+    if (result.command_capacity != desc.command_capacity ||
+        result.current_command_count != 0U ||
+        result.required_command_count != RENDER_FIXTURE_PASS_COMMAND_COUNT ||
+        result.pass_record_capacity != desc.pass_record_capacity ||
+        result.current_pass_record_count != 1U ||
+        result.required_pass_record_count != expected_required_pass_record_count ||
+        result.failed_pass_record_index != expected_failed_pass_record_index ||
+        result.pass_id != request.pass_id) {
+        return Fail("record capacity rejection missed capacity entry");
+    }
+
     if (!CaptureUnchanged(capture)) {
         return Fail("record capacity rejection wrote capture output");
     }
@@ -1025,6 +1218,30 @@ int RenderCoreFixturePassRejectsPassRecordCapacityWithoutRhiMutation() {
     const auto snapshot = pass.Snapshot();
     if (snapshot.pass_record_capacity_rejected_count != 1U) {
         return Fail("record capacity rejection counter was not updated");
+    }
+
+    if (snapshot.required_pass_record_count != expected_required_pass_record_count) {
+        return Fail("record capacity rejection missed required pass count");
+    }
+
+    if (!FixturePassRecordCapacityFailureMatches(
+        snapshot,
+        result,
+        expected_failed_pass_record_index,
+        request.pass_id)) {
+        return Fail("record capacity snapshot missed failed pass record identity");
+    }
+
+    RenderFixturePassRequest invalid_request = request;
+    invalid_request.target = RhiTextureHandle{};
+    const auto invalid_result = pass.Execute(invalid_request);
+    if (invalid_result.status != RenderFixturePassStatus::InvalidTarget) {
+        return Fail("record capacity stale clear did not hit invalid target");
+    }
+
+    const auto clear_snapshot = pass.Snapshot();
+    if (!FixturePassCapacityFailureIsClear(clear_snapshot)) {
+        return Fail("non-capacity fixture pass failure did not clear record capacity identity");
     }
 
     return 0;
@@ -1094,6 +1311,10 @@ int RenderCoreFixturePassSnapshotTracksBoundedCounters() {
 
     if (after.last_recorded_command_count != RENDER_FIXTURE_PASS_COMMAND_COUNT) {
         return Fail("fixture pass last command count was unexpected");
+    }
+
+    if (!FixturePassCapacityFailureIsClear(after)) {
+        return Fail("successful fixture pass reported stale capacity identity");
     }
 
     return 0;

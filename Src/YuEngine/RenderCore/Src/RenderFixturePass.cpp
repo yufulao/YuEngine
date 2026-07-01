@@ -7,6 +7,7 @@
 #include <span>
 
 #include "YuEngine/Rhi/RhiConstants.h"
+#include "YuEngine/Rhi/RhiCommandType.h"
 #include "YuEngine/Rhi/RhiIndexFormat.h"
 #include "YuEngine/Rhi/RhiPrimitiveTopology.h"
 #include "YuEngine/Rhi/RhiStatus.h"
@@ -149,6 +150,77 @@ std::size_t RequiredCommandCount(const RenderFixturePassRequest &request) {
         blend_state_command_count;
 }
 
+yuengine::rhi::RhiCommandType CommandTypeAtIndex(
+    const RenderFixturePassRequest &request,
+    std::size_t command_index) {
+    std::size_t current_index = 0U;
+    if (command_index == current_index) {
+        return yuengine::rhi::RhiCommandType::BeginFrame;
+    }
+
+    ++current_index;
+    if (command_index == current_index) {
+        return yuengine::rhi::RhiCommandType::ClearColor;
+    }
+
+    ++current_index;
+    if (command_index == current_index) {
+        return yuengine::rhi::RhiCommandType::BindPipeline;
+    }
+
+    ++current_index;
+    if (command_index == current_index) {
+        return yuengine::rhi::RhiCommandType::BindVertexBuffer;
+    }
+
+    ++current_index;
+    if (command_index == current_index) {
+        return yuengine::rhi::RhiCommandType::BindIndexBuffer;
+    }
+
+    ++current_index;
+    const std::span<const yuengine::rhi::RhiSampledTextureBinding> sampled_textures =
+        SampledTextureBindings(request);
+    for (std::size_t index = 0U; index < sampled_textures.size(); ++index) {
+        if (command_index == current_index) {
+            return yuengine::rhi::RhiCommandType::BindSampledTexture;
+        }
+
+        ++current_index;
+    }
+
+    const std::span<const yuengine::rhi::RhiSamplerBinding> samplers = SamplerBindings(request);
+    for (std::size_t index = 0U; index < samplers.size(); ++index) {
+        if (command_index == current_index) {
+            return yuengine::rhi::RhiCommandType::BindSampler;
+        }
+
+        ++current_index;
+    }
+
+    for (std::size_t index = 0U; index < request.constant_buffers.size(); ++index) {
+        if (command_index == current_index) {
+            return yuengine::rhi::RhiCommandType::BindConstantBuffer;
+        }
+
+        ++current_index;
+    }
+
+    if (ShouldBindBlendState(request.blend_state)) {
+        if (command_index == current_index) {
+            return yuengine::rhi::RhiCommandType::BindBlendState;
+        }
+
+        ++current_index;
+    }
+
+    if (command_index == current_index) {
+        return yuengine::rhi::RhiCommandType::DrawIndexed;
+    }
+
+    return yuengine::rhi::RhiCommandType::EndFrame;
+}
+
 bool AreBindingSpansValid(const RenderFixturePassRequest &request) {
     if (!UsesBindingSpans(request)) {
         return true;
@@ -222,6 +294,71 @@ bool IsCaptureOutputValid(const RenderFixturePassRequest &request) {
 
     return request.capture_output.size() >= request.capture_byte_budget;
 }
+
+void ClearCapacityFailure(RenderFixturePassSnapshot &snapshot) {
+    snapshot.last_failed_command_index = 0U;
+    snapshot.last_failed_command_type = yuengine::rhi::RhiCommandType::BeginFrame;
+    snapshot.last_failed_pass_record_index = 0U;
+    snapshot.last_failed_pass_id = 0U;
+    snapshot.last_capacity_entry_command_capacity = 0U;
+    snapshot.last_capacity_entry_current_command_count = 0U;
+    snapshot.last_capacity_entry_required_command_count = 0U;
+    snapshot.last_capacity_entry_pass_record_capacity = 0U;
+    snapshot.last_capacity_entry_current_pass_record_count = 0U;
+    snapshot.last_capacity_entry_required_pass_record_count = 0U;
+    snapshot.last_capacity_entry_failed_command_index = 0U;
+    snapshot.last_capacity_entry_failed_command_type =
+        yuengine::rhi::RhiCommandType::BeginFrame;
+    snapshot.last_capacity_entry_failed_pass_record_index = 0U;
+    snapshot.last_capacity_entry_pass_id = 0U;
+    snapshot.last_capacity_entry_status = RenderFixturePassStatus::InvalidArgument;
+}
+
+void RecordCommandCapacityFailure(
+    RenderFixturePassSnapshot &snapshot,
+    const RenderFixturePassResult &result) {
+    snapshot.last_failed_command_index = result.failed_command_index;
+    snapshot.last_failed_command_type = result.failed_command_type;
+    snapshot.last_failed_pass_record_index = 0U;
+    snapshot.last_failed_pass_id = result.pass_id;
+    snapshot.last_capacity_entry_command_capacity = result.command_capacity;
+    snapshot.last_capacity_entry_current_command_count = result.current_command_count;
+    snapshot.last_capacity_entry_required_command_count = result.required_command_count;
+    snapshot.last_capacity_entry_pass_record_capacity = result.pass_record_capacity;
+    snapshot.last_capacity_entry_current_pass_record_count =
+        result.current_pass_record_count;
+    snapshot.last_capacity_entry_required_pass_record_count =
+        result.required_pass_record_count;
+    snapshot.last_capacity_entry_failed_command_index = result.failed_command_index;
+    snapshot.last_capacity_entry_failed_command_type = result.failed_command_type;
+    snapshot.last_capacity_entry_failed_pass_record_index = 0U;
+    snapshot.last_capacity_entry_pass_id = result.pass_id;
+    snapshot.last_capacity_entry_status = result.status;
+}
+
+void RecordPassRecordCapacityFailure(
+    RenderFixturePassSnapshot &snapshot,
+    const RenderFixturePassResult &result) {
+    snapshot.last_failed_command_index = 0U;
+    snapshot.last_failed_command_type = yuengine::rhi::RhiCommandType::BeginFrame;
+    snapshot.last_failed_pass_record_index = result.failed_pass_record_index;
+    snapshot.last_failed_pass_id = result.pass_id;
+    snapshot.last_capacity_entry_command_capacity = result.command_capacity;
+    snapshot.last_capacity_entry_current_command_count = result.current_command_count;
+    snapshot.last_capacity_entry_required_command_count = result.required_command_count;
+    snapshot.last_capacity_entry_pass_record_capacity = result.pass_record_capacity;
+    snapshot.last_capacity_entry_current_pass_record_count =
+        result.current_pass_record_count;
+    snapshot.last_capacity_entry_required_pass_record_count =
+        result.required_pass_record_count;
+    snapshot.last_capacity_entry_failed_command_index = 0U;
+    snapshot.last_capacity_entry_failed_command_type =
+        yuengine::rhi::RhiCommandType::BeginFrame;
+    snapshot.last_capacity_entry_failed_pass_record_index =
+        result.failed_pass_record_index;
+    snapshot.last_capacity_entry_pass_id = result.pass_id;
+    snapshot.last_capacity_entry_status = result.status;
+}
 }
 
 RenderFixturePass::RenderFixturePass(const RenderFixturePassDesc &desc)
@@ -240,15 +377,25 @@ RenderFixturePassResult RenderFixturePass::Execute(const RenderFixturePassReques
         return result;
     }
 
-    snapshot_.required_command_count = RequiredCommandCount(request);
-    if (desc_.command_capacity < snapshot_.required_command_count) {
+    result.command_capacity = desc_.command_capacity;
+    result.current_command_count = 0U;
+    result.required_command_count = RequiredCommandCount(request);
+    result.pass_record_capacity = desc_.pass_record_capacity;
+    result.current_pass_record_count = snapshot_.pass_record_count;
+    result.required_pass_record_count = snapshot_.pass_record_count + 1U;
+    snapshot_.required_command_count = result.required_command_count;
+    snapshot_.required_pass_record_count = result.required_pass_record_count;
+    if (desc_.command_capacity < result.required_command_count) {
         result.status = RenderFixturePassStatus::CommandCapacityExceeded;
+        result.failed_command_index = desc_.command_capacity;
+        result.failed_command_type = CommandTypeAtIndex(request, result.failed_command_index);
         RecordRejectedResult(result);
         return result;
     }
 
     if (!HasRecordCapacity()) {
         result.status = RenderFixturePassStatus::PassRecordCapacityExceeded;
+        result.failed_pass_record_index = snapshot_.pass_record_count;
         RecordRejectedResult(result);
         return result;
     }
@@ -402,6 +549,7 @@ void RenderFixturePass::Reset() {
     snapshot_.pass_record_capacity = desc_.pass_record_capacity;
     snapshot_.command_capacity = desc_.command_capacity;
     snapshot_.required_command_count = RENDER_FIXTURE_PASS_COMMAND_COUNT;
+    snapshot_.required_pass_record_count = 1U;
 }
 
 RenderFixturePassStatus RenderFixturePass::ValidateRequest(const RenderFixturePassRequest &request) const {
@@ -472,18 +620,29 @@ bool RenderFixturePass::HasRecordCapacity() const {
 }
 
 void RenderFixturePass::RecordRejectedResult(const RenderFixturePassResult &result) {
+    ClearCapacityFailure(snapshot_);
     snapshot_.last_status = result.status;
     snapshot_.last_rhi_status = result.rhi_status;
     snapshot_.last_pass_id = result.pass_id;
     snapshot_.last_recorded_command_count = result.recorded_command_count;
     snapshot_.last_capture_bytes_written = result.capture_bytes_written;
     snapshot_.last_capture_extent = result.capture_extent;
+    if (result.required_command_count > 0U) {
+        snapshot_.required_command_count = result.required_command_count;
+    }
+
+    if (result.required_pass_record_count > 0U) {
+        snapshot_.required_pass_record_count = result.required_pass_record_count;
+    }
+
     if (result.status == RenderFixturePassStatus::CommandCapacityExceeded) {
+        RecordCommandCapacityFailure(snapshot_, result);
         ++snapshot_.command_capacity_rejected_count;
         return;
     }
 
     if (result.status == RenderFixturePassStatus::PassRecordCapacityExceeded) {
+        RecordPassRecordCapacityFailure(snapshot_, result);
         ++snapshot_.pass_record_capacity_rejected_count;
         return;
     }
@@ -504,6 +663,7 @@ void RenderFixturePass::RecordRhiFailureResult(RenderFixturePassResult *result) 
     ++snapshot_.pass_record_count;
     ++snapshot_.executed_pass_count;
     ++snapshot_.rhi_failure_count;
+    ClearCapacityFailure(snapshot_);
     snapshot_.last_status = result->status;
     snapshot_.last_rhi_status = result->rhi_status;
     snapshot_.last_pass_id = result->pass_id;
@@ -520,6 +680,7 @@ void RenderFixturePass::RecordSuccessResult(const RenderFixturePassResult &resul
     ++snapshot_.pass_record_count;
     ++snapshot_.executed_pass_count;
     ++snapshot_.completed_pass_count;
+    ClearCapacityFailure(snapshot_);
     snapshot_.last_status = result.status;
     snapshot_.last_rhi_status = result.rhi_status;
     snapshot_.last_pass_id = result.pass_id;
