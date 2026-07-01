@@ -2998,6 +2998,10 @@ int RhiPrimitiveRetirementDefaultContractsAreExplicit() {
         return Fail("retirement snapshot pending count was not zero");
     }
 
+    if (snapshot.resources.primitive_retirement.required_retirement_record_count != 1U) {
+        return Fail("retirement snapshot required record count baseline was wrong");
+    }
+
     return 0;
 }
 
@@ -3043,6 +3047,10 @@ int RhiPrimitiveRetirementRequestCreatesPendingRecord() {
 
     if (snapshot.resources.primitive_retirement.requested_count != 1U) {
         return Fail("retirement request count was not tracked");
+    }
+
+    if (snapshot.resources.primitive_retirement.required_retirement_record_count != 1U) {
+        return Fail("retirement request required record count was not tracked");
     }
 
     return 0;
@@ -3214,6 +3222,11 @@ int RhiPrimitiveRetirementRejectsInvalidWrongDuplicateAndCapacity() {
 
     if (snapshot.resources.primitive_retirement.capacity_rejected_count != 1U) {
         return Fail("retirement capacity rejected count was wrong");
+    }
+
+    if (snapshot.resources.primitive_retirement.required_retirement_record_count !=
+        MAX_RHI_PRIMITIVE_RETIREMENTS + 1U) {
+        return Fail("retirement capacity required record count was wrong");
     }
 
     if (snapshot.resources.primitive_retirement.pending_count != MAX_RHI_PRIMITIVE_RETIREMENTS) {

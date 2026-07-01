@@ -10,6 +10,7 @@ namespace yuengine::rhi {
 struct RhiPrimitiveRetirementSnapshot final {
     std::size_t capacity = 0U;
     std::size_t pending_count = 0U;
+    std::size_t required_retirement_record_count = 0U;
     std::uint64_t requested_count = 0U;
     std::uint64_t drained_count = 0U;
     std::uint64_t rejected_count = 0U;

@@ -271,6 +271,7 @@ RhiStatus NullRhiDevice::Initialize(const RhiDeviceDesc &desc) {
     snapshot_.resources.shader_module_capacity = MAX_RHI_SHADER_MODULES;
     snapshot_.resources.pipeline_capacity = MAX_RHI_PIPELINES;
     snapshot_.resources.primitive_retirement.capacity = MAX_RHI_PRIMITIVE_RETIREMENTS;
+    snapshot_.resources.primitive_retirement.required_retirement_record_count = 1U;
     snapshot_.resources.primitive_retirement.next_retirement_id = next_primitive_retirement_id_;
     is_initialized_ = true;
     has_submitted_frame_ = false;
@@ -1129,12 +1130,16 @@ RhiStatus NullRhiDevice::RequestPrimitiveRetirement(
         out_record = record;
         ++next_primitive_retirement_id_;
         ++snapshot_.resources.primitive_retirement.pending_count;
+        snapshot_.resources.primitive_retirement.required_retirement_record_count =
+            snapshot_.resources.primitive_retirement.pending_count;
         ++snapshot_.resources.primitive_retirement.requested_count;
         snapshot_.resources.primitive_retirement.next_retirement_id = next_primitive_retirement_id_;
         return RecordDeviceSuccess(snapshot_);
     }
 
     out_record.status = RhiPrimitiveRetirementStatus::RejectedCapacity;
+    snapshot_.resources.primitive_retirement.required_retirement_record_count =
+        snapshot_.resources.primitive_retirement.pending_count + 1U;
     ++snapshot_.resources.primitive_retirement.capacity_rejected_count;
     ++snapshot_.resources.primitive_retirement.rejected_count;
     return RecordFailure(RhiStatus::CapacityExceeded);
