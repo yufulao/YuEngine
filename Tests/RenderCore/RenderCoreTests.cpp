@@ -11,6 +11,8 @@
 #include <vector>
 
 #include "YuEngine/RenderCore/MaterialBindingFixture.h"
+#include "YuEngine/RenderCore/MaterialBindingFixtureResult.h"
+#include "YuEngine/RenderCore/MaterialBindingFixtureSnapshot.h"
 #include "YuEngine/RenderCore/RenderFixturePass.h"
 #include "YuEngine/RenderCore/RenderFixturePassConstants.h"
 #include "YuEngine/RenderCore/RenderFixturePassDesc.h"
@@ -62,6 +64,8 @@ using RenderFixturePass = yuengine::rendercore::RenderFixturePass;
 using MaterialBindingFixture = yuengine::rendercore::MaterialBindingFixture;
 using MaterialBindingFixtureDesc = yuengine::rendercore::MaterialBindingFixtureDesc;
 using MaterialBindingFixtureRequest = yuengine::rendercore::MaterialBindingFixtureRequest;
+using MaterialBindingFixtureResult = yuengine::rendercore::MaterialBindingFixtureResult;
+using MaterialBindingFixtureSnapshot = yuengine::rendercore::MaterialBindingFixtureSnapshot;
 using yuengine::rendercore::MaterialBindingFixtureStatus;
 using yuengine::rendercore::MAX_MATERIAL_BINDING_FIXTURE_CONSTANT_BYTES;
 using RenderFixturePassDesc = yuengine::rendercore::RenderFixturePassDesc;
@@ -802,6 +806,77 @@ bool FillMaterialPreparedBatchRequest(
     return BindMaterialForBatch(fixture, pass_request, material_id, pass_id);
 }
 
+bool MaterialBindingCapacityFailureIsClear(const MaterialBindingFixtureSnapshot &snapshot) {
+    if (snapshot.last_capacity_entry_binding_record_capacity != 0U ||
+        snapshot.last_capacity_entry_current_binding_record_count != 0U ||
+        snapshot.last_capacity_entry_required_binding_record_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_failed_binding_record_index != 0U ||
+        snapshot.last_capacity_entry_constant_byte_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_material_id != 0U ||
+        snapshot.last_capacity_entry_pass_id != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_status != MaterialBindingFixtureStatus::InvalidArgument) {
+        return false;
+    }
+
+    if (snapshot.last_failed_material_id != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_pass_id != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_binding_record_index != 0U) {
+        return false;
+    }
+
+    return snapshot.last_failed_constant_byte_count == 0U;
+}
+
+bool MaterialBindingCapacityFailureMatches(
+    const MaterialBindingFixtureSnapshot &snapshot,
+    const MaterialBindingFixtureResult &result) {
+    if (snapshot.last_capacity_entry_binding_record_capacity != result.binding_record_capacity ||
+        snapshot.last_capacity_entry_current_binding_record_count != result.current_binding_record_count ||
+        snapshot.last_capacity_entry_required_binding_record_count != result.required_binding_record_count) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_failed_binding_record_index != result.failed_binding_record_index ||
+        snapshot.last_capacity_entry_constant_byte_count != result.constant_byte_count) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_material_id != result.material_id ||
+        snapshot.last_capacity_entry_pass_id != result.pass_id ||
+        snapshot.last_capacity_entry_status != result.status) {
+        return false;
+    }
+
+    if (snapshot.last_failed_material_id != result.material_id) {
+        return false;
+    }
+
+    if (snapshot.last_failed_pass_id != result.pass_id) {
+        return false;
+    }
+
+    if (snapshot.last_failed_binding_record_index != result.failed_binding_record_index) {
+        return false;
+    }
+
+    return snapshot.last_failed_constant_byte_count == result.constant_byte_count;
+}
+
 int ExpectMaterialValidationFailure(
     MaterialBindingFixtureStatus expected_status,
     const MaterialBindingFixtureRequest &material_request,
@@ -824,6 +899,10 @@ int ExpectMaterialValidationFailure(
 
     if (snapshot.failed_validation_count != 1U) {
         return Fail("material binding validation counter was not updated");
+    }
+
+    if (!MaterialBindingCapacityFailureIsClear(snapshot)) {
+        return Fail("material binding validation wrote capacity failure entry");
     }
 
     return 0;
@@ -1370,6 +1449,10 @@ int MaterialBindingFixtureBindsValuesToRenderFixtureRequest() {
         return Fail("material binding fixture did not track accepted binding");
     }
 
+    if (!MaterialBindingCapacityFailureIsClear(snapshot)) {
+        return Fail("successful material binding left capacity failure entry");
+    }
+
     return 0;
 }
 
@@ -1518,6 +1601,10 @@ int MaterialBindingFixtureRejectsDuplicateMaterialIdWithoutMutation() {
         return Fail("duplicate material id counters were not updated");
     }
 
+    if (!MaterialBindingCapacityFailureIsClear(snapshot)) {
+        return Fail("duplicate material id wrote capacity failure entry");
+    }
+
     return 0;
 }
 
@@ -1552,19 +1639,43 @@ int MaterialBindingFixtureRejectsCapacityOverflowWithoutMutation() {
         return Fail("material binding fixture accepted capacity overflow");
     }
 
+    constexpr std::size_t expected_failed_binding_record_index = 1U;
+    if (result.failed_binding_record_index != expected_failed_binding_record_index) {
+        return Fail("capacity overflow reported wrong failed binding index");
+    }
+
+    constexpr std::size_t expected_current_binding_record_count = 1U;
+    constexpr std::size_t expected_required_binding_record_count = 2U;
+    if (result.binding_record_capacity != desc.binding_record_capacity ||
+        result.current_binding_record_count != expected_current_binding_record_count ||
+        result.required_binding_record_count != expected_required_binding_record_count) {
+        return Fail("capacity overflow did not expose capacity entry counts");
+    }
+
     const auto snapshot = fixture.Snapshot();
-    if (result.required_binding_record_count != 2U ||
-        snapshot.required_binding_record_count != 2U ||
+    if (snapshot.binding_record_capacity != desc.binding_record_capacity ||
+        snapshot.binding_record_count != expected_current_binding_record_count ||
+        snapshot.required_binding_record_count != expected_required_binding_record_count ||
         snapshot.binding_capacity_rejected_count != 1U) {
-        return Fail("capacity overflow did not expose required binding count");
+        return Fail("capacity overflow snapshot missed capacity entry counts");
     }
 
     if (!MaterialPassFieldsMatch(before, second_pass_request)) {
         return Fail("capacity overflow mutated pass request");
     }
 
-    if (snapshot.binding_record_count != 1U) {
-        return Fail("capacity overflow counters were not updated");
+    if (!MaterialBindingCapacityFailureMatches(snapshot, result)) {
+        return Fail("capacity overflow snapshot missed failed binding identity");
+    }
+
+    const auto duplicate_result = fixture.Bind(first_request, &first_pass_request);
+    if (duplicate_result.status != MaterialBindingFixtureStatus::DuplicateMaterialId) {
+        return Fail("capacity stale clear duplicate bind did not reject duplicate");
+    }
+
+    const auto clear_snapshot = fixture.Snapshot();
+    if (!MaterialBindingCapacityFailureIsClear(clear_snapshot)) {
+        return Fail("non-capacity material binding result did not clear capacity failure entry");
     }
 
     return 0;
@@ -1596,6 +1707,10 @@ int MaterialBindingFixturePropagatesRenderFixturePassFailure() {
     const auto snapshot = fixture.Snapshot();
     if (snapshot.render_pass_failure_count != 1U || snapshot.executed_pass_count != 1U) {
         return Fail("material binding fixture did not track pass failure counters");
+    }
+
+    if (!MaterialBindingCapacityFailureIsClear(snapshot)) {
+        return Fail("material binding pass failure wrote capacity failure entry");
     }
 
     return 0;
@@ -1634,6 +1749,10 @@ int MaterialBindingFixtureSnapshotTracksBoundedCounters() {
 
     if (snapshot.last_material_id != MATERIAL_ID || snapshot.last_pass_id != MATERIAL_PASS_ID) {
         return Fail("material binding fixture snapshot missed last ids");
+    }
+
+    if (!MaterialBindingCapacityFailureIsClear(snapshot)) {
+        return Fail("material binding fixture snapshot retained capacity failure entry");
     }
 
     return 0;

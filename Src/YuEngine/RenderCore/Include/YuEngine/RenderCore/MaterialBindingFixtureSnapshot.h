@@ -25,9 +25,22 @@ struct MaterialBindingFixtureSnapshot final {
     std::uint64_t executed_pass_count = 0U;
     std::uint64_t completed_pass_count = 0U;
     std::uint64_t render_pass_failure_count = 0U;
+    std::size_t last_capacity_entry_binding_record_capacity = 0U;
+    std::size_t last_capacity_entry_current_binding_record_count = 0U;
+    std::size_t last_capacity_entry_required_binding_record_count = 0U;
+    std::size_t last_capacity_entry_failed_binding_record_index = 0U;
+    std::size_t last_capacity_entry_constant_byte_count = 0U;
+    std::uint32_t last_capacity_entry_material_id = 0U;
+    std::uint32_t last_capacity_entry_pass_id = 0U;
+    MaterialBindingFixtureStatus last_capacity_entry_status =
+        MaterialBindingFixtureStatus::InvalidArgument;
     std::uint32_t last_material_id = 0U;
     std::uint32_t last_pass_id = 0U;
     std::size_t last_constant_byte_count = 0U;
+    std::uint32_t last_failed_material_id = 0U;
+    std::uint32_t last_failed_pass_id = 0U;
+    std::size_t last_failed_binding_record_index = 0U;
+    std::size_t last_failed_constant_byte_count = 0U;
     MaterialBindingFixtureStatus last_status = MaterialBindingFixtureStatus::InvalidArgument;
     RenderFixturePassStatus last_pass_status = RenderFixturePassStatus::InvalidArgument;
     yuengine::rhi::RhiStatus last_rhi_status = yuengine::rhi::RhiStatus::InvalidLifecycle;

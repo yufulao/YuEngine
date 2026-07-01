@@ -108,6 +108,42 @@ bool AreBindingSpansValid(const MaterialBindingFixtureRequest &request) {
 
     return request.samplers.size() <= yuengine::rhi::MAX_RHI_SAMPLER_SLOTS;
 }
+
+void ClearBindingCapacityFailure(MaterialBindingFixtureSnapshot &snapshot) {
+    snapshot.last_capacity_entry_binding_record_capacity = 0U;
+    snapshot.last_capacity_entry_current_binding_record_count = 0U;
+    snapshot.last_capacity_entry_required_binding_record_count = 0U;
+    snapshot.last_capacity_entry_failed_binding_record_index = 0U;
+    snapshot.last_capacity_entry_constant_byte_count = 0U;
+    snapshot.last_capacity_entry_material_id = 0U;
+    snapshot.last_capacity_entry_pass_id = 0U;
+    snapshot.last_capacity_entry_status = MaterialBindingFixtureStatus::InvalidArgument;
+    snapshot.last_failed_material_id = 0U;
+    snapshot.last_failed_pass_id = 0U;
+    snapshot.last_failed_binding_record_index = 0U;
+    snapshot.last_failed_constant_byte_count = 0U;
+}
+
+void RecordBindingCapacityFailure(
+    MaterialBindingFixtureSnapshot &snapshot,
+    const MaterialBindingFixtureResult &result) {
+    snapshot.last_capacity_entry_binding_record_capacity =
+        result.binding_record_capacity;
+    snapshot.last_capacity_entry_current_binding_record_count =
+        result.current_binding_record_count;
+    snapshot.last_capacity_entry_required_binding_record_count =
+        result.required_binding_record_count;
+    snapshot.last_capacity_entry_failed_binding_record_index =
+        result.failed_binding_record_index;
+    snapshot.last_capacity_entry_constant_byte_count = result.constant_byte_count;
+    snapshot.last_capacity_entry_material_id = result.material_id;
+    snapshot.last_capacity_entry_pass_id = result.pass_id;
+    snapshot.last_capacity_entry_status = result.status;
+    snapshot.last_failed_material_id = result.material_id;
+    snapshot.last_failed_pass_id = result.pass_id;
+    snapshot.last_failed_binding_record_index = result.failed_binding_record_index;
+    snapshot.last_failed_constant_byte_count = result.constant_byte_count;
+}
 }
 
 MaterialBindingFixture::MaterialBindingFixture(const MaterialBindingFixtureDesc &desc)
@@ -141,9 +177,12 @@ MaterialBindingFixtureResult MaterialBindingFixture::Bind(
         return result;
     }
 
+    result.binding_record_capacity = desc_.binding_record_capacity;
+    result.current_binding_record_count = snapshot_.binding_record_count;
     result.required_binding_record_count = snapshot_.binding_record_count + 1U;
     if (!HasRecordCapacity()) {
         result.status = MaterialBindingFixtureStatus::BindingCapacityExceeded;
+        result.failed_binding_record_index = snapshot_.binding_record_count;
         RecordRejectedBinding(result);
         return result;
     }
@@ -281,6 +320,7 @@ void MaterialBindingFixture::RecordAcceptedBinding(
         return;
     }
 
+    ClearBindingCapacityFailure(snapshot_);
     Record record{};
     record.material_id = request.material_id;
     record.pipeline = request.pipeline;
@@ -309,6 +349,7 @@ void MaterialBindingFixture::RecordAcceptedBinding(
 }
 
 void MaterialBindingFixture::RecordRejectedBinding(const MaterialBindingFixtureResult &result) {
+    ClearBindingCapacityFailure(snapshot_);
     snapshot_.last_material_id = result.material_id;
     snapshot_.last_pass_id = result.pass_id;
     if (result.required_binding_record_count > 0U) {
@@ -325,6 +366,7 @@ void MaterialBindingFixture::RecordRejectedBinding(const MaterialBindingFixtureR
     }
 
     if (result.status == MaterialBindingFixtureStatus::BindingCapacityExceeded) {
+        RecordBindingCapacityFailure(snapshot_, result);
         ++snapshot_.binding_capacity_rejected_count;
         return;
     }
@@ -339,6 +381,7 @@ void MaterialBindingFixture::RecordRenderSuccess(
         return;
     }
 
+    ClearBindingCapacityFailure(snapshot_);
     result->pass_status = pass_result.status;
     result->rhi_status = pass_result.rhi_status;
     ++snapshot_.executed_pass_count;
@@ -355,6 +398,7 @@ void MaterialBindingFixture::RecordRenderFailure(
         return;
     }
 
+    ClearBindingCapacityFailure(snapshot_);
     result->status = MaterialBindingFixtureStatus::RenderFixturePassFailed;
     result->pass_status = pass_result.status;
     result->rhi_status = pass_result.rhi_status;
