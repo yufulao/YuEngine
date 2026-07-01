@@ -108,6 +108,21 @@ public:
         std::uint32_t output_dependency_capacity,
         std::uint32_t *output_dependency_count);
     /**
+     * @comment 按确定顺序遍历多个 root Resource 的去重依赖闭包。
+     * @param roots 输入 root Resource 数组。
+     * @param root_count 输入 root Resource 数量。
+     * @param output_dependencies 输出 Resource handle 存储。
+     * @param output_dependency_capacity 输出存储容量。
+     * @param output_dependency_count 输出 Resource 数量。
+     * @return 显式操作状态。
+     */
+    ResourceStatus TraverseDependencies(
+        const ResourceHandle *roots,
+        std::uint32_t root_count,
+        ResourceHandle *output_dependencies,
+        std::uint32_t output_dependency_capacity,
+        std::uint32_t *output_dependency_count);
+    /**
      * @comment 获取操作。
      * @param handle 输入句柄。
      * @param expected_type 输入期望类型。
@@ -450,6 +465,12 @@ private:
     ResourceDecodedPayloadStatus ValidateDecodedPayloadResult(
         const ResourceDecodedPayloadRequest &request,
         const ResourceDecodeResultRecord &decode_result_record) const;
+    ResourceStatus TraverseDependencyClosure(
+        const ResourceHandle *roots,
+        std::uint32_t root_count,
+        ResourceHandle *output_dependencies,
+        std::uint32_t output_dependency_capacity,
+        std::uint32_t *output_dependency_count);
     ResourceLoadCommitStatus MapHandleStatus(ResourceStatus status) const;
     ResourceStatus MapLoadCommitStatus(ResourceLoadCommitStatus status) const;
     ResourceResidencyStatus MapHandleResidencyStatus(ResourceStatus status) const;

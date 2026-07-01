@@ -521,6 +521,34 @@ ResourceStatus ResourceRegistry::TraverseDependencies(
     ResourceHandle *output_dependencies,
     std::uint32_t output_dependency_capacity,
     std::uint32_t *output_dependency_count) {
+    return TraverseDependencyClosure(
+        &root,
+        1U,
+        output_dependencies,
+        output_dependency_capacity,
+        output_dependency_count);
+}
+
+ResourceStatus ResourceRegistry::TraverseDependencies(
+    const ResourceHandle *roots,
+    std::uint32_t root_count,
+    ResourceHandle *output_dependencies,
+    std::uint32_t output_dependency_capacity,
+    std::uint32_t *output_dependency_count) {
+    return TraverseDependencyClosure(
+        roots,
+        root_count,
+        output_dependencies,
+        output_dependency_capacity,
+        output_dependency_count);
+}
+
+ResourceStatus ResourceRegistry::TraverseDependencyClosure(
+    const ResourceHandle *roots,
+    std::uint32_t root_count,
+    ResourceHandle *output_dependencies,
+    std::uint32_t output_dependency_capacity,
+    std::uint32_t *output_dependency_count) {
     ++snapshot_.dependency_validation_count;
 
     if (output_dependency_count == nullptr) {
@@ -532,20 +560,38 @@ ResourceStatus ResourceRegistry::TraverseDependencies(
         return RecordFailure(ResourceStatus::InvalidHandle);
     }
 
-    std::size_t root_index = 0U;
-    const ResourceStatus root_status = ResolveHandle(root, root_index);
-    if (root_status != ResourceStatus::Success) {
-        return RecordFailure(root_status);
+    if (root_count > 0U && roots == nullptr) {
+        return RecordFailure(ResourceStatus::InvalidHandle);
     }
 
     std::array<std::uint32_t, MAX_RESOURCE_COUNT> pending_slots{};
     std::array<bool, MAX_RESOURCE_COUNT> visited_slots{};
     std::array<ResourceHandle, MAX_RESOURCE_COUNT> staged_dependencies{};
     std::uint32_t read_index = 0U;
-    std::uint32_t pending_count = 1U;
+    std::uint32_t pending_count = 0U;
     std::uint32_t staged_dependency_count = 0U;
-    pending_slots[0U] = static_cast<std::uint32_t>(root_index);
-    visited_slots[root_index] = true;
+
+    for (std::uint32_t root_cursor = 0U; root_cursor < root_count; ++root_cursor) {
+        std::size_t root_index = 0U;
+        const ResourceStatus root_status = ResolveHandle(roots[root_cursor], root_index);
+        if (root_status != ResourceStatus::Success) {
+            return RecordFailure(root_status);
+        }
+
+        if (visited_slots[root_index]) {
+            continue;
+        }
+
+        if (pending_count >= MAX_RESOURCE_COUNT) {
+            const ResourceStatus status = RecordFailure(ResourceStatus::CapacityExceeded);
+            snapshot_.last_required_dependency_edge_count = staged_dependency_count;
+            return status;
+        }
+
+        pending_slots[pending_count] = static_cast<std::uint32_t>(root_index);
+        ++pending_count;
+        visited_slots[root_index] = true;
+    }
 
     while (read_index < pending_count) {
         const std::uint32_t current_slot = pending_slots[read_index];

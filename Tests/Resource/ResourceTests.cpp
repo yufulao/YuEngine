@@ -130,6 +130,8 @@ constexpr const char *TEST_DEPENDENCY_EDGE_COUNT =
     "Resource_DependencyEdgeCountSnapshotMatchesDirectEdges";
 constexpr const char *TEST_DEPENDENCY_TRAVERSAL =
     "Resource_DependencyTraversalReturnsExplicitClosureHandles";
+constexpr const char *TEST_DEPENDENCY_MULTIROOT_TRAVERSAL =
+    "Resource_DependencyTraversalMultiRootDeduplicatesClosureHandles";
 constexpr const char* TEST_NO_FILE_PACKAGE = "Resource_NoFileOrPackageDependency_ForHandleRegistry";
 constexpr const char* TEST_DISABLED_DIAGNOSTICS = "Resource_DisabledDiagnosticsDoesNotChangeResults";
 constexpr const char* TEST_NO_HIDDEN_ALLOCATION = "Resource_NoHiddenAllocation_UsesYuMemorySignal";
@@ -2276,6 +2278,110 @@ int ResourceDependencyTraversalReturnsExplicitClosureHandles() {
 
     if (after_small_snapshot.last_required_dependency_edge_count != 2U) {
         return Fail("dependency traversal small buffer missed snapshot required count");
+    }
+
+    return 0;
+}
+
+int ResourceDependencyTraversalMultiRootDeduplicatesClosureHandles() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult first_root = Register(registry, TYPE_MATERIAL, "material_root_a");
+    const ResourceRegistrationResult second_root = Register(registry, TYPE_EFFECT, "effect_root_b");
+    const ResourceRegistrationResult shared = Register(registry, TYPE_TEXTURE, "texture_shared");
+    const ResourceRegistrationResult leaf = Register(registry, TYPE_AUDIO, "audio_leaf");
+    if (!first_root.Succeeded()) {
+        return Fail("multi-root traversal first root registration failed");
+    }
+
+    if (!second_root.Succeeded()) {
+        return Fail("multi-root traversal second root registration failed");
+    }
+
+    if (!shared.Succeeded()) {
+        return Fail("multi-root traversal shared registration failed");
+    }
+
+    if (!leaf.Succeeded()) {
+        return Fail("multi-root traversal leaf registration failed");
+    }
+
+    if (registry.AddDependency(first_root.handle, shared.handle) != ResourceStatus::Success) {
+        return Fail("multi-root traversal first edge failed");
+    }
+
+    if (registry.AddDependency(second_root.handle, shared.handle) != ResourceStatus::Success) {
+        return Fail("multi-root traversal second edge failed");
+    }
+
+    if (registry.AddDependency(shared.handle, leaf.handle) != ResourceStatus::Success) {
+        return Fail("multi-root traversal transitive edge failed");
+    }
+
+    const std::array<ResourceHandle, 3U> roots{
+        first_root.handle,
+        second_root.handle,
+        first_root.handle};
+    std::array<ResourceHandle, 2U> dependencies{};
+    std::uint32_t dependency_count = 0U;
+    const ResourceStatus traversal_status = registry.TraverseDependencies(
+        roots.data(),
+        static_cast<std::uint32_t>(roots.size()),
+        dependencies.data(),
+        static_cast<std::uint32_t>(dependencies.size()),
+        &dependency_count);
+    if (traversal_status != ResourceStatus::Success) {
+        return Fail("multi-root traversal failed");
+    }
+
+    if (dependency_count != 2U) {
+        return Fail("multi-root traversal returned wrong dependency count");
+    }
+
+    if (dependencies[0U].slot != shared.handle.slot ||
+        dependencies[0U].generation != shared.handle.generation) {
+        return Fail("multi-root traversal missed shared dependency handle");
+    }
+
+    if (dependencies[1U].slot != leaf.handle.slot ||
+        dependencies[1U].generation != leaf.handle.generation) {
+        return Fail("multi-root traversal missed transitive dependency handle");
+    }
+
+    std::array<ResourceHandle, 1U> small_dependencies{};
+    std::uint32_t required_dependency_count = 0U;
+    const ResourceSnapshot before_small_snapshot = registry.Snapshot();
+    const ResourceStatus small_status = registry.TraverseDependencies(
+        roots.data(),
+        static_cast<std::uint32_t>(roots.size()),
+        small_dependencies.data(),
+        static_cast<std::uint32_t>(small_dependencies.size()),
+        &required_dependency_count);
+    if (small_status != ResourceStatus::CapacityExceeded) {
+        return Fail("multi-root traversal small buffer did not fail deterministically");
+    }
+
+    if (required_dependency_count != 2U) {
+        return Fail("multi-root traversal small buffer missed required count");
+    }
+
+    const ResourceSnapshot after_small_snapshot = registry.Snapshot();
+    if (after_small_snapshot.dependency_edge_count != before_small_snapshot.dependency_edge_count) {
+        return Fail("multi-root traversal small buffer mutated edge count");
+    }
+
+    if (after_small_snapshot.last_required_dependency_edge_count != 2U) {
+        return Fail("multi-root traversal small buffer missed snapshot required count");
+    }
+
+    std::uint32_t empty_dependency_count = 7U;
+    const ResourceStatus empty_status = registry.TraverseDependencies(
+        nullptr,
+        0U,
+        nullptr,
+        0U,
+        &empty_dependency_count);
+    if (empty_status != ResourceStatus::Success || empty_dependency_count != 0U) {
+        return Fail("multi-root traversal empty root list did not succeed with zero output");
     }
 
     return 0;
@@ -7955,6 +8061,7 @@ int main(int argc, char** argv) {
         {TEST_DEPENDENCY_EDGE_EXACT_LOOKUP, ResourceDependencyEdgeExactLookupFindsDirectEdge},
         {TEST_DEPENDENCY_EDGE_COUNT, ResourceDependencyEdgeCountSnapshotMatchesDirectEdges},
         {TEST_DEPENDENCY_TRAVERSAL, ResourceDependencyTraversalReturnsExplicitClosureHandles},
+        {TEST_DEPENDENCY_MULTIROOT_TRAVERSAL, ResourceDependencyTraversalMultiRootDeduplicatesClosureHandles},
         {TEST_NO_FILE_PACKAGE, ResourceNoFileOrPackageDependencyForHandleRegistry},
         {TEST_DISABLED_DIAGNOSTICS, ResourceDisabledDiagnosticsDoesNotChangeResults},
         {TEST_NO_HIDDEN_ALLOCATION, ResourceNoHiddenAllocationUsesYuMemorySignal},
