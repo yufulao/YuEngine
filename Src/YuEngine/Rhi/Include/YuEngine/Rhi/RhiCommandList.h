@@ -144,11 +144,18 @@ private:
     std::size_t RequiredCommandCount() const;
     RhiStatus RecordSuccess();
     RhiStatus RecordFailure(RhiStatus status);
+    void ClearCapacityFailure();
 
     std::vector<RhiCommandRecord> records_;
     RhiTextureHandle target_handle_;
     std::size_t command_count_;
     std::size_t required_command_count_;
+    std::size_t failed_command_index_;
+    RhiCommandType failed_command_type_;
+    RhiCommandType last_command_capacity_entry_type_;
+    std::size_t last_command_capacity_entry_capacity_;
+    std::size_t last_command_capacity_entry_command_count_;
+    std::size_t last_command_capacity_entry_required_count_;
     std::size_t draw_command_count_;
     std::size_t indexed_draw_command_count_;
     std::size_t sampled_texture_bind_command_count_;

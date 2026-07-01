@@ -18,6 +18,7 @@
 #include "YuEngine/Rhi/RhiCapabilities.h"
 #include "YuEngine/Rhi/RhiConstantBufferBinding.h"
 #include "YuEngine/Rhi/RhiConstants.h"
+#include "YuEngine/Rhi/RhiCommandType.h"
 #include "YuEngine/Rhi/RhiDeviceFactory.h"
 #include "YuEngine/Rhi/RhiDrawDesc.h"
 #include "YuEngine/Rhi/RhiDrawIndexedDesc.h"
@@ -62,6 +63,7 @@ using RhiCapabilities = yuengine::rhi::RhiCapabilities;
 using RhiColor = yuengine::rhi::RhiColor;
 using RhiColorTargetDesc = yuengine::rhi::RhiColorTargetDesc;
 using RhiCommandList = yuengine::rhi::RhiCommandList;
+using yuengine::rhi::RhiCommandType;
 using RhiConstantBufferBinding = yuengine::rhi::RhiConstantBufferBinding;
 using RhiDeviceCreateResult = yuengine::rhi::RhiDeviceCreateResult;
 using RhiDeviceDesc = yuengine::rhi::RhiDeviceDesc;
@@ -1984,9 +1986,59 @@ int RhiCommandListCapacityOverflowDoesNotMutate() {
         return Fail("command capacity overflow mutated command count");
     }
 
-    const auto snapshot = command_list.Snapshot();
-    if (snapshot.required_command_count != count_before + 1U) {
+    auto snapshot = command_list.Snapshot();
+    const std::size_t expected_required_command_count = count_before + 1U;
+    if (snapshot.required_command_count != expected_required_command_count) {
         return Fail("command capacity overflow did not record required command count");
+    }
+
+    if (snapshot.failed_command_index != count_before) {
+        return Fail("command capacity overflow did not record failed command index");
+    }
+
+    if (snapshot.failed_command_type != RhiCommandType::EndFrame) {
+        return Fail("command capacity overflow did not record failed command type");
+    }
+
+    if (snapshot.last_command_capacity_entry_type != RhiCommandType::EndFrame) {
+        return Fail("command capacity overflow did not record capacity entry type");
+    }
+
+    if (snapshot.last_command_capacity_entry_capacity != 2U) {
+        return Fail("command capacity overflow did not record capacity entry capacity");
+    }
+
+    if (snapshot.last_command_capacity_entry_command_count != count_before) {
+        return Fail("command capacity overflow did not record capacity entry command count");
+    }
+
+    if (snapshot.last_command_capacity_entry_required_count != expected_required_command_count) {
+        return Fail("command capacity overflow did not record capacity entry required count");
+    }
+
+    if (command_list.Reset() != RhiStatus::Success) {
+        return Fail("command capacity reset failed");
+    }
+
+    snapshot = command_list.Snapshot();
+    if (snapshot.failed_command_index != 0U) {
+        return Fail("command capacity reset did not clear failed command index");
+    }
+
+    if (snapshot.failed_command_type != RhiCommandType::BeginFrame) {
+        return Fail("command capacity reset did not clear failed command type");
+    }
+
+    if (snapshot.last_command_capacity_entry_capacity != 0U) {
+        return Fail("command capacity reset did not clear capacity entry capacity");
+    }
+
+    if (snapshot.last_command_capacity_entry_command_count != 0U) {
+        return Fail("command capacity reset did not clear capacity entry command count");
+    }
+
+    if (snapshot.last_command_capacity_entry_required_count != 0U) {
+        return Fail("command capacity reset did not clear capacity entry required count");
     }
 
     return 0;
@@ -2081,12 +2133,63 @@ int RhiCommandListLastStatusTracksLifecycleAndCapacity() {
         return Fail("end frame capacity failure changed command count");
     }
 
-    if (snapshot.required_command_count != count_before + 1U) {
+    const std::size_t expected_required_command_count = count_before + 1U;
+    if (snapshot.required_command_count != expected_required_command_count) {
         return Fail("end frame capacity failure did not record required command count");
     }
 
     if (snapshot.last_status != RhiStatus::CapacityExceeded) {
         return Fail("end frame capacity failure did not record last status");
+    }
+
+    if (snapshot.failed_command_index != count_before) {
+        return Fail("end frame capacity failure did not record failed command index");
+    }
+
+    if (snapshot.failed_command_type != RhiCommandType::EndFrame) {
+        return Fail("end frame capacity failure did not record failed command type");
+    }
+
+    if (snapshot.last_command_capacity_entry_type != RhiCommandType::EndFrame) {
+        return Fail("end frame capacity failure did not record capacity entry type");
+    }
+
+    if (snapshot.last_command_capacity_entry_capacity != 2U) {
+        return Fail("end frame capacity failure did not record capacity entry capacity");
+    }
+
+    if (snapshot.last_command_capacity_entry_command_count != count_before) {
+        return Fail("end frame capacity failure did not record capacity entry command count");
+    }
+
+    if (snapshot.last_command_capacity_entry_required_count != expected_required_command_count) {
+        return Fail("end frame capacity failure did not record capacity entry required count");
+    }
+
+    status = command_list.BeginFrame(handle);
+    if (status != RhiStatus::InvalidLifecycle) {
+        return Fail("begin after capacity failure did not return invalid lifecycle");
+    }
+
+    snapshot = command_list.Snapshot();
+    if (snapshot.failed_command_index != 0U) {
+        return Fail("non-capacity failure did not clear failed command index");
+    }
+
+    if (snapshot.failed_command_type != RhiCommandType::BeginFrame) {
+        return Fail("non-capacity failure did not clear failed command type");
+    }
+
+    if (snapshot.last_command_capacity_entry_capacity != 0U) {
+        return Fail("non-capacity failure did not clear capacity entry capacity");
+    }
+
+    if (snapshot.last_command_capacity_entry_command_count != 0U) {
+        return Fail("non-capacity failure did not clear capacity entry command count");
+    }
+
+    if (snapshot.last_command_capacity_entry_required_count != 0U) {
+        return Fail("non-capacity failure did not clear capacity entry required count");
     }
 
     status = command_list.Reset();

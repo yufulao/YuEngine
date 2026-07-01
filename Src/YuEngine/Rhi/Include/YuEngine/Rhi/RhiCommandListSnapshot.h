@@ -5,6 +5,7 @@
 
 #include <cstddef>
 
+#include "YuEngine/Rhi/RhiCommandType.h"
 #include "YuEngine/Rhi/RhiStatus.h"
 
 namespace yuengine::rhi {
@@ -12,6 +13,12 @@ struct RhiCommandListSnapshot final {
     std::size_t capacity = 0U;
     std::size_t command_count = 0U;
     std::size_t required_command_count = 0U;
+    std::size_t failed_command_index = 0U;
+    RhiCommandType failed_command_type = RhiCommandType::BeginFrame;
+    RhiCommandType last_command_capacity_entry_type = RhiCommandType::BeginFrame;
+    std::size_t last_command_capacity_entry_capacity = 0U;
+    std::size_t last_command_capacity_entry_command_count = 0U;
+    std::size_t last_command_capacity_entry_required_count = 0U;
     std::size_t draw_command_count = 0U;
     std::size_t indexed_draw_command_count = 0U;
     std::size_t sampled_texture_bind_command_count = 0U;

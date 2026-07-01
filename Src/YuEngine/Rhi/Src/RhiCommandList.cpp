@@ -9,6 +9,12 @@ RhiCommandList::RhiCommandList(std::size_t capacity)
       target_handle_{},
       command_count_(0U),
       required_command_count_(1U),
+      failed_command_index_(0U),
+      failed_command_type_(RhiCommandType::BeginFrame),
+      last_command_capacity_entry_type_(RhiCommandType::BeginFrame),
+      last_command_capacity_entry_capacity_(0U),
+      last_command_capacity_entry_command_count_(0U),
+      last_command_capacity_entry_required_count_(0U),
       draw_command_count_(0U),
       indexed_draw_command_count_(0U),
       sampled_texture_bind_command_count_(0U),
@@ -270,6 +276,12 @@ RhiCommandListSnapshot RhiCommandList::Snapshot() const {
         records_.size(),
         command_count_,
         required_command_count_,
+        failed_command_index_,
+        failed_command_type_,
+        last_command_capacity_entry_type_,
+        last_command_capacity_entry_capacity_,
+        last_command_capacity_entry_command_count_,
+        last_command_capacity_entry_required_count_,
         draw_command_count_,
         indexed_draw_command_count_,
         sampled_texture_bind_command_count_,
@@ -304,6 +316,12 @@ bool RhiCommandList::IsComplete() const {
 RhiStatus RhiCommandList::Append(RhiCommandRecord record) {
     if (command_count_ >= records_.size()) {
         required_command_count_ = RequiredCommandCount();
+        failed_command_index_ = command_count_;
+        failed_command_type_ = record.type;
+        last_command_capacity_entry_type_ = record.type;
+        last_command_capacity_entry_capacity_ = records_.size();
+        last_command_capacity_entry_command_count_ = command_count_;
+        last_command_capacity_entry_required_count_ = required_command_count_;
         return RecordFailure(RhiStatus::CapacityExceeded);
     }
 
@@ -318,12 +336,26 @@ std::size_t RhiCommandList::RequiredCommandCount() const {
 }
 
 RhiStatus RhiCommandList::RecordSuccess() {
+    ClearCapacityFailure();
     last_status_ = RhiStatus::Success;
     return RhiStatus::Success;
 }
 
 RhiStatus RhiCommandList::RecordFailure(RhiStatus status) {
+    if (status != RhiStatus::CapacityExceeded) {
+        ClearCapacityFailure();
+    }
+
     last_status_ = status;
     return status;
+}
+
+void RhiCommandList::ClearCapacityFailure() {
+    failed_command_index_ = 0U;
+    failed_command_type_ = RhiCommandType::BeginFrame;
+    last_command_capacity_entry_type_ = RhiCommandType::BeginFrame;
+    last_command_capacity_entry_capacity_ = 0U;
+    last_command_capacity_entry_command_count_ = 0U;
+    last_command_capacity_entry_required_count_ = 0U;
 }
 }
