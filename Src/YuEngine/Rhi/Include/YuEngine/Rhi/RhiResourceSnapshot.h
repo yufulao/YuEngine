@@ -6,12 +6,20 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "YuEngine/Rhi/RhiBufferUsage.h"
 #include "YuEngine/Rhi/RhiPrimitiveRetirementSnapshot.h"
 
 namespace yuengine::rhi {
 struct RhiResourceSnapshot final {
     std::size_t buffer_capacity = 0U;
     std::size_t buffer_count = 0U;
+    std::size_t required_buffer_count = 0U;
+    std::size_t last_buffer_capacity_entry_size_bytes = 0U;
+    std::size_t last_buffer_capacity_entry_capacity = 0U;
+    std::size_t last_buffer_capacity_entry_active_count = 0U;
+    std::uint32_t last_buffer_capacity_entry_handle_slot = 0U;
+    std::uint32_t last_buffer_capacity_entry_handle_generation = 0U;
+    RhiBufferUsage last_buffer_capacity_entry_usage = RhiBufferUsage::Unsupported;
     std::size_t texture_capacity = 0U;
     std::size_t texture_count = 0U;
     std::size_t sampler_capacity = 0U;

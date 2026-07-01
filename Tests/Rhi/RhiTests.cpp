@@ -36,6 +36,7 @@
 #include "YuEngine/Rhi/RhiPrimitiveRetirementSnapshot.h"
 #include "YuEngine/Rhi/RhiPrimitiveRetirementStatus.h"
 #include "YuEngine/Rhi/RhiPrimitiveTopology.h"
+#include "YuEngine/Rhi/RhiResourceSnapshot.h"
 #include "YuEngine/Rhi/RhiSampledTextureBinding.h"
 #include "YuEngine/Rhi/RhiSamplerBinding.h"
 #include "YuEngine/Rhi/RhiSamplerDesc.h"
@@ -87,6 +88,7 @@ using RhiPrimitiveRetirementRequest = yuengine::rhi::RhiPrimitiveRetirementReque
 using RhiPrimitiveRetirementSnapshot = yuengine::rhi::RhiPrimitiveRetirementSnapshot;
 using yuengine::rhi::RhiPrimitiveRetirementStatus;
 using yuengine::rhi::RhiPrimitiveTopology;
+using RhiResourceSnapshot = yuengine::rhi::RhiResourceSnapshot;
 using RhiSampledTextureBinding = yuengine::rhi::RhiSampledTextureBinding;
 using RhiSamplerBinding = yuengine::rhi::RhiSamplerBinding;
 using RhiSamplerDesc = yuengine::rhi::RhiSamplerDesc;
@@ -172,6 +174,7 @@ constexpr const char* TEST_UPDATE_BUFFER = "RHI_UpdateBuffer_SignalsFenceAndReco
 constexpr const char *TEST_UPDATE_BUFFER_DESTINATION_RANGE =
     "RHI_UpdateBufferDestinationRange_TracksOffsetAndRejectsOverflow";
 constexpr const char* TEST_BUFFER_CAPACITY = "RHI_BufferCapacityOverflow_DoesNotMutate";
+constexpr const char* TEST_BUFFER_CAPACITY_ENTRY = "RHI_BufferCapacityEntry_ClearsStaleSnapshot";
 constexpr const char* TEST_TEXTURE_PRIMITIVE = "RHI_TextureCreateUpdateDestroy_TracksSnapshot";
 constexpr const char *TEST_UPDATE_TEXTURE_DESTINATION_RANGE =
     "RHI_UpdateTextureDestinationRange_TracksOffsetAndRejectsOverflow";
@@ -809,6 +812,67 @@ bool BytesMatchColor(const std::vector<std::uint8_t>& bytes, RhiColor color) {
     return true;
 }
 
+bool BufferCapacityEntryIsClear(const RhiResourceSnapshot &resources) {
+    if (resources.required_buffer_count != 0U) {
+        return false;
+    }
+
+    if (resources.last_buffer_capacity_entry_size_bytes != 0U) {
+        return false;
+    }
+
+    if (resources.last_buffer_capacity_entry_capacity != 0U) {
+        return false;
+    }
+
+    if (resources.last_buffer_capacity_entry_active_count != 0U) {
+        return false;
+    }
+
+    if (resources.last_buffer_capacity_entry_handle_slot != 0U) {
+        return false;
+    }
+
+    if (resources.last_buffer_capacity_entry_handle_generation != 0U) {
+        return false;
+    }
+
+    return resources.last_buffer_capacity_entry_usage == RhiBufferUsage::Unsupported;
+}
+
+bool BufferCapacityEntryMatches(
+    const RhiResourceSnapshot &resources,
+    const RhiBufferDesc &desc,
+    std::size_t active_count,
+    std::size_t capacity,
+    std::size_t required_count) {
+    if (resources.required_buffer_count != required_count) {
+        return false;
+    }
+
+    if (resources.last_buffer_capacity_entry_size_bytes != desc.size_bytes) {
+        return false;
+    }
+
+    if (resources.last_buffer_capacity_entry_capacity != capacity) {
+        return false;
+    }
+
+    if (resources.last_buffer_capacity_entry_active_count != active_count) {
+        return false;
+    }
+
+    if (resources.last_buffer_capacity_entry_handle_slot != 0U) {
+        return false;
+    }
+
+    if (resources.last_buffer_capacity_entry_handle_generation != 0U) {
+        return false;
+    }
+
+    return resources.last_buffer_capacity_entry_usage == desc.usage;
+}
+
 bool DeviceSnapshotsEqual(const RhiDeviceSnapshot &left, const RhiDeviceSnapshot &right) {
     if (left.color_target_capacity != right.color_target_capacity) {
         return false;
@@ -1003,6 +1067,34 @@ bool DeviceSnapshotsEqual(const RhiDeviceSnapshot &left, const RhiDeviceSnapshot
     }
 
     if (left.resources.buffer_count != right.resources.buffer_count) {
+        return false;
+    }
+
+    if (left.resources.required_buffer_count != right.resources.required_buffer_count) {
+        return false;
+    }
+
+    if (left.resources.last_buffer_capacity_entry_size_bytes != right.resources.last_buffer_capacity_entry_size_bytes) {
+        return false;
+    }
+
+    if (left.resources.last_buffer_capacity_entry_capacity != right.resources.last_buffer_capacity_entry_capacity) {
+        return false;
+    }
+
+    if (left.resources.last_buffer_capacity_entry_active_count != right.resources.last_buffer_capacity_entry_active_count) {
+        return false;
+    }
+
+    if (left.resources.last_buffer_capacity_entry_handle_slot != right.resources.last_buffer_capacity_entry_handle_slot) {
+        return false;
+    }
+
+    if (left.resources.last_buffer_capacity_entry_handle_generation != right.resources.last_buffer_capacity_entry_handle_generation) {
+        return false;
+    }
+
+    if (left.resources.last_buffer_capacity_entry_usage != right.resources.last_buffer_capacity_entry_usage) {
         return false;
     }
 
@@ -2928,12 +3020,13 @@ int RhiUpdateBufferDestinationRangeTracksOffsetAndRejectsOverflow() {
 
 int RhiBufferCapacityOverflowDoesNotMutate() {
     NullRhiDevice device = CreateInitializedDevice();
+    const RhiBufferDesc buffer_desc = SmallVertexBufferDesc();
     const std::span<const std::uint8_t> empty_bytes{};
     std::vector<RhiBufferHandle> handles;
     handles.reserve(MAX_RHI_BUFFERS);
     for (std::size_t index = 0U; index < MAX_RHI_BUFFERS; ++index) {
         RhiBufferHandle handle{};
-        if (device.CreateBuffer(SmallVertexBufferDesc(), empty_bytes, handle) != RhiStatus::Success) {
+        if (device.CreateBuffer(buffer_desc, empty_bytes, handle) != RhiStatus::Success) {
             return Fail("buffer creation within capacity failed");
         }
 
@@ -2942,7 +3035,7 @@ int RhiBufferCapacityOverflowDoesNotMutate() {
 
     const auto before_snapshot = device.Snapshot();
     RhiBufferHandle overflow_handle{};
-    const RhiStatus status = device.CreateBuffer(SmallVertexBufferDesc(), empty_bytes, overflow_handle);
+    const RhiStatus status = device.CreateBuffer(buffer_desc, empty_bytes, overflow_handle);
     if (status != RhiStatus::CapacityExceeded) {
         return Fail("buffer capacity overflow did not return capacity status");
     }
@@ -2958,6 +3051,126 @@ int RhiBufferCapacityOverflowDoesNotMutate() {
 
     if (overflow_handle.generation != 0U) {
         return Fail("buffer capacity overflow wrote an output handle");
+    }
+
+    const std::size_t required_count = MAX_RHI_BUFFERS + 1U;
+    if (!BufferCapacityEntryMatches(
+        after_snapshot.resources,
+        buffer_desc,
+        MAX_RHI_BUFFERS,
+        MAX_RHI_BUFFERS,
+        required_count)) {
+        return Fail("buffer capacity overflow did not record rejected entry");
+    }
+
+    return 0;
+}
+
+int RhiBufferCapacityEntryClearsStaleSnapshot() {
+    NullRhiDevice device = CreateInitializedDevice();
+    const RhiBufferDesc buffer_desc = SmallVertexBufferDesc();
+    const std::span<const std::uint8_t> empty_bytes{};
+    std::vector<RhiBufferHandle> handles;
+    handles.reserve(MAX_RHI_BUFFERS);
+    for (std::size_t index = 0U; index < MAX_RHI_BUFFERS; ++index) {
+        RhiBufferHandle handle{};
+        if (device.CreateBuffer(buffer_desc, empty_bytes, handle) != RhiStatus::Success) {
+            return Fail("buffer capacity entry setup failed");
+        }
+
+        handles.emplace_back(handle);
+    }
+
+    const std::size_t required_count = MAX_RHI_BUFFERS + 1U;
+    RhiBufferHandle overflow_handle{};
+    RhiStatus status = device.CreateBuffer(buffer_desc, empty_bytes, overflow_handle);
+    if (status != RhiStatus::CapacityExceeded) {
+        return Fail("buffer capacity entry overflow did not reject");
+    }
+
+    const auto overflow_snapshot = device.Snapshot();
+    if (!BufferCapacityEntryMatches(
+        overflow_snapshot.resources,
+        buffer_desc,
+        MAX_RHI_BUFFERS,
+        MAX_RHI_BUFFERS,
+        required_count)) {
+        return Fail("buffer capacity entry snapshot was not recorded");
+    }
+
+    RhiBufferDesc invalid_desc{};
+    RhiBufferHandle invalid_handle{};
+    status = device.CreateBuffer(invalid_desc, empty_bytes, invalid_handle);
+    if (status != RhiStatus::InvalidDescriptor) {
+        return Fail("invalid buffer desc did not return invalid descriptor");
+    }
+
+    const auto invalid_snapshot = device.Snapshot();
+    if (!BufferCapacityEntryIsClear(invalid_snapshot.resources)) {
+        return Fail("invalid buffer desc did not clear stale capacity entry");
+    }
+
+    status = device.CreateBuffer(buffer_desc, empty_bytes, overflow_handle);
+    if (status != RhiStatus::CapacityExceeded) {
+        return Fail("buffer capacity reoverflow did not reject");
+    }
+
+    const auto reoverflow_snapshot = device.Snapshot();
+    if (!BufferCapacityEntryMatches(
+        reoverflow_snapshot.resources,
+        buffer_desc,
+        MAX_RHI_BUFFERS,
+        MAX_RHI_BUFFERS,
+        required_count)) {
+        return Fail("buffer capacity reoverflow did not restore entry");
+    }
+
+    const RhiBufferHandle released_handle = handles.back();
+    status = device.DestroyBuffer(released_handle);
+    if (status != RhiStatus::Success) {
+        return Fail("destroy buffer did not clear capacity setup");
+    }
+
+    const auto destroy_snapshot = device.Snapshot();
+    if (!BufferCapacityEntryIsClear(destroy_snapshot.resources)) {
+        return Fail("destroy buffer did not clear stale capacity entry");
+    }
+
+    RhiBufferHandle restored_handle{};
+    status = device.CreateBuffer(buffer_desc, empty_bytes, restored_handle);
+    if (status != RhiStatus::Success) {
+        return Fail("buffer recreate after overflow failed");
+    }
+
+    const auto recreate_snapshot = device.Snapshot();
+    if (!BufferCapacityEntryIsClear(recreate_snapshot.resources)) {
+        return Fail("buffer recreate did not keep capacity entry clear");
+    }
+
+    status = device.CreateBuffer(buffer_desc, empty_bytes, overflow_handle);
+    if (status != RhiStatus::CapacityExceeded) {
+        return Fail("buffer capacity final overflow did not reject");
+    }
+
+    const auto final_overflow_snapshot = device.Snapshot();
+    if (!BufferCapacityEntryMatches(
+        final_overflow_snapshot.resources,
+        buffer_desc,
+        MAX_RHI_BUFFERS,
+        MAX_RHI_BUFFERS,
+        required_count)) {
+        return Fail("buffer capacity final overflow did not record entry");
+    }
+
+    RhiDeviceDesc device_desc{};
+    status = device.Initialize(device_desc);
+    if (status != RhiStatus::Success) {
+        return Fail("device reinitialize failed");
+    }
+
+    const auto reinitialize_snapshot = device.Snapshot();
+    if (!BufferCapacityEntryIsClear(reinitialize_snapshot.resources)) {
+        return Fail("device reinitialize did not clear stale capacity entry");
     }
 
     return 0;
@@ -5081,6 +5294,7 @@ int main(int argc, char** argv) {
         {TEST_UPDATE_BUFFER, RhiUpdateBufferSignalsFenceAndRecordsBytes},
         {TEST_UPDATE_BUFFER_DESTINATION_RANGE, RhiUpdateBufferDestinationRangeTracksOffsetAndRejectsOverflow},
         {TEST_BUFFER_CAPACITY, RhiBufferCapacityOverflowDoesNotMutate},
+        {TEST_BUFFER_CAPACITY_ENTRY, RhiBufferCapacityEntryClearsStaleSnapshot},
         {TEST_TEXTURE_PRIMITIVE, RhiTextureCreateUpdateDestroyTracksSnapshot},
         {TEST_UPDATE_TEXTURE_DESTINATION_RANGE, RhiUpdateTextureDestinationRangeTracksOffsetAndRejectsOverflow},
         {TEST_SAMPLER_PRIMITIVE, RhiSamplerCreateDestroyTracksSnapshot},

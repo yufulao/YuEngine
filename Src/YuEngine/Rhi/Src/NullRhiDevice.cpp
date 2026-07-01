@@ -121,8 +121,43 @@ void RecordPrimitiveRetirementCapacityFailure(
     retirement.last_failed_retirement_wait_fence = request.wait_fence;
 }
 
+void ClearBufferCapacityEntry(RhiResourceSnapshot &resources) {
+    resources.required_buffer_count = 0U;
+    resources.last_buffer_capacity_entry_size_bytes = 0U;
+    resources.last_buffer_capacity_entry_capacity = 0U;
+    resources.last_buffer_capacity_entry_active_count = 0U;
+    resources.last_buffer_capacity_entry_handle_slot = 0U;
+    resources.last_buffer_capacity_entry_handle_generation = 0U;
+    resources.last_buffer_capacity_entry_usage = RhiBufferUsage::Unsupported;
+}
+
+void StoreBufferCapacityEntry(
+    RhiDeviceSnapshot &snapshot,
+    const RhiBufferDesc &desc,
+    RhiBufferHandle handle) {
+    RhiResourceSnapshot &resources = snapshot.resources;
+    resources.required_buffer_count = resources.buffer_count + 1U;
+    resources.last_buffer_capacity_entry_size_bytes = desc.size_bytes;
+    resources.last_buffer_capacity_entry_capacity = resources.buffer_capacity;
+    resources.last_buffer_capacity_entry_active_count = resources.buffer_count;
+    resources.last_buffer_capacity_entry_handle_slot = handle.slot;
+    resources.last_buffer_capacity_entry_handle_generation = handle.generation;
+    resources.last_buffer_capacity_entry_usage = desc.usage;
+}
+
+RhiStatus RecordBufferCapacityFailure(
+    RhiDeviceSnapshot &snapshot,
+    const RhiBufferDesc &desc,
+    RhiBufferHandle handle) {
+    StoreBufferCapacityEntry(snapshot, desc, handle);
+    ++snapshot.failed_operation_count;
+    snapshot.last_status = RhiStatus::CapacityExceeded;
+    return RhiStatus::CapacityExceeded;
+}
+
 RhiStatus RecordDeviceSuccess(RhiDeviceSnapshot &snapshot) {
     ClearPrimitiveRetirementCapacityFailure(snapshot);
+    ClearBufferCapacityEntry(snapshot.resources);
     snapshot.last_status = RhiStatus::Success;
     return RhiStatus::Success;
 }
@@ -920,6 +955,7 @@ RhiCaptureResult NullRhiDevice::CapturePresentedTarget(std::span<std::uint8_t> d
     snapshot_.last_capture_bytes_written = byte_count;
     snapshot_.last_capture_extent = slot.desc.extent;
     ClearCaptureCapacityFailure(snapshot_);
+    ClearBufferCapacityEntry(snapshot_.resources);
     snapshot_.last_status = RhiStatus::Success;
     return RhiCaptureResult{RhiStatus::Success, byte_count, slot.desc.extent};
 }
@@ -957,7 +993,7 @@ RhiStatus NullRhiDevice::CreateBuffer(
         return RecordDeviceSuccess(snapshot_);
     }
 
-    return RecordFailure(RhiStatus::CapacityExceeded);
+    return RecordBufferCapacityFailure(snapshot_, desc, out_handle);
 }
 
 RhiStatus NullRhiDevice::UpdateBuffer(
@@ -1338,6 +1374,7 @@ RhiDeviceSnapshot NullRhiDevice::Snapshot() const {
 
 RhiStatus NullRhiDevice::RecordFailure(RhiStatus status) {
     ClearPrimitiveRetirementCapacityFailure(snapshot_);
+    ClearBufferCapacityEntry(snapshot_.resources);
     ++snapshot_.failed_operation_count;
     snapshot_.last_status = status;
     return status;
