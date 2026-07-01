@@ -51,6 +51,8 @@ using yuengine::resource::ResourceCachePayloadOperation;
 using yuengine::resource::ResourceCachePayloadRequest;
 using yuengine::resource::ResourceCachePayloadSnapshot;
 using yuengine::resource::ResourceCachePayloadStatus;
+using yuengine::resource::ResourceDependencyBatchResult;
+using yuengine::resource::ResourceDependencyRequest;
 using yuengine::resource::ResourceDescriptor;
 using yuengine::resource::ResourceDecodedPayloadBudgetDesc;
 using yuengine::resource::ResourceDecodedPayloadOperation;
@@ -124,6 +126,8 @@ constexpr const char* TEST_RETIRE_REFERENCED = "Resource_RetireRejectsOutstandin
 constexpr const char* TEST_RETIRE_DEPENDED_ON = "Resource_RetireRejectsLiveDependentEdge";
 constexpr const char* TEST_MISSING_DEPENDENCY = "Resource_DependencyValidationRejectsMissingDependency";
 constexpr const char* TEST_DEPENDENCY_CYCLE = "Resource_DependencyValidationRejectsCycle";
+constexpr const char *TEST_DEPENDENCY_BATCH =
+    "Resource_DependencyBatchSubmitsRowsAndStopsOnFirstFailure";
 constexpr const char *TEST_DEPENDENCY_EDGE_EXACT_LOOKUP =
     "Resource_DependencyEdgeExactLookupFindsDirectEdge";
 constexpr const char *TEST_DEPENDENCY_EDGE_COUNT =
@@ -1997,6 +2001,154 @@ int ResourceDependencyValidationRejectsCycle() {
 
     if (registry.Snapshot().dependency_edge_count != 2U) {
         return Fail("dependency cycle changed edge count");
+    }
+
+    return 0;
+}
+
+int ResourceDependencyBatchSubmitsRowsAndStopsOnFirstFailure() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult root = Register(registry, TYPE_MATERIAL, "batch_root");
+    const ResourceRegistrationResult shared = Register(registry, TYPE_TEXTURE, "batch_shared");
+    const ResourceRegistrationResult leaf = Register(registry, TYPE_AUDIO, "batch_leaf");
+    if (!root.Succeeded()) {
+        return Fail("dependency batch root registration failed");
+    }
+
+    if (!shared.Succeeded()) {
+        return Fail("dependency batch shared registration failed");
+    }
+
+    if (!leaf.Succeeded()) {
+        return Fail("dependency batch leaf registration failed");
+    }
+
+    const ResourceDependencyBatchResult empty_result = registry.AddDependencies(nullptr, 0U);
+    if (!empty_result.Succeeded() || empty_result.committed_dependency_edge_count != 0U) {
+        return Fail("dependency batch empty submission did not succeed");
+    }
+
+    const ResourceSnapshot before_null_snapshot = registry.Snapshot();
+    const ResourceDependencyBatchResult null_result = registry.AddDependencies(nullptr, 1U);
+    if (null_result.status != ResourceStatus::InvalidHandle ||
+        null_result.committed_dependency_edge_count != 0U ||
+        null_result.failed_dependency_edge_index != 0U) {
+        return Fail("dependency batch null submission missed explicit failure result");
+    }
+
+    const ResourceSnapshot after_null_snapshot = registry.Snapshot();
+    if (after_null_snapshot.dependency_edge_count != before_null_snapshot.dependency_edge_count) {
+        return Fail("dependency batch null submission changed edge count");
+    }
+
+    const std::array<ResourceDependencyRequest, 2U> success_rows{{
+        ResourceDependencyRequest{root.handle, shared.handle},
+        ResourceDependencyRequest{shared.handle, leaf.handle}}};
+    const ResourceDependencyBatchResult success_result = registry.AddDependencies(
+        success_rows.data(),
+        static_cast<std::uint32_t>(success_rows.size()));
+    if (!success_result.Succeeded() ||
+        success_result.committed_dependency_edge_count != 2U ||
+        success_result.failed_dependency_edge_index != 0U) {
+        return Fail("dependency batch success result was not deterministic");
+    }
+
+    std::array<ResourceHandle, 2U> dependencies{};
+    std::uint32_t dependency_count = 0U;
+    const ResourceStatus traverse_status = registry.TraverseDependencies(
+        root.handle,
+        dependencies.data(),
+        static_cast<std::uint32_t>(dependencies.size()),
+        &dependency_count);
+    if (traverse_status != ResourceStatus::Success || dependency_count != 2U) {
+        return Fail("dependency batch committed edges were not visible to traversal");
+    }
+
+    if (dependencies[0U].slot != shared.handle.slot ||
+        dependencies[1U].slot != leaf.handle.slot) {
+        return Fail("dependency batch traversal returned wrong committed order");
+    }
+
+    const ResourceSnapshot before_duplicate_snapshot = registry.Snapshot();
+    const std::array<ResourceDependencyRequest, 1U> duplicate_rows{{
+        ResourceDependencyRequest{root.handle, shared.handle}}};
+    const ResourceDependencyBatchResult duplicate_result = registry.AddDependencies(
+        duplicate_rows.data(),
+        static_cast<std::uint32_t>(duplicate_rows.size()));
+    if (!duplicate_result.Succeeded() || duplicate_result.committed_dependency_edge_count != 1U) {
+        return Fail("dependency batch duplicate row did not reuse AddDependency success semantics");
+    }
+
+    if (registry.Snapshot().dependency_edge_count != before_duplicate_snapshot.dependency_edge_count) {
+        return Fail("dependency batch duplicate row added a second edge");
+    }
+
+    const ResourceRegistrationResult cycle_first = Register(registry, TYPE_EFFECT, "batch_cycle_first");
+    const ResourceRegistrationResult cycle_second = Register(registry, TYPE_AUDIO, "batch_cycle_second");
+    const ResourceRegistrationResult cycle_third = Register(registry, TYPE_TEXTURE, "batch_cycle_third");
+    if (!cycle_first.Succeeded() || !cycle_second.Succeeded() || !cycle_third.Succeeded()) {
+        return Fail("dependency batch cycle fixture registration failed");
+    }
+
+    const ResourceSnapshot before_cycle_snapshot = registry.Snapshot();
+    const std::array<ResourceDependencyRequest, 3U> cycle_rows{{
+        ResourceDependencyRequest{cycle_first.handle, cycle_second.handle},
+        ResourceDependencyRequest{cycle_second.handle, cycle_first.handle},
+        ResourceDependencyRequest{cycle_second.handle, cycle_third.handle}}};
+    const ResourceDependencyBatchResult cycle_result = registry.AddDependencies(
+        cycle_rows.data(),
+        static_cast<std::uint32_t>(cycle_rows.size()));
+    if (cycle_result.status != ResourceStatus::DependencyCycle ||
+        cycle_result.committed_dependency_edge_count != 1U ||
+        cycle_result.failed_dependency_edge_index != 1U) {
+        return Fail("dependency batch cycle failure missed committed count or failed index");
+    }
+
+    const ResourceSnapshot after_cycle_snapshot = registry.Snapshot();
+    if (after_cycle_snapshot.dependency_edge_count != before_cycle_snapshot.dependency_edge_count + 1U) {
+        return Fail("dependency batch cycle failure rolled back or over-committed rows");
+    }
+
+    std::array<ResourceHandle, 1U> cycle_dependencies{};
+    std::uint32_t cycle_dependency_count = 0U;
+    const ResourceStatus cycle_traverse_status = registry.TraverseDependencies(
+        cycle_second.handle,
+        cycle_dependencies.data(),
+        static_cast<std::uint32_t>(cycle_dependencies.size()),
+        &cycle_dependency_count);
+    if (cycle_traverse_status != ResourceStatus::Success || cycle_dependency_count != 0U) {
+        return Fail("dependency batch applied rows after first failure");
+    }
+
+    ResourceRegistry capacity_registry(ResourceRegistryDesc{3U, 3U, 1U});
+    const ResourceRegistrationResult capacity_dependency =
+        Register(capacity_registry, TYPE_TEXTURE, "batch_capacity_dependency");
+    const ResourceRegistrationResult capacity_first =
+        Register(capacity_registry, TYPE_MATERIAL, "batch_capacity_first");
+    const ResourceRegistrationResult capacity_second =
+        Register(capacity_registry, TYPE_EFFECT, "batch_capacity_second");
+    if (!capacity_dependency.Succeeded() ||
+        !capacity_first.Succeeded() ||
+        !capacity_second.Succeeded()) {
+        return Fail("dependency batch capacity fixture registration failed");
+    }
+
+    const std::array<ResourceDependencyRequest, 2U> capacity_rows{{
+        ResourceDependencyRequest{capacity_first.handle, capacity_dependency.handle},
+        ResourceDependencyRequest{capacity_second.handle, capacity_dependency.handle}}};
+    const ResourceDependencyBatchResult capacity_result = capacity_registry.AddDependencies(
+        capacity_rows.data(),
+        static_cast<std::uint32_t>(capacity_rows.size()));
+    if (capacity_result.status != ResourceStatus::CapacityExceeded ||
+        capacity_result.committed_dependency_edge_count != 1U ||
+        capacity_result.failed_dependency_edge_index != 1U) {
+        return Fail("dependency batch capacity failure missed committed count or failed index");
+    }
+
+    const ResourceSnapshot capacity_snapshot = capacity_registry.Snapshot();
+    if (capacity_snapshot.dependency_edge_count != 1U ||
+        capacity_snapshot.last_required_dependency_edge_count != 2U) {
+        return Fail("dependency batch capacity failure missed required edge count");
     }
 
     return 0;
@@ -8058,6 +8210,7 @@ int main(int argc, char** argv) {
         {TEST_RETIRE_DEPENDED_ON, ResourceRetireRejectsLiveDependentEdge},
         {TEST_MISSING_DEPENDENCY, ResourceDependencyValidationRejectsMissingDependency},
         {TEST_DEPENDENCY_CYCLE, ResourceDependencyValidationRejectsCycle},
+        {TEST_DEPENDENCY_BATCH, ResourceDependencyBatchSubmitsRowsAndStopsOnFirstFailure},
         {TEST_DEPENDENCY_EDGE_EXACT_LOOKUP, ResourceDependencyEdgeExactLookupFindsDirectEdge},
         {TEST_DEPENDENCY_EDGE_COUNT, ResourceDependencyEdgeCountSnapshotMatchesDirectEdges},
         {TEST_DEPENDENCY_TRAVERSAL, ResourceDependencyTraversalReturnsExplicitClosureHandles},

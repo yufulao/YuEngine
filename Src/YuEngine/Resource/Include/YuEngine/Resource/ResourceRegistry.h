@@ -52,6 +52,25 @@
 #include "YuEngine/Resource/ResourceSnapshot.h"
 
 namespace yuengine::resource {
+struct ResourceDependencyRequest final {
+    ResourceHandle dependent{};
+    ResourceHandle dependency{};
+};
+
+struct ResourceDependencyBatchResult final {
+    ResourceStatus status = ResourceStatus::InvalidHandle;
+    std::uint32_t committed_dependency_edge_count = 0U;
+    std::uint32_t failed_dependency_edge_index = 0U;
+
+    /**
+     * @comment 检查 batch 结果是否成功。
+     * @return 条件满足时返回 true，否则返回 false。
+     */
+    bool Succeeded() const {
+        return status == ResourceStatus::Success;
+    }
+};
+
 class ResourceRegistry final {
 public:
     /**
@@ -77,6 +96,15 @@ public:
      * @return 显式操作状态。
      */
     ResourceStatus AddDependency(ResourceHandle dependent, ResourceHandle dependency);
+    /**
+     * @comment 按顺序提交多个显式 Resource dependency 请求。
+     * @param dependencies 输入 dependency 请求数组。
+     * @param dependency_count 输入 dependency 请求数量。
+     * @return 显式 batch 操作结果。
+     */
+    ResourceDependencyBatchResult AddDependencies(
+        const ResourceDependencyRequest *dependencies,
+        std::uint32_t dependency_count);
     /**
      * @comment 精确查找当前直接 Resource dependency 边。
      * @param dependent 输入 dependent。

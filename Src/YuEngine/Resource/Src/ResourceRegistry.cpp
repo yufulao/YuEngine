@@ -463,6 +463,39 @@ ResourceStatus ResourceRegistry::AddDependency(ResourceHandle dependent, Resourc
     return status;
 }
 
+ResourceDependencyBatchResult ResourceRegistry::AddDependencies(
+    const ResourceDependencyRequest *dependencies,
+    std::uint32_t dependency_count) {
+    ResourceDependencyBatchResult result{};
+    result.status = ResourceStatus::Success;
+
+    if (dependency_count == 0U) {
+        RecordSuccess();
+        return result;
+    }
+
+    if (dependencies == nullptr) {
+        result.status = RecordFailure(ResourceStatus::InvalidHandle);
+        return result;
+    }
+
+    for (std::uint32_t dependency_index = 0U;
+        dependency_index < dependency_count;
+        ++dependency_index) {
+        const ResourceDependencyRequest &request = dependencies[dependency_index];
+        const ResourceStatus status = AddDependency(request.dependent, request.dependency);
+        if (status != ResourceStatus::Success) {
+            result.status = status;
+            result.failed_dependency_edge_index = dependency_index;
+            return result;
+        }
+
+        result.committed_dependency_edge_count = dependency_index + 1U;
+    }
+
+    return result;
+}
+
 ResourceStatus ResourceRegistry::FindDependencyEdge(
     ResourceHandle dependent,
     ResourceHandle dependency,
