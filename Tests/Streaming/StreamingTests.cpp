@@ -144,6 +144,8 @@ constexpr const char *TEST_BYTE_RANGE =
     "Streaming_PackageResourceStaging_RejectsByteRangeOverflowWithoutMutation";
 constexpr const char *TEST_FILE_BYTE_MISMATCH =
     "Streaming_PackageResourceStaging_ReportsFileByteCountMismatch";
+constexpr const char *TEST_STAGING_MULTI_DRAIN_MIXED_STATUS =
+    "Streaming_PackageResourceStaging_MultiDrainPreservesMixedFinalStatus";
 constexpr const char *TEST_MISSING_COMPLETION =
     "Streaming_PackageResourceStaging_ReportsMissingFileCompletion";
 constexpr const char *TEST_QUEUE_OVERFLOW =
@@ -1650,6 +1652,173 @@ int StreamingPackageResourceStagingReportsFileByteCountMismatch() {
 
     if (snapshot.pending_count != 0U) {
         return Fail("file byte mismatch left pending record");
+    }
+
+    return 0;
+}
+
+int StreamingPackageResourceStagingMultiDrainPreservesMixedFinalStatus() {
+    MountTable table = CreateMountedTable();
+    AsyncFileReadQueue file_queue;
+    if (file_queue.Initialize(2U, 2U) != AsyncFileReadStatus::Success) {
+        return Fail("mixed staging file queue initialize failed");
+    }
+
+    if (file_queue.Start() != AsyncFileReadStatus::Success) {
+        return Fail("mixed staging file queue start failed");
+    }
+
+    ResourceRegistry resource_registry;
+    PackageLoadPlanRecord record;
+    if (!BuildPackageRecord(&record, 0U, FixtureByteCount())) {
+        return Fail("mixed staging package record build failed");
+    }
+
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("mixed staging resource registration failed");
+    }
+
+    std::array<std::uint8_t, OUTPUT_CAPACITY> first_output{};
+    std::array<std::uint8_t, OUTPUT_CAPACITY> second_output{};
+    PackageResourceStagingRequest first_request = BuildStagingRequest(
+        resource_registry,
+        file_queue,
+        table,
+        record,
+        resource_result.handle,
+        REQUEST_ONE,
+        first_output.data(),
+        first_output.size());
+    PackageResourceStagingRequest second_request = BuildStagingRequest(
+        resource_registry,
+        file_queue,
+        table,
+        record,
+        resource_result.handle,
+        REQUEST_TWO,
+        second_output.data(),
+        second_output.size());
+    PackageResourceStagingQueue queue(PackageResourceStagingQueueDesc{2U, 2U});
+    if (queue.Submit(first_request) != PackageResourceStagingStatus::Queued) {
+        return Fail("first mixed staging request was not queued");
+    }
+
+    if (queue.Submit(second_request) != PackageResourceStagingStatus::Queued) {
+        return Fail("second mixed staging request was not queued");
+    }
+
+    AsyncFileReadResult failed_result = SuccessFileResult(REQUEST_ONE);
+    failed_result.status = AsyncFileReadStatus::ReadFailure;
+    failed_result.file_status = FileStatus::ReadFailure;
+    failed_result.byte_count = 0U;
+    if (queue.CompleteFileRead(failed_result) != PackageResourceStagingStatus::FileReadFailed) {
+        return Fail("mixed staging failed request did not preserve failure status");
+    }
+
+    if (queue.CompleteFileRead(SuccessFileResult(REQUEST_TWO)) != PackageResourceStagingStatus::Success) {
+        return Fail("mixed staging successful request did not complete");
+    }
+
+    if (file_queue.Shutdown(true) != AsyncFileReadStatus::ShutdownComplete) {
+        return Fail("mixed staging file queue shutdown failed");
+    }
+
+    std::array<PackageResourceStagingCompletion, 2U> completions{};
+    std::uint32_t written_count = 0U;
+    const PackageResourceStagingStatus drain_status = queue.DrainCompletions(
+        completions.data(),
+        static_cast<std::uint32_t>(completions.size()),
+        &written_count);
+    if (drain_status != PackageResourceStagingStatus::Success) {
+        return Fail("mixed staging drain did not succeed");
+    }
+
+    if (written_count != 2U) {
+        return Fail("mixed staging drain did not return both completions");
+    }
+
+    if (completions[0U].request_id != REQUEST_ONE) {
+        return Fail("mixed staging failure request id changed");
+    }
+
+    if (completions[0U].status != PackageResourceStagingStatus::FileReadFailed) {
+        return Fail("mixed staging failure completion status changed");
+    }
+
+    if (completions[0U].async_file_status != AsyncFileReadStatus::ReadFailure) {
+        return Fail("mixed staging async failure status changed");
+    }
+
+    if (completions[0U].file_status != FileStatus::ReadFailure) {
+        return Fail("mixed staging file failure status changed");
+    }
+
+    if (completions[1U].request_id != REQUEST_TWO) {
+        return Fail("mixed staging success request id changed");
+    }
+
+    if (completions[1U].status != PackageResourceStagingStatus::Success) {
+        return Fail("mixed staging success completion status changed");
+    }
+
+    if (completions[1U].staged_byte_count != FixtureByteCount()) {
+        return Fail("mixed staging success byte count changed");
+    }
+
+    const PackageResourceStagingSnapshot snapshot = queue.Snapshot();
+    if (snapshot.completed_count != 1U) {
+        return Fail("mixed staging completed count changed");
+    }
+
+    if (snapshot.failed_count != 1U) {
+        return Fail("mixed staging failed count changed");
+    }
+
+    if (snapshot.pending_count != 0U) {
+        return Fail("mixed staging left pending records");
+    }
+
+    if (snapshot.completion_count != 0U) {
+        return Fail("mixed staging left drained completions");
+    }
+
+    if (snapshot.last_status != PackageResourceStagingStatus::FileReadFailed) {
+        return Fail("mixed staging drain lost failure status");
+    }
+
+    if (snapshot.last_async_file_status != AsyncFileReadStatus::ReadFailure) {
+        return Fail("mixed staging drain lost async failure status");
+    }
+
+    if (snapshot.last_file_status != FileStatus::ReadFailure) {
+        return Fail("mixed staging drain lost file failure status");
+    }
+
+    std::uint32_t empty_written_count = 1U;
+    const PackageResourceStagingStatus empty_drain_status = queue.DrainCompletions(
+        completions.data(),
+        static_cast<std::uint32_t>(completions.size()),
+        &empty_written_count);
+    if (empty_drain_status != PackageResourceStagingStatus::Success) {
+        return Fail("empty mixed staging drain failed");
+    }
+
+    if (empty_written_count != 0U) {
+        return Fail("empty mixed staging drain wrote completions");
+    }
+
+    const PackageResourceStagingSnapshot final_snapshot = queue.Snapshot();
+    if (final_snapshot.last_status != PackageResourceStagingStatus::FileReadFailed) {
+        return Fail("empty mixed staging drain overwrote failure status");
+    }
+
+    if (final_snapshot.last_async_file_status != AsyncFileReadStatus::ReadFailure) {
+        return Fail("empty mixed staging drain overwrote async failure status");
+    }
+
+    if (final_snapshot.last_file_status != FileStatus::ReadFailure) {
+        return Fail("empty mixed staging drain overwrote file failure status");
     }
 
     return 0;
@@ -4756,6 +4925,8 @@ int main(int argc, char **argv) {
         {TEST_OUTPUT_CAPACITY, StreamingPackageResourceStagingRejectsArchiveByteSizeOverOutputCapacity},
         {TEST_BYTE_RANGE, StreamingPackageResourceStagingRejectsByteRangeOverflowWithoutMutation},
         {TEST_FILE_BYTE_MISMATCH, StreamingPackageResourceStagingReportsFileByteCountMismatch},
+        {TEST_STAGING_MULTI_DRAIN_MIXED_STATUS,
+         StreamingPackageResourceStagingMultiDrainPreservesMixedFinalStatus},
         {TEST_MISSING_COMPLETION, StreamingPackageResourceStagingReportsMissingFileCompletion},
         {TEST_QUEUE_OVERFLOW, StreamingPackageResourceStagingRejectsQueueOverflowWithoutMutation},
         {TEST_COMPLETION_OVERFLOW, StreamingPackageResourceStagingReportsCompletionOverflowWithoutDroppingPending},

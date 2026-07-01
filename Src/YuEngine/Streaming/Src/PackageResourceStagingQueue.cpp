@@ -170,7 +170,6 @@ PackageResourceStagingStatus PackageResourceStagingQueue::DrainCompletions(
 
     if (snapshot_.completion_count == 0U) {
         snapshot_.required_completion_count = 0U;
-        snapshot_.last_status = PackageResourceStagingStatus::Success;
         return PackageResourceStagingStatus::Success;
     }
 
@@ -185,12 +184,17 @@ PackageResourceStagingStatus PackageResourceStagingQueue::DrainCompletions(
     }
 
     PackageResourceStagingStatus last_status = PackageResourceStagingStatus::Success;
+    file::AsyncFileReadStatus last_async_file_status = file::AsyncFileReadStatus::Success;
+    file::FileStatus last_file_status = file::FileStatus::Success;
     for (std::uint32_t index = 0U; index < snapshot_.completion_count; ++index) {
-        if (completions_[index].status != PackageResourceStagingStatus::Success) {
-            last_status = completions_[index].status;
+        const PackageResourceStagingCompletion completion = completions_[index];
+        if (completion.status != PackageResourceStagingStatus::Success) {
+            last_status = completion.status;
+            last_async_file_status = completion.async_file_status;
+            last_file_status = completion.file_status;
         }
 
-        output_completions[index] = completions_[index];
+        output_completions[index] = completion;
         ++(*written_count);
         completions_[index] = PackageResourceStagingCompletion{};
     }
@@ -198,6 +202,8 @@ PackageResourceStagingStatus PackageResourceStagingQueue::DrainCompletions(
     snapshot_.completion_count = 0U;
     snapshot_.required_completion_count = 0U;
     snapshot_.last_status = last_status;
+    snapshot_.last_async_file_status = last_async_file_status;
+    snapshot_.last_file_status = last_file_status;
     return PackageResourceStagingStatus::Success;
 }
 
