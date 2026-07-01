@@ -43,6 +43,8 @@ constexpr const char *TEST_INVALID_RECORDS =
     "UiCore_UiFileSchema_RejectsInvalidRecordsWithoutMutation";
 constexpr const char *TEST_SMALL_OUTPUT =
     "UiCore_UiFileSchema_RejectsSmallIssueOutputWithoutMutation";
+constexpr const char *TEST_CAPACITY_ENTRY =
+    "UiCore_UiFileSchema_OutputCapacityReportsFirstUnreportedIssue";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr std::uint32_t SENTINEL_NODE_ID = 777U;
@@ -160,6 +162,34 @@ bool IssueMatchesSentinel(const UiFileSchemaIssueRecord &record) {
     }
 
     return record.duplicate_count == SENTINEL_DUPLICATE_COUNT;
+}
+
+bool CapacityEntryIsClear(const UiFileSchemaValidationResult &result) {
+    if (result.required_issue_count != 0U) {
+        return false;
+    }
+
+    if (result.capacity_entry_issue_capacity != 0U) {
+        return false;
+    }
+
+    if (result.capacity_entry_current_issue_count != 0U) {
+        return false;
+    }
+
+    if (result.capacity_entry_required_issue_count != 0U) {
+        return false;
+    }
+
+    if (result.failed_issue_kind != UiFileSchemaIssueKind::None) {
+        return false;
+    }
+
+    if (result.failed_context_key != 0U) {
+        return false;
+    }
+
+    return result.failed_duplicate_count == 0U;
 }
 
 int UiCoreUiFileSchemaValidatesGenericRuntimeData() {
@@ -374,8 +404,91 @@ int UiCoreUiFileSchemaRejectsSmallIssueOutputWithoutMutation() {
         return Fail("small issue output count mismatch");
     }
 
+    if (result.required_issue_count != 3U ||
+        result.capacity_entry_issue_capacity != 1U ||
+        result.capacity_entry_current_issue_count != 1U ||
+        result.capacity_entry_required_issue_count != 3U ||
+        result.failed_issue_kind != UiFileSchemaIssueKind::DuplicateNodeId ||
+        result.failed_node_id.value != 1U ||
+        result.failed_context_key != 1U ||
+        result.failed_record_index != 0U ||
+        result.failed_duplicate_count != 2U) {
+        return Fail("small issue output capacity entry mismatch");
+    }
+
     if (!IssueMatchesSentinel(issues[0U])) {
         return Fail("small issue output mutated issue buffer");
+    }
+
+    return 0;
+}
+
+int UiCoreUiFileSchemaOutputCapacityReportsFirstUnreportedIssue() {
+    const std::array<UiFileNodeRecord, 2U> nodes{
+        RootNode(1U),
+        Node(1U, 99U, 0U)};
+    UiFileSchemaDesc desc{};
+    desc.header = Header(9006U, 8U);
+    desc.nodes = nodes;
+
+    std::array<UiFileSchemaIssueRecord, 1U> issues{SentinelIssue()};
+    UiFileSchemaValidationResult result{};
+    const UiFileSchemaValidator validator{};
+    UiFileSchemaStatus status = validator.Validate(desc, issues, &result);
+    if (status != UiFileSchemaStatus::OutputCapacityExceeded) {
+        return Fail("capacity entry output was not rejected");
+    }
+
+    if (result.issue_count != 3U || result.required_issue_count != 3U) {
+        return Fail("capacity entry required issue count mismatch");
+    }
+
+    if (result.capacity_entry_issue_capacity != 1U ||
+        result.capacity_entry_current_issue_count != 1U ||
+        result.capacity_entry_required_issue_count != 3U) {
+        return Fail("capacity entry issue count mismatch");
+    }
+
+    if (result.failed_issue_kind != UiFileSchemaIssueKind::DuplicateNodeId ||
+        result.failed_record_index != 0U ||
+        result.failed_node_id.value != 1U ||
+        result.failed_context_key != 1U ||
+        result.failed_duplicate_count != 2U) {
+        return Fail("capacity entry first unreported issue mismatch");
+    }
+
+    if (!IssueMatchesSentinel(issues[0U])) {
+        return Fail("capacity entry mutated issue buffer");
+    }
+
+    UiFileSchemaDesc invalid_desc = desc;
+    invalid_desc.header.schema_version = 99U;
+    issues[0U] = SentinelIssue();
+    status = validator.Validate(invalid_desc, issues, &result);
+    if (status != UiFileSchemaStatus::InvalidHeader) {
+        return Fail("capacity entry invalid header was not rejected");
+    }
+
+    if (!CapacityEntryIsClear(result)) {
+        return Fail("capacity entry invalid header was stale");
+    }
+
+    const std::array<UiFileNodeRecord, 1U> valid_nodes{RootNode(1U)};
+    UiFileSchemaDesc valid_desc{};
+    valid_desc.header = Header(9007U, 1U);
+    valid_desc.nodes = valid_nodes;
+    issues[0U] = SentinelIssue();
+    status = validator.Validate(valid_desc, issues, &result);
+    if (status != UiFileSchemaStatus::Success) {
+        return Fail("capacity entry valid schema did not pass");
+    }
+
+    if (!CapacityEntryIsClear(result)) {
+        return Fail("capacity entry success was stale");
+    }
+
+    if (!IssueMatchesSentinel(issues[0U])) {
+        return Fail("capacity entry cleanup mutated issue buffer");
     }
 
     return 0;
@@ -400,6 +513,10 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_SMALL_OUTPUT) {
         return UiCoreUiFileSchemaRejectsSmallIssueOutputWithoutMutation();
+    }
+
+    if (name == TEST_CAPACITY_ENTRY) {
+        return UiCoreUiFileSchemaOutputCapacityReportsFirstUnreportedIssue();
     }
 
     return Fail(ERROR_UNKNOWN_TEST_NAME);

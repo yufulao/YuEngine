@@ -167,6 +167,12 @@ UiFileSchemaStatus UiFileSchemaValidator::Validate(
 
     out_result->issue_count = issue_count;
     if (!IsIssueStorageValid(out_issues, issue_count)) {
+        std::uint32_t failed_issue_index = 0U;
+        if (out_issues.data() != nullptr) {
+            failed_issue_index = static_cast<std::uint32_t>(out_issues.size());
+        }
+
+        CaptureFirstUnreportedIssue(desc, failed_issue_index, issue_count, out_result);
         out_result->status = UiFileSchemaStatus::OutputCapacityExceeded;
         return UiFileSchemaStatus::OutputCapacityExceeded;
     }
@@ -283,6 +289,233 @@ UiFileSchemaStatus UiFileSchemaValidator::Validate(
 
     out_result->status = UiFileSchemaStatus::Success;
     return UiFileSchemaStatus::Success;
+}
+
+void UiFileSchemaValidator::CaptureFirstUnreportedIssue(
+    const UiFileSchemaDesc &desc,
+    std::uint32_t failed_issue_index,
+    std::uint32_t required_issue_count,
+    UiFileSchemaValidationResult *out_result) const {
+    std::uint32_t issue_index = 0U;
+    UiFileSchemaIssueRecord issue{};
+    if (!ContainsNodeId(desc.nodes, desc.header.root_node_id)) {
+        issue.issue_kind = UiFileSchemaIssueKind::MissingRootNode;
+        issue.node_id = desc.header.root_node_id;
+        issue.context_key = desc.header.layout_id;
+        const bool captured = TryCaptureCapacityIssue(
+            issue,
+            failed_issue_index,
+            required_issue_count,
+            &issue_index,
+            out_result);
+        if (captured) {
+            return;
+        }
+    }
+
+    for (std::size_t index = 0U; index < desc.nodes.size(); ++index) {
+        const std::uint32_t node_index = static_cast<std::uint32_t>(index);
+        if (!IsFirstNodeIdOccurrence(desc.nodes, node_index)) {
+            continue;
+        }
+
+        const UiNodeId node_id = desc.nodes[index].node_id;
+        const std::uint32_t node_count = CountNodeId(desc.nodes, node_id);
+        if (node_count <= 1U) {
+            continue;
+        }
+
+        issue = UiFileSchemaIssueRecord{};
+        issue.issue_kind = UiFileSchemaIssueKind::DuplicateNodeId;
+        issue.node_id = node_id;
+        issue.context_key = node_id.value;
+        issue.record_index = node_index;
+        issue.duplicate_count = node_count;
+        const bool captured = TryCaptureCapacityIssue(
+            issue,
+            failed_issue_index,
+            required_issue_count,
+            &issue_index,
+            out_result);
+        if (captured) {
+            return;
+        }
+    }
+
+    for (std::size_t index = 0U; index < desc.nodes.size(); ++index) {
+        const UiFileNodeRecord &record = desc.nodes[index];
+        if (!record.parent_id.IsValid()) {
+            continue;
+        }
+
+        if (ContainsNodeId(desc.nodes, record.parent_id)) {
+            continue;
+        }
+
+        issue = UiFileSchemaIssueRecord{};
+        issue.issue_kind = UiFileSchemaIssueKind::MissingParentNode;
+        issue.node_id = record.node_id;
+        issue.context_key = record.parent_id.value;
+        issue.record_index = static_cast<std::uint32_t>(index);
+        const bool captured = TryCaptureCapacityIssue(
+            issue,
+            failed_issue_index,
+            required_issue_count,
+            &issue_index,
+            out_result);
+        if (captured) {
+            return;
+        }
+    }
+
+    for (std::size_t index = 0U; index < desc.layouts.size(); ++index) {
+        const UiFileLayoutRecord &record = desc.layouts[index];
+        if (ContainsNodeId(desc.nodes, record.container.container_id)) {
+            continue;
+        }
+
+        issue = UiFileSchemaIssueRecord{};
+        issue.issue_kind = UiFileSchemaIssueKind::MissingLayoutContainerNode;
+        issue.node_id = record.container.container_id;
+        issue.context_key = record.container.container_id.value;
+        issue.record_index = static_cast<std::uint32_t>(index);
+        const bool captured = TryCaptureCapacityIssue(
+            issue,
+            failed_issue_index,
+            required_issue_count,
+            &issue_index,
+            out_result);
+        if (captured) {
+            return;
+        }
+    }
+
+    for (std::size_t index = 0U; index < desc.style_refs.size(); ++index) {
+        const UiFileStyleRef &record = desc.style_refs[index];
+        if (ContainsNodeId(desc.nodes, record.node_id)) {
+            continue;
+        }
+
+        issue = UiFileSchemaIssueRecord{};
+        issue.issue_kind = UiFileSchemaIssueKind::MissingStyleRefNode;
+        issue.node_id = record.node_id;
+        issue.context_key = record.style_key;
+        issue.record_index = static_cast<std::uint32_t>(index);
+        const bool captured = TryCaptureCapacityIssue(
+            issue,
+            failed_issue_index,
+            required_issue_count,
+            &issue_index,
+            out_result);
+        if (captured) {
+            return;
+        }
+    }
+
+    for (std::size_t index = 0U; index < desc.resource_refs.size(); ++index) {
+        const UiFileResourceRef &record = desc.resource_refs[index];
+        if (ContainsNodeId(desc.nodes, record.node_id)) {
+            continue;
+        }
+
+        issue = UiFileSchemaIssueRecord{};
+        issue.issue_kind = UiFileSchemaIssueKind::MissingResourceRefNode;
+        issue.node_id = record.node_id;
+        issue.context_key = record.resource_key;
+        issue.record_index = static_cast<std::uint32_t>(index);
+        const bool captured = TryCaptureCapacityIssue(
+            issue,
+            failed_issue_index,
+            required_issue_count,
+            &issue_index,
+            out_result);
+        if (captured) {
+            return;
+        }
+    }
+
+    for (std::size_t index = 0U; index < desc.event_bindings.size(); ++index) {
+        const UiFileEventBinding &record = desc.event_bindings[index];
+        if (!ContainsNodeId(desc.nodes, record.node_id)) {
+            issue = UiFileSchemaIssueRecord{};
+            issue.issue_kind = UiFileSchemaIssueKind::MissingEventBindingNode;
+            issue.node_id = record.node_id;
+            issue.context_key = record.binding_key;
+            issue.record_index = static_cast<std::uint32_t>(index);
+            const bool captured = TryCaptureCapacityIssue(
+                issue,
+                failed_issue_index,
+                required_issue_count,
+                &issue_index,
+                out_result);
+            if (captured) {
+                return;
+            }
+        }
+
+        if (record.binding_key != 0U && record.event_key != 0U) {
+            continue;
+        }
+
+        issue = UiFileSchemaIssueRecord{};
+        issue.issue_kind = UiFileSchemaIssueKind::MissingEventBindingKey;
+        issue.node_id = record.node_id;
+        issue.context_key = record.binding_key;
+        issue.record_index = static_cast<std::uint32_t>(index);
+        const bool captured = TryCaptureCapacityIssue(
+            issue,
+            failed_issue_index,
+            required_issue_count,
+            &issue_index,
+            out_result);
+        if (captured) {
+            return;
+        }
+    }
+}
+
+bool UiFileSchemaValidator::TryCaptureCapacityIssue(
+    const UiFileSchemaIssueRecord &issue,
+    std::uint32_t failed_issue_index,
+    std::uint32_t required_issue_count,
+    std::uint32_t *issue_index,
+    UiFileSchemaValidationResult *out_result) const {
+    if (issue_index == nullptr) {
+        return true;
+    }
+
+    if (out_result == nullptr) {
+        return true;
+    }
+
+    if (*issue_index == failed_issue_index) {
+        RecordCapacityIssue(issue, failed_issue_index, *issue_index, required_issue_count, out_result);
+        return true;
+    }
+
+    ++(*issue_index);
+    return false;
+}
+
+void UiFileSchemaValidator::RecordCapacityIssue(
+    const UiFileSchemaIssueRecord &issue,
+    std::uint32_t issue_capacity,
+    std::uint32_t current_issue_count,
+    std::uint32_t required_issue_count,
+    UiFileSchemaValidationResult *out_result) const {
+    if (out_result == nullptr) {
+        return;
+    }
+
+    out_result->required_issue_count = required_issue_count;
+    out_result->capacity_entry_issue_capacity = issue_capacity;
+    out_result->capacity_entry_current_issue_count = current_issue_count;
+    out_result->capacity_entry_required_issue_count = required_issue_count;
+    out_result->failed_issue_kind = issue.issue_kind;
+    out_result->failed_record_index = issue.record_index;
+    out_result->failed_node_id = issue.node_id;
+    out_result->failed_context_key = issue.context_key;
+    out_result->failed_duplicate_count = issue.duplicate_count;
 }
 
 UiFileSchemaStatus UiFileSchemaValidator::ValidateHeader(

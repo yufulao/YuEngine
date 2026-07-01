@@ -112,8 +112,15 @@ struct UiFileSchemaValidationResult final {
     std::uint32_t checked_resource_ref_count = 0U;
     std::uint32_t checked_event_binding_count = 0U;
     std::uint32_t issue_count = 0U;
+    std::uint32_t required_issue_count = 0U;
+    std::uint32_t capacity_entry_issue_capacity = 0U;
+    std::uint32_t capacity_entry_current_issue_count = 0U;
+    std::uint32_t capacity_entry_required_issue_count = 0U;
+    UiFileSchemaIssueKind failed_issue_kind = UiFileSchemaIssueKind::None;
     std::uint32_t failed_record_index = 0U;
     UiNodeId failed_node_id;
+    std::uint32_t failed_context_key = 0U;
+    std::uint32_t failed_duplicate_count = 0U;
 
     /**
      * @comment 检查 UI file schema validation 是否没有发现问题。
@@ -166,5 +173,22 @@ private:
     std::uint32_t CountNodeId(std::span<const UiFileNodeRecord> nodes, UiNodeId node_id) const;
     bool IsFirstNodeIdOccurrence(std::span<const UiFileNodeRecord> nodes, std::uint32_t node_index) const;
     bool IsKnownResourceKind(UiFileResourceKind kind) const;
+    void CaptureFirstUnreportedIssue(
+        const UiFileSchemaDesc &desc,
+        std::uint32_t failed_issue_index,
+        std::uint32_t required_issue_count,
+        UiFileSchemaValidationResult *out_result) const;
+    bool TryCaptureCapacityIssue(
+        const UiFileSchemaIssueRecord &issue,
+        std::uint32_t failed_issue_index,
+        std::uint32_t required_issue_count,
+        std::uint32_t *issue_index,
+        UiFileSchemaValidationResult *out_result) const;
+    void RecordCapacityIssue(
+        const UiFileSchemaIssueRecord &issue,
+        std::uint32_t issue_capacity,
+        std::uint32_t current_issue_count,
+        std::uint32_t required_issue_count,
+        UiFileSchemaValidationResult *out_result) const;
 };
 }
