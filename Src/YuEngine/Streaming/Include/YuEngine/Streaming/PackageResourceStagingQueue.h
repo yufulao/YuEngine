@@ -65,6 +65,12 @@ public:
         std::uint32_t output_capacity,
         std::uint32_t *written_count);
     /**
+     * @comment 返回当前 pending staging 请求数量。
+     * @param pending_count 输出 pending 请求数量。
+     * @return 显式操作状态。
+     */
+    PackageResourceStagingStatus GetPendingCountSnapshot(std::uint32_t *pending_count) const;
+    /**
      * @comment 返回队列快照值。
      * @return 快照值。
      */

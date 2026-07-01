@@ -416,6 +416,16 @@ PackageResourceStagingStatus PackageResourceStagingQueue::DrainCompletions(
     return PackageResourceStagingStatus::Success;
 }
 
+PackageResourceStagingStatus PackageResourceStagingQueue::GetPendingCountSnapshot(
+    std::uint32_t *pending_count) const {
+    if (pending_count == nullptr) {
+        return PackageResourceStagingStatus::InvalidArgument;
+    }
+
+    *pending_count = snapshot_.pending_count;
+    return PackageResourceStagingStatus::Success;
+}
+
 PackageResourceStagingSnapshot PackageResourceStagingQueue::Snapshot() const {
     return snapshot_;
 }

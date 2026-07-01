@@ -152,6 +152,8 @@ constexpr const char *TEST_STAGING_DRAIN_OUTPUT_ATOMIC =
     "Streaming_PackageResourceStaging_DrainOutputFailureIsAtomic";
 constexpr const char *TEST_STAGING_BATCH_SUBMIT_OUTPUT_ATOMIC =
     "Streaming_PackageResourceStaging_BatchSubmitOutputFailureIsAtomic";
+constexpr const char *TEST_STAGING_PENDING_COUNT_SNAPSHOT =
+    "Streaming_PackageResourceStaging_PendingCountSnapshotIsReadOnly";
 constexpr const char *TEST_MISSING_COMPLETION =
     "Streaming_PackageResourceStaging_ReportsMissingFileCompletion";
 constexpr const char *TEST_QUEUE_OVERFLOW =
@@ -2167,6 +2169,169 @@ int StreamingPackageResourceStagingBatchSubmitOutputFailureIsAtomic() {
 
     if (file_queue.Shutdown(true) != AsyncFileReadStatus::ShutdownComplete) {
         return Fail("staging batch submit shutdown failed");
+    }
+
+    return 0;
+}
+
+int StreamingPackageResourceStagingPendingCountSnapshotIsReadOnly() {
+    MountTable table = CreateMountedTable();
+    ResourceRegistry resource_registry;
+    PackageLoadPlanRecord record;
+    if (!BuildPackageRecord(&record, 0U, FixtureByteCount())) {
+        return Fail("staging pending count record setup failed");
+    }
+
+    const ResourceRegistrationResult first_resource =
+        RegisterResourceWithKey(resource_registry, TYPE_TEXTURE, RESOURCE_KEY);
+    if (!first_resource.Succeeded()) {
+        return Fail("staging pending count first resource setup failed");
+    }
+
+    const ResourceRegistrationResult second_resource =
+        RegisterResourceWithKey(resource_registry, TYPE_TEXTURE, RESOURCE_KEY_ALT);
+    if (!second_resource.Succeeded()) {
+        return Fail("staging pending count second resource setup failed");
+    }
+
+    const ResourceRegistrationResult third_resource =
+        RegisterResourceWithKey(resource_registry, TYPE_TEXTURE, RESOURCE_KEY_THIRD);
+    if (!third_resource.Succeeded()) {
+        return Fail("staging pending count third resource setup failed");
+    }
+
+    AsyncFileReadQueue file_queue;
+    if (file_queue.Initialize(4U, 4U) != AsyncFileReadStatus::Success) {
+        return Fail("staging pending count file queue init failed");
+    }
+
+    if (file_queue.Start() != AsyncFileReadStatus::Success) {
+        return Fail("staging pending count file queue start failed");
+    }
+
+    std::array<std::uint8_t, OUTPUT_CAPACITY> first_output_bytes{};
+    std::array<std::uint8_t, OUTPUT_CAPACITY> second_output_bytes{};
+    std::array<std::uint8_t, OUTPUT_CAPACITY> third_output_bytes{};
+    PackageResourceStagingRequest first_request = BuildStagingRequest(
+        resource_registry,
+        file_queue,
+        table,
+        record,
+        first_resource.handle,
+        REQUEST_ONE,
+        first_output_bytes.data(),
+        first_output_bytes.size());
+    std::array<PackageResourceStagingRequest, 2U> batch_requests{
+        BuildStagingRequest(
+            resource_registry,
+            file_queue,
+            table,
+            record,
+            second_resource.handle,
+            REQUEST_TWO,
+            second_output_bytes.data(),
+            second_output_bytes.size()),
+        BuildStagingRequest(
+            resource_registry,
+            file_queue,
+            table,
+            record,
+            third_resource.handle,
+            REQUEST_THREE,
+            third_output_bytes.data(),
+            third_output_bytes.size())};
+    PackageResourceStagingQueue queue(PackageResourceStagingQueueDesc{4U, 4U});
+
+    std::uint32_t pending_count = 777U;
+    if (queue.GetPendingCountSnapshot(&pending_count) != PackageResourceStagingStatus::Success) {
+        return Fail("staging pending count initial status changed");
+    }
+
+    if (pending_count != 0U) {
+        return Fail("staging pending count initial value changed");
+    }
+
+    if (queue.GetPendingCountSnapshot(nullptr) != PackageResourceStagingStatus::InvalidArgument) {
+        return Fail("staging pending count invalid status changed");
+    }
+
+    if (pending_count != 0U) {
+        return Fail("staging pending count invalid mutated caller count");
+    }
+
+    if (queue.Submit(first_request) != PackageResourceStagingStatus::Queued) {
+        return Fail("staging pending count single submit failed");
+    }
+
+    if (queue.GetPendingCountSnapshot(&pending_count) != PackageResourceStagingStatus::Success) {
+        return Fail("staging pending count single status changed");
+    }
+
+    if (pending_count != 1U) {
+        return Fail("staging pending count single value changed");
+    }
+
+    if (queue.GetPendingCountSnapshot(nullptr) != PackageResourceStagingStatus::InvalidArgument) {
+        return Fail("staging pending count repeated invalid status changed");
+    }
+
+    if (pending_count != 1U) {
+        return Fail("staging pending count repeated invalid mutated caller count");
+    }
+
+    std::array<PackageResourceStagingSubmitResult, 2U> submit_results{};
+    const PackageResourceStagingBatchSubmitResult batch_result = queue.SubmitBatch(
+        batch_requests.data(),
+        static_cast<std::uint32_t>(batch_requests.size()),
+        submit_results.data(),
+        static_cast<std::uint32_t>(submit_results.size()));
+    if (batch_result.status != PackageResourceStagingStatus::Queued) {
+        return Fail("staging pending count batch submit failed");
+    }
+
+    if (queue.GetPendingCountSnapshot(&pending_count) != PackageResourceStagingStatus::Success) {
+        return Fail("staging pending count batch status changed");
+    }
+
+    if (pending_count != 3U) {
+        return Fail("staging pending count batch value changed");
+    }
+
+    if (queue.CompleteFileRead(SuccessFileResult(REQUEST_ONE)) != PackageResourceStagingStatus::Success) {
+        return Fail("staging pending count completion failed");
+    }
+
+    if (queue.GetPendingCountSnapshot(&pending_count) != PackageResourceStagingStatus::Success) {
+        return Fail("staging pending count completion status changed");
+    }
+
+    if (pending_count != 2U) {
+        return Fail("staging pending count completion value changed");
+    }
+
+    std::array<PackageResourceStagingCompletion, 1U> drained_completions{};
+    std::uint32_t written_count = 0U;
+    if (queue.DrainCompletions(
+            drained_completions.data(),
+            static_cast<std::uint32_t>(drained_completions.size()),
+            &written_count) != PackageResourceStagingStatus::Success) {
+        return Fail("staging pending count drain failed");
+    }
+
+    if (written_count != 1U) {
+        return Fail("staging pending count drain count changed");
+    }
+
+    if (queue.GetPendingCountSnapshot(&pending_count) != PackageResourceStagingStatus::Success) {
+        return Fail("staging pending count after drain status changed");
+    }
+
+    if (pending_count != 2U) {
+        return Fail("staging pending count after drain value changed");
+    }
+
+    if (file_queue.Shutdown(true) != AsyncFileReadStatus::ShutdownComplete) {
+        return Fail("staging pending count shutdown failed");
     }
 
     return 0;
@@ -5278,6 +5443,7 @@ int main(int argc, char **argv) {
         {TEST_STAGING_DRAIN_OUTPUT_ATOMIC, StreamingPackageResourceStagingDrainOutputFailureIsAtomic},
         {TEST_STAGING_BATCH_SUBMIT_OUTPUT_ATOMIC,
          StreamingPackageResourceStagingBatchSubmitOutputFailureIsAtomic},
+        {TEST_STAGING_PENDING_COUNT_SNAPSHOT, StreamingPackageResourceStagingPendingCountSnapshotIsReadOnly},
         {TEST_MISSING_COMPLETION, StreamingPackageResourceStagingReportsMissingFileCompletion},
         {TEST_QUEUE_OVERFLOW, StreamingPackageResourceStagingRejectsQueueOverflowWithoutMutation},
         {TEST_COMPLETION_OVERFLOW, StreamingPackageResourceStagingReportsCompletionOverflowWithoutDroppingPending},
