@@ -13,6 +13,7 @@ namespace yuengine::resource {
 struct ResourceResidencySnapshot final {
     std::uint32_t budget_byte_capacity = 0U;
     std::uint32_t resident_byte_count = 0U;
+    std::uint32_t last_required_resident_byte_count = 0U;
     std::uint32_t pinned_byte_count = 0U;
     std::uint32_t evictable_byte_count = 0U;
     std::uint32_t resident_resource_count = 0U;

@@ -2042,6 +2042,10 @@ int ResourceResidencyRejectsBudgetOverflow() {
         return Fail("residency budget rejection was not counted");
     }
 
+    if (snapshot.last_required_resident_byte_count != UPLOAD_BYTE_COUNT) {
+        return Fail("residency budget required bytes were not reported");
+    }
+
     if (snapshot.resident_byte_count != 0U) {
         return Fail("residency budget overflow changed resident bytes");
     }

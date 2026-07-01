@@ -1725,8 +1725,23 @@ ResourceResidencyStatus ResourceRegistry::RecordResidencyRejected(
     const ResourceResidencyRequest &request,
     ResourceResidencyStatus status) {
     ++residency_snapshot_.rejected_residency_request_count;
+    residency_snapshot_.last_required_resident_byte_count = 0U;
     if (status == ResourceResidencyStatus::BudgetExceeded) {
         ++residency_snapshot_.budget_rejected_residency_count;
+        if (operation == ResourceResidencyOperation::Admit) {
+            std::size_t slot_index = 0U;
+            const ResourceStatus handle_status = ResolveHandle(request.resource, slot_index);
+            if (handle_status == ResourceStatus::Success) {
+                const ResourceSlot &slot = slots_[slot_index];
+                residency_snapshot_.last_required_resident_byte_count =
+                    residency_snapshot_.resident_byte_count + slot.loaded_byte_count;
+            }
+        }
+
+        if (operation == ResourceResidencyOperation::ConfigureBudget) {
+            residency_snapshot_.last_required_resident_byte_count =
+                residency_snapshot_.resident_byte_count;
+        }
     }
 
     ++snapshot_.failed_operation_count;
@@ -1763,6 +1778,7 @@ void ResourceRegistry::RecordResidencySuccess(
     }
 
     residency_snapshot_.last_status = ResourceResidencyStatus::Success;
+    residency_snapshot_.last_required_resident_byte_count = 0U;
     residency_snapshot_.last_state = state;
     snapshot_.last_status = ResourceStatus::Success;
     StoreResidencyRecord(operation, request, ResourceResidencyStatus::Success, state);
