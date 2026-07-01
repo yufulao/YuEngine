@@ -100,6 +100,13 @@ private:
         std::uint32_t byte_count);
     SerializeStatus RecordFailure(SerializeStatus status);
     void RecordSuccess();
+    void ClearFieldCapacityFailure();
+    void RecordFieldCapacityFailure(
+        SerializeFieldId field,
+        SerializeTypeTag type,
+        std::uint32_t field_capacity,
+        std::uint32_t current_field_count,
+        std::uint32_t required_field_count);
     bool CanCommitBytes(std::uint32_t byte_count) const;
     bool HasFieldInCurrentRecord(SerializeFieldId field) const;
     void WriteUInt16At(std::uint32_t offset, std::uint16_t value);
@@ -109,6 +116,7 @@ private:
     std::uint8_t* buffer_;
     std::uint32_t capacity_;
     std::uint32_t active_record_offset_;
+    SerializeRecordId current_record_id_;
     std::uint32_t current_record_field_count_;
     std::array<SerializeFieldId, MAX_FIELDS_PER_RECORD> current_record_fields_;
     SerializeSnapshot snapshot_;

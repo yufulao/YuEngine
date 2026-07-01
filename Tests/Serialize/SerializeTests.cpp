@@ -33,6 +33,7 @@ using yuengine::serialize::Tests::StreamFixture;
 using yuengine::serialize::FIELD_HEADER_BYTE_COUNT;
 using yuengine::serialize::MAX_FIELD_PAYLOAD_BYTE_COUNT;
 using yuengine::serialize::MAX_FIELDS_PER_RECORD;
+using yuengine::serialize::MAX_FIELDS_PER_STREAM;
 using yuengine::serialize::MAX_RECORDS_PER_STREAM;
 using yuengine::serialize::MAX_STREAM_BYTE_COUNT;
 using yuengine::serialize::RECORD_HEADER_BYTE_COUNT;
@@ -211,6 +212,26 @@ bool SnapshotsMatch(const SerializeSnapshot& left, const SerializeSnapshot& righ
     }
 
     if (left.last_required_field_count != right.last_required_field_count) {
+        return false;
+    }
+
+    if (left.last_failed_field_record_id.value != right.last_failed_field_record_id.value) {
+        return false;
+    }
+
+    if (left.last_failed_field_id.value != right.last_failed_field_id.value) {
+        return false;
+    }
+
+    if (left.last_failed_field_type != right.last_failed_field_type) {
+        return false;
+    }
+
+    if (left.last_failed_field_capacity != right.last_failed_field_capacity) {
+        return false;
+    }
+
+    if (left.last_failed_field_count != right.last_failed_field_count) {
         return false;
     }
 
@@ -603,31 +624,31 @@ int SerializeRecordCapacityOverflowDoesNotMutate() {
 }
 
 int SerializeFieldCapacityOverflowDoesNotMutate() {
-    std::array<std::uint8_t, MAX_STREAM_BYTE_COUNT> buffer{};
-    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
-    if (writer.BeginStream() != SerializeStatus::Success) {
+    std::array<std::uint8_t, MAX_STREAM_BYTE_COUNT> record_buffer{};
+    SerializeWriter record_writer(record_buffer.data(), static_cast<std::uint32_t>(record_buffer.size()));
+    if (record_writer.BeginStream() != SerializeStatus::Success) {
         return Fail("begin stream failed");
     }
 
-    if (writer.BeginRecord(RECORD_MAIN) != SerializeStatus::Success) {
+    if (record_writer.BeginRecord(RECORD_MAIN) != SerializeStatus::Success) {
         return Fail("begin record failed");
     }
 
     std::uint32_t field_index = 0U;
     while (field_index < MAX_FIELDS_PER_RECORD) {
-        if (writer.WriteUInt32(SerializeFieldId{field_index + 1U}, field_index) != SerializeStatus::Success) {
+        if (record_writer.WriteUInt32(SerializeFieldId{field_index + 1U}, field_index) != SerializeStatus::Success) {
             return Fail("field within capacity failed");
         }
 
         ++field_index;
     }
 
-    const SerializeSnapshot before_snapshot = writer.Snapshot();
-    if (writer.WriteUInt32(SerializeFieldId{100U}, 100U) != SerializeStatus::FieldCapacityExceeded) {
+    const SerializeSnapshot before_snapshot = record_writer.Snapshot();
+    if (record_writer.WriteUInt32(SerializeFieldId{100U}, 100U) != SerializeStatus::FieldCapacityExceeded) {
         return Fail("field capacity overflow did not return explicit status");
     }
 
-    const SerializeSnapshot after_snapshot = writer.Snapshot();
+    SerializeSnapshot after_snapshot = record_writer.Snapshot();
     if (after_snapshot.field_count != before_snapshot.field_count) {
         return Fail("field overflow changed field count");
     }
@@ -642,6 +663,100 @@ int SerializeFieldCapacityOverflowDoesNotMutate() {
 
     if (after_snapshot.last_required_record_count != 0U) {
         return Fail("field overflow changed required record count");
+    }
+
+    if (after_snapshot.last_failed_field_record_id.value != RECORD_MAIN.value ||
+        after_snapshot.last_failed_field_id.value != 100U ||
+        after_snapshot.last_failed_field_type != SerializeTypeTag::UInt32) {
+        return Fail("field overflow did not record failed field identity");
+    }
+
+    if (after_snapshot.last_failed_field_capacity != MAX_FIELDS_PER_RECORD ||
+        after_snapshot.last_failed_field_count != MAX_FIELDS_PER_RECORD) {
+        return Fail("field overflow did not record record field capacity");
+    }
+
+    std::array<std::uint8_t, MAX_FIELD_PAYLOAD_BYTE_COUNT + 1U> oversized_bytes{};
+    if (record_writer.WriteFixedBytes(
+            FIELD_BYTES,
+            oversized_bytes.data(),
+            static_cast<std::uint32_t>(oversized_bytes.size())) != SerializeStatus::FieldPayloadTooLarge) {
+        return Fail("field overflow stale clear setup failed");
+    }
+
+    after_snapshot = record_writer.Snapshot();
+    if (after_snapshot.last_failed_field_record_id.IsValid() ||
+        after_snapshot.last_failed_field_id.IsValid() ||
+        after_snapshot.last_failed_field_capacity != 0U ||
+        after_snapshot.last_failed_field_count != 0U ||
+        after_snapshot.last_required_field_count != 0U) {
+        return Fail("non-capacity field failure kept stale field capacity entry");
+    }
+
+    if (record_writer.BeginRecord(RECORD_SECONDARY) != SerializeStatus::Success) {
+        return Fail("begin second record failed");
+    }
+
+    if (record_writer.WriteUInt32(FIELD_U32, 7U) != SerializeStatus::Success) {
+        return Fail("field success after overflow failed");
+    }
+
+    after_snapshot = record_writer.Snapshot();
+    if (after_snapshot.last_failed_field_record_id.IsValid() ||
+        after_snapshot.last_failed_field_id.IsValid() ||
+        after_snapshot.last_failed_field_capacity != 0U ||
+        after_snapshot.last_failed_field_count != 0U ||
+        after_snapshot.last_required_field_count != 0U) {
+        return Fail("field success kept stale field capacity entry");
+    }
+
+    std::array<std::uint8_t, MAX_STREAM_BYTE_COUNT> stream_buffer{};
+    SerializeWriter stream_writer(stream_buffer.data(), static_cast<std::uint32_t>(stream_buffer.size()));
+    if (stream_writer.BeginStream() != SerializeStatus::Success) {
+        return Fail("begin stream capacity stream failed");
+    }
+
+    std::uint32_t record_index = 0U;
+    while (record_index < (MAX_FIELDS_PER_STREAM / MAX_FIELDS_PER_RECORD)) {
+        SerializeRecordId record_id{record_index + 1U};
+        if (stream_writer.BeginRecord(record_id) != SerializeStatus::Success) {
+            return Fail("begin field capacity stream record failed");
+        }
+
+        field_index = 0U;
+        while (field_index < MAX_FIELDS_PER_RECORD) {
+            const SerializeFieldId field_id{field_index + 1U};
+            if (stream_writer.WriteUInt32(field_id, field_index) != SerializeStatus::Success) {
+                return Fail("field capacity stream write failed");
+            }
+
+            ++field_index;
+        }
+
+        ++record_index;
+    }
+
+    const SerializeSnapshot before_stream_overflow = stream_writer.Snapshot();
+    if (stream_writer.WriteInt64(SerializeFieldId{200U}, -10) != SerializeStatus::FieldCapacityExceeded) {
+        return Fail("stream field capacity overflow did not return explicit status");
+    }
+
+    const SerializeSnapshot after_stream_overflow = stream_writer.Snapshot();
+    if (after_stream_overflow.field_count != before_stream_overflow.field_count ||
+        after_stream_overflow.committed_byte_count != before_stream_overflow.committed_byte_count) {
+        return Fail("stream field overflow mutated stream");
+    }
+
+    if (after_stream_overflow.last_required_field_count != MAX_FIELDS_PER_STREAM + 1U ||
+        after_stream_overflow.last_failed_field_capacity != MAX_FIELDS_PER_STREAM ||
+        after_stream_overflow.last_failed_field_count != MAX_FIELDS_PER_STREAM) {
+        return Fail("stream field overflow did not record stream capacity");
+    }
+
+    if (after_stream_overflow.last_failed_field_record_id.value != record_index ||
+        after_stream_overflow.last_failed_field_id.value != 200U ||
+        after_stream_overflow.last_failed_field_type != SerializeTypeTag::Int64) {
+        return Fail("stream field overflow did not record rejected field identity");
     }
 
     return 0;

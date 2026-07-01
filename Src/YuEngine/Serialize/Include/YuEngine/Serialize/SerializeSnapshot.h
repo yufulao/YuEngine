@@ -6,7 +6,10 @@
 #include <cstdint>
 
 #include "YuEngine/Memory/MemoryAccountingStatus.h"
+#include "YuEngine/Serialize/SerializeFieldId.h"
+#include "YuEngine/Serialize/SerializeRecordId.h"
 #include "YuEngine/Serialize/SerializeStatus.h"
+#include "YuEngine/Serialize/SerializeTypeTag.h"
 
 namespace yuengine::serialize {
 using yuengine::memory::MemoryAccountingStatus;
@@ -23,5 +26,10 @@ struct SerializeSnapshot final {
     SerializeStatus last_status;
     std::uint32_t last_required_record_count = 0U;
     std::uint32_t last_required_field_count = 0U;
+    SerializeRecordId last_failed_field_record_id;
+    SerializeFieldId last_failed_field_id;
+    SerializeTypeTag last_failed_field_type = SerializeTypeTag::UInt32;
+    std::uint32_t last_failed_field_capacity = 0U;
+    std::uint32_t last_failed_field_count = 0U;
 };
 }

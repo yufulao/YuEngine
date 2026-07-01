@@ -36,12 +36,13 @@ void EncodeUInt64(std::uint8_t* bytes, std::uint64_t value) {
 }
 }
 
-static_assert(sizeof(SerializeSnapshot) == 40U);
+static_assert(sizeof(SerializeSnapshot) == 60U);
 
 SerializeWriter::SerializeWriter(std::uint8_t* buffer, std::uint32_t capacity)
     : buffer_(buffer),
       capacity_(ClampCapacity(capacity)),
       active_record_offset_(0U),
+      current_record_id_(),
       current_record_field_count_(0U),
       current_record_fields_{},
       snapshot_{
@@ -75,6 +76,7 @@ SerializeStatus SerializeWriter::BeginStream() {
         MemoryAccountingStatus::ExplicitlyTrackedOnly,
         SerializeStatus::Success};
     active_record_offset_ = 0U;
+    current_record_id_ = SerializeRecordId{};
     current_record_field_count_ = 0U;
     has_stream_ = true;
     has_active_record_ = false;
@@ -108,6 +110,7 @@ SerializeStatus SerializeWriter::BeginRecord(SerializeRecordId record) {
     }
 
     active_record_offset_ = snapshot_.committed_byte_count;
+    current_record_id_ = record;
     WriteUInt32At(active_record_offset_, record.value);
     WriteUInt32At(active_record_offset_ + sizeof(std::uint32_t), 0U);
     snapshot_.committed_byte_count += RECORD_HEADER_BYTE_COUNT;
@@ -195,12 +198,24 @@ SerializeStatus SerializeWriter::CommitField(
     if (snapshot_.field_count >= MAX_FIELDS_PER_STREAM) {
         snapshot_.last_required_record_count = 0U;
         snapshot_.last_required_field_count = snapshot_.field_count + 1U;
+        RecordFieldCapacityFailure(
+            field,
+            type,
+            MAX_FIELDS_PER_STREAM,
+            snapshot_.field_count,
+            snapshot_.last_required_field_count);
         return RecordFailure(SerializeStatus::FieldCapacityExceeded);
     }
 
     if (current_record_field_count_ >= MAX_FIELDS_PER_RECORD) {
         snapshot_.last_required_record_count = 0U;
         snapshot_.last_required_field_count = current_record_field_count_ + 1U;
+        RecordFieldCapacityFailure(
+            field,
+            type,
+            MAX_FIELDS_PER_RECORD,
+            current_record_field_count_,
+            snapshot_.last_required_field_count);
         return RecordFailure(SerializeStatus::FieldCapacityExceeded);
     }
 
@@ -227,6 +242,22 @@ SerializeStatus SerializeWriter::CommitField(
 }
 
 SerializeStatus SerializeWriter::RecordFailure(SerializeStatus status) {
+    if (status == SerializeStatus::FieldCapacityExceeded) {
+        ++snapshot_.failed_operation_count;
+        snapshot_.last_status = status;
+        return status;
+    }
+
+    if (status == SerializeStatus::RecordCapacityExceeded) {
+        ClearFieldCapacityFailure();
+        ++snapshot_.failed_operation_count;
+        snapshot_.last_status = status;
+        return status;
+    }
+
+    snapshot_.last_required_record_count = 0U;
+    snapshot_.last_required_field_count = 0U;
+    ClearFieldCapacityFailure();
     ++snapshot_.failed_operation_count;
     snapshot_.last_status = status;
     return status;
@@ -236,7 +267,30 @@ void SerializeWriter::RecordSuccess() {
     ++snapshot_.accepted_operation_count;
     snapshot_.last_required_record_count = 0U;
     snapshot_.last_required_field_count = 0U;
+    ClearFieldCapacityFailure();
     snapshot_.last_status = SerializeStatus::Success;
+}
+
+void SerializeWriter::ClearFieldCapacityFailure() {
+    snapshot_.last_failed_field_record_id = SerializeRecordId{};
+    snapshot_.last_failed_field_id = SerializeFieldId{};
+    snapshot_.last_failed_field_type = SerializeTypeTag::UInt32;
+    snapshot_.last_failed_field_capacity = 0U;
+    snapshot_.last_failed_field_count = 0U;
+}
+
+void SerializeWriter::RecordFieldCapacityFailure(
+    SerializeFieldId field,
+    SerializeTypeTag type,
+    std::uint32_t field_capacity,
+    std::uint32_t current_field_count,
+    std::uint32_t required_field_count) {
+    snapshot_.last_failed_field_record_id = current_record_id_;
+    snapshot_.last_failed_field_id = field;
+    snapshot_.last_failed_field_type = type;
+    snapshot_.last_failed_field_capacity = field_capacity;
+    snapshot_.last_failed_field_count = current_field_count;
+    snapshot_.last_required_field_count = required_field_count;
 }
 
 bool SerializeWriter::CanCommitBytes(std::uint32_t byte_count) const {
