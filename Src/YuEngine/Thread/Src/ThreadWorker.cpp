@@ -509,7 +509,7 @@ ThreadWorkerStatus ThreadWorker::DrainCompletions(
 
     ClearCompletionDrainOutputEntryLocked(*state_);
 
-    if (*written_count > 0U && ShouldPreserveStatusAfterDrain(status_before_drain)) {
+    if (ShouldPreserveStatusAfterDrain(status_before_drain)) {
         ClearCompletionFailureEntriesLocked(*state_);
         SetLastStatusLocked(*state_, status_before_drain);
         return ThreadWorkerStatus::Success;

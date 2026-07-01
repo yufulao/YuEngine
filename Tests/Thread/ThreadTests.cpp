@@ -55,6 +55,8 @@ constexpr const char* TEST_WORKER_COMPLETION_CAPACITY_ENTRY =
 constexpr const char* TEST_WORKER_COMPLETION_DRAIN = "Thread_WorkerCompletionDrain_UsesCallerStorageLimit";
 constexpr const char* TEST_WORKER_COMPLETION_DRAIN_ENTRY =
     "Thread_WorkerCompletionDrainOutputEntry_RecordsFirstUnfitCompletion";
+constexpr const char* TEST_WORKER_MIXED_COMPLETION_DRAIN =
+    "Thread_WorkerMixedCompletionDrain_PreservesFailureStatus";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr std::size_t SMALL_CAPACITY = 2U;
@@ -1385,6 +1387,127 @@ int ThreadWorkerCompletionDrainOutputEntryRecordsFirstUnfitCompletion() {
 
     return 0;
 }
+
+int ThreadWorkerMixedCompletionDrainPreservesFailureStatus() {
+    ThreadWorker worker;
+    ThreadWorkerDesc desc;
+    desc.work_capacity = LARGE_CAPACITY;
+    desc.completion_capacity = LARGE_CAPACITY;
+
+    const ThreadWorkerStatus init_status = worker.Initialize(desc);
+    if (init_status != ThreadWorkerStatus::Success) {
+        return Fail("mixed completion worker initialize failed");
+    }
+
+    const ThreadWorkerStatus start_status = worker.Start();
+    if (start_status != ThreadWorkerStatus::Success) {
+        return Fail("mixed completion worker start failed");
+    }
+
+    FixedTraceBuffer trace;
+    ThreadTestContext first_context{&trace, FIRST_VALUE, false};
+    ThreadTestContext second_context{&trace, SECOND_VALUE, true};
+    ThreadTestContext third_context{&trace, THIRD_VALUE, false};
+    worker.Submit(&RecordTask, &first_context);
+    worker.Submit(&RecordTask, &second_context);
+    worker.Submit(&RecordTask, &third_context);
+
+    const ThreadWorkerStatus shutdown_status = worker.Shutdown(ShutdownPolicy::DrainQueued);
+    if (shutdown_status != ThreadWorkerStatus::ShutdownComplete) {
+        return Fail("mixed completion shutdown failed");
+    }
+
+    std::array<ThreadWorkerCompletion, 1U> first_drain{};
+    std::size_t first_written_count = 0U;
+    const ThreadWorkerStatus first_drain_status = worker.DrainCompletions(
+        first_drain.data(),
+        first_drain.size(),
+        &first_written_count);
+    if (first_drain_status != ThreadWorkerStatus::CompletionQueueFull) {
+        return Fail("first mixed drain did not report capacity failure");
+    }
+
+    if (first_written_count != first_drain.size()) {
+        return Fail("first mixed drain wrote wrong count");
+    }
+
+    if (first_drain[0U].status != TaskStatus::Completed) {
+        return Fail("first mixed drain changed first completion status");
+    }
+
+    const auto partial_snapshot = worker.Snapshot();
+    if (partial_snapshot.last_status != ThreadWorkerStatus::CompletionQueueFull) {
+        return Fail("first mixed drain did not preserve failure status");
+    }
+
+    if (partial_snapshot.completion_pending_count != 2U) {
+        return Fail("first mixed drain changed remaining completion count");
+    }
+
+    std::array<ThreadWorkerCompletion, 2U> second_drain{};
+    std::size_t second_written_count = 0U;
+    const ThreadWorkerStatus second_drain_status = worker.DrainCompletions(
+        second_drain.data(),
+        second_drain.size(),
+        &second_written_count);
+    if (second_drain_status != ThreadWorkerStatus::Success) {
+        return Fail("second mixed drain failed");
+    }
+
+    if (second_written_count != second_drain.size()) {
+        return Fail("second mixed drain wrote wrong count");
+    }
+
+    if (second_drain[0U].status != TaskStatus::Failed) {
+        return Fail("second mixed drain changed failed completion status");
+    }
+
+    if (second_drain[1U].status != TaskStatus::Completed) {
+        return Fail("second mixed drain changed final completion status");
+    }
+
+    const auto success_snapshot = worker.Snapshot();
+    if (success_snapshot.last_status != ThreadWorkerStatus::CompletionQueueFull) {
+        return Fail("successful mixed drain erased prior failure status");
+    }
+
+    if (success_snapshot.failed_count != 1U) {
+        return Fail("mixed drain failed count was wrong");
+    }
+
+    if (success_snapshot.completed_count != 2U) {
+        return Fail("mixed drain completed count was wrong");
+    }
+
+    std::array<ThreadWorkerCompletion, 1U> empty_drain{};
+    std::size_t empty_written_count = 0U;
+    const ThreadWorkerStatus empty_drain_status = worker.DrainCompletions(
+        empty_drain.data(),
+        empty_drain.size(),
+        &empty_written_count);
+    if (empty_drain_status != ThreadWorkerStatus::Success) {
+        return Fail("empty mixed drain failed");
+    }
+
+    if (empty_written_count != 0U) {
+        return Fail("empty mixed drain wrote completion records");
+    }
+
+    const auto final_snapshot = worker.Snapshot();
+    if (final_snapshot.last_status != ThreadWorkerStatus::CompletionQueueFull) {
+        return Fail("empty mixed drain erased prior failure status");
+    }
+
+    if (final_snapshot.drained_completion_count != 3U) {
+        return Fail("mixed drain total drained count was wrong");
+    }
+
+    const std::array<int, 3U> expected_trace{FIRST_VALUE, SECOND_VALUE, THIRD_VALUE};
+    if (!TraceEquals(trace, expected_trace)) {
+        return Fail("mixed drain changed execution order");
+    }
+
+    return 0;
 }
 
 int main(int argc, char** argv) {
@@ -1410,7 +1533,8 @@ int main(int argc, char** argv) {
         {TEST_WORKER_COMPLETION_CAPACITY, ThreadWorkerCompletionCapacityRejectsWithoutMutation},
         {TEST_WORKER_COMPLETION_CAPACITY_ENTRY, ThreadWorkerCompletionCapacityEntryClearsOnNonQueueCapacity},
         {TEST_WORKER_COMPLETION_DRAIN, ThreadWorkerCompletionDrainUsesCallerStorageLimit},
-        {TEST_WORKER_COMPLETION_DRAIN_ENTRY, ThreadWorkerCompletionDrainOutputEntryRecordsFirstUnfitCompletion}};
+        {TEST_WORKER_COMPLETION_DRAIN_ENTRY, ThreadWorkerCompletionDrainOutputEntryRecordsFirstUnfitCompletion},
+        {TEST_WORKER_MIXED_COMPLETION_DRAIN, ThreadWorkerMixedCompletionDrainPreservesFailureStatus}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);
