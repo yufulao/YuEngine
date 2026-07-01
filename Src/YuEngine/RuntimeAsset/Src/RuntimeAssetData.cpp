@@ -4730,9 +4730,8 @@ RuntimeAssetDataStatus RegisterLoadedFile(
     return RuntimeAssetDataStatus::Success;
 }
 
-RuntimeAssetDataStatus AddLoadedDependency(
+RuntimeAssetDataStatus AddLoadedResourceDependency(
     ResourceRegistry &resource_registry,
-    AssetManager &asset_manager,
     const RuntimeAssetLoadedFile &scene,
     const RuntimeAssetLoadedFile &dependency) {
     const ResourceStatus resource_status = resource_registry.AddDependency(scene.resource, dependency.resource);
@@ -4740,12 +4739,19 @@ RuntimeAssetDataStatus AddLoadedDependency(
         return RuntimeAssetDataStatus::ResourceDependencyFailed;
     }
 
-    const AssetStatus asset_status = asset_manager.AddDependency(scene.asset, dependency.asset);
-    if (asset_status != AssetStatus::Success) {
-        return RuntimeAssetDataStatus::AssetDependencyFailed;
-    }
-
     return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataAssetDependencyRecord BuildLoadedAssetDependencyRecord(
+    const RuntimeAssetLoadedFile &scene,
+    const RuntimeAssetLoadedFile &dependency) {
+    RuntimeAssetDataAssetDependencyRecord record{};
+    record.stable_resource_id = dependency.stable_id;
+    record.dependent_asset = scene.asset;
+    record.dependency_asset = dependency.asset;
+    record.expected_resource = dependency.resource;
+    record.expected_resource_type = dependency.resource_type;
+    return record;
 }
 
 bool CountExceedsCapacity(
@@ -6383,10 +6389,12 @@ void RecordCommittedRuntimeAssetFile(
 void SetCommitFailure(
     RuntimeAssetGraphTransactionData *transaction,
     RuntimeAssetDataStatus status,
-    RuntimeAssetLoadTransactionPhase phase) {
+    RuntimeAssetLoadTransactionPhase phase,
+    std::uint32_t first_failed_dependency_index = 0U) {
     transaction->result.status = status;
     transaction->result.transaction_result.status = status;
     transaction->result.transaction_result.phase = phase;
+    transaction->result.transaction_result.first_failed_dependency_index = first_failed_dependency_index;
 }
 
 RuntimeAssetCommitSnapshot CaptureRuntimeAssetCommitSnapshot(
@@ -6571,8 +6579,9 @@ RuntimeAssetDataStatus SetCommitFailureAndRollback(
     const RuntimeAssetGraphLoadRequest &request,
     RuntimeAssetGraphTransactionData *transaction,
     RuntimeAssetDataStatus status,
-    RuntimeAssetLoadTransactionPhase phase) {
-    SetCommitFailure(transaction, status, phase);
+    RuntimeAssetLoadTransactionPhase phase,
+    std::uint32_t first_failed_dependency_index = 0U) {
+    SetCommitFailure(transaction, status, phase, first_failed_dependency_index);
     RollbackRuntimeAssetGraphTransaction(request, transaction);
     return status;
 }
@@ -6649,25 +6658,49 @@ RuntimeAssetDataStatus CommitRuntimeAssetGraphTransaction(
     }
 
     SetCommitPhase(transaction, RuntimeAssetLoadTransactionPhase::CommitDependencies);
+    std::array<
+        RuntimeAssetDataAssetDependencyRecord,
+        yuengine::asset::MAX_ASSET_DEPENDENCY_EDGE_COUNT> asset_dependency_records{};
     file_index = 0U;
     while (file_index < request.file_count) {
-        status = AddLoadedDependency(
+        const RuntimeAssetLoadedFile &loaded_file = request.loaded_files[file_index];
+        status = AddLoadedResourceDependency(
             *request.resource_registry,
-            *request.asset_manager,
             transaction->result.scene,
-            request.loaded_files[file_index]);
+            loaded_file);
         if (status != RuntimeAssetDataStatus::Success) {
             return SetCommitFailureAndRollback(
                 request,
                 transaction,
                 status,
-                RuntimeAssetLoadTransactionPhase::CommitDependencies);
+                RuntimeAssetLoadTransactionPhase::CommitDependencies,
+                file_index);
         }
 
+        asset_dependency_records[file_index] =
+            BuildLoadedAssetDependencyRecord(transaction->result.scene, loaded_file);
         ++transaction->result.resource_dependency_count;
-        ++transaction->result.asset_dependency_count;
-        transaction->result.transaction_result.committed_dependency_edge_count += 2U;
+        ++transaction->result.transaction_result.committed_dependency_edge_count;
         ++file_index;
+    }
+
+    RuntimeAssetDataAssetDependencyBatchResult asset_dependency_batch{};
+    status = CommitRuntimeAssetDataAssetDependencyBatch(
+        request.asset_manager,
+        asset_dependency_records.data(),
+        request.file_count,
+        &asset_dependency_batch);
+    transaction->result.asset_dependency_count +=
+        asset_dependency_batch.committed_dependency_edge_count;
+    transaction->result.transaction_result.committed_dependency_edge_count +=
+        asset_dependency_batch.committed_dependency_edge_count;
+    if (status != RuntimeAssetDataStatus::Success) {
+        return SetCommitFailureAndRollback(
+            request,
+            transaction,
+            status,
+            RuntimeAssetLoadTransactionPhase::CommitDependencies,
+            asset_dependency_batch.first_failed_dependency_index);
     }
 
     SetCommitPhase(transaction, RuntimeAssetLoadTransactionPhase::CommitSceneOutput);
@@ -9570,6 +9603,60 @@ RuntimeAssetDataStatus CompileRuntimeAssetShaderProgram(
     }
 
     result.compiled_program = true;
+    result.status = RuntimeAssetDataStatus::Success;
+    *out_result = result;
+    return result.status;
+}
+
+RuntimeAssetDataStatus CommitRuntimeAssetDataAssetDependencyBatch(
+    yuengine::asset::AssetManager *asset_manager,
+    const RuntimeAssetDataAssetDependencyRecord *records,
+    std::uint32_t record_count,
+    RuntimeAssetDataAssetDependencyBatchResult *out_result) {
+    if (out_result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    RuntimeAssetDataAssetDependencyBatchResult result{};
+    *out_result = result;
+    if (asset_manager == nullptr) {
+        return result.status;
+    }
+
+    if (record_count > 0U && records == nullptr) {
+        return result.status;
+    }
+
+    if (record_count > yuengine::asset::MAX_ASSET_DEPENDENCY_EDGE_COUNT) {
+        result.status = RuntimeAssetDataStatus::CapacityExceeded;
+        *out_result = result;
+        return result.status;
+    }
+
+    std::array<
+        yuengine::asset::AssetAuthoringDependencyEdge,
+        yuengine::asset::MAX_ASSET_DEPENDENCY_EDGE_COUNT> asset_edges{};
+    for (std::uint32_t index = 0U; index < record_count; ++index) {
+        const RuntimeAssetDataAssetDependencyRecord &record = records[index];
+        yuengine::asset::AssetAuthoringDependencyEdge &edge = asset_edges[index];
+        edge.stable_resource_id = record.stable_resource_id;
+        edge.dependent = record.dependent_asset;
+        edge.dependency = record.dependency_asset;
+        edge.expected_resource = record.expected_resource;
+        edge.expected_resource_type = record.expected_resource_type;
+    }
+
+    const yuengine::asset::AssetAuthoringDependencyBatchResult asset_result =
+        asset_manager->AddAuthoringDependencies(asset_edges.data(), record_count);
+    result.asset_status = asset_result.status;
+    result.committed_dependency_edge_count = asset_result.committed_edge_count;
+    result.first_failed_dependency_index = asset_result.failed_edge_index;
+    if (asset_result.status != yuengine::asset::AssetStatus::Success) {
+        result.status = RuntimeAssetDataStatus::AssetDependencyFailed;
+        *out_result = result;
+        return result.status;
+    }
+
     result.status = RuntimeAssetDataStatus::Success;
     *out_result = result;
     return result.status;

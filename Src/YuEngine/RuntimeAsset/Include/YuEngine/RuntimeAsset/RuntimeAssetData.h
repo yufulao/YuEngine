@@ -407,6 +407,27 @@ struct RuntimeAssetSceneResourceRef final {
 };
 
 /**
+ * @brief Explicit asset dependency row exported by RuntimeAsset authoring data.
+ */
+struct RuntimeAssetDataAssetDependencyRecord final {
+    std::uint64_t stable_resource_id = 0U;
+    yuengine::asset::AssetHandle dependent_asset;
+    yuengine::asset::AssetHandle dependency_asset;
+    yuengine::resource::ResourceHandle expected_resource;
+    yuengine::resource::ResourceTypeId expected_resource_type;
+};
+
+/**
+ * @brief Ordered batch commit diagnostics for RuntimeAsset asset dependencies.
+ */
+struct RuntimeAssetDataAssetDependencyBatchResult final {
+    RuntimeAssetDataStatus status = RuntimeAssetDataStatus::InvalidArgument;
+    yuengine::asset::AssetStatus asset_status = yuengine::asset::AssetStatus::Success;
+    std::uint32_t committed_dependency_edge_count = 0U;
+    std::uint32_t first_failed_dependency_index = 0U;
+};
+
+/**
  * @brief Disk scene camera record emitted by the RuntimeAsset production loader.
  */
 struct RuntimeAssetSceneCameraRecord final {
@@ -1270,6 +1291,19 @@ RuntimeAssetDataStatus DecodeRuntimeAssetShaderProgramData(
 RuntimeAssetDataStatus CompileRuntimeAssetShaderProgram(
     const RuntimeAssetShaderCompilerBackendRequest &request,
     RuntimeAssetShaderCompilerBackendResult *out_result);
+/**
+ * @brief Commits explicit RuntimeAsset asset dependency rows through AssetManager.
+ * @param asset_manager Target Asset manager.
+ * @param records Input dependency rows.
+ * @param record_count Input row count.
+ * @param out_result Output batch diagnostics.
+ * @return Explicit RuntimeAssetData status.
+ */
+RuntimeAssetDataStatus CommitRuntimeAssetDataAssetDependencyBatch(
+    yuengine::asset::AssetManager *asset_manager,
+    const RuntimeAssetDataAssetDependencyRecord *records,
+    std::uint32_t record_count,
+    RuntimeAssetDataAssetDependencyBatchResult *out_result);
 /**
  * @brief Loads a runtime asset graph from File/VFS into Resource and Asset records.
  * @param request Input graph load request.
