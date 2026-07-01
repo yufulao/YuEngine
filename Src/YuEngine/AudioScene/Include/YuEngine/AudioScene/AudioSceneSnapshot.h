@@ -17,6 +17,7 @@ struct AudioSceneSnapshot final {
     std::size_t last_playing_source_count = 0U;
     std::size_t last_queue_request_count = 0U;
     std::size_t last_skipped_source_count = 0U;
+    std::size_t last_required_output_contract_count = 0U;
     std::uint32_t last_bus_id = 0U;
     AudioSceneStatus last_status = AudioSceneStatus::Success;
 };

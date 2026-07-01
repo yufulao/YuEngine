@@ -22,6 +22,10 @@ AudioSceneStatus AudioSceneContractQueue::SubmitSourceUpdates(
     result.active_source_count = active_source_count;
     result.playing_source_count = playing_source_count;
     if (validate_status != AudioSceneStatus::Success) {
+        if (validate_status == AudioSceneStatus::OutputCapacityExceeded) {
+            result.required_output_contract_count = playing_source_count;
+        }
+
         result.status = validate_status;
         *out_result = result;
         return RecordFailure(validate_status, result);
@@ -229,6 +233,7 @@ AudioSceneStatus AudioSceneContractQueue::RecordSuccess(const AudioSceneSubmitRe
     snapshot_.last_playing_source_count = result.playing_source_count;
     snapshot_.last_queue_request_count = result.queue_request_count;
     snapshot_.last_skipped_source_count = result.skipped_source_count;
+    snapshot_.last_required_output_contract_count = result.required_output_contract_count;
     snapshot_.last_bus_id = result.last_bus_id;
     snapshot_.last_status = AudioSceneStatus::Success;
     return AudioSceneStatus::Success;
@@ -243,6 +248,7 @@ AudioSceneStatus AudioSceneContractQueue::RecordFailure(
     snapshot_.last_playing_source_count = result.playing_source_count;
     snapshot_.last_queue_request_count = result.queue_request_count;
     snapshot_.last_skipped_source_count = result.skipped_source_count;
+    snapshot_.last_required_output_contract_count = result.required_output_contract_count;
     snapshot_.last_bus_id = result.last_bus_id;
     snapshot_.last_status = status;
     return status;

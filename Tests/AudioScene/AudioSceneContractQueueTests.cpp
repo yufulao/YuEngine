@@ -266,6 +266,10 @@ int AudioSceneOutputCapacityPreservesCountsWithoutMutation() {
         return Fail("audio scene output capacity queued output");
     }
 
+    if (result.required_output_contract_count != 2U) {
+        return Fail("audio scene output capacity required output count mismatch");
+    }
+
     if (result.status != AudioSceneStatus::OutputCapacityExceeded) {
         return Fail("audio scene output capacity result status mismatch");
     }
@@ -293,6 +297,10 @@ int AudioSceneOutputCapacityPreservesCountsWithoutMutation() {
 
     if (snapshot.last_queue_request_count != 0U) {
         return Fail("audio scene output capacity snapshot queue count mismatch");
+    }
+
+    if (snapshot.last_required_output_contract_count != 2U) {
+        return Fail("audio scene output capacity snapshot required output count mismatch");
     }
 
     if (snapshot.last_status != AudioSceneStatus::OutputCapacityExceeded) {
