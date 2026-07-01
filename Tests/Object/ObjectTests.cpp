@@ -27,6 +27,7 @@ constexpr const char* TEST_CREATE = "Object_CreateSyntheticObject_ReturnsGenerat
 constexpr const char* TEST_INVALID_TYPE = "Object_CreateRejectsInvalidTypeWithoutMutation";
 constexpr const char* TEST_CAPACITY = "Object_RegistryCapacityOverflow_DoesNotMutate";
 constexpr const char* TEST_TYPE_CAPACITY = "Object_TypeCapacityOverflow_DoesNotMutate";
+constexpr const char *TEST_TYPE_CAPACITY_ENTRY = "Object_TypeCapacityOverflow_RecordsRejectedTypeEntry";
 constexpr const char* TEST_VALIDATE_STALE = "Object_ValidateRejectsInvalidOrStaleHandle";
 constexpr const char* TEST_STALE_OPERATIONS = "Object_InvalidOrStaleHandleOperations_ReturnExplicitStatusWithoutMutation";
 constexpr const char* TEST_DESTROY_GENERATION = "Object_DestroyIncrementsGenerationAndInvalidatesOldHandle";
@@ -105,6 +106,19 @@ bool RuntimeCountsMatch(const ObjectSnapshot& left, const ObjectSnapshot& right)
     }
 
     return left.allocation_accounting_status == right.allocation_accounting_status;
+}
+
+bool TypeCapacitySnapshotFieldsAreClear(const ObjectSnapshot &snapshot) {
+    return snapshot.last_failed_type_capacity_type.value == 0U &&
+           snapshot.last_failed_type_capacity == 0U &&
+           snapshot.last_failed_type_count == 0U &&
+           snapshot.last_failed_required_type_count == 0U;
+}
+
+bool TypeCapacityResultFieldsAreClear(const ObjectRegistrationResult &result) {
+    return result.failed_type_capacity_type.value == 0U &&
+           result.failed_type_capacity == 0U &&
+           result.current_type_count == 0U;
 }
 
 int ObjectCreateSyntheticObjectReturnsGenerationHandle() {
@@ -275,6 +289,104 @@ int ObjectTypeCapacityOverflowDoesNotMutate() {
 
     if (retry_result.handle.generation != 1U) {
         return Fail(TYPE_CAPACITY_RETRY_GENERATION_MESSAGE);
+    }
+
+    return 0;
+}
+
+int ObjectTypeCapacityOverflowRecordsRejectedTypeEntry() {
+    ObjectRegistry registry(ObjectRegistryDesc{4U, 1U});
+    const ObjectRegistrationResult first_result = Create(registry, TYPE_ACTOR);
+    if (!first_result.Succeeded()) {
+        return Fail("type capacity entry fixture creation failed");
+    }
+
+    const ObjectRegistrationResult capacity_result = Create(registry, TYPE_CAMERA);
+    if (capacity_result.status != ObjectStatus::CapacityExceeded) {
+        return Fail("type capacity entry status changed");
+    }
+
+    if (capacity_result.failed_type_capacity_type.value != TYPE_CAMERA.value) {
+        return Fail("type capacity result did not record rejected type");
+    }
+
+    if (capacity_result.failed_type_capacity != 1U) {
+        return Fail("type capacity result did not record type capacity");
+    }
+
+    if (capacity_result.current_type_count != 1U) {
+        return Fail("type capacity result did not record current type count");
+    }
+
+    if (capacity_result.required_type_count != 2U) {
+        return Fail("type capacity result did not record required type count");
+    }
+
+    const ObjectSnapshot capacity_snapshot = registry.Snapshot();
+    if (capacity_snapshot.last_failed_type_capacity_type.value != TYPE_CAMERA.value) {
+        return Fail("type capacity snapshot did not record rejected type");
+    }
+
+    if (capacity_snapshot.last_failed_type_capacity != 1U) {
+        return Fail("type capacity snapshot did not record type capacity");
+    }
+
+    if (capacity_snapshot.last_failed_type_count != 1U) {
+        return Fail("type capacity snapshot did not record current type count");
+    }
+
+    if (capacity_snapshot.last_failed_required_type_count != 2U) {
+        return Fail("type capacity snapshot did not record required type count");
+    }
+
+    const ObjectRegistrationResult invalid_result = registry.CreateSyntheticObject(Descriptor(ObjectTypeId{}));
+    if (invalid_result.status != ObjectStatus::InvalidType) {
+        return Fail("invalid type clear status changed");
+    }
+
+    if (!TypeCapacityResultFieldsAreClear(invalid_result)) {
+        return Fail("invalid type result kept type capacity entry");
+    }
+
+    if (!TypeCapacitySnapshotFieldsAreClear(registry.Snapshot())) {
+        return Fail("invalid type did not clear type capacity entry");
+    }
+
+    const ObjectRegistrationResult second_capacity_result = Create(registry, TYPE_CAMERA);
+    if (second_capacity_result.status != ObjectStatus::CapacityExceeded) {
+        return Fail("second type capacity status changed");
+    }
+
+    const ObjectRegistrationResult retry_result = Create(registry, TYPE_ACTOR);
+    if (!retry_result.Succeeded()) {
+        return Fail(TYPE_CAPACITY_RETRY_CREATE_MESSAGE);
+    }
+
+    if (!TypeCapacityResultFieldsAreClear(retry_result)) {
+        return Fail("type capacity retry result kept rejected type");
+    }
+
+    if (!TypeCapacitySnapshotFieldsAreClear(registry.Snapshot())) {
+        return Fail("type capacity retry did not clear rejected type");
+    }
+
+    ObjectRegistry object_capacity_registry(ObjectRegistryDesc{1U, 2U});
+    const ObjectRegistrationResult object_capacity_first = Create(object_capacity_registry, TYPE_ACTOR);
+    if (!object_capacity_first.Succeeded()) {
+        return Fail("object capacity entry fixture creation failed");
+    }
+
+    const ObjectRegistrationResult object_capacity_result = Create(object_capacity_registry, TYPE_CAMERA);
+    if (object_capacity_result.status != ObjectStatus::CapacityExceeded) {
+        return Fail("object capacity entry status changed");
+    }
+
+    if (!TypeCapacityResultFieldsAreClear(object_capacity_result)) {
+        return Fail("object capacity result recorded type capacity entry");
+    }
+
+    if (!TypeCapacitySnapshotFieldsAreClear(object_capacity_registry.Snapshot())) {
+        return Fail("object capacity snapshot recorded type capacity entry");
     }
 
     return 0;
@@ -778,6 +890,7 @@ int main(int argc, char** argv) {
         {TEST_INVALID_TYPE, ObjectCreateRejectsInvalidTypeWithoutMutation},
         {TEST_CAPACITY, ObjectRegistryCapacityOverflowDoesNotMutate},
         {TEST_TYPE_CAPACITY, ObjectTypeCapacityOverflowDoesNotMutate},
+        {TEST_TYPE_CAPACITY_ENTRY, ObjectTypeCapacityOverflowRecordsRejectedTypeEntry},
         {TEST_VALIDATE_STALE, ObjectValidateRejectsInvalidOrStaleHandle},
         {TEST_STALE_OPERATIONS, ObjectInvalidOrStaleHandleOperationsReturnExplicitStatusWithoutMutation},
         {TEST_DESTROY_GENERATION, ObjectDestroyIncrementsGenerationAndInvalidatesOldHandle},

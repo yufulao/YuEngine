@@ -31,6 +31,10 @@ ObjectRegistry::ObjectRegistry(ObjectRegistryDesc desc)
           0U,
           0U,
           0U,
+          ObjectTypeId{},
+          0U,
+          0U,
+          0U,
           0U,
           0U,
           0U,
@@ -92,16 +96,34 @@ ObjectRegistrationResult ObjectRegistry::CreateSyntheticObject(const ObjectDescr
     }
 
     if (required_type_count > snapshot_.type_capacity) {
-        const ObjectStatus status = RecordFailure(ObjectStatus::CapacityExceeded);
-        snapshot_.last_required_object_count = required_object_count;
-        snapshot_.last_required_type_count = required_type_count;
+        const ObjectStatus status = RecordTypeCapacityFailure(
+            descriptor.type,
+            required_object_count,
+            required_type_count);
         return ObjectRegistrationResult::Failure(
             status,
             required_object_count,
-            required_type_count);
+            required_type_count,
+            descriptor.type,
+            snapshot_.type_capacity,
+            snapshot_.type_count);
     }
 
     const ObjectStatus type_status = RegisterTypeIfNeeded(descriptor.type);
+    if (type_status == ObjectStatus::CapacityExceeded) {
+        const ObjectStatus status = RecordTypeCapacityFailure(
+            descriptor.type,
+            required_object_count,
+            required_type_count);
+        return ObjectRegistrationResult::Failure(
+            status,
+            required_object_count,
+            required_type_count,
+            descriptor.type,
+            snapshot_.type_capacity,
+            snapshot_.type_count);
+    }
+
     if (type_status != ObjectStatus::Success) {
         const ObjectStatus status = RecordFailure(type_status);
         snapshot_.last_required_object_count = required_object_count;
@@ -224,11 +246,33 @@ ObjectSnapshot ObjectRegistry::Snapshot() const {
     return snapshot_;
 }
 
+void ObjectRegistry::ClearTypeCapacityFailure() {
+    snapshot_.last_failed_type_capacity_type = ObjectTypeId{};
+    snapshot_.last_failed_type_capacity = 0U;
+    snapshot_.last_failed_type_count = 0U;
+    snapshot_.last_failed_required_type_count = 0U;
+}
+
 ObjectStatus ObjectRegistry::RecordFailure(ObjectStatus status) {
     ++snapshot_.failed_operation_count;
     snapshot_.last_status = status;
     snapshot_.last_required_object_count = 0U;
     snapshot_.last_required_type_count = 0U;
+    ClearTypeCapacityFailure();
+    return status;
+}
+
+ObjectStatus ObjectRegistry::RecordTypeCapacityFailure(
+    ObjectTypeId type,
+    std::uint32_t required_object_count,
+    std::uint32_t required_type_count) {
+    const ObjectStatus status = RecordFailure(ObjectStatus::CapacityExceeded);
+    snapshot_.last_required_object_count = required_object_count;
+    snapshot_.last_required_type_count = required_type_count;
+    snapshot_.last_failed_type_capacity_type = type;
+    snapshot_.last_failed_type_capacity = snapshot_.type_capacity;
+    snapshot_.last_failed_type_count = snapshot_.type_count;
+    snapshot_.last_failed_required_type_count = required_type_count;
     return status;
 }
 
@@ -237,6 +281,7 @@ void ObjectRegistry::RecordSuccess() {
     snapshot_.last_status = ObjectStatus::Success;
     snapshot_.last_required_object_count = 0U;
     snapshot_.last_required_type_count = 0U;
+    ClearTypeCapacityFailure();
 }
 
 ObjectStatus ObjectRegistry::ResolveHandle(ObjectHandle handle, std::size_t& out_index) const {

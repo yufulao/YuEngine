@@ -7,6 +7,7 @@
 
 #include "YuEngine/Memory/MemoryAccountingStatus.h"
 #include "YuEngine/Object/ObjectStatus.h"
+#include "YuEngine/Object/ObjectTypeId.h"
 
 namespace yuengine::object {
 using memory::MemoryAccountingStatus;
@@ -17,6 +18,10 @@ struct ObjectSnapshot final {
     std::uint32_t type_count;
     std::uint32_t last_required_object_count;
     std::uint32_t last_required_type_count;
+    ObjectTypeId last_failed_type_capacity_type;
+    std::uint32_t last_failed_type_capacity;
+    std::uint32_t last_failed_type_count;
+    std::uint32_t last_failed_required_type_count;
     std::uint32_t alive_object_count;
     std::uint32_t destroyed_object_count;
     std::uint64_t created_object_count;

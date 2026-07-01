@@ -7,6 +7,7 @@
 
 #include "YuEngine/Object/ObjectHandle.h"
 #include "YuEngine/Object/ObjectStatus.h"
+#include "YuEngine/Object/ObjectTypeId.h"
 
 namespace yuengine::object {
 struct ObjectRegistrationResult final {
@@ -14,6 +15,9 @@ struct ObjectRegistrationResult final {
     ObjectHandle handle{};
     std::uint32_t required_object_count = 0U;
     std::uint32_t required_type_count = 0U;
+    ObjectTypeId failed_type_capacity_type{};
+    std::uint32_t failed_type_capacity = 0U;
+    std::uint32_t current_type_count = 0U;
 
     /**
      * @comment 创建成功 result。
@@ -39,16 +43,25 @@ struct ObjectRegistrationResult final {
      * @param status 输入 status。
      * @param required_object_count 输入 required object 数量。
      * @param required_type_count 输入 required type 数量。
+     * @param failed_type_capacity_type 输入 type capacity 拒绝的 type。
+     * @param failed_type_capacity 输入失败时 type capacity。
+     * @param current_type_count 输入失败时当前 type 数量。
      * @return 显式操作结果。
      */
     static ObjectRegistrationResult Failure(
         ObjectStatus status,
         std::uint32_t required_object_count=0U,
-        std::uint32_t required_type_count=0U) {
+        std::uint32_t required_type_count=0U,
+        ObjectTypeId failed_type_capacity_type=ObjectTypeId{},
+        std::uint32_t failed_type_capacity=0U,
+        std::uint32_t current_type_count=0U) {
         ObjectRegistrationResult result{};
         result.status = status;
         result.required_object_count = required_object_count;
         result.required_type_count = required_type_count;
+        result.failed_type_capacity_type = failed_type_capacity_type;
+        result.failed_type_capacity = failed_type_capacity;
+        result.current_type_count = current_type_count;
         return result;
     }
 
