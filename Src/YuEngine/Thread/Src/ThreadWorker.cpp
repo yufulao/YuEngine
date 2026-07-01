@@ -724,6 +724,61 @@ ThreadWorkerCompletionEnumerationResult ThreadWorker::EnumerateCompletionsByStat
     return result;
 }
 
+ThreadWorkerCompletionEnumerationResult ThreadWorker::EnumerateCompletionsByStatusBatch(
+    const TaskStatus* statuses,
+    std::size_t status_count,
+    ThreadWorkerCompletion* output_records,
+    std::size_t output_capacity) const {
+    ThreadWorkerCompletionEnumerationResult result;
+    if (status_count > 0U && statuses == nullptr) {
+        result.status = ThreadWorkerCompletionEnumerationStatus::InvalidArgument;
+        return result;
+    }
+
+    if (output_capacity > 0U && output_records == nullptr) {
+        result.status = ThreadWorkerCompletionEnumerationStatus::InvalidArgument;
+        return result;
+    }
+
+    for (std::size_t index = 0U; index < status_count; ++index) {
+        if (!IsCompletionEnumerationStatus(statuses[index])) {
+            result.status = ThreadWorkerCompletionEnumerationStatus::InvalidArgument;
+            return result;
+        }
+    }
+
+    if (state_ == nullptr) {
+        result.status = ThreadWorkerCompletionEnumerationStatus::NotInitialized;
+        return result;
+    }
+
+    std::lock_guard<std::mutex> lock(state_->mutex);
+    std::size_t required_count = 0U;
+    for (std::size_t index = 0U; index < status_count; ++index) {
+        required_count += CountCompletionSnapshotsByStatusLocked(*state_, statuses[index]);
+    }
+
+    result.required_count = required_count;
+    if (required_count > output_capacity) {
+        result.status = ThreadWorkerCompletionEnumerationStatus::OutputCapacityExceeded;
+        return result;
+    }
+
+    std::size_t output_index = 0U;
+    for (std::size_t index = 0U; index < status_count; ++index) {
+        const std::size_t status_required_count = CountCompletionSnapshotsByStatusLocked(*state_, statuses[index]);
+        if (status_required_count > 0U) {
+            ThreadWorkerCompletion* output_cursor = &output_records[output_index];
+            WriteCompletionSnapshotsByStatusLocked(*state_, statuses[index], output_cursor);
+            output_index += status_required_count;
+        }
+    }
+
+    result.written_count = required_count;
+    result.status = ThreadWorkerCompletionEnumerationStatus::Success;
+    return result;
+}
+
 ThreadWorkerCompletionEnumerationStatus ThreadWorker::CountCompletionsByStatus(
     TaskStatus status,
     std::size_t* output_count) const {

@@ -68,6 +68,8 @@ constexpr const char* TEST_WORKER_COMPLETION_STATUS_COUNT =
     "Thread_WorkerCompletionStatusCount_MatchesEnumeration";
 constexpr const char* TEST_WORKER_COMPLETION_BATCH_STATUS_COUNT =
     "Thread_WorkerCompletionBatchStatusCount_MatchesSingleCounts";
+constexpr const char* TEST_WORKER_COMPLETION_BATCH_STATUS_ENUMERATION =
+    "Thread_WorkerCompletionBatchStatusEnumeration_ReturnsStableSnapshots";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr std::size_t SMALL_CAPACITY = 2U;
@@ -2360,6 +2362,304 @@ int ThreadWorkerCompletionBatchStatusCountMatchesSingleCounts() {
     return 0;
 }
 
+int ThreadWorkerCompletionBatchStatusEnumerationReturnsStableSnapshots() {
+    ThreadWorker worker;
+    ThreadWorkerDesc desc;
+    desc.work_capacity = LARGE_CAPACITY;
+    desc.completion_capacity = LARGE_CAPACITY;
+
+    const ThreadWorkerStatus init_status = worker.Initialize(desc);
+    if (init_status != ThreadWorkerStatus::Success) {
+        return Fail("worker initialize failed");
+    }
+
+    const ThreadWorkerStatus start_status = worker.Start();
+    if (start_status != ThreadWorkerStatus::Success) {
+        return Fail("worker start failed");
+    }
+
+    FixedTraceBuffer trace;
+    ThreadTestContext first_context{&trace, FIRST_VALUE, false};
+    ThreadTestContext second_context{&trace, SECOND_VALUE, true};
+    ThreadTestContext third_context{&trace, THIRD_VALUE, false};
+    TaskId first_task_id{0U};
+    TaskId second_task_id{0U};
+    TaskId third_task_id{0U};
+
+    const ThreadWorkerStatus first_submit_status = worker.Submit(
+        &RecordTask,
+        &first_context,
+        &first_task_id);
+    if (first_submit_status != ThreadWorkerStatus::Success) {
+        return Fail("first batch status enumeration submit failed");
+    }
+
+    const ThreadWorkerStatus second_submit_status = worker.Submit(
+        &RecordTask,
+        &second_context,
+        &second_task_id);
+    if (second_submit_status != ThreadWorkerStatus::Success) {
+        return Fail("second batch status enumeration submit failed");
+    }
+
+    const ThreadWorkerStatus third_submit_status = worker.Submit(
+        &RecordTask,
+        &third_context,
+        &third_task_id);
+    if (third_submit_status != ThreadWorkerStatus::Success) {
+        return Fail("third batch status enumeration submit failed");
+    }
+
+    const ThreadWorkerStatus shutdown_status = worker.Shutdown(ShutdownPolicy::DrainQueued);
+    if (shutdown_status != ThreadWorkerStatus::ShutdownComplete) {
+        return Fail("batch status enumeration shutdown failed");
+    }
+
+    std::array<TaskStatus, 3U> statuses{
+        TaskStatus::Failed,
+        TaskStatus::Completed,
+        TaskStatus::Canceled};
+    std::array<ThreadWorkerCompletion, 3U> records{};
+    const ThreadWorkerCompletionEnumerationResult enumeration_result =
+        worker.EnumerateCompletionsByStatusBatch(
+            statuses.data(),
+            statuses.size(),
+            records.data(),
+            records.size());
+    if (enumeration_result.status != ThreadWorkerCompletionEnumerationStatus::Success) {
+        return Fail("batch status enumeration failed");
+    }
+
+    if (enumeration_result.required_count != records.size()) {
+        return Fail("batch status enumeration reported wrong required count");
+    }
+
+    if (enumeration_result.written_count != records.size()) {
+        return Fail("batch status enumeration wrote wrong count");
+    }
+
+    if (records[0U].task_id.value != second_task_id.value) {
+        return Fail("batch status enumeration returned wrong failed task id");
+    }
+
+    if (records[0U].status != TaskStatus::Failed) {
+        return Fail("batch status enumeration returned wrong failed status");
+    }
+
+    if (records[1U].task_id.value != first_task_id.value) {
+        return Fail("batch status enumeration returned wrong first completed task id");
+    }
+
+    if (records[1U].status != TaskStatus::Completed) {
+        return Fail("batch status enumeration returned wrong first completed status");
+    }
+
+    if (records[2U].task_id.value != third_task_id.value) {
+        return Fail("batch status enumeration returned wrong second completed task id");
+    }
+
+    if (records[2U].status != TaskStatus::Completed) {
+        return Fail("batch status enumeration returned wrong second completed status");
+    }
+
+    std::array<ThreadWorkerCompletion, 1U> failed_records{};
+    const ThreadWorkerCompletionEnumerationResult failed_result = worker.EnumerateCompletionsByStatus(
+        TaskStatus::Failed,
+        failed_records.data(),
+        failed_records.size());
+    if (failed_result.status != ThreadWorkerCompletionEnumerationStatus::Success) {
+        return Fail("single failed status enumeration failed");
+    }
+
+    if (failed_records[0U].task_id.value != records[0U].task_id.value) {
+        return Fail("batch failed group did not match single enumeration");
+    }
+
+    std::array<ThreadWorkerCompletion, 2U> completed_records{};
+    const ThreadWorkerCompletionEnumerationResult completed_result = worker.EnumerateCompletionsByStatus(
+        TaskStatus::Completed,
+        completed_records.data(),
+        completed_records.size());
+    if (completed_result.status != ThreadWorkerCompletionEnumerationStatus::Success) {
+        return Fail("single completed status enumeration failed");
+    }
+
+    if (completed_records[0U].task_id.value != records[1U].task_id.value) {
+        return Fail("batch completed group first row did not match single enumeration");
+    }
+
+    if (completed_records[1U].task_id.value != records[2U].task_id.value) {
+        return Fail("batch completed group second row did not match single enumeration");
+    }
+
+    std::array<ThreadWorkerCompletion, 1U> canceled_records{MakeSentinelCompletion()};
+    const ThreadWorkerCompletionEnumerationResult canceled_result = worker.EnumerateCompletionsByStatus(
+        TaskStatus::Canceled,
+        canceled_records.data(),
+        canceled_records.size());
+    if (canceled_result.status != ThreadWorkerCompletionEnumerationStatus::Success) {
+        return Fail("single canceled status enumeration failed");
+    }
+
+    if (canceled_result.required_count != 0U) {
+        return Fail("single canceled status enumeration reported wrong required count");
+    }
+
+    if (canceled_records[0U].status != TaskStatus::Rejected) {
+        return Fail("single canceled status enumeration mutated output");
+    }
+
+    std::array<ThreadWorkerCompletion, 2U> small_records{
+        MakeSentinelCompletion(),
+        MakeSentinelCompletion()};
+    const ThreadWorkerCompletionEnumerationResult small_result =
+        worker.EnumerateCompletionsByStatusBatch(
+            statuses.data(),
+            statuses.size(),
+            small_records.data(),
+            small_records.size());
+    if (small_result.status != ThreadWorkerCompletionEnumerationStatus::OutputCapacityExceeded) {
+        return Fail("small batch status enumeration did not report capacity failure");
+    }
+
+    if (small_result.required_count != records.size()) {
+        return Fail("small batch status enumeration reported wrong required count");
+    }
+
+    if (small_result.written_count != 0U) {
+        return Fail("small batch status enumeration wrote count on failure");
+    }
+
+    if (small_records[0U].status != TaskStatus::Rejected) {
+        return Fail("small batch status enumeration mutated first output");
+    }
+
+    if (small_records[1U].status != TaskStatus::Rejected) {
+        return Fail("small batch status enumeration mutated second output");
+    }
+
+    std::array<TaskStatus, 2U> default_statuses{TaskStatus::Completed, TaskStatus::Created};
+    std::array<ThreadWorkerCompletion, 3U> default_records = records;
+    const ThreadWorkerCompletionEnumerationResult default_status_result =
+        worker.EnumerateCompletionsByStatusBatch(
+            default_statuses.data(),
+            default_statuses.size(),
+            default_records.data(),
+            default_records.size());
+    if (default_status_result.status != ThreadWorkerCompletionEnumerationStatus::InvalidArgument) {
+        return Fail("default batch status enumeration did not fail");
+    }
+
+    if (default_records[0U].task_id.value != records[0U].task_id.value) {
+        return Fail("default batch status enumeration mutated output");
+    }
+
+    std::array<TaskStatus, 2U> queued_statuses{TaskStatus::Completed, TaskStatus::Queued};
+    std::array<ThreadWorkerCompletion, 3U> queued_records = records;
+    const ThreadWorkerCompletionEnumerationResult queued_status_result =
+        worker.EnumerateCompletionsByStatusBatch(
+            queued_statuses.data(),
+            queued_statuses.size(),
+            queued_records.data(),
+            queued_records.size());
+    if (queued_status_result.status != ThreadWorkerCompletionEnumerationStatus::InvalidArgument) {
+        return Fail("queued batch status enumeration did not fail");
+    }
+
+    if (queued_records[1U].task_id.value != records[1U].task_id.value) {
+        return Fail("queued batch status enumeration mutated output");
+    }
+
+    const ThreadWorkerCompletionEnumerationResult null_statuses_result =
+        worker.EnumerateCompletionsByStatusBatch(
+            nullptr,
+            1U,
+            records.data(),
+            records.size());
+    if (null_statuses_result.status != ThreadWorkerCompletionEnumerationStatus::InvalidArgument) {
+        return Fail("null batch status input did not fail");
+    }
+
+    const ThreadWorkerCompletionEnumerationResult null_output_result =
+        worker.EnumerateCompletionsByStatusBatch(
+            statuses.data(),
+            statuses.size(),
+            nullptr,
+            records.size());
+    if (null_output_result.status != ThreadWorkerCompletionEnumerationStatus::InvalidArgument) {
+        return Fail("null batch status output did not fail");
+    }
+
+    const auto before_drain_snapshot = worker.Snapshot();
+    if (before_drain_snapshot.completion_pending_count != 3U) {
+        return Fail("batch status enumeration changed pending completion count");
+    }
+
+    if (before_drain_snapshot.drained_completion_count != 0U) {
+        return Fail("batch status enumeration drained completions");
+    }
+
+    std::array<ThreadWorkerCompletion, 3U> drained_completions{};
+    std::size_t drained_count = 0U;
+    const ThreadWorkerStatus drain_status = worker.DrainCompletions(
+        drained_completions.data(),
+        drained_completions.size(),
+        &drained_count);
+    if (drain_status != ThreadWorkerStatus::Success) {
+        return Fail("batch status enumeration drain failed");
+    }
+
+    if (drained_count != drained_completions.size()) {
+        return Fail("batch status enumeration drain wrote wrong count");
+    }
+
+    std::array<ThreadWorkerCompletion, 3U> after_drain_records{};
+    const ThreadWorkerCompletionEnumerationResult after_drain_result =
+        worker.EnumerateCompletionsByStatusBatch(
+            statuses.data(),
+            statuses.size(),
+            after_drain_records.data(),
+            after_drain_records.size());
+    if (after_drain_result.status != ThreadWorkerCompletionEnumerationStatus::Success) {
+        return Fail("batch status enumeration after drain failed");
+    }
+
+    if (after_drain_result.required_count != records.size()) {
+        return Fail("batch status enumeration after drain reported wrong required count");
+    }
+
+    if (after_drain_records[0U].task_id.value != records[0U].task_id.value) {
+        return Fail("batch status enumeration after drain changed first output");
+    }
+
+    if (after_drain_records[1U].task_id.value != records[1U].task_id.value) {
+        return Fail("batch status enumeration after drain changed second output");
+    }
+
+    if (after_drain_records[2U].task_id.value != records[2U].task_id.value) {
+        return Fail("batch status enumeration after drain changed third output");
+    }
+
+    const auto final_snapshot = worker.Snapshot();
+    if (final_snapshot.completion_pending_count != 0U) {
+        return Fail("batch status enumeration after drain restored pending completions");
+    }
+
+    const std::uint64_t expected_drained_count = static_cast<std::uint64_t>(drained_completions.size());
+    if (final_snapshot.drained_completion_count != expected_drained_count) {
+        return Fail("batch status enumeration after drain changed drained count");
+    }
+
+    const std::array<int, 3U> expected_trace{FIRST_VALUE, SECOND_VALUE, THIRD_VALUE};
+    if (!TraceEquals(trace, expected_trace)) {
+        return Fail("batch status enumeration changed execution order");
+    }
+
+    return 0;
+}
+
+}
+
 int main(int argc, char** argv) {
     if (argc != 2) {
         return Fail(ERROR_EXPECTED_ONE_TEST_NAME);
@@ -2388,7 +2688,9 @@ int main(int argc, char** argv) {
         {TEST_WORKER_COMPLETION_LOOKUP, ThreadWorkerCompletionLookupReturnsStableSnapshots},
         {TEST_WORKER_COMPLETION_STATUS_ENUMERATION, ThreadWorkerCompletionStatusEnumerationReturnsStableSnapshots},
         {TEST_WORKER_COMPLETION_STATUS_COUNT, ThreadWorkerCompletionStatusCountMatchesEnumeration},
-        {TEST_WORKER_COMPLETION_BATCH_STATUS_COUNT, ThreadWorkerCompletionBatchStatusCountMatchesSingleCounts}};
+        {TEST_WORKER_COMPLETION_BATCH_STATUS_COUNT, ThreadWorkerCompletionBatchStatusCountMatchesSingleCounts},
+        {TEST_WORKER_COMPLETION_BATCH_STATUS_ENUMERATION,
+         ThreadWorkerCompletionBatchStatusEnumerationReturnsStableSnapshots}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);

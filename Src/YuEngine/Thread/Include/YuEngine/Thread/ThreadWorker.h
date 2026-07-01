@@ -97,6 +97,19 @@ public:
         ThreadWorkerCompletion* output_records,
         std::size_t output_capacity) const;
     /**
+     * @comment 按 completion status 批量枚举 completion snapshot，不消费 completion records。
+     * @param statuses 输入 completion status 数组。
+     * @param status_count 输入 completion status 数量。
+     * @param output_records 输出 completion snapshots。
+     * @param output_capacity 输出 completion capacity。
+     * @return 批量枚举结果和所需数量。
+     */
+    ThreadWorkerCompletionEnumerationResult EnumerateCompletionsByStatusBatch(
+        const TaskStatus* statuses,
+        std::size_t status_count,
+        ThreadWorkerCompletion* output_records,
+        std::size_t output_capacity) const;
+    /**
      * @comment 按 completion status 统计 completion snapshot，不消费 completion records。
      * @param status 输入 completion status。
      * @param output_count 输出匹配数量。
