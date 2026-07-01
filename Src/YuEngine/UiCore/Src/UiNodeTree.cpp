@@ -303,33 +303,48 @@ void UiNodeTree::RecordSuccess() {
 }
 
 UiNodeTreeResult UiNodeTree::RecordNodeCapacityFailure(const UiNodeDesc &desc) {
-    const std::uint32_t required_node_count = snapshot_.active_node_count + 1U;
-    snapshot_.last_required_node_count = required_node_count;
-    snapshot_.last_node_capacity_entry_node_id = desc.node_id;
-    snapshot_.last_node_capacity_entry_parent_id = desc.parent_id;
-    snapshot_.last_node_capacity_entry_sibling_order = desc.sibling_order;
-    snapshot_.last_node_capacity_entry_capacity = snapshot_.node_capacity;
-    snapshot_.last_node_capacity_entry_active_count = snapshot_.active_node_count;
     ++snapshot_.failed_operation_count;
     snapshot_.last_status = UiNodeTreeStatus::CapacityExceeded;
 
     UiNodeTreeResult result = UiNodeTreeResult::Failure(UiNodeTreeStatus::CapacityExceeded);
+    StoreNodeCapacityEntry(desc, result);
+    return result;
+}
+
+void UiNodeTree::StoreNodeCapacityEntry(const UiNodeDesc &desc, UiNodeTreeResult &result) {
+    result.capacity_entry_status = UiNodeTreeStatus::CapacityExceeded;
     result.capacity_entry_node_id = desc.node_id;
     result.capacity_entry_parent_id = desc.parent_id;
     result.capacity_entry_sibling_order = desc.sibling_order;
     result.capacity_entry_node_capacity = snapshot_.node_capacity;
     result.capacity_entry_active_node_count = snapshot_.active_node_count;
+    result.capacity_entry_accepted_operation_count = snapshot_.accepted_operation_count;
+    result.capacity_entry_failed_operation_count = snapshot_.failed_operation_count;
+
+    const std::uint32_t required_node_count = snapshot_.active_node_count + 1U;
     result.required_node_count = required_node_count;
-    return result;
+
+    snapshot_.last_required_node_count = required_node_count;
+    snapshot_.last_node_capacity_entry_status = UiNodeTreeStatus::CapacityExceeded;
+    snapshot_.last_node_capacity_entry_node_id = desc.node_id;
+    snapshot_.last_node_capacity_entry_parent_id = desc.parent_id;
+    snapshot_.last_node_capacity_entry_sibling_order = desc.sibling_order;
+    snapshot_.last_node_capacity_entry_capacity = snapshot_.node_capacity;
+    snapshot_.last_node_capacity_entry_active_count = snapshot_.active_node_count;
+    snapshot_.last_node_capacity_entry_accepted_operation_count = snapshot_.accepted_operation_count;
+    snapshot_.last_node_capacity_entry_failed_operation_count = snapshot_.failed_operation_count;
 }
 
 void UiNodeTree::ClearNodeCapacityEntry() {
     snapshot_.last_required_node_count = 0U;
+    snapshot_.last_node_capacity_entry_status = UiNodeTreeStatus::Success;
     snapshot_.last_node_capacity_entry_node_id = UiNodeId{};
     snapshot_.last_node_capacity_entry_parent_id = UiNodeId{};
     snapshot_.last_node_capacity_entry_sibling_order = 0U;
     snapshot_.last_node_capacity_entry_capacity = 0U;
     snapshot_.last_node_capacity_entry_active_count = 0U;
+    snapshot_.last_node_capacity_entry_accepted_operation_count = 0U;
+    snapshot_.last_node_capacity_entry_failed_operation_count = 0U;
 }
 
 UiNodeTreeStatus UiNodeTree::ValidateDesc(const UiNodeDesc &desc, UiNodeRecord &out_record) const {

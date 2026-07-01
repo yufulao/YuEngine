@@ -13,11 +13,14 @@ namespace yuengine::uicore {
 struct UiNodeTreeResult final {
     UiNodeTreeStatus status = UiNodeTreeStatus::Success;
     UiNodeRecord record;
+    UiNodeTreeStatus capacity_entry_status = UiNodeTreeStatus::Success;
     UiNodeId capacity_entry_node_id;
     UiNodeId capacity_entry_parent_id;
     std::uint32_t capacity_entry_sibling_order = 0U;
     std::uint32_t capacity_entry_node_capacity = 0U;
     std::uint32_t capacity_entry_active_node_count = 0U;
+    std::uint32_t capacity_entry_accepted_operation_count = 0U;
+    std::uint32_t capacity_entry_failed_operation_count = 0U;
     std::uint32_t required_node_count = 0U;
 
     /**

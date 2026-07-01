@@ -18,10 +18,13 @@ struct UiNodeTreeSnapshot final {
     std::uint32_t failed_operation_count = 0U;
     UiNodeTreeStatus last_status = UiNodeTreeStatus::Success;
     std::uint32_t last_required_node_count = 0U;
+    UiNodeTreeStatus last_node_capacity_entry_status = UiNodeTreeStatus::Success;
     UiNodeId last_node_capacity_entry_node_id;
     UiNodeId last_node_capacity_entry_parent_id;
     std::uint32_t last_node_capacity_entry_sibling_order = 0U;
     std::uint32_t last_node_capacity_entry_capacity = 0U;
     std::uint32_t last_node_capacity_entry_active_count = 0U;
+    std::uint32_t last_node_capacity_entry_accepted_operation_count = 0U;
+    std::uint32_t last_node_capacity_entry_failed_operation_count = 0U;
 };
 }

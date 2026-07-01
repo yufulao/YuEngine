@@ -104,6 +104,8 @@ constexpr std::string_view TEST_NODE_TREE_CREATE_ORDER =
     "UiCore_NodeTree_CreateAttachDetachOrder";
 constexpr std::string_view TEST_NODE_TREE_CREATE_CAPACITY_ENTRY =
     "UiCore_NodeTree_CreateCapacityEntryReportsRejectedNode";
+constexpr std::string_view TEST_NODE_TREE_CREATE_CAPACITY_DIAGNOSTICS =
+    "UiCore_NodeTree_CreateCapacityEntryReportsDiagnostics";
 constexpr std::string_view TEST_NODE_TREE_DESTROY =
     "UiCore_NodeTree_DestroyRemovesDescendants";
 constexpr std::string_view TEST_NODE_TREE_EXPORT_CHILDREN_REQUIRED =
@@ -335,6 +337,10 @@ int ExpectSnapshotNodeCapacityEntryCleared(const UiNodeTreeSnapshot &snapshot) {
         return Fail("snapshot kept required node count");
     }
 
+    if (snapshot.last_node_capacity_entry_status != UiNodeTreeStatus::Success) {
+        return Fail("snapshot kept node capacity entry status");
+    }
+
     if (snapshot.last_node_capacity_entry_node_id.IsValid()) {
         return Fail("snapshot kept node capacity entry id");
     }
@@ -355,12 +361,24 @@ int ExpectSnapshotNodeCapacityEntryCleared(const UiNodeTreeSnapshot &snapshot) {
         return Fail("snapshot kept node capacity entry active count");
     }
 
+    if (snapshot.last_node_capacity_entry_accepted_operation_count != 0U) {
+        return Fail("snapshot kept node capacity entry accepted operation count");
+    }
+
+    if (snapshot.last_node_capacity_entry_failed_operation_count != 0U) {
+        return Fail("snapshot kept node capacity entry failed operation count");
+    }
+
     return 0;
 }
 
 int ExpectResultNodeCapacityEntryCleared(const UiNodeTreeResult &result) {
     if (result.required_node_count != 0U) {
         return Fail("result kept required node count");
+    }
+
+    if (result.capacity_entry_status != UiNodeTreeStatus::Success) {
+        return Fail("result kept node capacity entry status");
     }
 
     if (result.capacity_entry_node_id.IsValid()) {
@@ -381,6 +399,14 @@ int ExpectResultNodeCapacityEntryCleared(const UiNodeTreeResult &result) {
 
     if (result.capacity_entry_active_node_count != 0U) {
         return Fail("result kept node capacity entry active count");
+    }
+
+    if (result.capacity_entry_accepted_operation_count != 0U) {
+        return Fail("result kept node capacity entry accepted operation count");
+    }
+
+    if (result.capacity_entry_failed_operation_count != 0U) {
+        return Fail("result kept node capacity entry failed operation count");
     }
 
     return 0;
@@ -543,6 +569,12 @@ int UiCoreNodeTreeCreateCapacityEntryReportsRejectedNode() {
         return Fail("create capacity result did not record rejected identity");
     }
 
+    if (rejected_result.capacity_entry_status != UiNodeTreeStatus::CapacityExceeded ||
+        rejected_result.capacity_entry_accepted_operation_count != before_snapshot.accepted_operation_count ||
+        rejected_result.capacity_entry_failed_operation_count != before_snapshot.failed_operation_count + 1U) {
+        return Fail("create capacity result did not record diagnostics");
+    }
+
     if (rejected_result.capacity_entry_node_capacity != 2U ||
         rejected_result.capacity_entry_active_node_count != 2U ||
         rejected_result.required_node_count != 3U) {
@@ -563,6 +595,12 @@ int UiCoreNodeTreeCreateCapacityEntryReportsRejectedNode() {
         after_snapshot.last_node_capacity_entry_parent_id.value != 1U ||
         after_snapshot.last_node_capacity_entry_sibling_order != 77U) {
         return Fail("snapshot did not record rejected node identity");
+    }
+
+    if (after_snapshot.last_node_capacity_entry_status != UiNodeTreeStatus::CapacityExceeded ||
+        after_snapshot.last_node_capacity_entry_accepted_operation_count != before_snapshot.accepted_operation_count ||
+        after_snapshot.last_node_capacity_entry_failed_operation_count != before_snapshot.failed_operation_count + 1U) {
+        return Fail("snapshot did not record node capacity diagnostics");
     }
 
     if (after_snapshot.last_node_capacity_entry_capacity != 2U ||
@@ -630,6 +668,68 @@ int UiCoreNodeTreeCreateCapacityEntryReportsRejectedNode() {
     }
 
     return 0;
+}
+
+int UiCoreNodeTreeCreateCapacityEntryReportsDiagnostics() {
+    UiNodeTreeDesc desc = MakeTreeDesc();
+    desc.node_capacity = 1U;
+    UiNodeTree tree(desc);
+
+    const UiNodeDesc root_desc = MakeNodeDesc(NodeId(10U), UiNodeId{}, 0U);
+    int ret_code = CreateNode(tree, root_desc, "diagnostic root create failed");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    const UiNodeTreeSnapshot before_capacity = tree.Snapshot();
+    UiNodeDesc rejected_desc = MakeNodeDesc(NodeId(11U), NodeId(10U), 9U);
+    const UiNodeTreeResult capacity_result = tree.CreateNode(rejected_desc);
+    if (capacity_result.status != UiNodeTreeStatus::CapacityExceeded) {
+        return Fail("diagnostic capacity result status wrong");
+    }
+
+    if (capacity_result.capacity_entry_status != UiNodeTreeStatus::CapacityExceeded) {
+        return Fail("diagnostic capacity result entry status wrong");
+    }
+
+    if (capacity_result.capacity_entry_accepted_operation_count != before_capacity.accepted_operation_count ||
+        capacity_result.capacity_entry_failed_operation_count != before_capacity.failed_operation_count + 1U) {
+        return Fail("diagnostic capacity result operation counts wrong");
+    }
+
+    const UiNodeTreeSnapshot capacity_snapshot = tree.Snapshot();
+    if (capacity_snapshot.last_node_capacity_entry_status != UiNodeTreeStatus::CapacityExceeded) {
+        return Fail("diagnostic snapshot entry status wrong");
+    }
+
+    if (capacity_snapshot.last_node_capacity_entry_accepted_operation_count !=
+            before_capacity.accepted_operation_count ||
+        capacity_snapshot.last_node_capacity_entry_failed_operation_count !=
+            before_capacity.failed_operation_count + 1U) {
+        return Fail("diagnostic snapshot operation counts wrong");
+    }
+
+    const UiNodeTreeResult duplicate_result = tree.CreateNode(root_desc);
+    if (duplicate_result.status != UiNodeTreeStatus::DuplicateNodeId) {
+        return Fail("diagnostic duplicate did not fail as duplicate");
+    }
+
+    ret_code = ExpectResultNodeCapacityEntryCleared(duplicate_result);
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    ret_code = ExpectSnapshotNodeCapacityEntryCleared(tree.Snapshot());
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    ret_code = ExpectSuccess(tree.DestroyNode(NodeId(10U)), "diagnostic destroy failed");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    return ExpectSnapshotNodeCapacityEntryCleared(tree.Snapshot());
 }
 
 int UiCoreNodeTreeDestroyRemovesDescendants() {
@@ -1600,6 +1700,7 @@ int main(int argc, char **argv) {
     const std::unordered_map<std::string_view, TestFunction> test_registry{
         {TEST_NODE_TREE_CREATE_ORDER, UiCoreNodeTreeCreateAttachDetachOrder},
         {TEST_NODE_TREE_CREATE_CAPACITY_ENTRY, UiCoreNodeTreeCreateCapacityEntryReportsRejectedNode},
+        {TEST_NODE_TREE_CREATE_CAPACITY_DIAGNOSTICS, UiCoreNodeTreeCreateCapacityEntryReportsDiagnostics},
         {TEST_NODE_TREE_DESTROY, UiCoreNodeTreeDestroyRemovesDescendants},
         {TEST_NODE_TREE_EXPORT_CHILDREN_REQUIRED, UiCoreNodeTreeExportChildrenReportsRequiredCount},
         {TEST_RECT_MATH, UiCoreRectMathParentResizePivotMarginPaddingDpi},

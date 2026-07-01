@@ -109,6 +109,7 @@ private:
     UiNodeTreeStatus RecordFailure(UiNodeTreeStatus status);
     void RecordSuccess();
     UiNodeTreeResult RecordNodeCapacityFailure(const UiNodeDesc &desc);
+    void StoreNodeCapacityEntry(const UiNodeDesc &desc, UiNodeTreeResult &result);
     void ClearNodeCapacityEntry();
     UiNodeTreeStatus ValidateDesc(const UiNodeDesc &desc, UiNodeRecord &out_record) const;
     UiNodeTreeStatus ResolveRecord(const UiNodeDesc &desc, UiNodeRecord &out_record) const;
