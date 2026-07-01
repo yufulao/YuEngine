@@ -62,7 +62,7 @@ private:
     };
 
     ResourceUploadCommitStatus RecordRejected(ResourceUploadCommitStatus status);
-    ResourceUploadCommitStatus RecordCompletionOverflow();
+    ResourceUploadCommitStatus RecordCompletionOverflow(const ResourceUploadCommitRequest &request);
     ResourceUploadCommitStatus ValidateRequest(const ResourceUploadCommitRequest &request) const;
     bool HasCommitId(std::uint64_t commit_id) const;
     PendingRecord *FindFreePendingRecord();

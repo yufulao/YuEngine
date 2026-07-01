@@ -31,6 +31,36 @@ bool IsTerminalUploadStatus(ResourceUploadStatus status) {
 
     return true;
 }
+
+void ClearUploadCommitCapacityEntry(ResourceUploadCommitSnapshot &snapshot) {
+    snapshot.last_failed_upload_commit_id = 0U;
+    snapshot.last_failed_upload_commit_upload_id = 0U;
+    snapshot.last_failed_upload_commit_resource = resource::ResourceHandle{};
+    snapshot.last_failed_upload_commit_expected_type = resource::ResourceTypeId{};
+    snapshot.last_failed_upload_commit_request_capacity = 0U;
+    snapshot.last_failed_upload_commit_completion_capacity = 0U;
+    snapshot.last_failed_upload_commit_pending_count = 0U;
+    snapshot.last_failed_upload_commit_completion_count = 0U;
+    snapshot.last_required_upload_commit_request_count = 0U;
+    snapshot.last_required_upload_commit_completion_count = 0U;
+}
+
+void RecordUploadCommitCapacityEntry(
+    ResourceUploadCommitSnapshot &snapshot,
+    const ResourceUploadCommitRequest &request,
+    std::uint32_t required_request_count,
+    std::uint32_t required_completion_count) {
+    snapshot.last_failed_upload_commit_id = request.commit_id;
+    snapshot.last_failed_upload_commit_upload_id = request.upload_completion.upload_id;
+    snapshot.last_failed_upload_commit_resource = request.upload_completion.resource;
+    snapshot.last_failed_upload_commit_expected_type = request.upload_completion.expected_type;
+    snapshot.last_failed_upload_commit_request_capacity = snapshot.request_capacity;
+    snapshot.last_failed_upload_commit_completion_capacity = snapshot.completion_capacity;
+    snapshot.last_failed_upload_commit_pending_count = snapshot.pending_count;
+    snapshot.last_failed_upload_commit_completion_count = snapshot.completion_count;
+    snapshot.last_required_upload_commit_request_count = required_request_count;
+    snapshot.last_required_upload_commit_completion_count = required_completion_count;
+}
 }
 
 ResourceUploadCommitQueue::ResourceUploadCommitQueue()
@@ -72,7 +102,11 @@ ResourceUploadCommitStatus ResourceUploadCommitQueue::Submit(const ResourceUploa
     }
 
     if (snapshot_.pending_count >= snapshot_.request_capacity) {
-        return RecordRejected(ResourceUploadCommitStatus::QueueFull);
+        ++snapshot_.rejected_count;
+        snapshot_.last_status = ResourceUploadCommitStatus::QueueFull;
+        const std::uint32_t required_request_count = snapshot_.pending_count + 1U;
+        RecordUploadCommitCapacityEntry(snapshot_, request, required_request_count, 0U);
+        return ResourceUploadCommitStatus::QueueFull;
     }
 
     StorePendingRecord(request);
@@ -80,17 +114,19 @@ ResourceUploadCommitStatus ResourceUploadCommitQueue::Submit(const ResourceUploa
     snapshot_.last_status = ResourceUploadCommitStatus::Queued;
     snapshot_.last_resource_commit_status = resource::ResourceLoadCommitStatus::Success;
     snapshot_.last_load_state = resource::ResourceLoadState::Unloaded;
+    ClearUploadCommitCapacityEntry(snapshot_);
     return ResourceUploadCommitStatus::Queued;
 }
 
 ResourceUploadCommitStatus ResourceUploadCommitQueue::ProcessNext() {
     PendingRecord *pending_record = FindOldestPendingRecord();
     if (pending_record == nullptr) {
+        ClearUploadCommitCapacityEntry(snapshot_);
         return ResourceUploadCommitStatus::InvalidArgument;
     }
 
     if (snapshot_.completion_count >= snapshot_.completion_capacity) {
-        return RecordCompletionOverflow();
+        return RecordCompletionOverflow(pending_record->request);
     }
 
     return ProcessPendingRecord(*pending_record);
@@ -101,20 +137,24 @@ ResourceUploadCommitStatus ResourceUploadCommitQueue::DrainCompletions(
     std::uint32_t output_capacity,
     std::uint32_t *written_count) {
     if (written_count == nullptr) {
+        ClearUploadCommitCapacityEntry(snapshot_);
         return ResourceUploadCommitStatus::InvalidArgument;
     }
 
     *written_count = 0U;
     if (snapshot_.completion_count == 0U) {
         snapshot_.last_status = ResourceUploadCommitStatus::Success;
+        ClearUploadCommitCapacityEntry(snapshot_);
         return ResourceUploadCommitStatus::Success;
     }
 
     if (output_completions == nullptr) {
+        ClearUploadCommitCapacityEntry(snapshot_);
         return ResourceUploadCommitStatus::InvalidArgument;
     }
 
     if (output_capacity < snapshot_.completion_count) {
+        ClearUploadCommitCapacityEntry(snapshot_);
         return ResourceUploadCommitStatus::CompletionQueueFull;
     }
 
@@ -131,6 +171,7 @@ ResourceUploadCommitStatus ResourceUploadCommitQueue::DrainCompletions(
 
     snapshot_.completion_count = 0U;
     snapshot_.last_status = drain_status;
+    ClearUploadCommitCapacityEntry(snapshot_);
     return ResourceUploadCommitStatus::Success;
 }
 
@@ -141,11 +182,15 @@ ResourceUploadCommitSnapshot ResourceUploadCommitQueue::Snapshot() const {
 ResourceUploadCommitStatus ResourceUploadCommitQueue::RecordRejected(ResourceUploadCommitStatus status) {
     ++snapshot_.rejected_count;
     snapshot_.last_status = status;
+    ClearUploadCommitCapacityEntry(snapshot_);
     return status;
 }
 
-ResourceUploadCommitStatus ResourceUploadCommitQueue::RecordCompletionOverflow() {
+ResourceUploadCommitStatus ResourceUploadCommitQueue::RecordCompletionOverflow(
+    const ResourceUploadCommitRequest &request) {
     snapshot_.last_status = ResourceUploadCommitStatus::CompletionQueueFull;
+    const std::uint32_t required_completion_count = snapshot_.completion_count + 1U;
+    RecordUploadCommitCapacityEntry(snapshot_, request, 0U, required_completion_count);
     return ResourceUploadCommitStatus::CompletionQueueFull;
 }
 
@@ -324,6 +369,7 @@ void ResourceUploadCommitQueue::FinishCompletedRecord(
     snapshot_.last_status = completion.status;
     snapshot_.last_resource_commit_status = completion.resource_commit_status;
     snapshot_.last_load_state = completion.load_state;
+    ClearUploadCommitCapacityEntry(snapshot_);
 }
 
 void ResourceUploadCommitQueue::FinishFailedRecord(
@@ -335,6 +381,7 @@ void ResourceUploadCommitQueue::FinishFailedRecord(
     snapshot_.last_status = completion.status;
     snapshot_.last_resource_commit_status = completion.resource_commit_status;
     snapshot_.last_load_state = completion.load_state;
+    ClearUploadCommitCapacityEntry(snapshot_);
 }
 
 void ResourceUploadCommitQueue::UpdateMaxPendingCount() {

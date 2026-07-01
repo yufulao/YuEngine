@@ -695,6 +695,98 @@ bool DrainOneUploadCommitCompletion(
     return true;
 }
 
+bool UploadCommitCapacityEntryMatches(
+    const ResourceUploadCommitSnapshot &snapshot,
+    const ResourceUploadCommitRequest &request,
+    std::uint32_t expected_request_capacity,
+    std::uint32_t expected_completion_capacity,
+    std::uint32_t expected_pending_count,
+    std::uint32_t expected_completion_count,
+    std::uint32_t expected_required_request_count,
+    std::uint32_t expected_required_completion_count) {
+    if (snapshot.last_failed_upload_commit_id != request.commit_id) {
+        return false;
+    }
+
+    if (snapshot.last_failed_upload_commit_upload_id != request.upload_completion.upload_id) {
+        return false;
+    }
+
+    if (snapshot.last_failed_upload_commit_resource.slot != request.upload_completion.resource.slot) {
+        return false;
+    }
+
+    if (snapshot.last_failed_upload_commit_resource.generation != request.upload_completion.resource.generation) {
+        return false;
+    }
+
+    if (snapshot.last_failed_upload_commit_expected_type.value != request.upload_completion.expected_type.value) {
+        return false;
+    }
+
+    if (snapshot.last_failed_upload_commit_request_capacity != expected_request_capacity) {
+        return false;
+    }
+
+    if (snapshot.last_failed_upload_commit_completion_capacity != expected_completion_capacity) {
+        return false;
+    }
+
+    if (snapshot.last_failed_upload_commit_pending_count != expected_pending_count) {
+        return false;
+    }
+
+    if (snapshot.last_failed_upload_commit_completion_count != expected_completion_count) {
+        return false;
+    }
+
+    if (snapshot.last_required_upload_commit_request_count != expected_required_request_count) {
+        return false;
+    }
+
+    return snapshot.last_required_upload_commit_completion_count == expected_required_completion_count;
+}
+
+bool UploadCommitCapacityEntryCleared(const ResourceUploadCommitSnapshot &snapshot) {
+    if (snapshot.last_failed_upload_commit_id != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_upload_commit_upload_id != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_upload_commit_resource.IsValid()) {
+        return false;
+    }
+
+    if (snapshot.last_failed_upload_commit_expected_type.IsValid()) {
+        return false;
+    }
+
+    if (snapshot.last_failed_upload_commit_request_capacity != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_upload_commit_completion_capacity != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_upload_commit_pending_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_upload_commit_completion_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_required_upload_commit_request_count != 0U) {
+        return false;
+    }
+
+    return snapshot.last_required_upload_commit_completion_count == 0U;
+}
+
 bool ResourceLoadStateMatches(
     const ResourceRegistry &registry,
     ResourceHandle resource,
@@ -2969,6 +3061,23 @@ int StreamingResourceUploadCommitRejectsQueueOverflowWithoutMutation() {
         return Fail("upload commit queue overflow changed pending count");
     }
 
+    if (!UploadCommitCapacityEntryMatches(snapshot, second_request, 1U, 1U, 1U, 0U, 2U, 0U)) {
+        return Fail("upload commit queue overflow did not snapshot rejected request identity");
+    }
+
+    if (queue.ProcessNext() != ResourceUploadCommitStatus::Success) {
+        return Fail("upload commit queue overflow follow-up process failed");
+    }
+
+    if (queue.Submit(second_request) != ResourceUploadCommitStatus::Queued) {
+        return Fail("upload commit queue overflow follow-up submit failed");
+    }
+
+    const ResourceUploadCommitSnapshot follow_up_snapshot = queue.Snapshot();
+    if (!UploadCommitCapacityEntryCleared(follow_up_snapshot)) {
+        return Fail("upload commit queue overflow follow-up success did not clear capacity entry");
+    }
+
     if (!ResourceLoadStateMatches(
             resource_registry,
             second_resource.handle,
@@ -3031,6 +3140,33 @@ int StreamingResourceUploadCommitReportsCompletionOverflowWithoutProcessingPendi
     const ResourceUploadCommitSnapshot snapshot = queue.Snapshot();
     if (snapshot.pending_count != 1U) {
         return Fail("upload commit completion overflow dropped pending record");
+    }
+
+    if (!UploadCommitCapacityEntryMatches(snapshot, second_request, 2U, 1U, 1U, 1U, 0U, 2U)) {
+        return Fail("upload commit completion overflow did not snapshot pending request identity");
+    }
+
+    std::array<ResourceUploadCommitCompletion, 1U> completions{};
+    std::uint32_t written_count = 0U;
+    const ResourceUploadCommitStatus drain_status = queue.DrainCompletions(
+        completions.data(),
+        0U,
+        &written_count);
+    if (drain_status != ResourceUploadCommitStatus::CompletionQueueFull) {
+        return Fail("upload commit drain output capacity did not return explicit status");
+    }
+
+    if (written_count != 0U) {
+        return Fail("upload commit drain output capacity wrote completion");
+    }
+
+    const ResourceUploadCommitSnapshot drain_snapshot = queue.Snapshot();
+    if (drain_snapshot.completion_count != 1U) {
+        return Fail("upload commit drain output capacity changed completion count");
+    }
+
+    if (!UploadCommitCapacityEntryCleared(drain_snapshot)) {
+        return Fail("upload commit drain output capacity did not clear capacity entry");
     }
 
     if (!ResourceLoadStateMatches(

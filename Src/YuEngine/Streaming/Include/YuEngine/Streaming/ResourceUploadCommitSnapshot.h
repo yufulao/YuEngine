@@ -6,8 +6,10 @@
 #include <cstdint>
 
 #include "YuEngine/Memory/MemoryAccountingStatus.h"
+#include "YuEngine/Resource/ResourceHandle.h"
 #include "YuEngine/Resource/ResourceLoadCommitStatus.h"
 #include "YuEngine/Resource/ResourceLoadState.h"
+#include "YuEngine/Resource/ResourceTypeId.h"
 #include "YuEngine/Streaming/ResourceUploadCommitStatus.h"
 
 namespace yuengine::streaming {
@@ -30,5 +32,15 @@ struct ResourceUploadCommitSnapshot final {
     resource::ResourceLoadState last_load_state = resource::ResourceLoadState::Unloaded;
     memory::MemoryAccountingStatus allocation_accounting_status =
         memory::MemoryAccountingStatus::ExplicitlyTrackedOnly;
+    std::uint64_t last_failed_upload_commit_id = 0U;
+    std::uint64_t last_failed_upload_commit_upload_id = 0U;
+    resource::ResourceHandle last_failed_upload_commit_resource;
+    resource::ResourceTypeId last_failed_upload_commit_expected_type;
+    std::uint32_t last_failed_upload_commit_request_capacity = 0U;
+    std::uint32_t last_failed_upload_commit_completion_capacity = 0U;
+    std::uint32_t last_failed_upload_commit_pending_count = 0U;
+    std::uint32_t last_failed_upload_commit_completion_count = 0U;
+    std::uint32_t last_required_upload_commit_request_count = 0U;
+    std::uint32_t last_required_upload_commit_completion_count = 0U;
 };
 }
