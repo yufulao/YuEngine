@@ -130,6 +130,65 @@ void ClearLastRequiredCounts(ResourceSnapshot &snapshot) {
     snapshot.last_required_dependency_edge_count = 0U;
 }
 
+bool IsDecodedPayloadCapacityEntryStatus(ResourceDecodedPayloadStatus status) {
+    if (status == ResourceDecodedPayloadStatus::CapacityExceeded) {
+        return true;
+    }
+
+    if (status == ResourceDecodedPayloadStatus::BudgetExceeded) {
+        return true;
+    }
+
+    return status == ResourceDecodedPayloadStatus::ReferenceBudgetExceeded;
+}
+
+void ClearDecodedPayloadCapacityEntry(ResourceDecodedPayloadSnapshot &snapshot) {
+    snapshot.last_failed_decoded_payload_resource = ResourceHandle{};
+    snapshot.last_failed_decoded_payload_logical_key = ResourceLogicalKey{};
+    snapshot.last_failed_decoded_payload_type = ResourceTypeId{};
+    snapshot.last_failed_payload_id = 0U;
+    snapshot.last_failed_decode_plan_id = 0U;
+    snapshot.last_failed_decode_result_id = 0U;
+    snapshot.last_failed_decoded_payload_id = 0U;
+    snapshot.last_failed_payload_logical_byte_count = 0U;
+    snapshot.last_failed_payload_window_byte_offset = 0U;
+    snapshot.last_failed_payload_window_byte_size = 0U;
+    snapshot.last_failed_asset_class = ResourceDecodePlanAssetClass::Unknown;
+    snapshot.last_failed_result_class = ResourceDecodeResultClass::Unknown;
+    snapshot.last_failed_decoded_byte_count = 0U;
+    snapshot.last_failed_required_decoded_byte_count = 0U;
+    snapshot.last_failed_required_payload_reference_count = 0U;
+    snapshot.last_failed_decoded_byte_capacity = 0U;
+    snapshot.last_failed_payload_reference_capacity = 0U;
+    snapshot.last_failed_payload_record_capacity = 0U;
+    snapshot.last_failed_payload_count = 0U;
+}
+
+void RecordDecodedPayloadCapacityEntry(
+    ResourceDecodedPayloadSnapshot &snapshot,
+    const ResourceDecodedPayloadRequest &request,
+    const ResourceLogicalKey &logical_key) {
+    snapshot.last_failed_decoded_payload_resource = request.resource;
+    snapshot.last_failed_decoded_payload_logical_key = logical_key;
+    snapshot.last_failed_decoded_payload_type = request.expected_type;
+    snapshot.last_failed_payload_id = request.payload_id;
+    snapshot.last_failed_decode_plan_id = request.decode_plan_id;
+    snapshot.last_failed_decode_result_id = request.decode_result_id;
+    snapshot.last_failed_decoded_payload_id = request.decoded_payload_id;
+    snapshot.last_failed_payload_logical_byte_count = request.payload_logical_byte_count;
+    snapshot.last_failed_payload_window_byte_offset = request.payload_window_byte_offset;
+    snapshot.last_failed_payload_window_byte_size = request.payload_window_byte_size;
+    snapshot.last_failed_asset_class = request.asset_class;
+    snapshot.last_failed_result_class = request.result_class;
+    snapshot.last_failed_decoded_byte_count = request.decoded_byte_count;
+    snapshot.last_failed_required_decoded_byte_count = snapshot.last_required_decoded_byte_count;
+    snapshot.last_failed_required_payload_reference_count = snapshot.last_required_payload_reference_count;
+    snapshot.last_failed_decoded_byte_capacity = snapshot.budget_decoded_byte_capacity;
+    snapshot.last_failed_payload_reference_capacity = snapshot.budget_payload_reference_capacity;
+    snapshot.last_failed_payload_record_capacity = MAX_RESOURCE_DECODED_PAYLOAD_RECORD_COUNT;
+    snapshot.last_failed_payload_count = snapshot.active_payload_count;
+}
+
 std::uint64_t EffectivePayloadLogicalByteCount(
     std::uint64_t payload_logical_byte_count,
     std::uint64_t payload_window_byte_offset,
@@ -2109,6 +2168,7 @@ ResourceDecodedPayloadStatus ResourceRegistry::RecordDecodedPayloadRejected(
     ++decoded_payload_snapshot_.rejected_payload_request_count;
     decoded_payload_snapshot_.last_required_decoded_byte_count = 0U;
     decoded_payload_snapshot_.last_required_payload_reference_count = 0U;
+    ClearDecodedPayloadCapacityEntry(decoded_payload_snapshot_);
     if (status == ResourceDecodedPayloadStatus::DuplicateDecodedPayloadId) {
         ++decoded_payload_snapshot_.duplicate_payload_rejected_count;
     }
@@ -2157,6 +2217,19 @@ ResourceDecodedPayloadStatus ResourceRegistry::RecordDecodedPayloadRejected(
 
     if (status == ResourceDecodedPayloadStatus::OutputBufferTooSmall) {
         ++decoded_payload_snapshot_.output_buffer_too_small_count;
+    }
+
+    const bool should_record_capacity_entry =
+        operation == ResourceDecodedPayloadOperation::Store && IsDecodedPayloadCapacityEntryStatus(status);
+    if (should_record_capacity_entry) {
+        ResourceLogicalKey logical_key{};
+        std::size_t slot_index = 0U;
+        const ResourceStatus handle_status = ResolveHandle(request.resource, slot_index);
+        if (handle_status == ResourceStatus::Success) {
+            logical_key = slots_[slot_index].logical_key;
+        }
+
+        RecordDecodedPayloadCapacityEntry(decoded_payload_snapshot_, request, logical_key);
     }
 
     ++snapshot_.failed_operation_count;
@@ -2208,6 +2281,7 @@ void ResourceRegistry::RecordDecodedPayloadSuccess(
     decoded_payload_snapshot_.last_status = ResourceDecodedPayloadStatus::Success;
     decoded_payload_snapshot_.last_required_decoded_byte_count = 0U;
     decoded_payload_snapshot_.last_required_payload_reference_count = 0U;
+    ClearDecodedPayloadCapacityEntry(decoded_payload_snapshot_);
     decoded_payload_snapshot_.last_resource = request.resource;
     decoded_payload_snapshot_.last_payload_id = request.payload_id;
     decoded_payload_snapshot_.last_decode_plan_id = request.decode_plan_id;

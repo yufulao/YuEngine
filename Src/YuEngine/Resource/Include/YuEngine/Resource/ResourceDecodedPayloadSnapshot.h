@@ -10,6 +10,8 @@
 #include "YuEngine/Resource/ResourceDecodePlanAssetClass.h"
 #include "YuEngine/Resource/ResourceDecodeResultClass.h"
 #include "YuEngine/Resource/ResourceHandle.h"
+#include "YuEngine/Resource/ResourceLogicalKey.h"
+#include "YuEngine/Resource/ResourceTypeId.h"
 
 #include <cstdint>
 
@@ -53,6 +55,25 @@ struct ResourceDecodedPayloadSnapshot {
     std::uint32_t last_decoded_byte_count = 0U;
     std::uint32_t last_decode_result_slot_index = INVALID_RESOURCE_SLOT;
     std::uint32_t last_decoded_payload_slot_index = INVALID_RESOURCE_SLOT;
+    ResourceHandle last_failed_decoded_payload_resource;
+    ResourceLogicalKey last_failed_decoded_payload_logical_key;
+    ResourceTypeId last_failed_decoded_payload_type;
+    std::uint64_t last_failed_payload_id = 0U;
+    std::uint64_t last_failed_decode_plan_id = 0U;
+    std::uint64_t last_failed_decode_result_id = 0U;
+    std::uint64_t last_failed_decoded_payload_id = 0U;
+    std::uint64_t last_failed_payload_logical_byte_count = 0U;
+    std::uint64_t last_failed_payload_window_byte_offset = 0U;
+    std::uint64_t last_failed_payload_window_byte_size = 0U;
+    ResourceDecodePlanAssetClass last_failed_asset_class = ResourceDecodePlanAssetClass::Unknown;
+    ResourceDecodeResultClass last_failed_result_class = ResourceDecodeResultClass::Unknown;
+    std::uint32_t last_failed_decoded_byte_count = 0U;
+    std::uint32_t last_failed_required_decoded_byte_count = 0U;
+    std::uint32_t last_failed_required_payload_reference_count = 0U;
+    std::uint32_t last_failed_decoded_byte_capacity = 0U;
+    std::uint32_t last_failed_payload_reference_capacity = 0U;
+    std::uint32_t last_failed_payload_record_capacity = 0U;
+    std::uint32_t last_failed_payload_count = 0U;
 };
 
 } // namespace yuengine::resource

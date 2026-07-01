@@ -92,7 +92,9 @@ using yuengine::resource::MAX_LOGICAL_KEY_BYTES;
 using yuengine::resource::MAX_RESOURCE_LOAD_COMMIT_RECORD_COUNT;
 using yuengine::resource::MAX_RESOURCE_DECODE_PLAN_RECORD_COUNT;
 using yuengine::resource::MAX_RESOURCE_DECODE_RESULT_RECORD_COUNT;
+using yuengine::resource::MAX_RESOURCE_DECODED_PAYLOAD_BYTES_PER_RECORD;
 using yuengine::resource::MAX_RESOURCE_DECODED_PAYLOAD_RECORD_COUNT;
+using yuengine::resource::MAX_RESOURCE_DECODED_PAYLOAD_TOTAL_BYTES;
 using yuengine::resource::MAX_RESOURCE_CACHE_PAYLOAD_BYTES_PER_RECORD;
 using yuengine::resource::RESOURCE_DECODE_PLAN_HEADER_BYTE_COUNT;
 using yuengine::resource::RESOURCE_DECODE_PLAN_HEADER_MAGIC_0;
@@ -263,6 +265,10 @@ constexpr const char *TEST_DECODED_PAYLOAD_DUPLICATE =
     "Resource_DecodedPayload_RejectsDuplicatePayloadId";
 constexpr const char *TEST_DECODED_PAYLOAD_CAPACITY =
     "Resource_DecodedPayload_RejectsCapacityOverflow";
+constexpr const char *TEST_DECODED_PAYLOAD_CAPACITY_ENTRY =
+    "Resource_DecodedPayload_CapacityEntryRecordsRejectedIdentity";
+constexpr const char *TEST_DECODED_PAYLOAD_CAPACITY_ENTRY_LIMITS =
+    "Resource_DecodedPayload_CapacityEntryRecordsAllCapacityLimits";
 constexpr const char *TEST_DECODED_PAYLOAD_BUDGET =
     "Resource_DecodedPayload_RejectsBudgetOverflow";
 constexpr const char *TEST_DECODED_PAYLOAD_ASSET_CLASS =
@@ -836,10 +842,192 @@ bool ConfigureDecodedPayloadBudget(
     ResourceRegistry &registry,
     std::uint32_t byte_capacity,
     std::uint32_t payload_reference_capacity) {
-    ResourceDecodedPayloadBudgetDesc budget;
+    ResourceDecodedPayloadBudgetDesc budget{};
     budget.decoded_byte_capacity = byte_capacity;
     budget.payload_reference_capacity = payload_reference_capacity;
     return registry.SetDecodedPayloadBudget(budget) == ResourceDecodedPayloadStatus::Success;
+}
+
+int ExpectDecodedPayloadCapacityEntryCleared(const ResourceDecodedPayloadSnapshot &snapshot) {
+    if (snapshot.last_failed_decoded_payload_resource.IsValid()) {
+        return Fail("decoded payload capacity entry kept resource");
+    }
+
+    if (snapshot.last_failed_decoded_payload_logical_key.IsValid()) {
+        return Fail("decoded payload capacity entry kept logical key");
+    }
+
+    if (snapshot.last_failed_decoded_payload_type.IsValid()) {
+        return Fail("decoded payload capacity entry kept type");
+    }
+
+    if (snapshot.last_failed_payload_id != 0U) {
+        return Fail("decoded payload capacity entry kept payload id");
+    }
+
+    if (snapshot.last_failed_decode_plan_id != 0U) {
+        return Fail("decoded payload capacity entry kept decode plan id");
+    }
+
+    if (snapshot.last_failed_decode_result_id != 0U) {
+        return Fail("decoded payload capacity entry kept decode result id");
+    }
+
+    if (snapshot.last_failed_decoded_payload_id != 0U) {
+        return Fail("decoded payload capacity entry kept decoded payload id");
+    }
+
+    if (snapshot.last_failed_payload_logical_byte_count != 0U) {
+        return Fail("decoded payload capacity entry kept logical byte count");
+    }
+
+    if (snapshot.last_failed_payload_window_byte_offset != 0U) {
+        return Fail("decoded payload capacity entry kept window offset");
+    }
+
+    if (snapshot.last_failed_payload_window_byte_size != 0U) {
+        return Fail("decoded payload capacity entry kept window size");
+    }
+
+    if (snapshot.last_failed_asset_class != ResourceDecodePlanAssetClass::Unknown) {
+        return Fail("decoded payload capacity entry kept asset class");
+    }
+
+    if (snapshot.last_failed_result_class != ResourceDecodeResultClass::Unknown) {
+        return Fail("decoded payload capacity entry kept result class");
+    }
+
+    if (snapshot.last_failed_decoded_byte_count != 0U) {
+        return Fail("decoded payload capacity entry kept decoded byte count");
+    }
+
+    if (snapshot.last_failed_required_decoded_byte_count != 0U) {
+        return Fail("decoded payload capacity entry kept required decoded bytes");
+    }
+
+    if (snapshot.last_failed_required_payload_reference_count != 0U) {
+        return Fail("decoded payload capacity entry kept required references");
+    }
+
+    if (snapshot.last_failed_decoded_byte_capacity != 0U) {
+        return Fail("decoded payload capacity entry kept byte capacity");
+    }
+
+    if (snapshot.last_failed_payload_reference_capacity != 0U) {
+        return Fail("decoded payload capacity entry kept reference capacity");
+    }
+
+    if (snapshot.last_failed_payload_record_capacity != 0U) {
+        return Fail("decoded payload capacity entry kept record capacity");
+    }
+
+    if (snapshot.last_failed_payload_count != 0U) {
+        return Fail("decoded payload capacity entry kept payload count");
+    }
+
+    return 0;
+}
+
+int ExpectDecodedPayloadCapacityEntryMatches(
+    const ResourceDecodedPayloadSnapshot &snapshot,
+    ResourceHandle resource,
+    const ResourceLogicalKey &logical_key,
+    const ResourceDecodedPayloadRequest &request,
+    std::uint32_t required_decoded_byte_count,
+    std::uint32_t required_payload_reference_count,
+    std::uint32_t decoded_byte_capacity,
+    std::uint32_t payload_reference_capacity,
+    std::uint32_t payload_record_capacity,
+    std::uint32_t payload_count) {
+    if (snapshot.last_required_decoded_byte_count != required_decoded_byte_count) {
+        return Fail("decoded payload capacity entry reported wrong required decoded bytes");
+    }
+
+    if (snapshot.last_required_payload_reference_count != required_payload_reference_count) {
+        return Fail("decoded payload capacity entry reported wrong required references");
+    }
+
+    if (snapshot.last_failed_required_decoded_byte_count != required_decoded_byte_count) {
+        return Fail("decoded payload capacity entry stored wrong required decoded bytes");
+    }
+
+    if (snapshot.last_failed_required_payload_reference_count != required_payload_reference_count) {
+        return Fail("decoded payload capacity entry stored wrong required references");
+    }
+
+    if (snapshot.last_failed_decoded_payload_resource.slot != resource.slot) {
+        return Fail("decoded payload capacity entry stored wrong resource slot");
+    }
+
+    if (snapshot.last_failed_decoded_payload_resource.generation != resource.generation) {
+        return Fail("decoded payload capacity entry stored wrong resource generation");
+    }
+
+    if (!snapshot.last_failed_decoded_payload_logical_key.Equals(logical_key)) {
+        return Fail("decoded payload capacity entry stored wrong logical key");
+    }
+
+    if (snapshot.last_failed_decoded_payload_type.value != request.expected_type.value) {
+        return Fail("decoded payload capacity entry stored wrong resource type");
+    }
+
+    if (snapshot.last_failed_payload_id != request.payload_id) {
+        return Fail("decoded payload capacity entry stored wrong payload id");
+    }
+
+    if (snapshot.last_failed_decode_plan_id != request.decode_plan_id) {
+        return Fail("decoded payload capacity entry stored wrong decode plan id");
+    }
+
+    if (snapshot.last_failed_decode_result_id != request.decode_result_id) {
+        return Fail("decoded payload capacity entry stored wrong decode result id");
+    }
+
+    if (snapshot.last_failed_decoded_payload_id != request.decoded_payload_id) {
+        return Fail("decoded payload capacity entry stored wrong decoded payload id");
+    }
+
+    if (snapshot.last_failed_payload_logical_byte_count != request.payload_logical_byte_count) {
+        return Fail("decoded payload capacity entry stored wrong logical byte count");
+    }
+
+    if (snapshot.last_failed_payload_window_byte_offset != request.payload_window_byte_offset) {
+        return Fail("decoded payload capacity entry stored wrong window offset");
+    }
+
+    if (snapshot.last_failed_payload_window_byte_size != request.payload_window_byte_size) {
+        return Fail("decoded payload capacity entry stored wrong window size");
+    }
+
+    if (snapshot.last_failed_asset_class != request.asset_class) {
+        return Fail("decoded payload capacity entry stored wrong asset class");
+    }
+
+    if (snapshot.last_failed_result_class != request.result_class) {
+        return Fail("decoded payload capacity entry stored wrong result class");
+    }
+
+    if (snapshot.last_failed_decoded_byte_count != request.decoded_byte_count) {
+        return Fail("decoded payload capacity entry stored wrong decoded byte count");
+    }
+
+    if (snapshot.last_failed_decoded_byte_capacity != decoded_byte_capacity) {
+        return Fail("decoded payload capacity entry stored wrong decoded byte capacity");
+    }
+
+    if (snapshot.last_failed_payload_reference_capacity != payload_reference_capacity) {
+        return Fail("decoded payload capacity entry stored wrong reference capacity");
+    }
+
+    if (snapshot.last_failed_payload_record_capacity != payload_record_capacity) {
+        return Fail("decoded payload capacity entry stored wrong record capacity");
+    }
+
+    if (snapshot.last_failed_payload_count != payload_count) {
+        return Fail("decoded payload capacity entry stored wrong payload count");
+    }
+
+    return 0;
 }
 
 bool AdmitUploadedResident(
@@ -5787,6 +5975,399 @@ int ResourceDecodedPayloadRejectsCapacityOverflow() {
     return 0;
 }
 
+int ResourceDecodedPayloadCapacityEntryRecordsRejectedIdentity() {
+    ResourceRegistry registry;
+    const char *logical_key_text = "texture_decoded_payload_capacity_entry";
+    const ResourceLogicalKey logical_key(logical_key_text);
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, logical_key_text);
+    if (!result.Succeeded()) {
+        return Fail("capacity entry decoded payload fixture registration failed");
+    }
+
+    if (!CreateTextureDecodeResultChain(registry, result.handle, 1U)) {
+        return Fail("capacity entry decoded payload fixture chain failed");
+    }
+
+    const std::array<std::uint8_t, DECODED_PAYLOAD_BYTE_COUNT> bytes = DecodedPayloadBytes(0x62U);
+    std::uint32_t payload_index = 0U;
+    while (payload_index < MAX_RESOURCE_DECODED_PAYLOAD_RECORD_COUNT) {
+        const ResourceDecodedPayloadRequest request = DecodedPayloadRequest(
+            result.handle,
+            TYPE_TEXTURE,
+            PAYLOAD_ONE,
+            DECODE_PLAN_ONE,
+            DECODE_RESULT_ONE,
+            DECODED_PAYLOAD_ONE + payload_index,
+            ResourceDecodePlanAssetClass::Texture,
+            ResourceDecodeResultClass::Texture,
+            bytes.data(),
+            1U);
+        if (registry.StoreDecodedPayload(request) != ResourceDecodedPayloadStatus::Success) {
+            return Fail("capacity entry decoded payload setup store failed");
+        }
+
+        ++payload_index;
+    }
+
+    const ResourceDecodedPayloadRequest overflow_request = DecodedPayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE + MAX_RESOURCE_DECODED_PAYLOAD_RECORD_COUNT,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        bytes.data(),
+        1U);
+    const ResourceDecodedPayloadStatus capacity_status = registry.StoreDecodedPayload(overflow_request);
+    if (capacity_status != ResourceDecodedPayloadStatus::CapacityExceeded) {
+        return Fail("capacity entry decoded payload returned wrong status");
+    }
+
+    const ResourceDecodedPayloadSnapshot capacity_snapshot = registry.DecodedPayloadSnapshot();
+    constexpr std::uint32_t REQUIRED_PAYLOAD_REFERENCE_COUNT = MAX_RESOURCE_DECODED_PAYLOAD_RECORD_COUNT + 1U;
+    const int capacity_entry_status = ExpectDecodedPayloadCapacityEntryMatches(
+        capacity_snapshot,
+        result.handle,
+        logical_key,
+        overflow_request,
+        0U,
+        REQUIRED_PAYLOAD_REFERENCE_COUNT,
+        MAX_RESOURCE_DECODED_PAYLOAD_TOTAL_BYTES,
+        MAX_RESOURCE_DECODED_PAYLOAD_RECORD_COUNT,
+        MAX_RESOURCE_DECODED_PAYLOAD_RECORD_COUNT,
+        MAX_RESOURCE_DECODED_PAYLOAD_RECORD_COUNT);
+    if (capacity_entry_status != 0) {
+        return capacity_entry_status;
+    }
+
+    const ResourceDecodedPayloadRequest duplicate_request = DecodedPayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        bytes.data(),
+        1U);
+    const ResourceDecodedPayloadStatus duplicate_status = registry.StoreDecodedPayload(duplicate_request);
+    if (duplicate_status != ResourceDecodedPayloadStatus::DuplicateDecodedPayloadId) {
+        return Fail("capacity entry duplicate decoded payload returned wrong status");
+    }
+
+    ResourceDecodedPayloadSnapshot cleared_snapshot = registry.DecodedPayloadSnapshot();
+    int cleared_status = ExpectDecodedPayloadCapacityEntryCleared(cleared_snapshot);
+    if (cleared_status != 0) {
+        return cleared_status;
+    }
+
+    if (registry.StoreDecodedPayload(overflow_request) != ResourceDecodedPayloadStatus::CapacityExceeded) {
+        return Fail("capacity entry decoded payload second overflow failed");
+    }
+
+    ResourceDecodedPayloadBudgetDesc budget;
+    budget.decoded_byte_capacity = 1U;
+    budget.payload_reference_capacity = MAX_RESOURCE_DECODED_PAYLOAD_RECORD_COUNT;
+    const ResourceDecodedPayloadStatus budget_status = registry.SetDecodedPayloadBudget(budget);
+    if (budget_status != ResourceDecodedPayloadStatus::BudgetExceeded) {
+        return Fail("capacity entry configure budget returned wrong status");
+    }
+
+    cleared_snapshot = registry.DecodedPayloadSnapshot();
+    cleared_status = ExpectDecodedPayloadCapacityEntryCleared(cleared_snapshot);
+    if (cleared_status != 0) {
+        return cleared_status;
+    }
+
+    if (registry.StoreDecodedPayload(overflow_request) != ResourceDecodedPayloadStatus::CapacityExceeded) {
+        return Fail("capacity entry decoded payload third overflow failed");
+    }
+
+    const ResourceDecodedPayloadRequest invalid_payload_request = DecodedPayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        0U,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE + MAX_RESOURCE_DECODED_PAYLOAD_RECORD_COUNT + 1U,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        bytes.data(),
+        1U);
+    const ResourceDecodedPayloadStatus invalid_payload_status = registry.StoreDecodedPayload(invalid_payload_request);
+    if (invalid_payload_status != ResourceDecodedPayloadStatus::InvalidPayloadId) {
+        return Fail("capacity entry invalid payload returned wrong status");
+    }
+
+    cleared_snapshot = registry.DecodedPayloadSnapshot();
+    cleared_status = ExpectDecodedPayloadCapacityEntryCleared(cleared_snapshot);
+    if (cleared_status != 0) {
+        return cleared_status;
+    }
+
+    if (registry.StoreDecodedPayload(overflow_request) != ResourceDecodedPayloadStatus::CapacityExceeded) {
+        return Fail("capacity entry decoded payload fourth overflow failed");
+    }
+
+    const ResourceDecodedPayloadRequest missing_resource_request = DecodedPayloadRequest(
+        ResourceHandle{},
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE + MAX_RESOURCE_DECODED_PAYLOAD_RECORD_COUNT + 2U,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        bytes.data(),
+        1U);
+    const ResourceDecodedPayloadStatus missing_resource_status = registry.StoreDecodedPayload(missing_resource_request);
+    if (missing_resource_status != ResourceDecodedPayloadStatus::InvalidHandle) {
+        return Fail("capacity entry missing resource returned wrong status");
+    }
+
+    cleared_snapshot = registry.DecodedPayloadSnapshot();
+    cleared_status = ExpectDecodedPayloadCapacityEntryCleared(cleared_snapshot);
+    if (cleared_status != 0) {
+        return cleared_status;
+    }
+
+    if (registry.StoreDecodedPayload(overflow_request) != ResourceDecodedPayloadStatus::CapacityExceeded) {
+        return Fail("capacity entry decoded payload fifth overflow failed");
+    }
+
+    if (registry.ReleaseDecodedPayload(duplicate_request) != ResourceDecodedPayloadStatus::Success) {
+        return Fail("capacity entry decoded payload release failed");
+    }
+
+    cleared_snapshot = registry.DecodedPayloadSnapshot();
+    cleared_status = ExpectDecodedPayloadCapacityEntryCleared(cleared_snapshot);
+    if (cleared_status != 0) {
+        return cleared_status;
+    }
+
+    if (registry.StoreDecodedPayload(overflow_request) != ResourceDecodedPayloadStatus::Success) {
+        return Fail("capacity entry decoded payload success retry failed");
+    }
+
+    cleared_snapshot = registry.DecodedPayloadSnapshot();
+    cleared_status = ExpectDecodedPayloadCapacityEntryCleared(cleared_snapshot);
+    if (cleared_status != 0) {
+        return cleared_status;
+    }
+
+    return 0;
+}
+
+int ResourceDecodedPayloadCapacityEntryRecordsAllCapacityLimits() {
+    ResourceRegistry byte_registry;
+    const char *byte_key_text = "texture_decoded_payload_entry_byte";
+    const ResourceLogicalKey byte_key(byte_key_text);
+    const ResourceRegistrationResult byte_result = Register(byte_registry, TYPE_TEXTURE, byte_key_text);
+    if (!byte_result.Succeeded()) {
+        return Fail("byte capacity entry decoded payload registration failed");
+    }
+
+    if (!AdmitUploadedResident(byte_registry, byte_result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("byte capacity entry decoded payload residency failed");
+    }
+
+    std::array<std::uint8_t, MAX_RESOURCE_DECODED_PAYLOAD_BYTES_PER_RECORD + 1U> oversized_bytes{};
+    oversized_bytes[0U] = 0x72U;
+    constexpr std::uint32_t OVERSIZED_BYTE_COUNT = MAX_RESOURCE_DECODED_PAYLOAD_BYTES_PER_RECORD + 1U;
+    ResourceDecodedPayloadRequest oversized_request = DecodedPayloadRequest(
+        byte_result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        oversized_bytes.data(),
+        OVERSIZED_BYTE_COUNT);
+    oversized_request.payload_logical_byte_count = OVERSIZED_BYTE_COUNT + 16U;
+    oversized_request.payload_window_byte_offset = 8U;
+    oversized_request.payload_window_byte_size = OVERSIZED_BYTE_COUNT;
+    const ResourceDecodedPayloadStatus oversized_status = byte_registry.StoreDecodedPayload(oversized_request);
+    if (oversized_status != ResourceDecodedPayloadStatus::CapacityExceeded) {
+        return Fail("byte capacity entry decoded payload returned wrong status");
+    }
+
+    ResourceDecodedPayloadSnapshot capacity_snapshot = byte_registry.DecodedPayloadSnapshot();
+    int capacity_entry_status = ExpectDecodedPayloadCapacityEntryMatches(
+        capacity_snapshot,
+        byte_result.handle,
+        byte_key,
+        oversized_request,
+        OVERSIZED_BYTE_COUNT,
+        0U,
+        MAX_RESOURCE_DECODED_PAYLOAD_TOTAL_BYTES,
+        MAX_RESOURCE_DECODED_PAYLOAD_RECORD_COUNT,
+        MAX_RESOURCE_DECODED_PAYLOAD_RECORD_COUNT,
+        0U);
+    if (capacity_entry_status != 0) {
+        return capacity_entry_status;
+    }
+
+    ResourceDecodedPayloadRequest null_bytes_request = oversized_request;
+    null_bytes_request.decoded_bytes = nullptr;
+    const ResourceDecodedPayloadStatus null_bytes_status = byte_registry.StoreDecodedPayload(null_bytes_request);
+    if (null_bytes_status != ResourceDecodedPayloadStatus::InvalidArgument) {
+        return Fail("byte capacity entry null bytes returned wrong status");
+    }
+
+    ResourceDecodedPayloadSnapshot cleared_snapshot = byte_registry.DecodedPayloadSnapshot();
+    int cleared_status = ExpectDecodedPayloadCapacityEntryCleared(cleared_snapshot);
+    if (cleared_status != 0) {
+        return cleared_status;
+    }
+
+    ResourceRegistry budget_registry;
+    if (!ConfigureDecodedPayloadBudget(budget_registry, 1U)) {
+        return Fail("budget capacity entry decoded payload budget failed");
+    }
+
+    const char *budget_key_text = "texture_decoded_payload_entry_budget";
+    const ResourceLogicalKey budget_key(budget_key_text);
+    const ResourceRegistrationResult budget_result = Register(budget_registry, TYPE_TEXTURE, budget_key_text);
+    if (!budget_result.Succeeded()) {
+        return Fail("budget capacity entry decoded payload registration failed");
+    }
+
+    if (!CreateTextureDecodeResultChain(budget_registry, budget_result.handle, 2U)) {
+        return Fail("budget capacity entry decoded payload fixture chain failed");
+    }
+
+    const std::array<std::uint8_t, DECODED_PAYLOAD_BYTE_COUNT> budget_bytes = DecodedPayloadBytes(0x82U);
+    const ResourceDecodedPayloadRequest budget_request = DecodedPayloadRequest(
+        budget_result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        budget_bytes.data(),
+        2U);
+    const ResourceDecodedPayloadStatus budget_status = budget_registry.StoreDecodedPayload(budget_request);
+    if (budget_status != ResourceDecodedPayloadStatus::BudgetExceeded) {
+        return Fail("budget capacity entry decoded payload returned wrong status");
+    }
+
+    capacity_snapshot = budget_registry.DecodedPayloadSnapshot();
+    capacity_entry_status = ExpectDecodedPayloadCapacityEntryMatches(
+        capacity_snapshot,
+        budget_result.handle,
+        budget_key,
+        budget_request,
+        2U,
+        0U,
+        1U,
+        MAX_RESOURCE_DECODED_PAYLOAD_RECORD_COUNT,
+        MAX_RESOURCE_DECODED_PAYLOAD_RECORD_COUNT,
+        0U);
+    if (capacity_entry_status != 0) {
+        return capacity_entry_status;
+    }
+
+    ResourceDecodedPayloadRecord missing_record{};
+    const ResourceDecodedPayloadStatus missing_payload_status =
+        budget_registry.QueryDecodedPayload(budget_request, &missing_record);
+    if (missing_payload_status != ResourceDecodedPayloadStatus::MissingDecodedPayload) {
+        return Fail("budget capacity entry missing payload returned wrong status");
+    }
+
+    cleared_snapshot = budget_registry.DecodedPayloadSnapshot();
+    cleared_status = ExpectDecodedPayloadCapacityEntryCleared(cleared_snapshot);
+    if (cleared_status != 0) {
+        return cleared_status;
+    }
+
+    ResourceRegistry reference_registry;
+    if (!ConfigureDecodedPayloadBudget(reference_registry, MAX_RESOURCE_DECODED_PAYLOAD_TOTAL_BYTES, 1U)) {
+        return Fail("reference capacity entry decoded payload budget failed");
+    }
+
+    const char *reference_key_text = "texture_decoded_payload_entry_reference";
+    const ResourceLogicalKey reference_key(reference_key_text);
+    const ResourceRegistrationResult reference_result = Register(reference_registry, TYPE_TEXTURE, reference_key_text);
+    if (!reference_result.Succeeded()) {
+        return Fail("reference capacity entry decoded payload registration failed");
+    }
+
+    if (!CreateTextureDecodeResultChain(reference_registry, reference_result.handle, DECODED_PAYLOAD_BYTE_COUNT)) {
+        return Fail("reference capacity entry decoded payload fixture chain failed");
+    }
+
+    const std::array<std::uint8_t, DECODED_PAYLOAD_BYTE_COUNT> first_bytes = DecodedPayloadBytes(0x92U);
+    const ResourceDecodedPayloadRequest first_request = DecodedPayloadRequest(
+        reference_result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        first_bytes.data(),
+        DECODED_PAYLOAD_BYTE_COUNT);
+    if (reference_registry.StoreDecodedPayload(first_request) != ResourceDecodedPayloadStatus::Success) {
+        return Fail("reference capacity entry first decoded payload store failed");
+    }
+
+    const std::array<std::uint8_t, DECODED_PAYLOAD_BYTE_COUNT> second_bytes = DecodedPayloadBytes(0xA2U);
+    const ResourceDecodedPayloadRequest second_request = DecodedPayloadRequest(
+        reference_result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_TWO,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        second_bytes.data(),
+        DECODED_PAYLOAD_BYTE_COUNT);
+    const ResourceDecodedPayloadStatus reference_status = reference_registry.StoreDecodedPayload(second_request);
+    if (reference_status != ResourceDecodedPayloadStatus::ReferenceBudgetExceeded) {
+        return Fail("reference capacity entry decoded payload returned wrong status");
+    }
+
+    capacity_snapshot = reference_registry.DecodedPayloadSnapshot();
+    capacity_entry_status = ExpectDecodedPayloadCapacityEntryMatches(
+        capacity_snapshot,
+        reference_result.handle,
+        reference_key,
+        second_request,
+        0U,
+        2U,
+        MAX_RESOURCE_DECODED_PAYLOAD_TOTAL_BYTES,
+        1U,
+        MAX_RESOURCE_DECODED_PAYLOAD_RECORD_COUNT,
+        1U);
+    if (capacity_entry_status != 0) {
+        return capacity_entry_status;
+    }
+
+    ResourceDecodedPayloadRecord existing_record{};
+    const ResourceDecodedPayloadStatus existing_query_status =
+        reference_registry.QueryDecodedPayload(first_request, &existing_record);
+    if (existing_query_status != ResourceDecodedPayloadStatus::Success) {
+        return Fail("reference capacity entry query clear failed");
+    }
+
+    cleared_snapshot = reference_registry.DecodedPayloadSnapshot();
+    cleared_status = ExpectDecodedPayloadCapacityEntryCleared(cleared_snapshot);
+    if (cleared_status != 0) {
+        return cleared_status;
+    }
+
+    return 0;
+}
+
 int ResourceDecodedPayloadRejectsBudgetOverflow() {
     ResourceRegistry registry;
     if (!ConfigureDecodedPayloadBudget(registry, 1U)) {
@@ -6497,6 +7078,8 @@ int main(int argc, char** argv) {
         {TEST_DECODED_PAYLOAD_REFERENCE_BUDGET, ResourceDecodedPayloadRejectsReferenceBudgetWithoutMutation},
         {TEST_DECODED_PAYLOAD_DUPLICATE, ResourceDecodedPayloadRejectsDuplicatePayloadId},
         {TEST_DECODED_PAYLOAD_CAPACITY, ResourceDecodedPayloadRejectsCapacityOverflow},
+        {TEST_DECODED_PAYLOAD_CAPACITY_ENTRY, ResourceDecodedPayloadCapacityEntryRecordsRejectedIdentity},
+        {TEST_DECODED_PAYLOAD_CAPACITY_ENTRY_LIMITS, ResourceDecodedPayloadCapacityEntryRecordsAllCapacityLimits},
         {TEST_DECODED_PAYLOAD_BUDGET, ResourceDecodedPayloadRejectsBudgetOverflow},
         {TEST_DECODED_PAYLOAD_ASSET_CLASS, ResourceDecodedPayloadRejectsAssetClassMismatch},
         {TEST_DECODED_PAYLOAD_RESULT_CLASS, ResourceDecodedPayloadRejectsResultClassMismatch},
