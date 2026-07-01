@@ -427,6 +427,10 @@ PlatformWindowSnapshot WindowsPlatformWindow::GetSnapshot() const {
     snapshot.last_failed_queued_event_count = last_failed_queued_event_count_;
     snapshot.last_required_queued_event_count = last_required_queued_event_count_;
     snapshot.dropped_event_count = dropped_event_count_;
+    snapshot.last_failed_event_raw_code = last_failed_event_raw_code_;
+    snapshot.last_failed_event_pointer_x = last_failed_event_pointer_x_;
+    snapshot.last_failed_event_pointer_y = last_failed_event_pointer_y_;
+    snapshot.last_failed_event_wheel_delta = last_failed_event_wheel_delta_;
     snapshot.last_poll_output_capacity = last_poll_output_capacity_;
     snapshot.last_poll_output_event_count = last_poll_output_event_count_;
     snapshot.last_poll_queued_event_count = last_poll_queued_event_count_;
@@ -545,6 +549,10 @@ void WindowsPlatformWindow::RecordEventQueueCapacityFailure(const PlatformWindow
     const std::size_t required_queued_event_count = failed_event_index + 1U;
     last_failed_event_ = event;
     last_failed_event_type_ = event.type;
+    last_failed_event_raw_code_ = event.raw_code;
+    last_failed_event_pointer_x_ = event.pointer_x;
+    last_failed_event_pointer_y_ = event.pointer_y;
+    last_failed_event_wheel_delta_ = event.wheel_delta;
     last_failed_event_index_ = failed_event_index;
     last_failed_event_queue_capacity_ = event_queue_capacity_;
     last_failed_queued_event_count_ = event_count_;
@@ -554,6 +562,10 @@ void WindowsPlatformWindow::RecordEventQueueCapacityFailure(const PlatformWindow
 void WindowsPlatformWindow::ClearEventQueueCapacityFailure() {
     last_failed_event_ = PlatformWindowEvent{};
     last_failed_event_type_ = PlatformWindowEventType::None;
+    last_failed_event_raw_code_ = 0U;
+    last_failed_event_pointer_x_ = 0;
+    last_failed_event_pointer_y_ = 0;
+    last_failed_event_wheel_delta_ = 0;
     last_failed_event_index_ = 0U;
     last_failed_event_queue_capacity_ = 0U;
     last_failed_queued_event_count_ = 0U;

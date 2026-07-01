@@ -26,6 +26,10 @@ struct PlatformWindowSnapshot {
     std::size_t required_queued_event_count = 0U;
     PlatformWindowEvent last_failed_event{};
     PlatformWindowEventType last_failed_event_type = PlatformWindowEventType::None;
+    std::uint32_t last_failed_event_raw_code = 0U;
+    std::int32_t last_failed_event_pointer_x = 0;
+    std::int32_t last_failed_event_pointer_y = 0;
+    std::int32_t last_failed_event_wheel_delta = 0;
     std::size_t last_failed_event_index = 0U;
     std::size_t last_failed_event_queue_capacity = 0U;
     std::size_t last_failed_queued_event_count = 0U;

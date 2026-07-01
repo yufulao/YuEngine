@@ -468,6 +468,7 @@ int PlatformWindowEventOverflowReportsSnapshotStatus() {
     failed_event.raw_code = 1U;
     failed_event.pointer_x = -17;
     failed_event.pointer_y = 23;
+    failed_event.wheel_delta = -9;
     const PlatformWindowStatus failed_status =
         yuengine::platform::WindowsPlatformWindowAccess::PushPlatformEvent(window, failed_event);
     if (failed_status != PlatformWindowStatus::EventQueueOverflow) {
@@ -493,12 +494,26 @@ int PlatformWindowEventOverflowReportsSnapshotStatus() {
 
     if (snapshot.last_failed_event.raw_code != failed_event.raw_code ||
         snapshot.last_failed_event.pointer_x != failed_event.pointer_x ||
-        snapshot.last_failed_event.pointer_y != failed_event.pointer_y) {
+        snapshot.last_failed_event.pointer_y != failed_event.pointer_y ||
+        snapshot.last_failed_event.wheel_delta != failed_event.wheel_delta) {
         return Fail("internal platform event overflow did not record failed event data");
     }
 
     if (snapshot.last_failed_event_type != failed_event.type) {
         return Fail("internal platform event overflow did not record failed event type");
+    }
+
+    if (snapshot.last_failed_event_raw_code != failed_event.raw_code) {
+        return Fail("internal platform event overflow did not record failed event raw code");
+    }
+
+    if (snapshot.last_failed_event_pointer_x != failed_event.pointer_x ||
+        snapshot.last_failed_event_pointer_y != failed_event.pointer_y) {
+        return Fail("internal platform event overflow did not record failed event pointer");
+    }
+
+    if (snapshot.last_failed_event_wheel_delta != failed_event.wheel_delta) {
+        return Fail("internal platform event overflow did not record failed event wheel delta");
     }
 
     if (snapshot.last_failed_event_index != PlatformWindowDesc::DEFAULT_EVENT_QUEUE_CAPACITY) {
@@ -528,6 +543,10 @@ int PlatformWindowEventOverflowReportsSnapshotStatus() {
 
     snapshot = window.GetSnapshot();
     if (snapshot.last_failed_event_type != yuengine::platform::PlatformWindowEventType::None ||
+        snapshot.last_failed_event_raw_code != 0U ||
+        snapshot.last_failed_event_pointer_x != 0 ||
+        snapshot.last_failed_event_pointer_y != 0 ||
+        snapshot.last_failed_event_wheel_delta != 0 ||
         snapshot.last_failed_event_index != 0U ||
         snapshot.last_failed_event_queue_capacity != 0U ||
         snapshot.last_failed_queued_event_count != 0U ||
@@ -547,6 +566,10 @@ int PlatformWindowEventOverflowReportsSnapshotStatus() {
 
     snapshot = window.GetSnapshot();
     if (snapshot.last_failed_event_type != yuengine::platform::PlatformWindowEventType::None ||
+        snapshot.last_failed_event_raw_code != 0U ||
+        snapshot.last_failed_event_pointer_x != 0 ||
+        snapshot.last_failed_event_pointer_y != 0 ||
+        snapshot.last_failed_event_wheel_delta != 0 ||
         snapshot.last_failed_event_index != 0U ||
         snapshot.last_failed_event_queue_capacity != 0U ||
         snapshot.last_failed_queued_event_count != 0U ||

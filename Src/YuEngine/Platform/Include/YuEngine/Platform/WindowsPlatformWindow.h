@@ -117,6 +117,10 @@ private:
     std::uint32_t dropped_event_count_ = 0U;
     PlatformWindowEvent last_failed_event_{};
     PlatformWindowEventType last_failed_event_type_ = PlatformWindowEventType::None;
+    std::uint32_t last_failed_event_raw_code_ = 0U;
+    std::int32_t last_failed_event_pointer_x_ = 0;
+    std::int32_t last_failed_event_pointer_y_ = 0;
+    std::int32_t last_failed_event_wheel_delta_ = 0;
     std::size_t last_failed_event_index_ = 0U;
     std::size_t last_failed_event_queue_capacity_ = 0U;
     std::size_t last_failed_queued_event_count_ = 0U;
