@@ -36,6 +36,8 @@ ObjectRegistry::ObjectRegistry(ObjectRegistryDesc desc)
           0U,
           0U,
           0U,
+          0U,
+          0U,
           MemoryAccountingStatus::ExplicitlyTrackedOnly,
           ObjectStatus::Success} {
 }
@@ -45,8 +47,20 @@ ObjectRegistrationResult ObjectRegistry::CreateSyntheticObject(const ObjectDescr
         return ObjectRegistrationResult::Failure(RecordFailure(ObjectStatus::InvalidType));
     }
 
+    const std::uint32_t required_object_count = snapshot_.alive_object_count + 1U;
+    std::uint32_t required_type_count = snapshot_.type_count;
+    if (!HasType(descriptor.type)) {
+        ++required_type_count;
+    }
+
     if (snapshot_.alive_object_count >= snapshot_.object_capacity) {
-        return ObjectRegistrationResult::Failure(RecordFailure(ObjectStatus::CapacityExceeded));
+        const ObjectStatus status = RecordFailure(ObjectStatus::CapacityExceeded);
+        snapshot_.last_required_object_count = required_object_count;
+        snapshot_.last_required_type_count = required_type_count;
+        return ObjectRegistrationResult::Failure(
+            status,
+            required_object_count,
+            required_type_count);
     }
 
     ObjectSlot* free_slot = nullptr;
@@ -68,12 +82,34 @@ ObjectRegistrationResult ObjectRegistry::CreateSyntheticObject(const ObjectDescr
     }
 
     if (free_slot == nullptr) {
-        return ObjectRegistrationResult::Failure(RecordFailure(ObjectStatus::CapacityExceeded));
+        const ObjectStatus status = RecordFailure(ObjectStatus::CapacityExceeded);
+        snapshot_.last_required_object_count = required_object_count;
+        snapshot_.last_required_type_count = required_type_count;
+        return ObjectRegistrationResult::Failure(
+            status,
+            required_object_count,
+            required_type_count);
+    }
+
+    if (required_type_count > snapshot_.type_capacity) {
+        const ObjectStatus status = RecordFailure(ObjectStatus::CapacityExceeded);
+        snapshot_.last_required_object_count = required_object_count;
+        snapshot_.last_required_type_count = required_type_count;
+        return ObjectRegistrationResult::Failure(
+            status,
+            required_object_count,
+            required_type_count);
     }
 
     const ObjectStatus type_status = RegisterTypeIfNeeded(descriptor.type);
     if (type_status != ObjectStatus::Success) {
-        return ObjectRegistrationResult::Failure(RecordFailure(type_status));
+        const ObjectStatus status = RecordFailure(type_status);
+        snapshot_.last_required_object_count = required_object_count;
+        snapshot_.last_required_type_count = required_type_count;
+        return ObjectRegistrationResult::Failure(
+            status,
+            required_object_count,
+            required_type_count);
     }
 
     if (free_slot->generation == INVALID_OBJECT_GENERATION) {
@@ -87,7 +123,10 @@ ObjectRegistrationResult ObjectRegistry::CreateSyntheticObject(const ObjectDescr
     ++snapshot_.created_object_count;
     snapshot_.referenced_object_count += descriptor.initial_reference_count;
     RecordSuccess();
-    return ObjectRegistrationResult::Success(ObjectHandle{free_slot_index, free_slot->generation});
+    return ObjectRegistrationResult::Success(
+        ObjectHandle{free_slot_index, free_slot->generation},
+        required_object_count,
+        required_type_count);
 }
 
 ObjectStatus ObjectRegistry::Validate(ObjectHandle handle) {
@@ -188,12 +227,16 @@ ObjectSnapshot ObjectRegistry::Snapshot() const {
 ObjectStatus ObjectRegistry::RecordFailure(ObjectStatus status) {
     ++snapshot_.failed_operation_count;
     snapshot_.last_status = status;
+    snapshot_.last_required_object_count = 0U;
+    snapshot_.last_required_type_count = 0U;
     return status;
 }
 
 void ObjectRegistry::RecordSuccess() {
     ++snapshot_.accepted_operation_count;
     snapshot_.last_status = ObjectStatus::Success;
+    snapshot_.last_required_object_count = 0U;
+    snapshot_.last_required_type_count = 0U;
 }
 
 ObjectStatus ObjectRegistry::ResolveHandle(ObjectHandle handle, std::size_t& out_index) const {

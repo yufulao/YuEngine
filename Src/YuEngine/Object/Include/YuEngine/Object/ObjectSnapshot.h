@@ -15,6 +15,8 @@ struct ObjectSnapshot final {
     std::uint32_t object_capacity;
     std::uint32_t type_capacity;
     std::uint32_t type_count;
+    std::uint32_t last_required_object_count;
+    std::uint32_t last_required_type_count;
     std::uint32_t alive_object_count;
     std::uint32_t destroyed_object_count;
     std::uint64_t created_object_count;

@@ -3,30 +3,53 @@
 
 #pragma once
 
+#include <cstdint>
+
 #include "YuEngine/Object/ObjectHandle.h"
 #include "YuEngine/Object/ObjectStatus.h"
 
 namespace yuengine::object {
 struct ObjectRegistrationResult final {
-    ObjectStatus status;
-    ObjectHandle handle;
+    ObjectStatus status = ObjectStatus::InvalidType;
+    ObjectHandle handle{};
+    std::uint32_t required_object_count = 0U;
+    std::uint32_t required_type_count = 0U;
 
     /**
      * @comment 创建成功 result。
      * @param handle 输入 handle。
+     * @param required_object_count 输入 required object 数量。
+     * @param required_type_count 输入 required type 数量。
      * @return 显式操作结果。
      */
-    static ObjectRegistrationResult Success(ObjectHandle handle) {
-        return ObjectRegistrationResult{ObjectStatus::Success, handle};
+    static ObjectRegistrationResult Success(
+        ObjectHandle handle,
+        std::uint32_t required_object_count=0U,
+        std::uint32_t required_type_count=0U) {
+        ObjectRegistrationResult result{};
+        result.status = ObjectStatus::Success;
+        result.handle = handle;
+        result.required_object_count = required_object_count;
+        result.required_type_count = required_type_count;
+        return result;
     }
 
     /**
      * @comment 创建失败 result。
      * @param status 输入 status。
+     * @param required_object_count 输入 required object 数量。
+     * @param required_type_count 输入 required type 数量。
      * @return 显式操作结果。
      */
-    static ObjectRegistrationResult Failure(ObjectStatus status) {
-        return ObjectRegistrationResult{status, ObjectHandle{}};
+    static ObjectRegistrationResult Failure(
+        ObjectStatus status,
+        std::uint32_t required_object_count=0U,
+        std::uint32_t required_type_count=0U) {
+        ObjectRegistrationResult result{};
+        result.status = status;
+        result.required_object_count = required_object_count;
+        result.required_type_count = required_type_count;
+        return result;
     }
 
     /**

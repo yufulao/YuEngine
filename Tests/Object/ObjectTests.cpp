@@ -187,9 +187,19 @@ int ObjectRegistryCapacityOverflowDoesNotMutate() {
         return Fail("capacity overflow did not return explicit status");
     }
 
+    if (second_result.required_object_count != 2U ||
+        second_result.required_type_count != 2U) {
+        return Fail("capacity overflow did not report required counts");
+    }
+
     const ObjectSnapshot after_snapshot = registry.Snapshot();
     if (after_snapshot.alive_object_count != before_snapshot.alive_object_count) {
         return Fail("capacity overflow changed alive object count");
+    }
+
+    if (after_snapshot.last_required_object_count != 2U ||
+        after_snapshot.last_required_type_count != 2U) {
+        return Fail("capacity overflow snapshot required counts mismatch");
     }
 
     if (after_snapshot.created_object_count != before_snapshot.created_object_count) {
@@ -216,6 +226,11 @@ int ObjectTypeCapacityOverflowDoesNotMutate() {
         return Fail("type capacity overflow did not return explicit status");
     }
 
+    if (second_result.required_object_count != 2U ||
+        second_result.required_type_count != 2U) {
+        return Fail("type capacity overflow did not report required counts");
+    }
+
     if (second_result.handle.IsValid()) {
         return Fail("type capacity overflow returned a valid handle");
     }
@@ -233,9 +248,25 @@ int ObjectTypeCapacityOverflowDoesNotMutate() {
         return Fail("type capacity overflow changed created object count");
     }
 
+    if (after_snapshot.last_required_object_count != 2U ||
+        after_snapshot.last_required_type_count != 2U) {
+        return Fail("type capacity overflow snapshot required counts mismatch");
+    }
+
     const ObjectRegistrationResult retry_result = Create(registry, TYPE_ACTOR);
     if (!retry_result.Succeeded()) {
         return Fail(TYPE_CAPACITY_RETRY_CREATE_MESSAGE);
+    }
+
+    if (retry_result.required_object_count != 2U ||
+        retry_result.required_type_count != 1U) {
+        return Fail("type capacity retry required counts mismatch");
+    }
+
+    const ObjectSnapshot retry_snapshot = registry.Snapshot();
+    if (retry_snapshot.last_required_object_count != 0U ||
+        retry_snapshot.last_required_type_count != 0U) {
+        return Fail("type capacity retry did not clear snapshot required counts");
     }
 
     if (retry_result.handle.slot != 1U) {
