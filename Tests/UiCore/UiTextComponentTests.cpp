@@ -226,6 +226,34 @@ bool RecordMatchesSentinel(const UiTextDrawRecord &record) {
     return record.draw_element.text_key == SENTINEL_CODEPOINT;
 }
 
+bool ResultHasNoCapacityFailureIdentity(const UiTextComponentResult &result) {
+    if (result.failed_draw_record_index != 0U) {
+        return false;
+    }
+
+    if (result.failed_codepoint_index != 0U) {
+        return false;
+    }
+
+    if (result.failed_codepoint != 0U) {
+        return false;
+    }
+
+    if (result.failed_line_index != 0U) {
+        return false;
+    }
+
+    if (result.capacity_entry_output_capacity != 0U) {
+        return false;
+    }
+
+    if (result.capacity_entry_current_output_count != 0U) {
+        return false;
+    }
+
+    return result.capacity_entry_required_output_count == 0U;
+}
+
 int UiCoreTextComponentRendersAlignedWrappedPlainText() {
     UiNodeTree tree(MakeTreeDesc());
     int ret_code = CreateNode(tree, UiRect{10.0F, 20.0F, 24.0F, 40.0F});
@@ -453,8 +481,65 @@ int UiCoreTextComponentRejectsSmallOutputWithoutMutation() {
         return Fail("text component accepted undersized output");
     }
 
-    if (result.required_draw_record_count != 2U || !RecordMatchesSentinel(records[0U])) {
+    if (result.required_draw_record_count != 2U ||
+        result.capacity_entry_output_capacity != 1U ||
+        result.capacity_entry_current_output_count != 1U ||
+        result.capacity_entry_required_output_count != 2U ||
+        !RecordMatchesSentinel(records[0U])) {
         return Fail("text component small output mutation mismatch");
+    }
+
+    if (result.failed_draw_record_index != 1U ||
+        result.failed_codepoint_index != 1U ||
+        result.failed_codepoint != CODEPOINT_B ||
+        result.failed_line_index != 0U) {
+        return Fail("text component small output failed identity mismatch");
+    }
+
+    UiTextComponentDesc invalid_source_desc = desc;
+    invalid_source_desc.source_type = static_cast<UiTextSourceType>(255);
+    const UiTextComponentStatus invalid_source_status =
+        component.Build(tree, font_atlas, invalid_source_desc, records, &result);
+    if (invalid_source_status != UiTextComponentStatus::InvalidDesc) {
+        return Fail("text component invalid source was not rejected");
+    }
+
+    if (!ResultHasNoCapacityFailureIdentity(result)) {
+        return Fail("text component invalid source kept capacity failure identity");
+    }
+
+    const std::array<UiFontGlyphDesc, 0U> missing_glyphs{};
+    const UiFontGlyphAtlasDesc missing_font_atlas{pages, fonts, missing_glyphs};
+    const UiTextComponentStatus missing_glyph_status =
+        component.Build(tree, missing_font_atlas, desc, records, &result);
+    if (missing_glyph_status != UiTextComponentStatus::FontGlyphMissing) {
+        return Fail("text component missing glyph stale clear setup failed");
+    }
+
+    if (!ResultHasNoCapacityFailureIdentity(result)) {
+        return Fail("text component missing glyph kept capacity failure identity");
+    }
+
+    UiTextDrawRecord *invalid_output_data = nullptr;
+    std::span<UiTextDrawRecord> invalid_records(invalid_output_data, 2U);
+    const UiTextComponentStatus invalid_output_status =
+        component.Build(tree, font_atlas, desc, invalid_records, &result);
+    if (invalid_output_status != UiTextComponentStatus::InvalidOutputBuffer) {
+        return Fail("text component invalid output buffer was not rejected");
+    }
+
+    if (!ResultHasNoCapacityFailureIdentity(result)) {
+        return Fail("text component invalid output buffer kept capacity failure identity");
+    }
+
+    std::array<UiTextDrawRecord, 2U> full_records{SentinelRecord(), SentinelRecord()};
+    const UiTextComponentStatus success_status = component.Build(tree, font_atlas, desc, full_records, &result);
+    if (success_status != UiTextComponentStatus::Success) {
+        return Fail("text component success stale clear setup failed");
+    }
+
+    if (!ResultHasNoCapacityFailureIdentity(result)) {
+        return Fail("text component success kept capacity failure identity");
     }
 
     return 0;

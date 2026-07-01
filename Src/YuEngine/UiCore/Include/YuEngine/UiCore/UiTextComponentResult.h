@@ -19,6 +19,13 @@ struct UiTextComponentResult final {
     std::uint32_t localize_key = 0U;
     std::uint32_t draw_record_count = 0U;
     std::uint32_t required_draw_record_count = 0U;
+    std::uint32_t capacity_entry_output_capacity = 0U;
+    std::uint32_t capacity_entry_current_output_count = 0U;
+    std::uint32_t capacity_entry_required_output_count = 0U;
+    std::uint32_t failed_draw_record_index = 0U;
+    std::uint32_t failed_codepoint_index = 0U;
+    std::uint32_t failed_codepoint = 0U;
+    std::uint32_t failed_line_index = 0U;
     std::uint32_t visible_codepoint_count = 0U;
     std::uint32_t source_codepoint_count = 0U;
     std::uint32_t line_count = 0U;

@@ -545,6 +545,41 @@ void SetResult(UiTextComponentResult *out_result, UiTextComponentStatus status, 
     out_result->status = status;
     out_result->required_draw_record_count = required_count;
 }
+
+void SetOutputCapacityFailure(
+    UiTextComponentResult *out_result,
+    std::uint32_t required_count,
+    std::uint32_t output_capacity,
+    const UiNodeRecord &node_record,
+    const UiTextComponentDesc &desc,
+    std::span<const UiTextGlyphPlacement> placements,
+    std::span<const float> line_widths,
+    std::uint32_t line_count) {
+    SetResult(out_result, UiTextComponentStatus::OutputCapacityExceeded, required_count);
+    out_result->capacity_entry_output_capacity = output_capacity;
+    out_result->capacity_entry_current_output_count = output_capacity;
+    out_result->capacity_entry_required_output_count = required_count;
+
+    std::uint32_t record_index = 0U;
+    const std::uint32_t effect_count = CountEffectRecords(desc);
+    for (const UiTextGlyphPlacement &placement : placements) {
+        const UiRect rect = BuildPlacementRect(node_record, desc, placement, line_widths, line_count);
+        if (!IsRectIntersecting(rect, node_record.content_rect)) {
+            continue;
+        }
+
+        const std::uint32_t next_record_index = record_index + effect_count;
+        if (output_capacity < next_record_index) {
+            out_result->failed_draw_record_index = output_capacity;
+            out_result->failed_codepoint_index = placement.codepoint_index;
+            out_result->failed_codepoint = placement.glyph.resolved_codepoint;
+            out_result->failed_line_index = placement.line_index;
+            return;
+        }
+
+        record_index = next_record_index;
+    }
+}
 }
 
 UiTextComponentStatus UiTextComponent::Build(
@@ -616,6 +651,20 @@ UiTextComponentStatus UiTextComponent::Build(
     out_result->required_draw_record_count = required_count;
     status = ValidateOutputStorage(out_records, required_count);
     if (status != UiTextComponentStatus::Success) {
+        if (status == UiTextComponentStatus::OutputCapacityExceeded) {
+            const std::uint32_t output_capacity = static_cast<std::uint32_t>(out_records.size());
+            SetOutputCapacityFailure(
+                out_result,
+                required_count,
+                output_capacity,
+                node_result.record,
+                desc,
+                placement_span,
+                line_width_span,
+                line_count);
+            return status;
+        }
+
         SetResult(out_result, status, required_count);
         return status;
     }
