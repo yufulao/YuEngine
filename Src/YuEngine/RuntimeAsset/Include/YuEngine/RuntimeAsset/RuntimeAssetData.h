@@ -439,6 +439,23 @@ struct RuntimeAssetDataAssetDependencyTraverseResult final {
 };
 
 /**
+ * @brief Exact lookup key for a committed RuntimeAsset asset dependency row.
+ */
+struct RuntimeAssetDataAssetDependencyExactLookupRequest final {
+    yuengine::asset::AssetManager *asset_manager = nullptr;
+    RuntimeAssetDataAssetDependencyRecord dependency;
+};
+
+/**
+ * @brief Exact lookup diagnostics for RuntimeAsset asset dependency rows.
+ */
+struct RuntimeAssetDataAssetDependencyExactLookupResult final {
+    RuntimeAssetDataStatus status = RuntimeAssetDataStatus::InvalidArgument;
+    yuengine::asset::AssetStatus asset_status = yuengine::asset::AssetStatus::Success;
+    bool found = false;
+};
+
+/**
  * @brief Caller-owned asset handles paired with WorldSceneAuthoring runtime export rows.
  */
 struct RuntimeAssetDataWorldSceneAuthoringAssetDependencyBatchRequest final {
@@ -1352,6 +1369,17 @@ RuntimeAssetDataStatus TraverseRuntimeAssetDataAssetDependencies(
     std::uint32_t output_asset_capacity,
     std::uint32_t *output_asset_count,
     RuntimeAssetDataAssetDependencyTraverseResult *out_result);
+/**
+ * @brief Looks up one exact committed RuntimeAsset asset dependency row.
+ * @param request Input manager and explicit dependency row key.
+ * @param out_record Caller-owned output record.
+ * @param out_result Output exact lookup diagnostics.
+ * @return Explicit RuntimeAssetData status.
+ */
+RuntimeAssetDataStatus LookupRuntimeAssetDataAssetDependencyExact(
+    const RuntimeAssetDataAssetDependencyExactLookupRequest &request,
+    RuntimeAssetDataAssetDependencyRecord *out_record,
+    RuntimeAssetDataAssetDependencyExactLookupResult *out_result);
 /**
  * @brief Loads a runtime asset graph from File/VFS into Resource and Asset records.
  * @param request Input graph load request.

@@ -252,6 +252,7 @@ using yuengine::runtimeasset::CompileRuntimeAssetShaderProgram;
 using yuengine::runtimeasset::DecodeRuntimeAssetShaderProgramData;
 using yuengine::runtimeasset::ExecuteRuntimeAssetImportCookCommand;
 using yuengine::runtimeasset::LoadRuntimeAssetDataGraph;
+using yuengine::runtimeasset::LookupRuntimeAssetDataAssetDependencyExact;
 using yuengine::runtimeasset::PackRuntimeAssetMaterialConstants;
 using yuengine::runtimeasset::RUNTIME_ASSET_PACKED_MATERIAL_CONSTANT_BYTES;
 using yuengine::runtimeasset::RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT;
@@ -280,6 +281,8 @@ using yuengine::runtimeasset::RuntimeAssetImportCookMissingLayer;
 using yuengine::runtimeasset::RuntimeAssetAnimationTargetProperty;
 using yuengine::runtimeasset::RuntimeAssetAnimationTrackTargetBindingRecord;
 using yuengine::runtimeasset::RuntimeAssetDataAssetDependencyBatchResult;
+using yuengine::runtimeasset::RuntimeAssetDataAssetDependencyExactLookupRequest;
+using yuengine::runtimeasset::RuntimeAssetDataAssetDependencyExactLookupResult;
 using yuengine::runtimeasset::RuntimeAssetDataAssetDependencyRecord;
 using yuengine::runtimeasset::RuntimeAssetDataAssetDependencyTraverseResult;
 using yuengine::runtimeasset::RuntimeAssetDataWorldSceneAuthoringAssetDependencyBatchRequest;
@@ -625,6 +628,8 @@ constexpr const char *TEST_RUNTIME_AUTHORING_DEPENDENCY_BATCH =
     "RuntimeAssetData_WorldSceneAuthoringAssetDependencyBatchUsesExportRows";
 constexpr const char *TEST_RUNTIME_DEPENDENCY_TRAVERSE_ATOMIC =
     "RuntimeAssetData_AssetDependencyTraverseOutputIsAtomic";
+constexpr const char *TEST_RUNTIME_DEPENDENCY_EXACT_LOOKUP =
+    "RuntimeAssetData_AssetDependencyExactLookupIsDirectAndReadOnly";
 constexpr const char *TEST_RUNTIME_DEPENDENCIES =
     "RuntimeAssetData_LoadRegistersResourceAndAssetDependencyEdges";
 constexpr const char *TEST_LOAD_RENDER =
@@ -14062,6 +14067,227 @@ int RuntimeAssetDataAssetDependencyTraverseOutputIsAtomic() {
     return 0;
 }
 
+int RuntimeAssetDataAssetDependencyExactLookupIsDirectAndReadOnly() {
+    ResourceRegistry registry;
+    ResourceDescriptor document_resource_desc{};
+    document_resource_desc.type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    document_resource_desc.logical_key = ResourceLogicalKey("runtime_asset_lookup_document");
+    const ResourceRegistrationResult document_resource =
+        registry.RegisterSyntheticDescriptor(document_resource_desc);
+
+    ResourceDescriptor dependency_a_resource_desc{};
+    dependency_a_resource_desc.type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    dependency_a_resource_desc.logical_key = ResourceLogicalKey("runtime_asset_lookup_dependency_a");
+    const ResourceRegistrationResult dependency_a_resource =
+        registry.RegisterSyntheticDescriptor(dependency_a_resource_desc);
+
+    ResourceDescriptor dependency_b_resource_desc{};
+    dependency_b_resource_desc.type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    dependency_b_resource_desc.logical_key = ResourceLogicalKey("runtime_asset_lookup_dependency_b");
+    const ResourceRegistrationResult dependency_b_resource =
+        registry.RegisterSyntheticDescriptor(dependency_b_resource_desc);
+    if (!document_resource.Succeeded() ||
+        !dependency_a_resource.Succeeded() ||
+        !dependency_b_resource.Succeeded()) {
+        return Fail("runtime asset exact lookup resource registration failed");
+    }
+
+    AssetManager manager;
+    AssetDescriptor document_asset_desc{};
+    document_asset_desc.stable_id = 8801U;
+    document_asset_desc.asset_type = AssetTypeId{ASSET_TYPE_TEXTURE};
+    document_asset_desc.resource = document_resource.handle;
+    document_asset_desc.resource_type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    const AssetRegistrationResult document_asset =
+        manager.RegisterRuntimeAsset(&registry, document_asset_desc);
+
+    AssetDescriptor dependency_a_asset_desc{};
+    dependency_a_asset_desc.stable_id = 8802U;
+    dependency_a_asset_desc.asset_type = AssetTypeId{ASSET_TYPE_TEXTURE};
+    dependency_a_asset_desc.resource = dependency_a_resource.handle;
+    dependency_a_asset_desc.resource_type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    const AssetRegistrationResult dependency_a_asset =
+        manager.RegisterRuntimeAsset(&registry, dependency_a_asset_desc);
+
+    AssetDescriptor dependency_b_asset_desc{};
+    dependency_b_asset_desc.stable_id = 8803U;
+    dependency_b_asset_desc.asset_type = AssetTypeId{ASSET_TYPE_TEXTURE};
+    dependency_b_asset_desc.resource = dependency_b_resource.handle;
+    dependency_b_asset_desc.resource_type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    const AssetRegistrationResult dependency_b_asset =
+        manager.RegisterRuntimeAsset(&registry, dependency_b_asset_desc);
+    if (!document_asset.Succeeded() ||
+        !dependency_a_asset.Succeeded() ||
+        !dependency_b_asset.Succeeded()) {
+        return Fail("runtime asset exact lookup asset registration failed");
+    }
+
+    std::array<RuntimeAssetDataAssetDependencyRecord, 2U> records{};
+    records[0U].stable_resource_id = 8802U;
+    records[0U].dependent_asset = document_asset.handle;
+    records[0U].dependency_asset = dependency_a_asset.handle;
+    records[0U].expected_resource = dependency_a_resource.handle;
+    records[0U].expected_resource_type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    records[1U].stable_resource_id = 8803U;
+    records[1U].dependent_asset = dependency_a_asset.handle;
+    records[1U].dependency_asset = dependency_b_asset.handle;
+    records[1U].expected_resource = dependency_b_resource.handle;
+    records[1U].expected_resource_type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+
+    RuntimeAssetDataAssetDependencyBatchResult batch_result{};
+    const RuntimeAssetDataStatus batch_status =
+        CommitRuntimeAssetDataAssetDependencyBatch(
+            &manager,
+            records.data(),
+            static_cast<std::uint32_t>(records.size()),
+            &batch_result);
+    if (batch_status != RuntimeAssetDataStatus::Success ||
+        batch_result.status != RuntimeAssetDataStatus::Success ||
+        batch_result.committed_dependency_edge_count != 2U) {
+        return Fail("runtime asset exact lookup batch commit failed");
+    }
+
+    const AssetSnapshot committed_snapshot = manager.Snapshot();
+    RuntimeAssetDataAssetDependencyRecord output_record{};
+    output_record.stable_resource_id = 9901U;
+    output_record.dependent_asset = AssetHandle{91U, 92U};
+    output_record.dependency_asset = AssetHandle{93U, 94U};
+    output_record.expected_resource = ResourceHandle{95U, 96U};
+    output_record.expected_resource_type = ResourceTypeId{97U};
+
+    RuntimeAssetDataAssetDependencyExactLookupRequest lookup_request{};
+    lookup_request.asset_manager = &manager;
+    lookup_request.dependency = records[0U];
+    RuntimeAssetDataAssetDependencyExactLookupResult lookup_result{};
+    RuntimeAssetDataStatus lookup_status =
+        LookupRuntimeAssetDataAssetDependencyExact(
+            lookup_request,
+            &output_record,
+            &lookup_result);
+    if (lookup_status != RuntimeAssetDataStatus::Success ||
+        lookup_result.status != RuntimeAssetDataStatus::Success ||
+        lookup_result.asset_status != AssetStatus::Success ||
+        !lookup_result.found) {
+        return Fail("runtime asset exact lookup success status mismatch");
+    }
+
+    if (output_record.stable_resource_id != records[0U].stable_resource_id ||
+        output_record.dependent_asset.slot != records[0U].dependent_asset.slot ||
+        output_record.dependent_asset.generation != records[0U].dependent_asset.generation ||
+        output_record.dependency_asset.slot != records[0U].dependency_asset.slot ||
+        output_record.dependency_asset.generation != records[0U].dependency_asset.generation ||
+        output_record.expected_resource.slot != records[0U].expected_resource.slot ||
+        output_record.expected_resource.generation != records[0U].expected_resource.generation ||
+        output_record.expected_resource_type.value != records[0U].expected_resource_type.value) {
+        return Fail("runtime asset exact lookup output mismatch");
+    }
+
+    const RuntimeAssetDataAssetDependencyRecord prior_success = output_record;
+    RuntimeAssetDataAssetDependencyRecord transitive_request_record = records[1U];
+    transitive_request_record.dependent_asset = document_asset.handle;
+    lookup_request.dependency = transitive_request_record;
+    RuntimeAssetDataAssetDependencyExactLookupResult transitive_result{};
+    lookup_status =
+        LookupRuntimeAssetDataAssetDependencyExact(
+            lookup_request,
+            &output_record,
+            &transitive_result);
+    if (lookup_status != RuntimeAssetDataStatus::MissingDependency ||
+        transitive_result.status != RuntimeAssetDataStatus::MissingDependency ||
+        transitive_result.asset_status != AssetStatus::Success ||
+        transitive_result.found) {
+        return Fail("runtime asset exact lookup accepted transitive dependency");
+    }
+
+    if (output_record.stable_resource_id != prior_success.stable_resource_id ||
+        output_record.dependent_asset.slot != prior_success.dependent_asset.slot ||
+        output_record.dependent_asset.generation != prior_success.dependent_asset.generation ||
+        output_record.dependency_asset.slot != prior_success.dependency_asset.slot ||
+        output_record.dependency_asset.generation != prior_success.dependency_asset.generation ||
+        output_record.expected_resource.slot != prior_success.expected_resource.slot ||
+        output_record.expected_resource.generation != prior_success.expected_resource.generation ||
+        output_record.expected_resource_type.value != prior_success.expected_resource_type.value) {
+        return Fail("runtime asset exact lookup transitive failure mutated output");
+    }
+
+    RuntimeAssetDataAssetDependencyRecord wrong_type_record = records[0U];
+    wrong_type_record.expected_resource_type = ResourceTypeId{RESOURCE_TYPE_SHADER};
+    lookup_request.dependency = wrong_type_record;
+    RuntimeAssetDataAssetDependencyExactLookupResult wrong_type_result{};
+    lookup_status =
+        LookupRuntimeAssetDataAssetDependencyExact(
+            lookup_request,
+            &output_record,
+            &wrong_type_result);
+    if (lookup_status != RuntimeAssetDataStatus::MissingDependency ||
+        wrong_type_result.status != RuntimeAssetDataStatus::MissingDependency ||
+        wrong_type_result.asset_status != AssetStatus::ReadyRecordMismatch ||
+        wrong_type_result.found) {
+        return Fail("runtime asset exact lookup accepted wrong type");
+    }
+
+    if (output_record.stable_resource_id != prior_success.stable_resource_id ||
+        output_record.dependent_asset.slot != prior_success.dependent_asset.slot ||
+        output_record.dependent_asset.generation != prior_success.dependent_asset.generation ||
+        output_record.dependency_asset.slot != prior_success.dependency_asset.slot ||
+        output_record.dependency_asset.generation != prior_success.dependency_asset.generation ||
+        output_record.expected_resource.slot != prior_success.expected_resource.slot ||
+        output_record.expected_resource.generation != prior_success.expected_resource.generation ||
+        output_record.expected_resource_type.value != prior_success.expected_resource_type.value) {
+        return Fail("runtime asset exact lookup wrong type failure mutated output");
+    }
+
+    RuntimeAssetDataAssetDependencyRecord invalid_handle_record = records[0U];
+    invalid_handle_record.dependency_asset = AssetHandle{};
+    lookup_request.dependency = invalid_handle_record;
+    RuntimeAssetDataAssetDependencyExactLookupResult invalid_handle_result{};
+    lookup_status =
+        LookupRuntimeAssetDataAssetDependencyExact(
+            lookup_request,
+            &output_record,
+            &invalid_handle_result);
+    if (lookup_status != RuntimeAssetDataStatus::AssetDependencyFailed ||
+        invalid_handle_result.status != RuntimeAssetDataStatus::AssetDependencyFailed ||
+        invalid_handle_result.asset_status != AssetStatus::InvalidHandle ||
+        invalid_handle_result.found) {
+        return Fail("runtime asset exact lookup invalid handle status mismatch");
+    }
+
+    if (output_record.stable_resource_id != prior_success.stable_resource_id ||
+        output_record.dependent_asset.slot != prior_success.dependent_asset.slot ||
+        output_record.dependent_asset.generation != prior_success.dependent_asset.generation ||
+        output_record.dependency_asset.slot != prior_success.dependency_asset.slot ||
+        output_record.dependency_asset.generation != prior_success.dependency_asset.generation ||
+        output_record.expected_resource.slot != prior_success.expected_resource.slot ||
+        output_record.expected_resource.generation != prior_success.expected_resource.generation ||
+        output_record.expected_resource_type.value != prior_success.expected_resource_type.value) {
+        return Fail("runtime asset exact lookup invalid handle failure mutated output");
+    }
+
+    lookup_request.dependency = records[0U];
+    RuntimeAssetDataAssetDependencyExactLookupResult repeat_result{};
+    lookup_status =
+        LookupRuntimeAssetDataAssetDependencyExact(
+            lookup_request,
+            &output_record,
+            &repeat_result);
+    if (lookup_status != RuntimeAssetDataStatus::Success ||
+        repeat_result.status != RuntimeAssetDataStatus::Success ||
+        repeat_result.asset_status != AssetStatus::Success ||
+        !repeat_result.found) {
+        return Fail("runtime asset exact lookup repeat status mismatch");
+    }
+
+    const AssetSnapshot after_lookup_snapshot = manager.Snapshot();
+    if (after_lookup_snapshot.active_dependency_edge_count != committed_snapshot.active_dependency_edge_count ||
+        after_lookup_snapshot.accepted_operation_count != committed_snapshot.accepted_operation_count ||
+        after_lookup_snapshot.failed_operation_count != committed_snapshot.failed_operation_count) {
+        return Fail("runtime asset exact lookup mutated asset manager diagnostics");
+    }
+
+    return 0;
+}
+
 int RuntimeAssetDataLoadRegistersResourceAndAssetDependencyEdges() {
     MountTable table;
     if (!CreateMountedTable(TestRoot("DependencyEdges"), &table)) {
@@ -15910,6 +16136,8 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
      RuntimeAssetDataWorldSceneAuthoringAssetDependencyBatchUsesExportRows},
     {TEST_RUNTIME_DEPENDENCY_TRAVERSE_ATOMIC,
      RuntimeAssetDataAssetDependencyTraverseOutputIsAtomic},
+    {TEST_RUNTIME_DEPENDENCY_EXACT_LOOKUP,
+     RuntimeAssetDataAssetDependencyExactLookupIsDirectAndReadOnly},
     {TEST_RUNTIME_DEPENDENCIES, RuntimeAssetDataLoadRegistersResourceAndAssetDependencyEdges},
     {TEST_LOAD_RENDER, RuntimeAssetDataRenderClosedLoopCapturesCubeCylinderConeThroughRhi},
     {TEST_CPU_ORACLE, RuntimeAssetDataCpuPpmOracleDoesNotBypassRhiRenderCore},
