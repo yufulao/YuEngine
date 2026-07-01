@@ -79,6 +79,7 @@ using yuengine::uicore::UiNodeId;
 using yuengine::uicore::UiNodeRecord;
 using yuengine::uicore::UiNodeTree;
 using yuengine::uicore::UiNodeTreeDesc;
+using yuengine::uicore::UiNodeTreeExportChildrenResult;
 using yuengine::uicore::UiNodeTreeResult;
 using yuengine::uicore::UiNodeTreeSnapshot;
 using yuengine::uicore::UiNodeTreeStatus;
@@ -105,6 +106,8 @@ constexpr std::string_view TEST_NODE_TREE_CREATE_CAPACITY_ENTRY =
     "UiCore_NodeTree_CreateCapacityEntryReportsRejectedNode";
 constexpr std::string_view TEST_NODE_TREE_DESTROY =
     "UiCore_NodeTree_DestroyRemovesDescendants";
+constexpr std::string_view TEST_NODE_TREE_EXPORT_CHILDREN_REQUIRED =
+    "UiCore_NodeTree_ExportChildrenReportsRequiredCount";
 constexpr std::string_view TEST_RECT_MATH =
     "UiCore_RectMath_ParentResizePivotMarginPaddingDpi";
 constexpr std::string_view TEST_NO_FORBIDDEN_DEPENDENCY =
@@ -668,6 +671,141 @@ int UiCoreNodeTreeDestroyRemovesDescendants() {
     const UiNodeTreeSnapshot snapshot = tree.Snapshot();
     if (snapshot.active_node_count != 1U || snapshot.destroyed_node_count != 2U) {
         return Fail("destroy did not update snapshot counts");
+    }
+
+    return 0;
+}
+
+int UiCoreNodeTreeExportChildrenReportsRequiredCount() {
+    UiNodeTree tree(MakeTreeDesc());
+    UiNodeDesc root_desc = MakeNodeDesc(NodeId(1U), UiNodeId{}, 0U);
+    int ret_code = CreateNode(tree, root_desc, "root create failed");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    UiNodeDesc first_child_desc = MakeNodeDesc(NodeId(2U), NodeId(1U), 20U);
+    ret_code = CreateNode(tree, first_child_desc, "first child create failed");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    UiNodeDesc second_child_desc = MakeNodeDesc(NodeId(3U), NodeId(1U), 10U);
+    ret_code = CreateNode(tree, second_child_desc, "second child create failed");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    UiNodeDesc third_child_desc = MakeNodeDesc(NodeId(4U), NodeId(1U), 30U);
+    ret_code = CreateNode(tree, third_child_desc, "third child create failed");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    const UiNodeTreeSnapshot before_export_snapshot = tree.Snapshot();
+    std::array<UiNodeRecord, 2U> small_output{};
+    small_output[0U].node_id = NodeId(91U);
+    small_output[0U].sibling_order = 501U;
+    small_output[1U].node_id = NodeId(92U);
+    small_output[1U].sibling_order = 502U;
+
+    UiNodeTreeExportChildrenResult small_result{};
+    const std::uint32_t small_capacity = static_cast<std::uint32_t>(small_output.size());
+    UiNodeTreeStatus status =
+        tree.ExportChildrenChecked(NodeId(1U), small_output.data(), small_capacity, &small_result);
+    if (status != UiNodeTreeStatus::CapacityExceeded ||
+        small_result.status != UiNodeTreeStatus::CapacityExceeded ||
+        small_result.required_child_count != 3U ||
+        small_result.copied_child_count != 0U) {
+        return Fail("small child export did not report required count");
+    }
+
+    if (small_output[0U].node_id.value != 91U ||
+        small_output[0U].sibling_order != 501U ||
+        small_output[1U].node_id.value != 92U ||
+        small_output[1U].sibling_order != 502U) {
+        return Fail("small child export mutated caller output");
+    }
+
+    const UiNodeTreeSnapshot after_small_snapshot = tree.Snapshot();
+    if (after_small_snapshot.active_node_count != before_export_snapshot.active_node_count ||
+        after_small_snapshot.accepted_operation_count != before_export_snapshot.accepted_operation_count ||
+        after_small_snapshot.failed_operation_count != before_export_snapshot.failed_operation_count ||
+        after_small_snapshot.last_status != before_export_snapshot.last_status) {
+        return Fail("small child export mutated tree snapshot");
+    }
+
+    std::array<UiNodeRecord, 3U> checked_children{};
+    UiNodeTreeExportChildrenResult checked_result{};
+    const std::uint32_t checked_capacity = static_cast<std::uint32_t>(checked_children.size());
+    status =
+        tree.ExportChildrenChecked(NodeId(1U), checked_children.data(), checked_capacity, &checked_result);
+    if (status != UiNodeTreeStatus::Success ||
+        !checked_result.Succeeded() ||
+        checked_result.required_child_count != 3U ||
+        checked_result.copied_child_count != 3U) {
+        return Fail("checked child export success result mismatch");
+    }
+
+    std::array<UiNodeRecord, 3U> legacy_children{};
+    const std::uint32_t legacy_capacity = static_cast<std::uint32_t>(legacy_children.size());
+    const std::uint32_t legacy_count =
+        tree.ExportChildren(NodeId(1U), legacy_children.data(), legacy_capacity);
+    if (legacy_count != 3U) {
+        return Fail("legacy child export count mismatch");
+    }
+
+    if (checked_children[0U].node_id.value != 3U ||
+        checked_children[1U].node_id.value != 2U ||
+        checked_children[2U].node_id.value != 4U) {
+        return Fail("checked child export order mismatch");
+    }
+
+    if (checked_children[0U].node_id.value != legacy_children[0U].node_id.value ||
+        checked_children[1U].node_id.value != legacy_children[1U].node_id.value ||
+        checked_children[2U].node_id.value != legacy_children[2U].node_id.value) {
+        return Fail("checked child export did not match legacy order");
+    }
+
+    std::array<UiNodeRecord, 1U> root_output{};
+    UiNodeTreeExportChildrenResult root_result{};
+    const std::uint32_t root_capacity = static_cast<std::uint32_t>(root_output.size());
+    status =
+        tree.ExportChildrenChecked(UiNodeId{}, root_output.data(), root_capacity, &root_result);
+    if (status != UiNodeTreeStatus::Success ||
+        root_result.required_child_count != 1U ||
+        root_result.copied_child_count != 1U ||
+        root_output[0U].node_id.value != 1U) {
+        return Fail("root child export required count mismatch");
+    }
+
+    small_output[0U].node_id = NodeId(93U);
+    small_output[0U].sibling_order = 503U;
+    UiNodeTreeExportChildrenResult missing_parent_result{};
+    status =
+        tree.ExportChildrenChecked(NodeId(99U), small_output.data(), small_capacity, &missing_parent_result);
+    if (status != UiNodeTreeStatus::NodeNotFound ||
+        missing_parent_result.status != UiNodeTreeStatus::NodeNotFound ||
+        missing_parent_result.required_child_count != 0U ||
+        missing_parent_result.copied_child_count != 0U ||
+        small_output[0U].node_id.value != 93U ||
+        small_output[0U].sibling_order != 503U) {
+        return Fail("missing parent child export status mismatch");
+    }
+
+    UiNodeTreeExportChildrenResult null_output_result{};
+    status = tree.ExportChildrenChecked(NodeId(1U), nullptr, 1U, &null_output_result);
+    if (status != UiNodeTreeStatus::InvalidCapacity ||
+        null_output_result.status != UiNodeTreeStatus::InvalidCapacity) {
+        return Fail("null child export output status mismatch");
+    }
+
+    const UiNodeTreeSnapshot final_snapshot = tree.Snapshot();
+    if (final_snapshot.active_node_count != before_export_snapshot.active_node_count ||
+        final_snapshot.accepted_operation_count != before_export_snapshot.accepted_operation_count ||
+        final_snapshot.failed_operation_count != before_export_snapshot.failed_operation_count ||
+        final_snapshot.last_status != before_export_snapshot.last_status) {
+        return Fail("checked child export mutated final tree snapshot");
     }
 
     return 0;
@@ -1463,6 +1601,7 @@ int main(int argc, char **argv) {
         {TEST_NODE_TREE_CREATE_ORDER, UiCoreNodeTreeCreateAttachDetachOrder},
         {TEST_NODE_TREE_CREATE_CAPACITY_ENTRY, UiCoreNodeTreeCreateCapacityEntryReportsRejectedNode},
         {TEST_NODE_TREE_DESTROY, UiCoreNodeTreeDestroyRemovesDescendants},
+        {TEST_NODE_TREE_EXPORT_CHILDREN_REQUIRED, UiCoreNodeTreeExportChildrenReportsRequiredCount},
         {TEST_RECT_MATH, UiCoreRectMathParentResizePivotMarginPaddingDpi},
         {TEST_NO_FORBIDDEN_DEPENDENCY, UiCoreNoLifecycleConfigEditorRenderBackendDependency},
         {TEST_LAYOUT_CONTAINERS, UiCoreLayoutContainersResolveExpectedRects},

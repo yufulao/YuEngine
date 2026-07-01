@@ -87,6 +87,19 @@ public:
         UiNodeRecord *output_records,
         std::uint32_t output_capacity) const;
     /**
+     * @comment 按 sibling order 原子导出 child nodes。
+     * @param parent_id 输入 parent id；无效 id 表示 root nodes。
+     * @param output_records 调用方持有的 output buffer。
+     * @param output_capacity output buffer capacity。
+     * @param out_result 输出 required/copied child count。
+     * @return 显式操作状态。
+     */
+    UiNodeTreeStatus ExportChildrenChecked(
+        UiNodeId parent_id,
+        UiNodeRecord *output_records,
+        std::uint32_t output_capacity,
+        UiNodeTreeExportChildrenResult *out_result) const;
+    /**
      * @comment 返回当前 tree 状态快照。
      * @return 快照值。
      */

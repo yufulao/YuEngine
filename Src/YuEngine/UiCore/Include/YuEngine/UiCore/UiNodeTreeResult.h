@@ -46,4 +46,18 @@ struct UiNodeTreeResult final {
         return status == UiNodeTreeStatus::Success;
     }
 };
+
+struct UiNodeTreeExportChildrenResult final {
+    UiNodeTreeStatus status = UiNodeTreeStatus::Success;
+    std::uint32_t copied_child_count = 0U;
+    std::uint32_t required_child_count = 0U;
+
+    /**
+     * @comment 检查 result 是否成功。
+     * @return 成功时返回 true，否则返回 false。
+     */
+    bool Succeeded() const {
+        return status == UiNodeTreeStatus::Success;
+    }
+};
 }

@@ -245,6 +245,46 @@ std::uint32_t UiNodeTree::ExportChildren(
     return exported_count;
 }
 
+UiNodeTreeStatus UiNodeTree::ExportChildrenChecked(
+    UiNodeId parent_id,
+    UiNodeRecord *output_records,
+    std::uint32_t output_capacity,
+    UiNodeTreeExportChildrenResult *out_result) const {
+    if (out_result == nullptr) {
+        return UiNodeTreeStatus::InvalidCapacity;
+    }
+
+    UiNodeTreeExportChildrenResult result{};
+    *out_result = result;
+    if (output_capacity > 0U && output_records == nullptr) {
+        result.status = UiNodeTreeStatus::InvalidCapacity;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (parent_id.IsValid() && FindRecord(parent_id) == nullptr) {
+        result.status = UiNodeTreeStatus::NodeNotFound;
+        *out_result = result;
+        return result.status;
+    }
+
+    const std::uint32_t required_child_count = ExportChildren(parent_id, nullptr, 0U);
+    result.required_child_count = required_child_count;
+    if (output_capacity < required_child_count) {
+        result.status = UiNodeTreeStatus::CapacityExceeded;
+        *out_result = result;
+        return result.status;
+    }
+
+    const std::uint32_t copied_child_count =
+        ExportChildren(parent_id, output_records, output_capacity);
+    result.status = UiNodeTreeStatus::Success;
+    result.copied_child_count = copied_child_count;
+    result.required_child_count = required_child_count;
+    *out_result = result;
+    return result.status;
+}
+
 UiNodeTreeSnapshot UiNodeTree::Snapshot() const {
     return snapshot_;
 }
