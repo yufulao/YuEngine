@@ -16,6 +16,7 @@ struct RenderSceneSnapshot final {
     std::uint32_t last_camera_id = 0U;
     std::size_t last_output_packet_count = 0U;
     std::size_t last_visible_entity_count = 0U;
+    std::size_t last_required_output_packet_count = 0U;
     std::size_t last_skipped_entity_count = 0U;
     RenderSceneStatus last_status = RenderSceneStatus::Success;
 };

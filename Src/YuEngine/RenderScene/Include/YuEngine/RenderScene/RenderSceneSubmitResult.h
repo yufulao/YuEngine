@@ -15,6 +15,7 @@ struct RenderSceneSubmitResult final {
     std::uint32_t camera_id = 0U;
     std::size_t visible_entity_count = 0U;
     std::size_t output_packet_count = 0U;
+    std::size_t required_output_packet_count = 0U;
     std::size_t skipped_entity_count = 0U;
 };
 }

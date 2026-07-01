@@ -24,6 +24,7 @@ RenderSceneStatus RenderSceneContractQueue::BuildRenderCorePackets(
     }
 
     result.visible_entity_count = visible_entity_count;
+    result.required_output_packet_count = visible_entity_count;
     if (validate_status != RenderSceneStatus::Success) {
         result.status = validate_status;
         *out_result = result;
@@ -201,6 +202,7 @@ RenderSceneStatus RenderSceneContractQueue::RecordSuccess(const RenderSceneSubmi
     snapshot_.last_camera_id = result.camera_id;
     snapshot_.last_output_packet_count = result.output_packet_count;
     snapshot_.last_visible_entity_count = result.visible_entity_count;
+    snapshot_.last_required_output_packet_count = result.required_output_packet_count;
     snapshot_.last_skipped_entity_count = result.skipped_entity_count;
     snapshot_.last_status = RenderSceneStatus::Success;
     return RenderSceneStatus::Success;
@@ -214,6 +216,7 @@ RenderSceneStatus RenderSceneContractQueue::RecordFailure(
     snapshot_.last_camera_id = result.camera_id;
     snapshot_.last_output_packet_count = result.output_packet_count;
     snapshot_.last_visible_entity_count = result.visible_entity_count;
+    snapshot_.last_required_output_packet_count = result.required_output_packet_count;
     snapshot_.last_skipped_entity_count = result.skipped_entity_count;
     snapshot_.last_status = status;
     return status;

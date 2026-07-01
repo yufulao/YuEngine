@@ -335,6 +335,10 @@ int RenderSceneOutputCapacityFailureDoesNotMutateOutput() {
         return Fail("render scene capacity visible count mismatch");
     }
 
+    if (result.required_output_packet_count != 2U) {
+        return Fail("render scene capacity required count mismatch");
+    }
+
     if (packets[0].view_id != 77U) {
         return Fail("render scene mutated output on capacity failure");
     }
@@ -345,6 +349,10 @@ int RenderSceneOutputCapacityFailureDoesNotMutateOutput() {
 
     if (queue.Snapshot().last_visible_entity_count != 2U) {
         return Fail("render scene capacity snapshot visible count mismatch");
+    }
+
+    if (queue.Snapshot().last_required_output_packet_count != 2U) {
+        return Fail("render scene capacity snapshot required count mismatch");
     }
 
     return 0;
