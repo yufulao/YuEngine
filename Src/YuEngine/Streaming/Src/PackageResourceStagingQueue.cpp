@@ -426,6 +426,34 @@ PackageResourceStagingStatus PackageResourceStagingQueue::GetPendingCountSnapsho
     return PackageResourceStagingStatus::Success;
 }
 
+PackageResourceStagingStatus PackageResourceStagingQueue::GetPendingRequestTypeCountSnapshot(
+    resource::ResourceTypeId expected_type,
+    std::uint32_t *pending_count) const {
+    if (pending_count == nullptr) {
+        return PackageResourceStagingStatus::InvalidArgument;
+    }
+
+    if (!expected_type.IsValid()) {
+        return PackageResourceStagingStatus::InvalidArgument;
+    }
+
+    std::uint32_t result = 0U;
+    for (const PendingRecord &pending_record : pending_records_) {
+        if (!pending_record.is_active) {
+            continue;
+        }
+
+        if (pending_record.expected_type.value != expected_type.value) {
+            continue;
+        }
+
+        ++result;
+    }
+
+    *pending_count = result;
+    return PackageResourceStagingStatus::Success;
+}
+
 PackageResourceStagingPendingRequestEnumerationResult PackageResourceStagingQueue::EnumeratePendingRequests(
     PackageResourceStagingPendingRequestSnapshot *output_requests,
     std::uint32_t output_capacity,

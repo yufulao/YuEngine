@@ -158,6 +158,8 @@ constexpr const char *TEST_STAGING_PENDING_COUNT_SNAPSHOT =
     "Streaming_PackageResourceStaging_PendingCountSnapshotIsReadOnly";
 constexpr const char *TEST_STAGING_PENDING_REQUEST_ENUMERATION =
     "Streaming_PackageResourceStaging_PendingRequestEnumerationIsAtomic";
+constexpr const char *TEST_STAGING_PENDING_REQUEST_TYPE_COUNT =
+    "Streaming_PackageResourceStaging_PendingRequestTypeCountSnapshotIsReadOnly";
 constexpr const char *TEST_MISSING_COMPLETION =
     "Streaming_PackageResourceStaging_ReportsMissingFileCompletion";
 constexpr const char *TEST_QUEUE_OVERFLOW =
@@ -579,6 +581,26 @@ bool PendingRequestSnapshotMatches(
     expected_snapshot.expected_type = expected_type;
     expected_snapshot.request_id = request_id;
     return PendingRequestSnapshotsEqual(snapshot, expected_snapshot);
+}
+
+std::uint32_t CountPendingRequestSnapshotsByType(
+    const PackageResourceStagingPendingRequestSnapshot *snapshots,
+    std::uint32_t snapshot_count,
+    ResourceTypeId expected_type) {
+    if (snapshots == nullptr) {
+        return 0U;
+    }
+
+    std::uint32_t result = 0U;
+    for (std::uint32_t index = 0U; index < snapshot_count; ++index) {
+        if (snapshots[index].expected_type.value != expected_type.value) {
+            continue;
+        }
+
+        ++result;
+    }
+
+    return result;
 }
 
 PackageResourceStagingRequest BuildValidRequest(
@@ -2700,6 +2722,259 @@ int StreamingPackageResourceStagingPendingRequestEnumerationIsAtomic() {
 
     if (file_queue.Shutdown(true) != AsyncFileReadStatus::ShutdownComplete) {
         return Fail("staging pending enumeration shutdown failed");
+    }
+
+    return 0;
+}
+
+int StreamingPackageResourceStagingPendingRequestTypeCountSnapshotIsReadOnly() {
+    MountTable table = CreateMountedTable();
+    ResourceRegistry resource_registry;
+    PackageLoadPlanRecord texture_record;
+    if (!BuildPackageRecord(&texture_record, 0U, FixtureByteCount())) {
+        return Fail("staging pending type count record setup failed");
+    }
+
+    PackageLoadPlanRecord audio_record = texture_record;
+    audio_record.type = TYPE_AUDIO;
+    audio_record.logical_key = ResourceLogicalKey(RESOURCE_KEY_ALT);
+
+    const ResourceRegistrationResult first_texture_resource =
+        RegisterResourceWithKey(resource_registry, TYPE_TEXTURE, RESOURCE_KEY);
+    if (!first_texture_resource.Succeeded()) {
+        return Fail("staging pending type count first texture setup failed");
+    }
+
+    const ResourceRegistrationResult audio_resource =
+        RegisterResourceWithKey(resource_registry, TYPE_AUDIO, RESOURCE_KEY_ALT);
+    if (!audio_resource.Succeeded()) {
+        return Fail("staging pending type count audio setup failed");
+    }
+
+    const ResourceRegistrationResult second_texture_resource =
+        RegisterResourceWithKey(resource_registry, TYPE_TEXTURE, RESOURCE_KEY_THIRD);
+    if (!second_texture_resource.Succeeded()) {
+        return Fail("staging pending type count second texture setup failed");
+    }
+
+    AsyncFileReadQueue file_queue;
+    if (file_queue.Initialize(4U, 4U) != AsyncFileReadStatus::Success) {
+        return Fail("staging pending type count file queue init failed");
+    }
+
+    if (file_queue.Start() != AsyncFileReadStatus::Success) {
+        return Fail("staging pending type count file queue start failed");
+    }
+
+    std::array<std::uint8_t, OUTPUT_CAPACITY> first_output_bytes{};
+    std::array<std::uint8_t, OUTPUT_CAPACITY> audio_output_bytes{};
+    std::array<std::uint8_t, OUTPUT_CAPACITY> second_output_bytes{};
+    PackageResourceStagingRequest first_request = BuildStagingRequest(
+        resource_registry,
+        file_queue,
+        table,
+        texture_record,
+        first_texture_resource.handle,
+        REQUEST_ONE,
+        first_output_bytes.data(),
+        first_output_bytes.size());
+    std::array<PackageResourceStagingRequest, 2U> batch_requests{
+        BuildStagingRequest(
+            resource_registry,
+            file_queue,
+            table,
+            audio_record,
+            audio_resource.handle,
+            REQUEST_TWO,
+            audio_output_bytes.data(),
+            audio_output_bytes.size()),
+        BuildStagingRequest(
+            resource_registry,
+            file_queue,
+            table,
+            texture_record,
+            second_texture_resource.handle,
+            REQUEST_THREE,
+            second_output_bytes.data(),
+            second_output_bytes.size())};
+    PackageResourceStagingQueue queue(PackageResourceStagingQueueDesc{4U, 4U});
+
+    std::uint32_t type_count = 777U;
+    PackageResourceStagingStatus count_status =
+        queue.GetPendingRequestTypeCountSnapshot(TYPE_TEXTURE, &type_count);
+    if (count_status != PackageResourceStagingStatus::Success) {
+        return Fail("staging pending type count initial status changed");
+    }
+
+    if (type_count != 0U) {
+        return Fail("staging pending type count initial value changed");
+    }
+
+    type_count = 123U;
+    count_status = queue.GetPendingRequestTypeCountSnapshot(ResourceTypeId{}, &type_count);
+    if (count_status != PackageResourceStagingStatus::InvalidArgument) {
+        return Fail("staging pending type count invalid type status changed");
+    }
+
+    if (type_count != 123U) {
+        return Fail("staging pending type count invalid type mutated caller count");
+    }
+
+    count_status = queue.GetPendingRequestTypeCountSnapshot(TYPE_TEXTURE, nullptr);
+    if (count_status != PackageResourceStagingStatus::InvalidArgument) {
+        return Fail("staging pending type count null count status changed");
+    }
+
+    if (queue.Submit(first_request) != PackageResourceStagingStatus::Queued) {
+        return Fail("staging pending type count single submit failed");
+    }
+
+    std::array<PackageResourceStagingSubmitResult, 2U> submit_results{};
+    const std::uint32_t submit_result_capacity = static_cast<std::uint32_t>(submit_results.size());
+    const PackageResourceStagingBatchSubmitResult batch_result = queue.SubmitBatch(
+        batch_requests.data(),
+        submit_result_capacity,
+        submit_results.data(),
+        submit_result_capacity);
+    if (batch_result.status != PackageResourceStagingStatus::Queued) {
+        return Fail("staging pending type count batch submit failed");
+    }
+
+    count_status = queue.GetPendingRequestTypeCountSnapshot(TYPE_TEXTURE, &type_count);
+    if (count_status != PackageResourceStagingStatus::Success) {
+        return Fail("staging pending type count texture status changed");
+    }
+
+    if (type_count != 2U) {
+        return Fail("staging pending type count texture value changed");
+    }
+
+    std::uint32_t audio_count = 777U;
+    count_status = queue.GetPendingRequestTypeCountSnapshot(TYPE_AUDIO, &audio_count);
+    if (count_status != PackageResourceStagingStatus::Success) {
+        return Fail("staging pending type count audio status changed");
+    }
+
+    if (audio_count != 1U) {
+        return Fail("staging pending type count audio value changed");
+    }
+
+    std::array<PackageResourceStagingPendingRequestSnapshot, 3U> caller_requests{};
+    std::uint32_t written_count = 0U;
+    const std::uint32_t caller_request_capacity = static_cast<std::uint32_t>(caller_requests.size());
+    const PackageResourceStagingPendingRequestEnumerationResult enumeration_result =
+        queue.EnumeratePendingRequests(caller_requests.data(), caller_request_capacity, &written_count);
+    if (enumeration_result.status != PackageResourceStagingStatus::Success) {
+        return Fail("staging pending type count enumeration failed");
+    }
+
+    const std::uint32_t enumerated_texture_count =
+        CountPendingRequestSnapshotsByType(caller_requests.data(), written_count, TYPE_TEXTURE);
+    if (enumerated_texture_count != type_count) {
+        return Fail("staging pending type count mismatched texture enumeration");
+    }
+
+    const std::uint32_t enumerated_audio_count =
+        CountPendingRequestSnapshotsByType(caller_requests.data(), written_count, TYPE_AUDIO);
+    if (enumerated_audio_count != audio_count) {
+        return Fail("staging pending type count mismatched audio enumeration");
+    }
+
+    const PackageResourceStagingPendingRequestEnumerationResult failed_enumeration_result =
+        queue.EnumeratePendingRequests(caller_requests.data(), 1U, &written_count);
+    if (failed_enumeration_result.status != PackageResourceStagingStatus::OutputTooSmall) {
+        return Fail("staging pending type count failed enumeration status changed");
+    }
+
+    type_count = 777U;
+    count_status = queue.GetPendingRequestTypeCountSnapshot(TYPE_TEXTURE, &type_count);
+    if (count_status != PackageResourceStagingStatus::Success) {
+        return Fail("staging pending type count after failed enumeration status changed");
+    }
+
+    if (type_count != 2U) {
+        return Fail("staging pending type count after failed enumeration value changed");
+    }
+
+    if (queue.CompleteFileRead(SuccessFileResult(REQUEST_ONE)) != PackageResourceStagingStatus::Success) {
+        return Fail("staging pending type count completion failed");
+    }
+
+    count_status = queue.GetPendingRequestTypeCountSnapshot(TYPE_TEXTURE, &type_count);
+    if (count_status != PackageResourceStagingStatus::Success) {
+        return Fail("staging pending type count after completion texture status changed");
+    }
+
+    if (type_count != 1U) {
+        return Fail("staging pending type count after completion texture value changed");
+    }
+
+    count_status = queue.GetPendingRequestTypeCountSnapshot(TYPE_AUDIO, &audio_count);
+    if (count_status != PackageResourceStagingStatus::Success) {
+        return Fail("staging pending type count after completion audio status changed");
+    }
+
+    if (audio_count != 1U) {
+        return Fail("staging pending type count after completion audio value changed");
+    }
+
+    std::array<PackageResourceStagingCompletion, 1U> first_drain_completions{};
+    written_count = 0U;
+    PackageResourceStagingStatus drain_status = queue.DrainCompletions(
+        first_drain_completions.data(),
+        static_cast<std::uint32_t>(first_drain_completions.size()),
+        &written_count);
+    if (drain_status != PackageResourceStagingStatus::Success) {
+        return Fail("staging pending type count first drain failed");
+    }
+
+    count_status = queue.GetPendingRequestTypeCountSnapshot(TYPE_TEXTURE, &type_count);
+    if (count_status != PackageResourceStagingStatus::Success) {
+        return Fail("staging pending type count after first drain texture status changed");
+    }
+
+    if (type_count != 1U) {
+        return Fail("staging pending type count after first drain texture value changed");
+    }
+
+    if (queue.CompleteFileRead(SuccessFileResult(REQUEST_TWO)) != PackageResourceStagingStatus::Success) {
+        return Fail("staging pending type count audio completion failed");
+    }
+
+    if (queue.CompleteFileRead(SuccessFileResult(REQUEST_THREE)) != PackageResourceStagingStatus::Success) {
+        return Fail("staging pending type count second texture completion failed");
+    }
+
+    std::array<PackageResourceStagingCompletion, 2U> final_drain_completions{};
+    written_count = 0U;
+    drain_status = queue.DrainCompletions(
+        final_drain_completions.data(),
+        static_cast<std::uint32_t>(final_drain_completions.size()),
+        &written_count);
+    if (drain_status != PackageResourceStagingStatus::Success) {
+        return Fail("staging pending type count final drain failed");
+    }
+
+    count_status = queue.GetPendingRequestTypeCountSnapshot(TYPE_TEXTURE, &type_count);
+    if (count_status != PackageResourceStagingStatus::Success) {
+        return Fail("staging pending type count after full drain texture status changed");
+    }
+
+    if (type_count != 0U) {
+        return Fail("staging pending type count after full drain texture value changed");
+    }
+
+    count_status = queue.GetPendingRequestTypeCountSnapshot(TYPE_AUDIO, &audio_count);
+    if (count_status != PackageResourceStagingStatus::Success) {
+        return Fail("staging pending type count after full drain audio status changed");
+    }
+
+    if (audio_count != 0U) {
+        return Fail("staging pending type count after full drain audio value changed");
+    }
+
+    if (file_queue.Shutdown(true) != AsyncFileReadStatus::ShutdownComplete) {
+        return Fail("staging pending type count shutdown failed");
     }
 
     return 0;
@@ -5814,6 +6089,8 @@ int main(int argc, char **argv) {
         {TEST_STAGING_PENDING_COUNT_SNAPSHOT, StreamingPackageResourceStagingPendingCountSnapshotIsReadOnly},
         {TEST_STAGING_PENDING_REQUEST_ENUMERATION,
          StreamingPackageResourceStagingPendingRequestEnumerationIsAtomic},
+        {TEST_STAGING_PENDING_REQUEST_TYPE_COUNT,
+         StreamingPackageResourceStagingPendingRequestTypeCountSnapshotIsReadOnly},
         {TEST_MISSING_COMPLETION, StreamingPackageResourceStagingReportsMissingFileCompletion},
         {TEST_QUEUE_OVERFLOW, StreamingPackageResourceStagingRejectsQueueOverflowWithoutMutation},
         {TEST_COMPLETION_OVERFLOW, StreamingPackageResourceStagingReportsCompletionOverflowWithoutDroppingPending},

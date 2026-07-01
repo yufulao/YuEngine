@@ -72,6 +72,15 @@ public:
      */
     PackageResourceStagingStatus GetPendingCountSnapshot(std::uint32_t *pending_count) const;
     /**
+     * @comment 返回指定资源类型的当前 pending staging 请求数量。
+     * @param expected_type 输入资源类型。
+     * @param pending_count 输出 pending 请求数量。
+     * @return 显式操作状态。
+     */
+    PackageResourceStagingStatus GetPendingRequestTypeCountSnapshot(
+        resource::ResourceTypeId expected_type,
+        std::uint32_t *pending_count) const;
+    /**
      * @comment 枚举当前 pending staging 请求快照。
      * @param output_requests 输出 pending 请求快照存储。
      * @param output_capacity 输出存储容量。
