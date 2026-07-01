@@ -49,6 +49,17 @@ struct PackageArtifactResult final {
     std::uint32_t manifest_count = 0U;
     std::uint32_t entry_count = 0U;
     std::uint32_t dependency_count = 0U;
+    std::uint32_t failed_entry_index = 0U;
+    PackageEntryId failed_entry_id{};
+    std::uint32_t failed_entry_capacity = 0U;
+    std::uint32_t failed_entry_count = 0U;
+    std::uint32_t required_entry_count = 0U;
+    std::uint32_t failed_dependency_index = 0U;
+    PackageEntryId failed_dependent_entry_id{};
+    PackageEntryId failed_dependency_entry_id{};
+    std::uint32_t failed_dependency_capacity = 0U;
+    std::uint32_t failed_dependency_count = 0U;
+    std::uint32_t required_dependency_count = 0U;
     bool wrote_artifact = false;
     bool read_artifact = false;
     bool rebuilt_registry = false;

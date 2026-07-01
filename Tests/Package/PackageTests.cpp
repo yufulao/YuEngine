@@ -107,6 +107,8 @@ constexpr const char* TEST_ARTIFACT_ENTRY_VALIDATION =
     "Package_FileBackedArtifactRejectsEntryMetadataWithoutMutation";
 constexpr const char* TEST_ARTIFACT_DEPENDENCY_VALIDATION =
     "Package_FileBackedArtifactRejectsDependencyMetadataWithoutMutation";
+constexpr const char* TEST_ARTIFACT_CAPACITY_ENTRY_IDENTITY =
+    "Package_FileBackedArtifactReportsCapacityEntryIdentity";
 constexpr const char* TEST_ARTIFACT_WRITE_INVALID =
     "Package_FileBackedArtifactWriteRejectsInvalidMetadataWithoutFileWrite";
 constexpr const char* TEST_ARTIFACT_MISSING = "Package_FileBackedArtifactReportsMissingFile";
@@ -157,6 +159,8 @@ constexpr std::uint64_t LARGE_ARCHIVE_BYTE_OFFSET = 0x100000400ULL;
 constexpr std::uint64_t PAYLOAD_LOGICAL_BYTE_COUNT = 0x100000800ULL;
 constexpr std::uint64_t PAYLOAD_WINDOW_BYTE_OFFSET = 0x100000040ULL;
 constexpr std::uint64_t PAYLOAD_WINDOW_BYTE_SIZE = 128ULL;
+constexpr std::uint32_t ARTIFACT_CAPACITY_ENTRY_TEST_COUNT = MAX_PACKAGE_ENTRY_COUNT + 1U;
+constexpr std::uint32_t ARTIFACT_CAPACITY_DEPENDENCY_TEST_COUNT = MAX_PACKAGE_DEPENDENCY_EDGE_COUNT + 1U;
 using TestFunction = int (*)();
 
 std::filesystem::path PackageArtifactRoot(std::string_view test_name) {
@@ -385,6 +389,140 @@ PackageEntryDescriptor Entry(
         legacy_byte_size,
         byte_offset,
         byte_size};
+}
+
+void FillArtifactCapacityEntries(
+    std::array<PackageEntryDescriptor, ARTIFACT_CAPACITY_ENTRY_TEST_COUNT> *entries) {
+    if (entries == nullptr) {
+        return;
+    }
+
+    std::uint32_t index = 0U;
+    while (index < ARTIFACT_CAPACITY_ENTRY_TEST_COUNT) {
+        const std::string index_text = std::to_string(index);
+        const std::string logical_key = "artifact_capacity_entry_" + index_text;
+        const std::string source_key = "artifacts/capacity_entry_" + index_text + ".bin";
+        const PackageEntryId entry_id{index + 1U};
+        const std::uint64_t byte_offset = static_cast<std::uint64_t>(index) * 16ULL;
+        (*entries)[static_cast<std::size_t>(index)] = Entry(
+            PACKAGE_A,
+            entry_id,
+            TYPE_TEXTURE,
+            logical_key.c_str(),
+            source_key.c_str(),
+            byte_offset,
+            16ULL);
+        ++index;
+    }
+}
+
+void FillArtifactCapacityDependencies(
+    std::array<PackageArtifactDependency, ARTIFACT_CAPACITY_DEPENDENCY_TEST_COUNT> *dependencies,
+    PackageEntryId dependent,
+    PackageEntryId dependency) {
+    if (dependencies == nullptr) {
+        return;
+    }
+
+    std::uint32_t index = 0U;
+    while (index < ARTIFACT_CAPACITY_DEPENDENCY_TEST_COUNT) {
+        (*dependencies)[static_cast<std::size_t>(index)] = PackageArtifactDependency{dependent, dependency};
+        ++index;
+    }
+}
+
+std::string BuildEntryCapacityArtifact(PackageEntryId failed_entry) {
+    std::string artifact_text = std::string(PACKAGE_ARTIFACT_MAGIC) +
+        "\npackage|1\nentries|" + std::to_string(ARTIFACT_CAPACITY_ENTRY_TEST_COUNT) + "\ndependencies|0\n";
+
+    std::uint32_t index = 0U;
+    while (index < ARTIFACT_CAPACITY_ENTRY_TEST_COUNT) {
+        const std::uint32_t entry_value = index == MAX_PACKAGE_ENTRY_COUNT ? failed_entry.value : index + 1U;
+        const std::string index_text = std::to_string(index);
+        artifact_text += "entry|" + std::to_string(entry_value) + "|1|artifact_read_entry_" + index_text +
+            "|artifacts/read_entry_" + index_text + ".bin|0|16\n";
+        ++index;
+    }
+
+    artifact_text += "end\n";
+    return artifact_text;
+}
+
+std::string BuildDependencyCapacityArtifact(PackageEntryId dependent, PackageEntryId dependency) {
+    std::string artifact_text = std::string(PACKAGE_ARTIFACT_MAGIC) +
+        "\npackage|1\nentries|2\ndependencies|" +
+        std::to_string(ARTIFACT_CAPACITY_DEPENDENCY_TEST_COUNT) +
+        "\nentry|1|1|artifact_dependency_a|artifacts/dependency_a.bin|0|16\n"
+        "entry|2|2|artifact_dependency_b|artifacts/dependency_b.bin|16|16\n";
+
+    std::uint32_t index = 0U;
+    while (index < ARTIFACT_CAPACITY_DEPENDENCY_TEST_COUNT) {
+        artifact_text += "dependency|" + std::to_string(dependent.value) + "|" +
+            std::to_string(dependency.value) + "\n";
+        ++index;
+    }
+
+    artifact_text += "end\n";
+    return artifact_text;
+}
+
+int ExpectArtifactEntryCapacityFields(
+    const PackageArtifactResult &result,
+    PackageEntryId failed_entry,
+    std::uint32_t required_entry_count) {
+    if (result.failed_entry_index != MAX_PACKAGE_ENTRY_COUNT) {
+        return Fail("artifact entry capacity reported wrong failed index");
+    }
+
+    if (result.failed_entry_id.value != failed_entry.value) {
+        return Fail("artifact entry capacity reported wrong failed entry");
+    }
+
+    if (result.failed_entry_capacity != MAX_PACKAGE_ENTRY_COUNT) {
+        return Fail("artifact entry capacity reported wrong capacity");
+    }
+
+    if (result.failed_entry_count != MAX_PACKAGE_ENTRY_COUNT) {
+        return Fail("artifact entry capacity reported wrong current count");
+    }
+
+    if (result.required_entry_count != required_entry_count) {
+        return Fail("artifact entry capacity reported wrong required count");
+    }
+
+    return 0;
+}
+
+int ExpectArtifactDependencyCapacityFields(
+    const PackageArtifactResult &result,
+    PackageEntryId dependent_entry,
+    PackageEntryId dependency_entry,
+    std::uint32_t required_dependency_count) {
+    if (result.failed_dependency_index != MAX_PACKAGE_DEPENDENCY_EDGE_COUNT) {
+        return Fail("artifact dependency capacity reported wrong failed index");
+    }
+
+    if (result.failed_dependent_entry_id.value != dependent_entry.value) {
+        return Fail("artifact dependency capacity reported wrong dependent entry");
+    }
+
+    if (result.failed_dependency_entry_id.value != dependency_entry.value) {
+        return Fail("artifact dependency capacity reported wrong dependency entry");
+    }
+
+    if (result.failed_dependency_capacity != MAX_PACKAGE_DEPENDENCY_EDGE_COUNT) {
+        return Fail("artifact dependency capacity reported wrong capacity");
+    }
+
+    if (result.failed_dependency_count != MAX_PACKAGE_DEPENDENCY_EDGE_COUNT) {
+        return Fail("artifact dependency capacity reported wrong current count");
+    }
+
+    if (result.required_dependency_count != required_dependency_count) {
+        return Fail("artifact dependency capacity reported wrong required count");
+    }
+
+    return 0;
 }
 
 PackageRegistrationResult RegisterManifest(PackageRegistry& registry, PackageId package = PACKAGE_A) {
@@ -2391,6 +2529,107 @@ int PackageFileBackedArtifactRejectsDependencyMetadataWithoutMutation() {
     return 0;
 }
 
+int PackageFileBackedArtifactReportsCapacityEntryIdentity() {
+    MountTable table = CreatePackageArtifactTable(TEST_ARTIFACT_CAPACITY_ENTRY_IDENTITY);
+    std::array<PackageEntryDescriptor, ARTIFACT_CAPACITY_ENTRY_TEST_COUNT> entries{};
+    FillArtifactCapacityEntries(&entries);
+
+    PackageArtifactWriteRequest write_request{};
+    write_request.mount_table = &table;
+    write_request.mount = MountId(PACKAGE_ARTIFACT_MOUNT);
+    write_request.artifact_path = VirtualPath(PACKAGE_ARTIFACT_PATH);
+    write_request.package = PACKAGE_A;
+    write_request.entries = entries.data();
+    write_request.entry_count = ARTIFACT_CAPACITY_ENTRY_TEST_COUNT;
+    PackageArtifactResult write_result = WritePackageArtifact(write_request);
+    if (write_result.status != PackageStatus::ArtifactCapacityExceeded || write_result.wrote_artifact) {
+        return Fail("artifact write entry capacity did not reject");
+    }
+
+    int capacity_entry_status = ExpectArtifactEntryCapacityFields(
+        write_result,
+        entries[MAX_PACKAGE_ENTRY_COUNT].entry,
+        ARTIFACT_CAPACITY_ENTRY_TEST_COUNT);
+    if (capacity_entry_status != 0) {
+        return capacity_entry_status;
+    }
+
+    const std::array<PackageEntryDescriptor, 2U> dependency_entries{
+        Entry(PACKAGE_A, ENTRY_TEXTURE, TYPE_TEXTURE, "artifact_dependency_a", "artifacts/dependency_a.bin", 0U, 16U),
+        Entry(PACKAGE_A, ENTRY_MATERIAL, TYPE_MATERIAL, "artifact_dependency_b", "artifacts/dependency_b.bin", 16U, 16U)};
+    std::array<PackageArtifactDependency, ARTIFACT_CAPACITY_DEPENDENCY_TEST_COUNT> dependencies{};
+    FillArtifactCapacityDependencies(&dependencies, ENTRY_TEXTURE, ENTRY_MATERIAL);
+    write_request.entries = dependency_entries.data();
+    write_request.entry_count = static_cast<std::uint32_t>(dependency_entries.size());
+    write_request.dependencies = dependencies.data();
+    write_request.dependency_count = ARTIFACT_CAPACITY_DEPENDENCY_TEST_COUNT;
+    write_result = WritePackageArtifact(write_request);
+    if (write_result.status != PackageStatus::ArtifactCapacityExceeded || write_result.wrote_artifact) {
+        return Fail("artifact write dependency capacity did not reject");
+    }
+
+    int capacity_dependency_status = ExpectArtifactDependencyCapacityFields(
+        write_result,
+        ENTRY_TEXTURE,
+        ENTRY_MATERIAL,
+        ARTIFACT_CAPACITY_DEPENDENCY_TEST_COUNT);
+    if (capacity_dependency_status != 0) {
+        return capacity_dependency_status;
+    }
+
+    const PackageEntryId read_failed_entry{91U};
+    const std::string entry_capacity_artifact = BuildEntryCapacityArtifact(read_failed_entry);
+    if (!WriteRawPackageArtifact(table, entry_capacity_artifact)) {
+        return Fail("artifact read entry capacity fixture write failed");
+    }
+
+    PackageRegistry registry;
+    PackageArtifactReadRequest read_request{};
+    read_request.mount_table = &table;
+    read_request.mount = MountId(PACKAGE_ARTIFACT_MOUNT);
+    read_request.artifact_path = VirtualPath(PACKAGE_ARTIFACT_PATH);
+    read_request.registry = &registry;
+    PackageArtifactResult read_result = ReadPackageArtifact(read_request);
+    if (read_result.status != PackageStatus::ArtifactCapacityExceeded ||
+        read_result.read_artifact ||
+        read_result.rebuilt_registry) {
+        return Fail("artifact read entry capacity did not reject");
+    }
+
+    capacity_entry_status = ExpectArtifactEntryCapacityFields(
+        read_result,
+        read_failed_entry,
+        ARTIFACT_CAPACITY_ENTRY_TEST_COUNT);
+    if (capacity_entry_status != 0) {
+        return capacity_entry_status;
+    }
+
+    const std::string dependency_capacity_artifact =
+        BuildDependencyCapacityArtifact(ENTRY_TEXTURE, ENTRY_MATERIAL);
+    if (!WriteRawPackageArtifact(table, dependency_capacity_artifact)) {
+        return Fail("artifact read dependency capacity fixture write failed");
+    }
+
+    read_result = ReadPackageArtifact(read_request);
+    if (read_result.status != PackageStatus::ArtifactCapacityExceeded ||
+        read_result.read_artifact ||
+        read_result.rebuilt_registry) {
+        return Fail("artifact read dependency capacity did not reject");
+    }
+
+    capacity_dependency_status = ExpectArtifactDependencyCapacityFields(
+        read_result,
+        ENTRY_TEXTURE,
+        ENTRY_MATERIAL,
+        ARTIFACT_CAPACITY_DEPENDENCY_TEST_COUNT);
+    if (capacity_dependency_status != 0) {
+        return capacity_dependency_status;
+    }
+
+    std::filesystem::remove_all(PackageArtifactRoot(TEST_ARTIFACT_CAPACITY_ENTRY_IDENTITY));
+    return 0;
+}
+
 int PackageFileBackedArtifactWriteRejectsInvalidMetadataWithoutFileWrite() {
     MountTable table = CreatePackageArtifactTable(TEST_ARTIFACT_WRITE_INVALID);
     const std::array<PackageEntryDescriptor, 1U> entries{
@@ -2486,6 +2725,7 @@ int main(int argc, char** argv) {
          PackageFileBackedArtifactRejectsManifestParseAndSectionErrorsWithoutMutation},
         {TEST_ARTIFACT_ENTRY_VALIDATION, PackageFileBackedArtifactRejectsEntryMetadataWithoutMutation},
         {TEST_ARTIFACT_DEPENDENCY_VALIDATION, PackageFileBackedArtifactRejectsDependencyMetadataWithoutMutation},
+        {TEST_ARTIFACT_CAPACITY_ENTRY_IDENTITY, PackageFileBackedArtifactReportsCapacityEntryIdentity},
         {TEST_ARTIFACT_WRITE_INVALID, PackageFileBackedArtifactWriteRejectsInvalidMetadataWithoutFileWrite},
         {TEST_ARTIFACT_MISSING, PackageFileBackedArtifactReportsMissingFile}};
 
