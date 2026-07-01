@@ -56,6 +56,7 @@ using yuengine::animation::AnimationRuntimeStatus;
 using yuengine::animation::AnimationRuntimeTrackRecord;
 using yuengine::animation::AnimationRuntimeTransformApplyRequest;
 using yuengine::animation::AnimationRuntimeTransformApplyResult;
+using yuengine::animation::MAX_ANIMATION_RUNTIME_LAYER_COUNT;
 using yuengine::asset::AssetHandle;
 using yuengine::kernel::RuntimeFrameContext;
 using yuengine::kernel::RuntimeFrameMode;
@@ -518,16 +519,54 @@ int AnimationRuntimeSamplerReportsFailureStates() {
         return Fail("runtime animation out-of-range status mismatch");
     }
 
-    std::array<AnimationRuntimeSampledValue, 0U> small_output{};
+    const std::array<AnimationRuntimeClipRecord, 1U> output_capacity_clips{ClipRecord(2U)};
+    std::array<AnimationRuntimeTrackRecord, 2U> output_capacity_tracks{
+        TrackRecord(AnimationRuntimeChannel::TranslationX, 0U, 2U),
+        TrackRecord(AnimationRuntimeChannel::ScaleZ, 2U, 2U)};
+    output_capacity_tracks[0U].target = WorldObjectId{WORLD_OBJECT_VALUE + 1U};
+    output_capacity_tracks[1U].target = WorldObjectId{WORLD_OBJECT_VALUE + 2U};
+    const std::array<AnimationRuntimeKeyframeRecord, 4U> output_capacity_keyframes{
+        Keyframe(0.0F, 0.0F),
+        Keyframe(1.0F, 1.0F),
+        Keyframe(0.0F, 1.0F),
+        Keyframe(1.0F, 3.0F)};
+    std::array<AnimationRuntimeSampledValue, 1U> small_output{};
+    small_output[0U].target = WorldObjectId{999U};
+    small_output[0U].channel = AnimationRuntimeChannel::RotationW;
+    small_output[0U].value = 42.0F;
     AnimationRuntimeSampleResult result{};
     AnimationRuntimeSampler sampler;
-    if (sampler.Sample(SampleRequest(clips, tracks, keyframes), small_output, &result) !=
+    const AnimationRuntimeSampleRequest output_capacity_request =
+        SampleRequest(output_capacity_clips, output_capacity_tracks, output_capacity_keyframes);
+    if (sampler.Sample(output_capacity_request, small_output, &result) !=
         AnimationRuntimeStatus::OutputCapacityExceeded) {
         return Fail("runtime animation output capacity status mismatch");
     }
 
-    if (result.required_sampled_value_count != 1U) {
+    if (result.required_sampled_value_count != 2U) {
         return Fail("runtime animation output required count mismatch");
+    }
+
+    if (result.failed_track_index != 1U) {
+        return Fail("runtime animation output failed track index mismatch");
+    }
+
+    if (result.failed_track_id != output_capacity_tracks[1U].track_id) {
+        return Fail("runtime animation output failed track id mismatch");
+    }
+
+    if (result.failed_target_id.value != output_capacity_tracks[1U].target.value) {
+        return Fail("runtime animation output failed target id mismatch");
+    }
+
+    if (result.failed_channel != AnimationRuntimeChannel::ScaleZ) {
+        return Fail("runtime animation output failed channel mismatch");
+    }
+
+    if (small_output[0U].target.value != 999U ||
+        small_output[0U].channel != AnimationRuntimeChannel::RotationW ||
+        !Approx(small_output[0U].value, 42.0F)) {
+        return Fail("runtime animation output capacity mutated output");
     }
 
     std::array<AnimationRuntimeClipRecord, 1U> layered_clips{ClipRecord()};
@@ -541,9 +580,25 @@ int AnimationRuntimeSamplerReportsFailureStates() {
         return Fail("runtime animation layer required count mismatch");
     }
 
-    if (SampleStatus(SampleRequest(clips, tracks, keyframes, HALF_SECOND_NANOSECONDS,
-        ONE_SECOND_NANOSECONDS), values) != AnimationRuntimeStatus::InvalidTime) {
+    if (result.failed_layer_index != MAX_ANIMATION_RUNTIME_LAYER_COUNT) {
+        return Fail("runtime animation layer failed index mismatch");
+    }
+
+    if (result.failed_target_id.IsValid()) {
+        return Fail("runtime animation layer failure reported target id");
+    }
+
+    const AnimationRuntimeSampleRequest invalid_time_request =
+        SampleRequest(clips, tracks, keyframes, HALF_SECOND_NANOSECONDS, ONE_SECOND_NANOSECONDS);
+    if (sampler.Sample(invalid_time_request, values, &result) != AnimationRuntimeStatus::InvalidTime) {
         return Fail("runtime animation invalid time status mismatch");
+    }
+
+    if (result.failed_track_index != 0U || result.failed_track_id != 0U ||
+        result.failed_target_id.IsValid() ||
+        result.failed_channel != AnimationRuntimeChannel::TranslationX ||
+        result.failed_layer_index != 0U) {
+        return Fail("runtime animation non-capacity failure retained capacity entry");
     }
 
     WorldInstance world;

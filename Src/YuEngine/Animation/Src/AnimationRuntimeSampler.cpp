@@ -59,6 +59,46 @@ AnimationRuntimeStatus MapWorldStatus(yuengine::world::WorldTransformStatus stat
     return AnimationRuntimeStatus::TransformApplyFailed;
 }
 
+void RecordOutputCapacityFailureEntry(
+    const AnimationRuntimeSampleRequest &request,
+    const AnimationRuntimeClipRecord &clip,
+    std::size_t output_value_capacity,
+    AnimationRuntimeSampleResult *out_result) {
+    if (out_result == nullptr) {
+        return;
+    }
+
+    const std::size_t failed_track_offset = output_value_capacity;
+    if (failed_track_offset >= clip.track_count) {
+        return;
+    }
+
+    const std::size_t failed_track_index = clip.first_track_index + failed_track_offset;
+    if (failed_track_index >= request.tracks.size()) {
+        return;
+    }
+
+    const AnimationRuntimeTrackRecord &track = request.tracks[failed_track_index];
+    out_result->failed_track_index = failed_track_index;
+    out_result->failed_track_id = track.track_id;
+    out_result->failed_target_id = track.target;
+    out_result->failed_channel = track.channel;
+}
+
+void RecordLayerCapacityFailureEntry(
+    const AnimationRuntimeClipRecord &clip,
+    AnimationRuntimeSampleResult *out_result) {
+    if (out_result == nullptr) {
+        return;
+    }
+
+    if (clip.layer_count <= MAX_ANIMATION_RUNTIME_LAYER_COUNT) {
+        return;
+    }
+
+    out_result->failed_layer_index = MAX_ANIMATION_RUNTIME_LAYER_COUNT;
+}
+
 void ApplyChannelValue(
     AnimationRuntimeChannel channel,
     float value,
@@ -136,10 +176,13 @@ AnimationRuntimeStatus AnimationRuntimeSampler::Sample(
     if (status != AnimationRuntimeStatus::Success) {
         if (status == AnimationRuntimeStatus::OutputCapacityExceeded) {
             result.required_sampled_value_count = clip->track_count;
+            const std::size_t output_value_capacity = out_values.size();
+            RecordOutputCapacityFailureEntry(request, *clip, output_value_capacity, &result);
         }
 
         if (status == AnimationRuntimeStatus::LayerCapacityExceeded) {
             result.required_layer_count = clip->layer_count;
+            RecordLayerCapacityFailureEntry(*clip, &result);
         }
 
         result.status = status;

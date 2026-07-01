@@ -102,6 +102,11 @@ struct AnimationRuntimeSampleResult final {
     std::size_t sampled_value_count = 0U;
     std::size_t required_sampled_value_count = 0U;
     std::uint32_t required_layer_count = 0U;
+    std::size_t failed_track_index = 0U;
+    std::uint32_t failed_track_id = 0U;
+    yuengine::world::WorldObjectId failed_target_id{};
+    AnimationRuntimeChannel failed_channel = AnimationRuntimeChannel::TranslationX;
+    std::uint32_t failed_layer_index = 0U;
 };
 
 struct AnimationRuntimeTransformApplyRequest final {
