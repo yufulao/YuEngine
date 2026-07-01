@@ -21,6 +21,10 @@ struct RenderShaderProgramSnapshot final {
     std::uint64_t program_capacity_rejected_count = 0U;
     std::uint32_t last_program_id = 0U;
     std::size_t last_required_program_record_count = 0U;
+    std::size_t last_failed_program_record_capacity = 0U;
+    std::size_t last_failed_program_record_count = 0U;
+    std::size_t last_failed_entry_index = 0U;
+    std::uint32_t last_failed_program_id = 0U;
     RenderShaderProgramStatus last_status = RenderShaderProgramStatus::InvalidArgument;
 };
 }

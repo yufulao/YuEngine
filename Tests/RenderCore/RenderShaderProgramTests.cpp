@@ -1,6 +1,8 @@
 // 模块：Tests RenderCore
 // 文件：Tests/RenderCore/RenderShaderProgramTests.cpp
 
+#include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <string_view>
 
@@ -29,6 +31,8 @@ constexpr const char *TEST_INVALID_VERTEX_SHADER = "RenderCore_ShaderProgramReje
 constexpr const char *TEST_INVALID_INPUT_LAYOUT = "RenderCore_ShaderProgramRejectsInvalidInputLayoutWithoutOutputMutation";
 constexpr const char *TEST_DUPLICATE_ID = "RenderCore_ShaderProgramRejectsDuplicateProgramId";
 constexpr const char *TEST_CAPACITY = "RenderCore_ShaderProgramRejectsCapacityExceeded";
+constexpr const char *TEST_CAPACITY_ENTRY =
+    "RenderCore_ShaderProgramCapacityFailureReportsEntryIdentity";
 constexpr const char *TEST_SNAPSHOT = "RenderCore_ShaderProgramSnapshotTracksCounters";
 constexpr const char *TEST_BOUNDARY = "RenderCore_ShaderProgramHasNarrowDependencyBoundary";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
@@ -211,6 +215,104 @@ int RenderCoreShaderProgramRejectsCapacityExceeded() {
     return 0;
 }
 
+int RenderCoreShaderProgramCapacityFailureReportsEntryIdentity() {
+    RenderShaderProgramDesc desc{};
+    desc.program_record_capacity = 1U;
+    RenderShaderProgram program(desc);
+
+    RhiPipelineDesc pipeline_desc{};
+    if (program.BuildPipelineDesc(DefaultRequest(), &pipeline_desc).status != RenderShaderProgramStatus::Success) {
+        return Fail("shader program failed capacity identity setup");
+    }
+
+    const auto before_capacity_snapshot = program.Snapshot();
+    RenderShaderProgramRequest second_request = DefaultRequest();
+    second_request.program_id = 11U;
+    RhiPipelineDesc rejected_desc = SentinelPipelineDesc();
+    const auto result = program.BuildPipelineDesc(second_request, &rejected_desc);
+    constexpr std::size_t expected_failed_entry_index = 1U;
+    constexpr std::uint32_t expected_failed_program_id = 11U;
+    if (result.status != RenderShaderProgramStatus::ProgramCapacityExceeded) {
+        return Fail("shader program capacity identity accepted overflow");
+    }
+
+    if (result.failed_entry_index != expected_failed_entry_index ||
+        result.failed_program_id != expected_failed_program_id) {
+        return Fail("shader program capacity identity result mismatch");
+    }
+
+    if (result.required_program_record_count != 2U) {
+        return Fail("shader program capacity identity required count mismatch");
+    }
+
+    if (result.program_record_capacity != before_capacity_snapshot.program_record_capacity ||
+        result.current_program_record_count != before_capacity_snapshot.program_record_count) {
+        return Fail("shader program capacity identity record count mismatch");
+    }
+
+    if (!PipelineDescMatchesSentinel(rejected_desc)) {
+        return Fail("shader program capacity identity mutated output");
+    }
+
+    const auto capacity_snapshot = program.Snapshot();
+    if (capacity_snapshot.last_failed_entry_index != expected_failed_entry_index ||
+        capacity_snapshot.last_failed_program_id != expected_failed_program_id) {
+        return Fail("shader program capacity identity snapshot mismatch");
+    }
+
+    if (capacity_snapshot.last_failed_program_record_capacity != before_capacity_snapshot.program_record_capacity ||
+        capacity_snapshot.last_failed_program_record_count != before_capacity_snapshot.program_record_count) {
+        return Fail("shader program capacity identity snapshot record count mismatch");
+    }
+
+    if (capacity_snapshot.program_capacity_rejected_count !=
+            before_capacity_snapshot.program_capacity_rejected_count + 1U ||
+        capacity_snapshot.failed_validation_count != before_capacity_snapshot.failed_validation_count ||
+        capacity_snapshot.duplicate_program_id_count != before_capacity_snapshot.duplicate_program_id_count ||
+        capacity_snapshot.program_record_count != before_capacity_snapshot.program_record_count) {
+        return Fail("shader program capacity identity counters changed incorrectly");
+    }
+
+    RhiPipelineDesc duplicate_desc = SentinelPipelineDesc();
+    const auto duplicate_result = program.BuildPipelineDesc(DefaultRequest(), &duplicate_desc);
+    if (duplicate_result.status != RenderShaderProgramStatus::DuplicateProgramId ||
+        duplicate_result.failed_entry_index != 0U ||
+        duplicate_result.failed_program_id != 0U) {
+        return Fail("shader program duplicate failure reported capacity identity");
+    }
+
+    const auto duplicate_snapshot = program.Snapshot();
+    if (duplicate_snapshot.last_failed_entry_index != 0U ||
+        duplicate_snapshot.last_failed_program_id != 0U ||
+        duplicate_snapshot.last_failed_program_record_capacity != 0U ||
+        duplicate_snapshot.last_failed_program_record_count != 0U ||
+        duplicate_snapshot.program_capacity_rejected_count != capacity_snapshot.program_capacity_rejected_count) {
+        return Fail("shader program duplicate snapshot reported capacity identity");
+    }
+
+    RenderShaderProgramRequest invalid_request = DefaultRequest();
+    invalid_request.program_id = 12U;
+    invalid_request.pixel_shader = RhiShaderModuleHandle{};
+    RhiPipelineDesc invalid_desc = SentinelPipelineDesc();
+    const auto invalid_result = program.BuildPipelineDesc(invalid_request, &invalid_desc);
+    if (invalid_result.status != RenderShaderProgramStatus::InvalidPixelShader ||
+        invalid_result.failed_entry_index != 0U ||
+        invalid_result.failed_program_id != 0U) {
+        return Fail("shader program validation failure reported capacity identity");
+    }
+
+    const auto invalid_snapshot = program.Snapshot();
+    if (invalid_snapshot.last_failed_entry_index != 0U ||
+        invalid_snapshot.last_failed_program_id != 0U ||
+        invalid_snapshot.last_failed_program_record_capacity != 0U ||
+        invalid_snapshot.last_failed_program_record_count != 0U ||
+        invalid_snapshot.program_capacity_rejected_count != capacity_snapshot.program_capacity_rejected_count) {
+        return Fail("shader program validation snapshot reported capacity identity");
+    }
+
+    return 0;
+}
+
 int RenderCoreShaderProgramSnapshotTracksCounters() {
     RenderShaderProgram program;
     RhiPipelineDesc pipeline_desc{};
@@ -269,6 +371,10 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_CAPACITY) {
         return RenderCoreShaderProgramRejectsCapacityExceeded();
+    }
+
+    if (name == TEST_CAPACITY_ENTRY) {
+        return RenderCoreShaderProgramCapacityFailureReportsEntryIdentity();
     }
 
     if (name == TEST_SNAPSHOT) {
