@@ -512,19 +512,7 @@ ResourceDescriptorTypeEnumerationResult ResourceRegistry::EnumerateSyntheticDesc
         return result;
     }
 
-    std::uint32_t required_descriptor_count = 0U;
-    std::uint32_t slot_index = 0U;
-    for (const ResourceSlot &slot : slots_) {
-        if (slot_index >= snapshot_.resource_capacity) {
-            break;
-        }
-
-        if (slot.is_active && slot.type.value == type.value) {
-            ++required_descriptor_count;
-        }
-
-        ++slot_index;
-    }
+    const std::uint32_t required_descriptor_count = CountSyntheticDescriptorSlotsByType(type);
 
     if (required_descriptor_count > output_record_capacity) {
         result.status = RecordFailure(ResourceStatus::CapacityExceeded);
@@ -539,7 +527,7 @@ ResourceDescriptorTypeEnumerationResult ResourceRegistry::EnumerateSyntheticDesc
     }
 
     std::uint32_t output_index = 0U;
-    slot_index = 0U;
+    std::uint32_t slot_index = 0U;
     for (const ResourceSlot &slot : slots_) {
         if (slot_index >= snapshot_.resource_capacity) {
             break;
@@ -567,6 +555,30 @@ ResourceDescriptorTypeEnumerationResult ResourceRegistry::EnumerateSyntheticDesc
 
     *output_record_count = required_descriptor_count;
     result.matched_descriptor_count = required_descriptor_count;
+    RecordSuccess();
+    return result;
+}
+
+ResourceDescriptorTypeCountSnapshotResult ResourceRegistry::CountSyntheticDescriptorsByType(
+    ResourceTypeId type,
+    std::uint32_t *output_descriptor_count) {
+    ResourceDescriptorTypeCountSnapshotResult result{};
+    result.status = ResourceStatus::Success;
+
+    if (output_descriptor_count == nullptr) {
+        result.status = RecordFailure(ResourceStatus::InvalidHandle);
+        return result;
+    }
+
+    if (!type.IsValid()) {
+        result.status = RecordFailure(ResourceStatus::InvalidDescriptor);
+        return result;
+    }
+
+    const std::uint32_t matched_descriptor_count = CountSyntheticDescriptorSlotsByType(type);
+    *output_descriptor_count = matched_descriptor_count;
+    result.matched_descriptor_count = matched_descriptor_count;
+    result.required_descriptor_count = matched_descriptor_count;
     RecordSuccess();
     return result;
 }
@@ -4051,6 +4063,24 @@ bool ResourceRegistry::HasDuplicateActiveResource(const ResourceDescriptor& desc
     }
 
     return false;
+}
+
+std::uint32_t ResourceRegistry::CountSyntheticDescriptorSlotsByType(ResourceTypeId type) const {
+    std::uint32_t matched_descriptor_count = 0U;
+    std::uint32_t slot_index = 0U;
+    for (const ResourceSlot &slot : slots_) {
+        if (slot_index >= snapshot_.resource_capacity) {
+            break;
+        }
+
+        if (slot.is_active && slot.type.value == type.value) {
+            ++matched_descriptor_count;
+        }
+
+        ++slot_index;
+    }
+
+    return matched_descriptor_count;
 }
 
 bool ResourceRegistry::FindSyntheticDescriptorSlot(

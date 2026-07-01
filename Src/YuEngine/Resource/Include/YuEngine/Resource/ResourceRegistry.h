@@ -108,6 +108,20 @@ struct ResourceDescriptorTypeEnumerationResult final {
     }
 };
 
+struct ResourceDescriptorTypeCountSnapshotResult final {
+    ResourceStatus status = ResourceStatus::InvalidHandle;
+    std::uint32_t matched_descriptor_count = 0U;
+    std::uint32_t required_descriptor_count = 0U;
+
+    /**
+     * @comment 检查 type count snapshot 结果是否成功。
+     * @return 条件满足时返回 true，否则返回 false。
+     */
+    bool Succeeded() const {
+        return status == ResourceStatus::Success;
+    }
+};
+
 struct ResourceDependencyRequest final {
     ResourceHandle dependent{};
     ResourceHandle dependency{};
@@ -178,6 +192,15 @@ public:
         ResourceDescriptorLookupRecord *output_records,
         std::uint32_t output_record_capacity,
         std::uint32_t *output_record_count);
+    /**
+     * @comment 返回指定 type 的 synthetic 描述数量快照。
+     * @param type 输入类型。
+     * @param output_descriptor_count 输出描述数量。
+     * @return 显式 type count snapshot 结果。
+     */
+    ResourceDescriptorTypeCountSnapshotResult CountSyntheticDescriptorsByType(
+        ResourceTypeId type,
+        std::uint32_t *output_descriptor_count);
     /**
      * @comment 按 type/key 精确查找当前 synthetic 描述。
      * @param type 输入类型。
@@ -641,6 +664,7 @@ private:
     ResourceStatus RegisterTypeIfNeeded(ResourceTypeId type);
     bool HasType(ResourceTypeId type) const;
     bool HasDuplicateActiveResource(const ResourceDescriptor& descriptor) const;
+    std::uint32_t CountSyntheticDescriptorSlotsByType(ResourceTypeId type) const;
     bool FindSyntheticDescriptorSlot(
         ResourceTypeId type,
         const ResourceLogicalKey &logical_key,
