@@ -140,7 +140,16 @@ private:
         bool already_inactive,
         bool removed_from_stack) const;
     UiManagerPopupStackStatus RecordFailure(UiManagerPopupStackStatus status);
+    UiManagerPopupStackStatus RecordPopupOrderCapacityFailure(
+        UiPanelId panel_id,
+        UiManagerPopupStackOperationKind operation_kind,
+        std::uint32_t required_popup_order_count);
     void RecordSuccess();
+    void SetPopupOrderCapacityIdentity(
+        UiPanelId panel_id,
+        UiManagerPopupStackOperationKind operation_kind,
+        std::uint32_t required_popup_order_count);
+    void ClearPopupOrderCapacityIdentity();
 
     UiManagerPopupStackSnapshot snapshot_;
 };

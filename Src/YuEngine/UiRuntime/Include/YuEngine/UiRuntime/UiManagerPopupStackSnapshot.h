@@ -11,12 +11,21 @@
 #include "YuEngine/UiRuntime/UiPanelId.h"
 
 namespace yuengine::uiruntime {
+enum class UiManagerPopupStackOperationKind {
+    None,
+    Open,
+    ExportOrder
+};
+
 struct UiManagerPopupStackSnapshot final {
     std::array<UiPanelId, MAX_UI_MANAGER_POPUP_STACK_COUNT> popup_order;
     UiPanelId top_panel_id;
+    UiPanelId last_failed_panel_id{};
+    UiPanelId last_failed_top_panel_id{};
     std::uint32_t popup_capacity = MAX_UI_MANAGER_POPUP_STACK_COUNT;
     std::uint32_t popup_count = 0U;
     std::uint32_t last_required_popup_order_count = 0U;
+    UiManagerPopupStackOperationKind last_failed_operation_kind = UiManagerPopupStackOperationKind::None;
     std::uint32_t open_operation_count = 0U;
     std::uint32_t bring_to_top_operation_count = 0U;
     std::uint32_t close_operation_count = 0U;

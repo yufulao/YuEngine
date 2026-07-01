@@ -72,8 +72,12 @@ UiManagerPopupStackResult UiManagerPopupStack::OpenPopupPanelWithArgs(
 
     const std::uint32_t stack_index = FindStackIndex(panel_id);
     if (stack_index >= snapshot_.popup_count && snapshot_.popup_count >= snapshot_.popup_capacity) {
+        const std::uint32_t required_popup_order_count = snapshot_.popup_count + 1U;
         return MakeResult(
-            RecordFailure(UiManagerPopupStackStatus::CapacityExceeded),
+            RecordPopupOrderCapacityFailure(
+                panel_id,
+                UiManagerPopupStackOperationKind::Open,
+                required_popup_order_count),
             UiManagerPanelMapStatus::Success,
             UiManagerPanelMapRecord{},
             panel_id,
@@ -464,12 +468,17 @@ UiManagerPopupStackResult UiManagerPopupStack::ExportPopupOrder(
 
     if (snapshot_.popup_count > 0U && output_panel_ids == nullptr) {
         snapshot_.last_required_popup_order_count = snapshot_.popup_count;
+        ClearPopupOrderCapacityIdentity();
         result.status = UiManagerPopupStackStatus::InvalidOutputBuffer;
         return result;
     }
 
     if (output_capacity < snapshot_.popup_count) {
-        snapshot_.last_required_popup_order_count = snapshot_.popup_count;
+        const UiPanelId failed_panel_id = snapshot_.popup_order[output_capacity];
+        SetPopupOrderCapacityIdentity(
+            failed_panel_id,
+            UiManagerPopupStackOperationKind::ExportOrder,
+            snapshot_.popup_count);
         result.status = UiManagerPopupStackStatus::InvalidOutputBuffer;
         return result;
     }
@@ -479,6 +488,7 @@ UiManagerPopupStackResult UiManagerPopupStack::ExportPopupOrder(
     }
 
     snapshot_.last_required_popup_order_count = 0U;
+    ClearPopupOrderCapacityIdentity();
     result.status = UiManagerPopupStackStatus::Success;
     return result;
 }
@@ -761,6 +771,7 @@ UiManagerPopupStackResult UiManagerPopupStack::MakeResult(
     result.panel_id = panel_id;
     result.top_panel_id = snapshot_.top_panel_id;
     result.popup_count = snapshot_.popup_count;
+    result.required_popup_order_count = snapshot_.last_required_popup_order_count;
     result.pushed = pushed;
     result.brought_to_top = brought_to_top;
     result.already_top = already_top;
@@ -772,15 +783,44 @@ UiManagerPopupStackResult UiManagerPopupStack::MakeResult(
 
 UiManagerPopupStackStatus UiManagerPopupStack::RecordFailure(UiManagerPopupStackStatus status) {
     snapshot_.last_required_popup_order_count = 0U;
+    ClearPopupOrderCapacityIdentity();
     ++snapshot_.rejected_operation_count;
     ++snapshot_.failed_operation_count;
     snapshot_.last_status = status;
     return status;
 }
 
+UiManagerPopupStackStatus UiManagerPopupStack::RecordPopupOrderCapacityFailure(
+    UiPanelId panel_id,
+    UiManagerPopupStackOperationKind operation_kind,
+    std::uint32_t required_popup_order_count) {
+    SetPopupOrderCapacityIdentity(panel_id, operation_kind, required_popup_order_count);
+    ++snapshot_.rejected_operation_count;
+    ++snapshot_.failed_operation_count;
+    snapshot_.last_status = UiManagerPopupStackStatus::CapacityExceeded;
+    return UiManagerPopupStackStatus::CapacityExceeded;
+}
+
 void UiManagerPopupStack::RecordSuccess() {
     snapshot_.last_required_popup_order_count = 0U;
+    ClearPopupOrderCapacityIdentity();
     ++snapshot_.accepted_operation_count;
     snapshot_.last_status = UiManagerPopupStackStatus::Success;
+}
+
+void UiManagerPopupStack::SetPopupOrderCapacityIdentity(
+    UiPanelId panel_id,
+    UiManagerPopupStackOperationKind operation_kind,
+    std::uint32_t required_popup_order_count) {
+    snapshot_.last_required_popup_order_count = required_popup_order_count;
+    snapshot_.last_failed_panel_id = panel_id;
+    snapshot_.last_failed_top_panel_id = snapshot_.top_panel_id;
+    snapshot_.last_failed_operation_kind = operation_kind;
+}
+
+void UiManagerPopupStack::ClearPopupOrderCapacityIdentity() {
+    snapshot_.last_failed_panel_id = UiPanelId{};
+    snapshot_.last_failed_top_panel_id = UiPanelId{};
+    snapshot_.last_failed_operation_kind = UiManagerPopupStackOperationKind::None;
 }
 }

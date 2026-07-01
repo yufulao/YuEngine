@@ -47,6 +47,7 @@ using yuengine::uiruntime::UiManagerPanelMapResult;
 using yuengine::uiruntime::UiManagerPanelMapSnapshot;
 using yuengine::uiruntime::UiManagerPanelMapStatus;
 using yuengine::uiruntime::UiManagerPopupStack;
+using yuengine::uiruntime::UiManagerPopupStackOperationKind;
 using yuengine::uiruntime::UiManagerPopupStackResult;
 using yuengine::uiruntime::UiManagerPopupStackSnapshot;
 using yuengine::uiruntime::UiManagerPopupStackStatus;
@@ -71,6 +72,8 @@ constexpr const char *TEST_REJECTS_STATUS =
     "UiRuntime_ManagerPopupStack_RejectsMissingNonPopupAndUntrackedStatus";
 constexpr const char *TEST_RELEASE_REMOVES =
     "UiRuntime_ManagerPopupStack_ReleaseRemovesPopupAndPanelCache";
+constexpr const char *TEST_CAPACITY_IDENTITY =
+    "UiRuntime_ManagerPopupStack_ExportCapacityReportsPopupIdentity";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 
@@ -266,6 +269,82 @@ int RequirePopupOrder(
     return 0;
 }
 
+int RequirePopupCapacityIdentity(
+    const UiManagerPopupStackSnapshot &snapshot,
+    std::uint32_t required_popup_order_count,
+    std::uint32_t failed_panel_id,
+    std::uint32_t failed_top_panel_id,
+    UiManagerPopupStackOperationKind operation_kind,
+    std::string_view message) {
+    if (snapshot.last_required_popup_order_count != required_popup_order_count) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_panel_id.value != failed_panel_id) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_top_panel_id.value != failed_top_panel_id) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_operation_kind != operation_kind) {
+        return Fail(message);
+    }
+
+    return 0;
+}
+
+int RequireNoPopupCapacityIdentity(
+    const UiManagerPopupStackSnapshot &snapshot,
+    std::string_view message) {
+    if (snapshot.last_required_popup_order_count != 0U) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_panel_id.IsValid()) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_top_panel_id.IsValid()) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_operation_kind != UiManagerPopupStackOperationKind::None) {
+        return Fail(message);
+    }
+
+    return 0;
+}
+
+int TriggerSmallPopupOrderExport(
+    UiManagerPopupStack *popup_stack,
+    std::uint32_t output_capacity,
+    std::uint32_t required_popup_order_count,
+    std::uint32_t failed_panel_id,
+    std::uint32_t failed_top_panel_id,
+    std::string_view message) {
+    if (popup_stack == nullptr) {
+        return Fail(message);
+    }
+
+    std::array<UiPanelId, MAX_UI_MANAGER_POPUP_STACK_COUNT> output_order{};
+    const UiManagerPopupStackResult result =
+        popup_stack->ExportPopupOrder(output_order.data(), output_capacity);
+    if (result.status != UiManagerPopupStackStatus::InvalidOutputBuffer) {
+        return Fail(message);
+    }
+
+    const UiManagerPopupStackSnapshot snapshot = popup_stack->Snapshot();
+    return RequirePopupCapacityIdentity(
+        snapshot,
+        required_popup_order_count,
+        failed_panel_id,
+        failed_top_panel_id,
+        UiManagerPopupStackOperationKind::ExportOrder,
+        message);
+}
+
 int SetupPopupLayer(
     UiPanelRegistry *registry,
     UiManagerLayerModel *layer_model,
@@ -354,6 +433,16 @@ int RunOpenPushesPopupOrderTest() {
 
     if (popup_stack.Snapshot().last_required_popup_order_count != 3U) {
         return Fail("small popup export snapshot required count mismatch");
+    }
+
+    if (RequirePopupCapacityIdentity(
+            popup_stack.Snapshot(),
+            3U,
+            903U,
+            903U,
+            UiManagerPopupStackOperationKind::ExportOrder,
+            "small popup export identity mismatch") != 0) {
+        return 1;
     }
 
     return 0;
@@ -718,6 +807,93 @@ int RunReleaseRemovesPopupAndPanelCacheTest() {
     return 0;
 }
 
+int RunExportCapacityReportsPopupIdentityTest() {
+    UiPanelRegistry registry;
+    UiManagerLayerModel layer_model;
+    const std::array<std::uint32_t, 3U> panel_ids{961U, 962U, 963U};
+    if (SetupPopupLayer(&registry, &layer_model, std::span<const std::uint32_t>(panel_ids.data(), panel_ids.size())) != 0) {
+        return 1;
+    }
+
+    UiManagerPanelMap panel_map;
+    UiManagerPopupStack popup_stack;
+    TestPanelController first_controller;
+    TestPanelController second_controller;
+    TestPanelController third_controller;
+    TestPanelController unused_controller;
+    if (!popup_stack.OpenPopupPanel(PanelId(961U), registry, layer_model, &panel_map, &first_controller).Succeeded()) {
+        return Fail("first popup identity open failed");
+    }
+
+    if (!popup_stack.OpenPopupPanel(PanelId(962U), registry, layer_model, &panel_map, &second_controller).Succeeded()) {
+        return Fail("second popup identity open failed");
+    }
+
+    if (!popup_stack.OpenPopupPanel(PanelId(963U), registry, layer_model, &panel_map, &third_controller).Succeeded()) {
+        return Fail("third popup identity open failed");
+    }
+
+    if (TriggerSmallPopupOrderExport(&popup_stack, 1U, 3U, 962U, 963U, "popup export capacity identity mismatch") != 0) {
+        return 1;
+    }
+
+    UiManagerPopupStackResult result =
+        popup_stack.OpenPopupPanel(PanelId(963U), registry, layer_model, &panel_map, &unused_controller);
+    if (!result.Succeeded() || !result.already_top) {
+        return Fail("idempotent open did not succeed");
+    }
+
+    if (RequireNoPopupCapacityIdentity(popup_stack.Snapshot(), "idempotent open kept popup capacity identity") != 0) {
+        return 1;
+    }
+
+    if (TriggerSmallPopupOrderExport(&popup_stack, 2U, 3U, 963U, 963U, "top export capacity identity mismatch") != 0) {
+        return 1;
+    }
+
+    result = popup_stack.BringPopupToTop(PanelId(963U), panel_map);
+    if (!result.Succeeded() || !result.already_top) {
+        return Fail("idempotent bring did not succeed");
+    }
+
+    if (RequireNoPopupCapacityIdentity(popup_stack.Snapshot(), "idempotent bring kept popup capacity identity") != 0) {
+        return 1;
+    }
+
+    if (TriggerSmallPopupOrderExport(&popup_stack, 1U, 3U, 962U, 963U, "pre-close export capacity identity mismatch") != 0) {
+        return 1;
+    }
+
+    result = popup_stack.ClosePopupPanel(PanelId(962U), &panel_map);
+    if (!result.Succeeded() || !result.removed_from_stack) {
+        return Fail("first close did not succeed");
+    }
+
+    if (TriggerSmallPopupOrderExport(&popup_stack, 1U, 2U, 963U, 963U, "post-close export capacity identity mismatch") != 0) {
+        return 1;
+    }
+
+    result = popup_stack.ClosePopupPanel(PanelId(962U), &panel_map);
+    if (!result.Succeeded() || !result.already_inactive) {
+        return Fail("idempotent close did not succeed");
+    }
+
+    if (RequireNoPopupCapacityIdentity(popup_stack.Snapshot(), "idempotent close kept popup capacity identity") != 0) {
+        return 1;
+    }
+
+    if (TriggerSmallPopupOrderExport(&popup_stack, 1U, 2U, 963U, 963U, "pre-release export capacity identity mismatch") != 0) {
+        return 1;
+    }
+
+    result = popup_stack.ReleasePopupPanel(PanelId(961U), &panel_map);
+    if (!result.Succeeded() || !result.removed_from_stack) {
+        return Fail("release did not succeed");
+    }
+
+    return RequireNoPopupCapacityIdentity(popup_stack.Snapshot(), "release kept popup capacity identity");
+}
+
 int RunNamedTest(std::string_view test_name) {
     if (test_name == TEST_OPEN_ORDER) {
         return RunOpenPushesPopupOrderTest();
@@ -741,6 +917,10 @@ int RunNamedTest(std::string_view test_name) {
 
     if (test_name == TEST_RELEASE_REMOVES) {
         return RunReleaseRemovesPopupAndPanelCacheTest();
+    }
+
+    if (test_name == TEST_CAPACITY_IDENTITY) {
+        return RunExportCapacityReportsPopupIdentityTest();
     }
 
     return Fail(ERROR_UNKNOWN_TEST_NAME);
