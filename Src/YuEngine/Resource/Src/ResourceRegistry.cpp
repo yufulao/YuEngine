@@ -583,6 +583,71 @@ ResourceDescriptorTypeCountSnapshotResult ResourceRegistry::CountSyntheticDescri
     return result;
 }
 
+ResourceDescriptorBatchTypeCountSnapshotResult ResourceRegistry::CountSyntheticDescriptorsByType(
+    const ResourceTypeId *types,
+    std::uint32_t type_count,
+    ResourceDescriptorTypeCountSnapshotRecord *output_records,
+    std::uint32_t output_record_capacity,
+    std::uint32_t *output_record_count) {
+    ResourceDescriptorBatchTypeCountSnapshotResult result{};
+    result.status = ResourceStatus::Success;
+
+    if (output_record_count == nullptr) {
+        result.status = RecordFailure(ResourceStatus::InvalidHandle);
+        return result;
+    }
+
+    if (type_count == 0U) {
+        *output_record_count = 0U;
+        RecordSuccess();
+        return result;
+    }
+
+    if (types == nullptr) {
+        result.status = RecordFailure(ResourceStatus::InvalidDescriptor);
+        return result;
+    }
+
+    if (type_count > output_record_capacity) {
+        result.status = RecordFailure(ResourceStatus::CapacityExceeded);
+        result.required_type_count = type_count;
+        snapshot_.last_required_type_count = type_count;
+        return result;
+    }
+
+    if (output_records == nullptr) {
+        result.status = RecordFailure(ResourceStatus::InvalidHandle);
+        return result;
+    }
+
+    for (std::uint32_t type_index = 0U;
+        type_index < type_count;
+        ++type_index) {
+        if (!types[type_index].IsValid()) {
+            result.status = RecordFailure(ResourceStatus::InvalidDescriptor);
+            result.failed_type_index = type_index;
+            return result;
+        }
+    }
+
+    for (std::uint32_t type_index = 0U;
+        type_index < type_count;
+        ++type_index) {
+        const ResourceTypeId type = types[type_index];
+        const std::uint32_t matched_descriptor_count = CountSyntheticDescriptorSlotsByType(type);
+        ResourceDescriptorTypeCountSnapshotRecord record{};
+        record.type = type;
+        record.matched_descriptor_count = matched_descriptor_count;
+        record.required_descriptor_count = matched_descriptor_count;
+        output_records[type_index] = record;
+    }
+
+    *output_record_count = type_count;
+    result.counted_type_count = type_count;
+    RecordSuccess();
+    return result;
+}
+
 ResourceStatus ResourceRegistry::FindSyntheticDescriptor(
     ResourceTypeId type,
     const ResourceLogicalKey &logical_key,
