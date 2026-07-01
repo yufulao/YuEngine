@@ -332,11 +332,13 @@ PlatformWindowPollResult WindowsPlatformWindow::PollEvents(PlatformWindowEvent* 
     result.dropped_event_count = dropped_event_count_;
 
     if (events == nullptr) {
+        ClearPollOutputCapacityFailure();
         result.status = SetLastStatus(PlatformWindowStatus::NullPointer);
         return result;
     }
 
     if (!created_) {
+        ClearPollOutputCapacityFailure();
         if (destroyed_) {
             result.status = SetLastStatus(PlatformWindowStatus::Closed);
             return result;
@@ -349,6 +351,7 @@ PlatformWindowPollResult WindowsPlatformWindow::PollEvents(PlatformWindowEvent* 
 #if defined(_WIN32)
     HWND window_handle = ToWindowHandle(window_value_);
     if (window_handle == nullptr) {
+        ClearPollOutputCapacityFailure();
         result.status = SetLastStatus(PlatformWindowStatus::InvalidLifecycle);
         return result;
     }
@@ -367,6 +370,7 @@ PlatformWindowPollResult WindowsPlatformWindow::PollEvents(PlatformWindowEvent* 
     }
 #endif
 
+    const std::size_t queued_event_count = event_count_;
     const std::size_t writable_count = std::min(event_capacity, event_count_);
     for (std::size_t index = 0U; index < writable_count; ++index) {
         events[index] = event_queue_[event_read_index_];
@@ -378,15 +382,24 @@ PlatformWindowPollResult WindowsPlatformWindow::PollEvents(PlatformWindowEvent* 
     result.events_remaining = event_count_ > 0U;
     result.dropped_event_count = dropped_event_count_;
     if (result.dropped_event_count > 0U) {
+        ClearPollOutputCapacityFailure();
         result.status = SetLastStatus(PlatformWindowStatus::EventQueueOverflow);
         return result;
     }
 
     if (result.events_remaining) {
+        RecordPollOutputCapacityFailure(event_capacity, writable_count, queued_event_count);
+        result.output_capacity = last_poll_output_capacity_;
+        result.output_event_count = last_poll_output_event_count_;
+        result.queued_event_count = last_poll_queued_event_count_;
+        result.required_output_event_count = last_required_poll_output_event_count_;
+        result.first_undrained_event_index = last_first_undrained_poll_event_index_;
+        result.first_undrained_event = last_first_undrained_poll_event_;
         result.status = SetLastStatus(PlatformWindowStatus::OutputBufferFull);
         return result;
     }
 
+    ClearPollOutputCapacityFailure();
     result.status = SetLastStatus(PlatformWindowStatus::Success);
     return result;
 }
@@ -408,6 +421,12 @@ PlatformWindowSnapshot WindowsPlatformWindow::GetSnapshot() const {
     }
 
     snapshot.dropped_event_count = dropped_event_count_;
+    snapshot.last_poll_output_capacity = last_poll_output_capacity_;
+    snapshot.last_poll_output_event_count = last_poll_output_event_count_;
+    snapshot.last_poll_queued_event_count = last_poll_queued_event_count_;
+    snapshot.last_required_poll_output_event_count = last_required_poll_output_event_count_;
+    snapshot.last_first_undrained_poll_event_index = last_first_undrained_poll_event_index_;
+    snapshot.last_first_undrained_poll_event = last_first_undrained_poll_event_;
     snapshot.last_status = last_status_;
     snapshot.native_surface = GetNativeSurface();
     return snapshot;
@@ -465,11 +484,13 @@ PlatformWindowStatus WindowsPlatformWindow::SetLastStatus(PlatformWindowStatus s
 PlatformWindowStatus WindowsPlatformWindow::PushPlatformEvent(const PlatformWindowEvent& event) {
     if (event_queue_capacity_ == 0U) {
         ++dropped_event_count_;
+        ClearPollOutputCapacityFailure();
         return SetLastStatus(PlatformWindowStatus::EventQueueOverflow);
     }
 
     if (event_count_ >= event_queue_capacity_) {
         ++dropped_event_count_;
+        ClearPollOutputCapacityFailure();
         return SetLastStatus(PlatformWindowStatus::EventQueueOverflow);
     }
 
@@ -502,11 +523,38 @@ void WindowsPlatformWindow::ResetEventQueue() {
     event_write_index_ = 0U;
     event_count_ = 0U;
     dropped_event_count_ = 0U;
+    ClearPollOutputCapacityFailure();
 }
 
 void WindowsPlatformWindow::InvalidateNativeSurface() {
     window_value_ = 0U;
     instance_value_ = 0U;
+}
+
+void WindowsPlatformWindow::ClearPollOutputCapacityFailure() {
+    last_poll_output_capacity_ = 0U;
+    last_poll_output_event_count_ = 0U;
+    last_poll_queued_event_count_ = 0U;
+    last_required_poll_output_event_count_ = 0U;
+    last_first_undrained_poll_event_index_ = 0U;
+    last_first_undrained_poll_event_ = PlatformWindowEvent{};
+}
+
+void WindowsPlatformWindow::RecordPollOutputCapacityFailure(
+    std::size_t output_capacity,
+    std::size_t output_event_count,
+    std::size_t queued_event_count) {
+    last_poll_output_capacity_ = output_capacity;
+    last_poll_output_event_count_ = output_event_count;
+    last_poll_queued_event_count_ = queued_event_count;
+    last_required_poll_output_event_count_ = queued_event_count;
+    last_first_undrained_poll_event_index_ = output_event_count;
+    last_first_undrained_poll_event_ = PlatformWindowEvent{};
+    if (event_count_ == 0U) {
+        return;
+    }
+
+    last_first_undrained_poll_event_ = event_queue_[event_read_index_];
 }
 
 #if defined(_WIN32)

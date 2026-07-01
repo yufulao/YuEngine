@@ -101,6 +101,11 @@ private:
     void ApplyCloseRequest();
     void ResetEventQueue();
     void InvalidateNativeSurface();
+    void ClearPollOutputCapacityFailure();
+    void RecordPollOutputCapacityFailure(
+        std::size_t output_capacity,
+        std::size_t output_event_count,
+        std::size_t queued_event_count);
 
     std::array<PlatformWindowEvent, PlatformWindowDesc::MAX_EVENT_QUEUE_CAPACITY> event_queue_{};
     std::size_t event_queue_capacity_ = PlatformWindowDesc::DEFAULT_EVENT_QUEUE_CAPACITY;
@@ -108,6 +113,12 @@ private:
     std::size_t event_write_index_ = 0U;
     std::size_t event_count_ = 0U;
     std::uint32_t dropped_event_count_ = 0U;
+    std::size_t last_poll_output_capacity_ = 0U;
+    std::size_t last_poll_output_event_count_ = 0U;
+    std::size_t last_poll_queued_event_count_ = 0U;
+    std::size_t last_required_poll_output_event_count_ = 0U;
+    std::size_t last_first_undrained_poll_event_index_ = 0U;
+    PlatformWindowEvent last_first_undrained_poll_event_{};
     std::uintptr_t window_value_ = 0U;
     std::uintptr_t instance_value_ = 0U;
     std::uint32_t client_width_ = 0U;

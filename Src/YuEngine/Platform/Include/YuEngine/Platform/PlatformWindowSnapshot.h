@@ -7,6 +7,7 @@
 #include <cstdint>
 
 #include "YuEngine/Platform/PlatformNativeSurface.h"
+#include "YuEngine/Platform/PlatformWindowEvent.h"
 #include "YuEngine/Platform/PlatformWindowStatus.h"
 
 namespace yuengine::platform {
@@ -23,6 +24,12 @@ struct PlatformWindowSnapshot {
     std::size_t event_queue_capacity = 0U;
     std::size_t required_queued_event_count = 0U;
     std::uint32_t dropped_event_count = 0U;
+    std::size_t last_poll_output_capacity = 0U;
+    std::size_t last_poll_output_event_count = 0U;
+    std::size_t last_poll_queued_event_count = 0U;
+    std::size_t last_required_poll_output_event_count = 0U;
+    std::size_t last_first_undrained_poll_event_index = 0U;
+    PlatformWindowEvent last_first_undrained_poll_event{};
     PlatformWindowStatus last_status = PlatformWindowStatus::NotCreated;
     PlatformNativeSurface native_surface;
 };

@@ -1,6 +1,7 @@
 // 模块：Tests Platform
 // 文件：Tests/Platform/PlatformTests.cpp
 
+#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <string>
@@ -79,6 +80,8 @@ constexpr const char* TEST_WINDOW_POLL_NOT_CREATED = "PlatformWindow_PollEventsB
 constexpr const char* TEST_WINDOW_OPS_NOT_CREATED = "PlatformWindow_OperationsBeforeCreateReturnNotCreated";
 constexpr const char* TEST_WINDOW_QUEUE_BOUNDED = "PlatformWindow_QueueCapacityLimitIsBounded";
 constexpr const char* TEST_WINDOW_EVENT_OVERFLOW_STATUS = "PlatformWindow_EventOverflowReportsSnapshotStatus";
+constexpr const char* TEST_WINDOW_POLL_OUTPUT_CAPACITY_ENTRY = "PlatformWindow_PollEventsRecordsOutputCapacityEntry";
+constexpr const char* TEST_WINDOW_POLL_OUTPUT_CAPACITY_OVERFLOW_CLEAR = "PlatformWindow_PollEventsClearsCapacityEntryOnQueueOverflow";
 constexpr const char* TEST_WINDOW_PLAIN_TYPES = "PlatformWindow_PublicTypesArePlainValues";
 constexpr const char* LOG_MODULE_PLATFORM = "Platform";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
@@ -114,6 +117,51 @@ int Fail(const std::string& message) {
     std::fwrite(message.data(), sizeof(char), message.size(), stderr);
     std::fputc('\n', stderr);
     return 1;
+}
+
+bool HasSameEventIdentity(const PlatformWindowEvent& left, const PlatformWindowEvent& right) {
+    return left.type == right.type &&
+           left.raw_code == right.raw_code;
+}
+
+bool HasClearedPollOutputCapacityEntry(const PlatformWindowSnapshot& snapshot) {
+    return snapshot.last_poll_output_capacity == 0U &&
+           snapshot.last_poll_output_event_count == 0U &&
+           snapshot.last_poll_queued_event_count == 0U &&
+           snapshot.last_required_poll_output_event_count == 0U &&
+           snapshot.last_first_undrained_poll_event_index == 0U &&
+           snapshot.last_first_undrained_poll_event.type == yuengine::platform::PlatformWindowEventType::None;
+}
+
+PlatformWindowEvent RawKeyEvent(std::uint32_t raw_code) {
+    PlatformWindowEvent event{};
+    event.type = yuengine::platform::PlatformWindowEventType::RawKeyDown;
+    event.raw_code = raw_code;
+    return event;
+}
+
+int CreateHiddenPlatformWindow(WindowsPlatformWindow& window) {
+#if !defined(_WIN32)
+    static_cast<void>(window);
+    return 0;
+#endif
+
+#if defined(_WIN32)
+    PlatformWindowDesc desc{};
+    desc.visible = false;
+    const PlatformWindowStatus create_status = window.Create(desc);
+    if (create_status != PlatformWindowStatus::Success) {
+        return Fail("hidden platform window setup failed");
+    }
+
+    std::array<PlatformWindowEvent, PlatformWindowDesc::MAX_EVENT_QUEUE_CAPACITY> startup_events{};
+    const PlatformWindowPollResult startup_poll = window.PollEvents(startup_events.data(), startup_events.size());
+    if (startup_poll.status != PlatformWindowStatus::Success) {
+        return Fail("hidden platform window startup poll failed");
+    }
+
+    return 0;
+#endif
 }
 
 int HostStartTickShutdownDeterministic() {
@@ -438,6 +486,212 @@ int PlatformWindowEventOverflowReportsSnapshotStatus() {
     return 0;
 }
 
+int PlatformWindowPollEventsRecordsOutputCapacityEntry() {
+#if !defined(_WIN32)
+    return 0;
+#endif
+
+#if defined(_WIN32)
+    WindowsPlatformWindow window;
+    if (CreateHiddenPlatformWindow(window) != 0) {
+        return 1;
+    }
+
+    const PlatformWindowEvent first_event = RawKeyEvent(101U);
+    const PlatformWindowEvent second_event = RawKeyEvent(202U);
+    const PlatformWindowEvent third_event = RawKeyEvent(303U);
+    if (yuengine::platform::WindowsPlatformWindowAccess::PushPlatformEvent(window, first_event) != PlatformWindowStatus::Success) {
+        return Fail("first platform event setup failed");
+    }
+
+    if (yuengine::platform::WindowsPlatformWindowAccess::PushPlatformEvent(window, second_event) != PlatformWindowStatus::Success) {
+        return Fail("second platform event setup failed");
+    }
+
+    if (yuengine::platform::WindowsPlatformWindowAccess::PushPlatformEvent(window, third_event) != PlatformWindowStatus::Success) {
+        return Fail("third platform event setup failed");
+    }
+
+    PlatformWindowEvent small_events[1U]{};
+    PlatformWindowPollResult small_result = window.PollEvents(small_events, 1U);
+    if (small_result.status != PlatformWindowStatus::OutputBufferFull) {
+        return Fail("small platform poll did not report output capacity");
+    }
+
+    if (small_result.event_count != 1U) {
+        return Fail("small platform poll wrote unexpected event count");
+    }
+
+    if (!small_result.events_remaining) {
+        return Fail("small platform poll did not report remaining events");
+    }
+
+    if (!HasSameEventIdentity(small_events[0U], first_event)) {
+        return Fail("small platform poll wrote wrong first event");
+    }
+
+    if (small_result.output_capacity != 1U) {
+        return Fail("small platform poll did not record output capacity");
+    }
+
+    if (small_result.output_event_count != 1U) {
+        return Fail("small platform poll did not record output count");
+    }
+
+    if (small_result.queued_event_count != 3U) {
+        return Fail("small platform poll did not record queued count");
+    }
+
+    if (small_result.required_output_event_count != 3U) {
+        return Fail("small platform poll did not record required output count");
+    }
+
+    if (small_result.first_undrained_event_index != 1U) {
+        return Fail("small platform poll did not record first undrained index");
+    }
+
+    if (!HasSameEventIdentity(small_result.first_undrained_event, second_event)) {
+        return Fail("small platform poll did not record first undrained event");
+    }
+
+    PlatformWindowSnapshot capacity_snapshot = window.GetSnapshot();
+    if (capacity_snapshot.queued_event_count != 2U) {
+        return Fail("small platform poll left unexpected queued count");
+    }
+
+    if (capacity_snapshot.last_poll_output_capacity != 1U) {
+        return Fail("snapshot did not record poll output capacity");
+    }
+
+    if (capacity_snapshot.last_poll_output_event_count != 1U) {
+        return Fail("snapshot did not record poll output count");
+    }
+
+    if (capacity_snapshot.last_poll_queued_event_count != 3U) {
+        return Fail("snapshot did not record poll queued count");
+    }
+
+    if (capacity_snapshot.last_required_poll_output_event_count != 3U) {
+        return Fail("snapshot did not record required poll output count");
+    }
+
+    if (capacity_snapshot.last_first_undrained_poll_event_index != 1U) {
+        return Fail("snapshot did not record first undrained poll index");
+    }
+
+    if (!HasSameEventIdentity(capacity_snapshot.last_first_undrained_poll_event, second_event)) {
+        return Fail("snapshot did not record first undrained poll event");
+    }
+
+    const PlatformWindowPollResult null_result = window.PollEvents(nullptr, 1U);
+    if (null_result.status != PlatformWindowStatus::NullPointer) {
+        return Fail("null platform poll did not reject output");
+    }
+
+    const PlatformWindowSnapshot null_snapshot = window.GetSnapshot();
+    if (!HasClearedPollOutputCapacityEntry(null_snapshot)) {
+        return Fail("null platform poll did not clear stale output capacity");
+    }
+
+    small_result = window.PollEvents(small_events, 1U);
+    if (small_result.status != PlatformWindowStatus::OutputBufferFull) {
+        return Fail("second small platform poll did not report output capacity");
+    }
+
+    if (!HasSameEventIdentity(small_result.first_undrained_event, third_event)) {
+        return Fail("second small platform poll did not record first undrained event");
+    }
+
+    PlatformWindowEvent final_events[1U]{};
+    const PlatformWindowPollResult final_result = window.PollEvents(final_events, 1U);
+    if (final_result.status != PlatformWindowStatus::Success) {
+        return Fail("final platform poll did not succeed");
+    }
+
+    if (final_result.event_count != 1U) {
+        return Fail("final platform poll wrote unexpected event count");
+    }
+
+    if (!HasSameEventIdentity(final_events[0U], third_event)) {
+        return Fail("final platform poll wrote wrong event");
+    }
+
+    const PlatformWindowSnapshot final_snapshot = window.GetSnapshot();
+    if (!HasClearedPollOutputCapacityEntry(final_snapshot)) {
+        return Fail("successful platform poll did not clear output capacity");
+    }
+
+    return 0;
+#endif
+}
+
+int PlatformWindowPollEventsClearsCapacityEntryOnQueueOverflow() {
+#if !defined(_WIN32)
+    return 0;
+#endif
+
+#if defined(_WIN32)
+    WindowsPlatformWindow window;
+    if (CreateHiddenPlatformWindow(window) != 0) {
+        return 1;
+    }
+
+    if (yuengine::platform::WindowsPlatformWindowAccess::PushPlatformEvent(window, RawKeyEvent(401U)) != PlatformWindowStatus::Success) {
+        return Fail("overflow clear first event setup failed");
+    }
+
+    if (yuengine::platform::WindowsPlatformWindowAccess::PushPlatformEvent(window, RawKeyEvent(402U)) != PlatformWindowStatus::Success) {
+        return Fail("overflow clear second event setup failed");
+    }
+
+    if (yuengine::platform::WindowsPlatformWindowAccess::PushPlatformEvent(window, RawKeyEvent(403U)) != PlatformWindowStatus::Success) {
+        return Fail("overflow clear third event setup failed");
+    }
+
+    PlatformWindowEvent small_events[1U]{};
+    const PlatformWindowPollResult small_result = window.PollEvents(small_events, 1U);
+    if (small_result.status != PlatformWindowStatus::OutputBufferFull) {
+        return Fail("overflow clear setup did not record output capacity");
+    }
+
+    PlatformWindowSnapshot before_overflow_snapshot = window.GetSnapshot();
+    if (before_overflow_snapshot.last_poll_output_capacity != 1U) {
+        return Fail("overflow clear setup missed output capacity");
+    }
+
+    const std::size_t queued_count = before_overflow_snapshot.queued_event_count;
+    const std::size_t queue_capacity = before_overflow_snapshot.event_queue_capacity;
+    for (std::size_t index = queued_count; index < queue_capacity; ++index) {
+        const std::uint32_t raw_code = static_cast<std::uint32_t>(500U + index);
+        const PlatformWindowEvent fill_event = RawKeyEvent(raw_code);
+        const PlatformWindowStatus fill_status = yuengine::platform::WindowsPlatformWindowAccess::PushPlatformEvent(window, fill_event);
+        if (fill_status != PlatformWindowStatus::Success) {
+            return Fail("overflow clear queue fill failed");
+        }
+    }
+
+    const PlatformWindowStatus overflow_status = yuengine::platform::WindowsPlatformWindowAccess::PushPlatformEvent(window, RawKeyEvent(999U));
+    if (overflow_status != PlatformWindowStatus::EventQueueOverflow) {
+        return Fail("overflow clear did not report queue overflow");
+    }
+
+    const PlatformWindowSnapshot overflow_snapshot = window.GetSnapshot();
+    if (!HasClearedPollOutputCapacityEntry(overflow_snapshot)) {
+        return Fail("queue overflow did not clear stale output capacity");
+    }
+
+    if (overflow_snapshot.dropped_event_count != 1U) {
+        return Fail("queue overflow did not keep dropped count");
+    }
+
+    if (overflow_snapshot.required_queued_event_count != queue_capacity + 1U) {
+        return Fail("queue overflow did not keep required queue count");
+    }
+
+    return 0;
+#endif
+}
+
 int PlatformWindowPublicTypesArePlainValues() {
     static_assert(std::is_trivially_copyable<PlatformNativeSurface>::value);
     static_assert(std::is_trivially_copyable<PlatformWindowEvent>::value);
@@ -467,6 +721,8 @@ int main(int argc, char** argv) {
         {TEST_WINDOW_OPS_NOT_CREATED, PlatformWindowOperationsBeforeCreateReturnNotCreated},
         {TEST_WINDOW_QUEUE_BOUNDED, PlatformWindowQueueCapacityLimitIsBounded},
         {TEST_WINDOW_EVENT_OVERFLOW_STATUS, PlatformWindowEventOverflowReportsSnapshotStatus},
+        {TEST_WINDOW_POLL_OUTPUT_CAPACITY_ENTRY, PlatformWindowPollEventsRecordsOutputCapacityEntry},
+        {TEST_WINDOW_POLL_OUTPUT_CAPACITY_OVERFLOW_CLEAR, PlatformWindowPollEventsClearsCapacityEntryOnQueueOverflow},
         {TEST_WINDOW_PLAIN_TYPES, PlatformWindowPublicTypesArePlainValues}};
 
     const std::string_view test_name(argv[1]);
