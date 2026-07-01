@@ -17,6 +17,8 @@ struct ResourceCachePayloadSnapshot final {
     std::uint32_t cached_byte_count = 0U;
     std::uint32_t cached_payload_count = 0U;
     std::uint32_t cache_payload_record_count = 0U;
+    std::uint32_t last_required_payload_byte_count = 0U;
+    std::uint32_t last_required_payload_reference_count = 0U;
     std::uint64_t stored_payload_count = 0U;
     std::uint64_t read_payload_count = 0U;
     std::uint64_t released_payload_count = 0U;

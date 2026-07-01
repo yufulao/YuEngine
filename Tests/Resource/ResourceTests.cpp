@@ -2719,6 +2719,14 @@ int ResourceCachePayloadRejectsCapacityOverflow() {
         return Fail("capacity cache payload rejection was not counted");
     }
 
+    if (snapshot.last_required_payload_byte_count != payload_byte_count) {
+        return Fail("capacity cache payload required bytes were not reported");
+    }
+
+    if (snapshot.last_required_payload_reference_count != 0U) {
+        return Fail("capacity cache payload reported reference count");
+    }
+
     if (snapshot.cached_payload_count != 0U) {
         return Fail("capacity cache payload request stored payload");
     }
@@ -2757,6 +2765,14 @@ int ResourceCachePayloadRejectsBudgetOverflow() {
     const ResourceCachePayloadSnapshot snapshot = registry.CachePayloadSnapshot();
     if (snapshot.budget_rejected_payload_count != 1U) {
         return Fail("budget cache payload rejection was not counted");
+    }
+
+    if (snapshot.last_required_payload_byte_count != payload_byte_count) {
+        return Fail("budget cache payload required bytes were not reported");
+    }
+
+    if (snapshot.last_required_payload_reference_count != 0U) {
+        return Fail("budget cache payload reported reference count");
     }
 
     if (snapshot.cached_byte_count != 0U) {
@@ -3105,6 +3121,15 @@ int ResourceCachePayloadRejectsReferenceBudgetWithoutMutation() {
 
     if (after_snapshot.reference_budget_rejected_payload_count != 1U) {
         return Fail("reference budget cache payload was not counted");
+    }
+
+    const std::uint32_t required_payload_reference_count = before_snapshot.cached_payload_count + 1U;
+    if (after_snapshot.last_required_payload_reference_count != required_payload_reference_count) {
+        return Fail("reference budget cache payload required references were not reported");
+    }
+
+    if (after_snapshot.last_required_payload_byte_count != 0U) {
+        return Fail("reference budget cache payload reported byte count");
     }
 
     return 0;
