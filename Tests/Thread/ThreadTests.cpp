@@ -21,6 +21,7 @@ using BoundedTaskQueue = yuengine::thread::BoundedTaskQueue;
 using CountingMemoryTracker = yuengine::memory::CountingMemoryTracker;
 using DisabledMemoryTracker = yuengine::memory::DisabledMemoryTracker;
 using InlineTaskExecutor = yuengine::thread::InlineTaskExecutor;
+using TaskSchedulerSnapshot = yuengine::thread::TaskSchedulerSnapshot;
 using ThreadWorker = yuengine::thread::ThreadWorker;
 using ThreadWorkerCompletion = yuengine::thread::ThreadWorkerCompletion;
 using ThreadWorkerDesc = yuengine::thread::ThreadWorkerDesc;
@@ -33,6 +34,7 @@ using yuengine::thread::Tests::ThreadTestContext;
 namespace {
 constexpr const char* TEST_ENQUEUE_SUCCEEDS = "Thread_QueueEnqueueWithinCapacity_Succeeds";
 constexpr const char* TEST_ENQUEUE_REJECTS = "Thread_QueueEnqueueBeyondCapacity_Rejects";
+constexpr const char* TEST_QUEUE_CAPACITY_ENTRY = "Thread_QueueCapacityOverflow_ReportsRejectedEntry";
 constexpr const char* TEST_FIFO = "Thread_DrainExecutesTasks_InDeterministicOrder";
 constexpr const char* TEST_FAILURE = "Thread_TaskFailure_ReturnsFailedResult";
 constexpr const char* TEST_SHUTDOWN_REJECTS = "Thread_ShutdownRejectsNewSubmission";
@@ -138,6 +140,75 @@ TaskStatus BlockingRecordTask(void* context) {
     return TaskStatus::Completed;
 }
 
+bool TaskQueueCapacityEntryMatches(const TaskSchedulerSnapshot &snapshot,
+                                   std::uint64_t task_id,
+                                   std::size_t queued_count,
+                                   std::uint64_t completed_count,
+                                   std::uint64_t failed_count,
+                                   std::uint64_t canceled_count) {
+    if (snapshot.last_failed_task_id.value != task_id) {
+        return false;
+    }
+
+    if (snapshot.last_required_queued_task_count != queued_count + 1U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_queue_capacity != SMALL_CAPACITY) {
+        return false;
+    }
+
+    if (snapshot.last_failed_queued_count != queued_count) {
+        return false;
+    }
+
+    if (snapshot.last_failed_task_completed_count != completed_count) {
+        return false;
+    }
+
+    if (snapshot.last_failed_task_failed_count != failed_count) {
+        return false;
+    }
+
+    if (snapshot.last_failed_task_canceled_count != canceled_count) {
+        return false;
+    }
+
+    return true;
+}
+
+bool TaskQueueCapacityEntryIsClear(const TaskSchedulerSnapshot &snapshot) {
+    if (snapshot.last_failed_task_id.value != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_required_queued_task_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_queue_capacity != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_queued_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_task_completed_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_task_failed_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_task_canceled_count != 0U) {
+        return false;
+    }
+
+    return true;
+}
+
 void WaitForBlockingTask(BlockingThreadContext &context) {
     std::unique_lock<std::mutex> lock(context.mutex);
     context.condition.wait(lock, [&context]() {
@@ -208,6 +279,109 @@ int ThreadQueueEnqueueBeyondCapacityRejects() {
 
     if (snapshot.pending_count != SMALL_CAPACITY) {
         return Fail("overflow changed pending count");
+    }
+
+    return 0;
+}
+
+int ThreadQueueCapacityOverflowReportsRejectedEntry() {
+    DisabledMemoryTracker memory_tracker;
+    BoundedTaskQueue queue(SMALL_CAPACITY, memory_tracker);
+    InlineTaskExecutor executor;
+    FixedTraceBuffer trace;
+    ThreadTestContext first_context{&trace, FIRST_VALUE, false};
+    ThreadTestContext second_context{&trace, SECOND_VALUE, false};
+    ThreadTestContext third_context{&trace, THIRD_VALUE, false};
+    ThreadTestContext fourth_context{&trace, FIRST_VALUE, false};
+    ThreadTestContext fifth_context{&trace, SECOND_VALUE, false};
+
+    if (queue.Submit(&RecordTask, &first_context).status != TaskStatus::Queued) {
+        return Fail("first capacity entry setup submit failed");
+    }
+
+    if (queue.Submit(&RecordTask, &second_context).status != TaskStatus::Queued) {
+        return Fail("second capacity entry setup submit failed");
+    }
+
+    const TaskSchedulerSnapshot before_snapshot = queue.Snapshot();
+    const auto first_rejected_result = queue.Submit(&RecordTask, &third_context);
+    if (first_rejected_result.status != TaskStatus::Rejected) {
+        return Fail("capacity entry submit was not rejected");
+    }
+
+    const TaskSchedulerSnapshot first_rejected_snapshot = queue.Snapshot();
+    if (!TaskQueueCapacityEntryMatches(first_rejected_snapshot, 3U, before_snapshot.pending_count, 0U, 0U, 0U)) {
+        return Fail("capacity entry did not record initial rejection identity");
+    }
+
+    if (first_rejected_snapshot.pending_count != before_snapshot.pending_count) {
+        return Fail("capacity entry rejection changed pending count");
+    }
+
+    if (first_rejected_snapshot.submitted_count != before_snapshot.submitted_count) {
+        return Fail("capacity entry rejection changed submitted count");
+    }
+
+    if (first_rejected_snapshot.rejected_count != before_snapshot.rejected_count + 1U) {
+        return Fail("capacity entry rejection did not increment reject count");
+    }
+
+    const auto invalid_callback_result = queue.Submit(nullptr, &third_context);
+    if (invalid_callback_result.status != TaskStatus::Rejected) {
+        return Fail("invalid callback submit was not rejected");
+    }
+
+    if (!TaskQueueCapacityEntryIsClear(queue.Snapshot())) {
+        return Fail("invalid callback submit kept stale capacity entry");
+    }
+
+    const auto second_rejected_result = queue.Submit(&RecordTask, &third_context);
+    if (second_rejected_result.status != TaskStatus::Rejected) {
+        return Fail("second capacity entry submit was not rejected");
+    }
+
+    if (queue.Drain(executor).status != TaskStatus::Completed) {
+        return Fail("drain did not clear capacity entry fixture");
+    }
+
+    if (!TaskQueueCapacityEntryIsClear(queue.Snapshot())) {
+        return Fail("drain kept stale capacity entry");
+    }
+
+    const std::array<int, 2U> expected_trace{FIRST_VALUE, SECOND_VALUE};
+    if (!TraceEquals(trace, expected_trace)) {
+        return Fail("capacity entry drain executed unexpected tasks");
+    }
+
+    if (queue.Submit(&RecordTask, &third_context).status != TaskStatus::Queued) {
+        return Fail("post-drain submit did not queue task");
+    }
+
+    if (!TaskQueueCapacityEntryIsClear(queue.Snapshot())) {
+        return Fail("successful submit kept stale capacity entry");
+    }
+
+    if (queue.Submit(&RecordTask, &fourth_context).status != TaskStatus::Queued) {
+        return Fail("post-drain second submit did not queue task");
+    }
+
+    const TaskSchedulerSnapshot completed_before_snapshot = queue.Snapshot();
+    const auto completed_rejected_result = queue.Submit(&RecordTask, &fifth_context);
+    if (completed_rejected_result.status != TaskStatus::Rejected) {
+        return Fail("completed count capacity submit was not rejected");
+    }
+
+    const TaskSchedulerSnapshot completed_rejected_snapshot = queue.Snapshot();
+    if (!TaskQueueCapacityEntryMatches(completed_rejected_snapshot, 5U, completed_before_snapshot.pending_count, 2U, 0U, 0U)) {
+        return Fail("capacity entry did not record completed-count rejection identity");
+    }
+
+    if (queue.Shutdown(ShutdownPolicy::CancelQueued, executor).status != TaskStatus::Canceled) {
+        return Fail("cancel shutdown did not clear capacity entry fixture");
+    }
+
+    if (!TaskQueueCapacityEntryIsClear(queue.Snapshot())) {
+        return Fail("cancel shutdown kept stale capacity entry");
     }
 
     return 0;
@@ -843,6 +1017,7 @@ int main(int argc, char** argv) {
     const std::unordered_map<std::string_view, TestFunction> test_registry{
         {TEST_ENQUEUE_SUCCEEDS, ThreadQueueEnqueueWithinCapacitySucceeds},
         {TEST_ENQUEUE_REJECTS, ThreadQueueEnqueueBeyondCapacityRejects},
+        {TEST_QUEUE_CAPACITY_ENTRY, ThreadQueueCapacityOverflowReportsRejectedEntry},
         {TEST_FIFO, ThreadDrainExecutesTasksInDeterministicOrder},
         {TEST_FAILURE, ThreadTaskFailureReturnsFailedResult},
         {TEST_SHUTDOWN_REJECTS, ThreadShutdownRejectsNewSubmission},
