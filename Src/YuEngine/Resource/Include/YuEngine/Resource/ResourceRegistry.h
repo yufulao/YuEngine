@@ -116,6 +116,17 @@ public:
         const ResourceDescriptor *descriptors,
         std::uint32_t descriptor_count);
     /**
+     * @comment 按注册顺序枚举当前 synthetic 描述。
+     * @param output_descriptors 输出描述存储。
+     * @param output_descriptor_capacity 输出存储容量。
+     * @param output_descriptor_count 输出描述数量。
+     * @return 显式操作状态。
+     */
+    ResourceStatus EnumerateSyntheticDescriptors(
+        ResourceDescriptor *output_descriptors,
+        std::uint32_t output_descriptor_capacity,
+        std::uint32_t *output_descriptor_count);
+    /**
      * @comment 添加依赖。
      * @param dependent 输入 dependent。
      * @param dependency 输入 dependency。

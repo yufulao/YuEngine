@@ -111,6 +111,8 @@ namespace {
 constexpr const char* TEST_REGISTER = "Resource_RegisterSyntheticDescriptor_ReturnsGenerationHandle";
 constexpr const char *TEST_DESCRIPTOR_BATCH =
     "Resource_DescriptorBatchRegistrationSubmitsRowsAndStopsOnFirstFailure";
+constexpr const char *TEST_DESCRIPTOR_ENUMERATION =
+    "Resource_DescriptorEnumerationReportsRegisteredSyntheticDescriptors";
 constexpr const char* TEST_INVALID_DESCRIPTOR =
     "Resource_RegisterRejectsInvalidDescriptorWithoutMutation";
 constexpr const char* TEST_DUPLICATE = "Resource_RegisterDuplicate_ReturnsExplicitStatus";
@@ -371,6 +373,23 @@ ResourceDescriptor Descriptor(ResourceTypeId type, const char* key) {
 
 ResourceDescriptor DescriptorWithReferenceCount(ResourceTypeId type, const char* key, std::uint32_t reference_count) {
     return ResourceDescriptor{type, ResourceLogicalKey(key), reference_count};
+}
+
+bool DescriptorMatches(
+    const ResourceDescriptor &descriptor,
+    ResourceTypeId type,
+    const char *key,
+    std::uint32_t reference_count) {
+    if (descriptor.type.value != type.value) {
+        return false;
+    }
+
+    const ResourceLogicalKey logical_key(key);
+    if (!descriptor.logical_key.Equals(logical_key)) {
+        return false;
+    }
+
+    return descriptor.initial_reference_count == reference_count;
 }
 
 ResourceRegistrationResult Register(ResourceRegistry& registry, ResourceTypeId type, const char* key) {
@@ -1507,6 +1526,141 @@ int ResourceDescriptorBatchRegistrationSubmitsRowsAndStopsOnFirstFailure() {
     if (capacity_snapshot.registered_resource_count != 1U ||
         capacity_snapshot.last_required_resource_count != 2U) {
         return Fail("descriptor batch capacity failure mutated counts incorrectly");
+    }
+
+    return 0;
+}
+
+int ResourceDescriptorEnumerationReportsRegisteredSyntheticDescriptors() {
+    ResourceRegistry empty_registry;
+    std::uint32_t empty_descriptor_count = 7U;
+    const ResourceSnapshot empty_before_snapshot = empty_registry.Snapshot();
+    const ResourceStatus empty_status = empty_registry.EnumerateSyntheticDescriptors(
+        nullptr,
+        0U,
+        &empty_descriptor_count);
+    if (empty_status != ResourceStatus::Success || empty_descriptor_count != 0U) {
+        return Fail("descriptor enumeration empty registry did not succeed");
+    }
+
+    const ResourceSnapshot empty_after_snapshot = empty_registry.Snapshot();
+    if (empty_after_snapshot.registered_resource_count != empty_before_snapshot.registered_resource_count ||
+        empty_after_snapshot.type_count != empty_before_snapshot.type_count ||
+        empty_after_snapshot.dependency_validation_count != empty_before_snapshot.dependency_validation_count) {
+        return Fail("descriptor enumeration empty registry mutated counters");
+    }
+
+    ResourceRegistry registry;
+    const ResourceDescriptor single_descriptor =
+        DescriptorWithReferenceCount(TYPE_TEXTURE, "enumerate_texture", 2U);
+    const ResourceRegistrationResult single_result =
+        registry.RegisterSyntheticDescriptor(single_descriptor);
+    if (!single_result.Succeeded()) {
+        return Fail("descriptor enumeration single fixture registration failed");
+    }
+
+    std::array<ResourceDescriptor, 1U> single_output_descriptors{};
+    std::uint32_t single_descriptor_count = 0U;
+    const ResourceSnapshot before_single_snapshot = registry.Snapshot();
+    const ResourceStatus single_status = registry.EnumerateSyntheticDescriptors(
+        single_output_descriptors.data(),
+        static_cast<std::uint32_t>(single_output_descriptors.size()),
+        &single_descriptor_count);
+    if (single_status != ResourceStatus::Success || single_descriptor_count != 1U) {
+        return Fail("descriptor enumeration single registration returned wrong count");
+    }
+
+    if (!DescriptorMatches(single_output_descriptors[0U], TYPE_TEXTURE, "enumerate_texture", 2U)) {
+        return Fail("descriptor enumeration single registration returned wrong descriptor");
+    }
+
+    const ResourceSnapshot after_single_snapshot = registry.Snapshot();
+    if (after_single_snapshot.registered_resource_count != before_single_snapshot.registered_resource_count ||
+        after_single_snapshot.type_count != before_single_snapshot.type_count ||
+        after_single_snapshot.dependency_validation_count != before_single_snapshot.dependency_validation_count) {
+        return Fail("descriptor enumeration single registration mutated counters");
+    }
+
+    const std::array<ResourceDescriptor, 2U> batch_descriptors{{
+        DescriptorWithReferenceCount(TYPE_MATERIAL, "enumerate_material", 1U),
+        DescriptorWithReferenceCount(TYPE_AUDIO, "enumerate_audio", 3U)}};
+    const ResourceDescriptorBatchResult batch_result = registry.RegisterSyntheticDescriptors(
+        batch_descriptors.data(),
+        static_cast<std::uint32_t>(batch_descriptors.size()));
+    if (!batch_result.Succeeded()) {
+        return Fail("descriptor enumeration batch fixture registration failed");
+    }
+
+    const ResourceRegistrationResult invalid_result =
+        registry.RegisterSyntheticDescriptor(Descriptor(ResourceTypeId{}, "enumerate_invalid"));
+    if (invalid_result.status != ResourceStatus::InvalidDescriptor) {
+        return Fail("descriptor enumeration invalid descriptor fixture did not fail");
+    }
+
+    const ResourceRegistrationResult duplicate_result =
+        registry.RegisterSyntheticDescriptor(Descriptor(TYPE_TEXTURE, "enumerate_texture"));
+    if (duplicate_result.status != ResourceStatus::DuplicateResource) {
+        return Fail("descriptor enumeration duplicate descriptor fixture did not fail");
+    }
+
+    std::array<ResourceDescriptor, 3U> output_descriptors{};
+    std::uint32_t output_descriptor_count = 0U;
+    const ResourceSnapshot before_success_snapshot = registry.Snapshot();
+    const ResourceStatus enumerate_status = registry.EnumerateSyntheticDescriptors(
+        output_descriptors.data(),
+        static_cast<std::uint32_t>(output_descriptors.size()),
+        &output_descriptor_count);
+    if (enumerate_status != ResourceStatus::Success || output_descriptor_count != 3U) {
+        return Fail("descriptor enumeration success returned wrong count");
+    }
+
+    if (!DescriptorMatches(output_descriptors[0U], TYPE_TEXTURE, "enumerate_texture", 2U) ||
+        !DescriptorMatches(output_descriptors[1U], TYPE_MATERIAL, "enumerate_material", 1U) ||
+        !DescriptorMatches(output_descriptors[2U], TYPE_AUDIO, "enumerate_audio", 3U)) {
+        return Fail("descriptor enumeration did not preserve committed descriptor order");
+    }
+
+    const ResourceSnapshot after_success_snapshot = registry.Snapshot();
+    if (after_success_snapshot.registered_resource_count != before_success_snapshot.registered_resource_count ||
+        after_success_snapshot.type_count != before_success_snapshot.type_count ||
+        after_success_snapshot.dependency_validation_count != before_success_snapshot.dependency_validation_count) {
+        return Fail("descriptor enumeration success mutated counters");
+    }
+
+    std::array<ResourceDescriptor, 2U> small_output_descriptors{};
+    std::uint32_t required_descriptor_count = 0U;
+    const ResourceSnapshot before_capacity_snapshot = registry.Snapshot();
+    const ResourceStatus capacity_status = registry.EnumerateSyntheticDescriptors(
+        small_output_descriptors.data(),
+        static_cast<std::uint32_t>(small_output_descriptors.size()),
+        &required_descriptor_count);
+    if (capacity_status != ResourceStatus::CapacityExceeded || required_descriptor_count != 3U) {
+        return Fail("descriptor enumeration capacity failure missed required count");
+    }
+
+    const ResourceSnapshot after_capacity_snapshot = registry.Snapshot();
+    if (after_capacity_snapshot.registered_resource_count != before_capacity_snapshot.registered_resource_count ||
+        after_capacity_snapshot.type_count != before_capacity_snapshot.type_count ||
+        after_capacity_snapshot.dependency_validation_count != before_capacity_snapshot.dependency_validation_count ||
+        after_capacity_snapshot.last_required_resource_count != 3U) {
+        return Fail("descriptor enumeration capacity failure mutated counters or missed snapshot count");
+    }
+
+    std::uint32_t invalid_descriptor_count = 0U;
+    const ResourceSnapshot before_invalid_snapshot = registry.Snapshot();
+    const ResourceStatus invalid_output_status = registry.EnumerateSyntheticDescriptors(
+        nullptr,
+        1U,
+        &invalid_descriptor_count);
+    if (invalid_output_status != ResourceStatus::InvalidHandle || invalid_descriptor_count != 0U) {
+        return Fail("descriptor enumeration invalid output did not fail explicitly");
+    }
+
+    const ResourceSnapshot after_invalid_snapshot = registry.Snapshot();
+    if (after_invalid_snapshot.registered_resource_count != before_invalid_snapshot.registered_resource_count ||
+        after_invalid_snapshot.type_count != before_invalid_snapshot.type_count ||
+        after_invalid_snapshot.dependency_validation_count != before_invalid_snapshot.dependency_validation_count) {
+        return Fail("descriptor enumeration invalid output mutated counters");
     }
 
     return 0;
@@ -8434,6 +8588,7 @@ int main(int argc, char** argv) {
     const TestRegistry test_registry{
         {TEST_REGISTER, ResourceRegisterSyntheticDescriptorReturnsGenerationHandle},
         {TEST_DESCRIPTOR_BATCH, ResourceDescriptorBatchRegistrationSubmitsRowsAndStopsOnFirstFailure},
+        {TEST_DESCRIPTOR_ENUMERATION, ResourceDescriptorEnumerationReportsRegisteredSyntheticDescriptors},
         {TEST_INVALID_DESCRIPTOR, ResourceRegisterRejectsInvalidDescriptorWithoutMutation},
         {TEST_DUPLICATE, ResourceRegisterDuplicateReturnsExplicitStatus},
         {TEST_CAPACITY, ResourceRegistryRejectsCapacityOverflowWithoutMutation},

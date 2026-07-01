@@ -435,6 +435,65 @@ ResourceDescriptorBatchResult ResourceRegistry::RegisterSyntheticDescriptors(
     return result;
 }
 
+ResourceStatus ResourceRegistry::EnumerateSyntheticDescriptors(
+    ResourceDescriptor *output_descriptors,
+    std::uint32_t output_descriptor_capacity,
+    std::uint32_t *output_descriptor_count) {
+    if (output_descriptor_count == nullptr) {
+        return RecordFailure(ResourceStatus::InvalidHandle);
+    }
+
+    *output_descriptor_count = 0U;
+    if (output_descriptor_capacity > 0U && output_descriptors == nullptr) {
+        return RecordFailure(ResourceStatus::InvalidHandle);
+    }
+
+    std::uint32_t required_descriptor_count = 0U;
+    std::uint32_t slot_index = 0U;
+    for (const ResourceSlot &slot : slots_) {
+        if (slot_index >= snapshot_.resource_capacity) {
+            break;
+        }
+
+        if (slot.is_active) {
+            ++required_descriptor_count;
+        }
+
+        ++slot_index;
+    }
+
+    *output_descriptor_count = required_descriptor_count;
+    if (required_descriptor_count > output_descriptor_capacity) {
+        const ResourceStatus status = RecordFailure(ResourceStatus::CapacityExceeded);
+        snapshot_.last_required_resource_count = required_descriptor_count;
+        return status;
+    }
+
+    std::uint32_t output_index = 0U;
+    slot_index = 0U;
+    for (const ResourceSlot &slot : slots_) {
+        if (slot_index >= snapshot_.resource_capacity) {
+            break;
+        }
+
+        if (!slot.is_active) {
+            ++slot_index;
+            continue;
+        }
+
+        ResourceDescriptor descriptor{};
+        descriptor.type = slot.type;
+        descriptor.logical_key = slot.logical_key;
+        descriptor.initial_reference_count = slot.reference_count;
+        output_descriptors[output_index] = descriptor;
+        ++output_index;
+        ++slot_index;
+    }
+
+    RecordSuccess();
+    return ResourceStatus::Success;
+}
+
 ResourceStatus ResourceRegistry::AddDependency(ResourceHandle dependent, ResourceHandle dependency) {
     ++snapshot_.dependency_validation_count;
 
