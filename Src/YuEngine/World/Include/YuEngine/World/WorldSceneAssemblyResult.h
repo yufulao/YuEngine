@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 #include "YuEngine/Resource/ResourceStatus.h"
 #include "YuEngine/World/WorldComponentAttachmentStatus.h"
 #include "YuEngine/World/WorldComponentResourceBindingRestoreStatus.h"
@@ -22,6 +24,13 @@ struct WorldSceneAssemblyResult final {
     yuengine::resource::ResourceStatus resource_status =
         yuengine::resource::ResourceStatus::Success;
     WorldSceneAssemblyState state{};
+    std::uint32_t failed_capacity_record_index = 0U;
+    std::uint32_t failed_capacity_world_object_id = 0U;
+    std::uint32_t failed_capacity_component_type_id = 0U;
+    std::uint32_t failed_capacity_component_slot_id = 0U;
+    std::uint32_t failed_capacity_destination_capacity = 0U;
+    std::uint32_t failed_capacity_destination_count = 0U;
+    std::uint32_t failed_capacity_required_count = 0U;
 
     /**
      * @comment 创建成功 scene assembly result。

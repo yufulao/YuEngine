@@ -709,6 +709,8 @@ constexpr const char *TEST_SCENE_ASSEMBLY_ATTACHMENT_CAPACITY =
     "WorldSceneAssemblyBridge_RejectsAttachmentCapacityOverflowWithoutMutation";
 constexpr const char *TEST_SCENE_ASSEMBLY_BINDING_CAPACITY =
     "WorldSceneAssemblyBridge_RejectsBindingCapacityOverflowWithoutMutation";
+constexpr const char *TEST_SCENE_ASSEMBLY_DESTINATION_CAPACITY_ENTRY =
+    "WorldSceneAssemblyBridge_RecordsDestinationCapacityEntry";
 constexpr const char *TEST_SCENE_ASSEMBLY_NON_EMPTY_DESTINATIONS =
     "WorldSceneAssemblyBridge_RejectsNonEmptyDestinationsWithoutMutation";
 constexpr const char *TEST_SCENE_ASSEMBLY_RESOURCE_PREFLIGHT =
@@ -2858,7 +2860,8 @@ int ExpectSceneAssemblyFailureWithoutMutation(
     const WorldComponentResourceBindingSnapshotRecord *input_bindings,
     std::uint32_t input_binding_count,
     WorldSceneAssemblyStatus expected_status,
-    const char *error_message) {
+    const char *error_message,
+    WorldSceneAssemblyResult *out_result=nullptr) {
     const bool has_attachment_destination = attachment_destination != nullptr;
     WorldComponentAttachmentSnapshot before_attachment_destination{};
     if (has_attachment_destination) {
@@ -2889,6 +2892,10 @@ int ExpectSceneAssemblyFailureWithoutMutation(
         return Fail(error_message);
     }
 
+    if (out_result != nullptr) {
+        *out_result = result;
+    }
+
     if (has_attachment_destination) {
         const WorldComponentAttachmentSnapshot after_attachment_destination =
             attachment_destination->Snapshot();
@@ -2910,6 +2917,152 @@ int ExpectSceneAssemblyFailureWithoutMutation(
         if (!ResourceSnapshotsMatch(before_registry, after_registry)) {
             return Fail("scene assembly failure mutated registry");
         }
+    }
+
+    return 0;
+}
+
+struct SceneAssemblyCapacityEntryExpectation final {
+    WorldSceneAssemblyStatus status = WorldSceneAssemblyStatus::Success;
+    std::uint32_t record_index = 0U;
+    WorldObjectId world_object_id{};
+    WorldComponentTypeId component_type_id{};
+    WorldComponentSlotId component_slot_id{};
+    std::uint32_t destination_capacity = 0U;
+    std::uint32_t destination_count = 0U;
+    std::uint32_t required_count = 0U;
+};
+
+int ExpectSceneAssemblyCapacityEntry(
+    const WorldSceneAssemblyResult &result,
+    const WorldSceneAssemblySnapshot &snapshot,
+    const SceneAssemblyCapacityEntryExpectation &expected,
+    const char *error_message) {
+    if (result.status != expected.status) {
+        return Fail(error_message);
+    }
+
+    if (snapshot.last_status != expected.status) {
+        return Fail(error_message);
+    }
+
+    if (result.failed_capacity_record_index != expected.record_index) {
+        return Fail(error_message);
+    }
+
+    if (snapshot.last_failed_capacity_record_index != expected.record_index) {
+        return Fail(error_message);
+    }
+
+    if (result.failed_capacity_world_object_id != expected.world_object_id.value) {
+        return Fail(error_message);
+    }
+
+    if (snapshot.last_failed_capacity_world_object_id != expected.world_object_id.value) {
+        return Fail(error_message);
+    }
+
+    if (result.failed_capacity_component_type_id != expected.component_type_id.value) {
+        return Fail(error_message);
+    }
+
+    if (snapshot.last_failed_capacity_component_type_id != expected.component_type_id.value) {
+        return Fail(error_message);
+    }
+
+    if (result.failed_capacity_component_slot_id != expected.component_slot_id.value) {
+        return Fail(error_message);
+    }
+
+    if (snapshot.last_failed_capacity_component_slot_id != expected.component_slot_id.value) {
+        return Fail(error_message);
+    }
+
+    if (result.failed_capacity_destination_capacity != expected.destination_capacity) {
+        return Fail(error_message);
+    }
+
+    if (snapshot.last_failed_capacity_destination_capacity != expected.destination_capacity) {
+        return Fail(error_message);
+    }
+
+    if (result.failed_capacity_destination_count != expected.destination_count) {
+        return Fail(error_message);
+    }
+
+    if (snapshot.last_failed_capacity_destination_count != expected.destination_count) {
+        return Fail(error_message);
+    }
+
+    if (result.failed_capacity_required_count != expected.required_count) {
+        return Fail(error_message);
+    }
+
+    if (snapshot.last_failed_capacity_required_count != expected.required_count) {
+        return Fail(error_message);
+    }
+
+    return 0;
+}
+
+int ExpectSceneAssemblyCapacityEntryCleared(
+    const WorldSceneAssemblyResult &result,
+    const WorldSceneAssemblySnapshot &snapshot,
+    const char *error_message) {
+    if (result.failed_capacity_record_index != 0U) {
+        return Fail(error_message);
+    }
+
+    if (result.failed_capacity_world_object_id != 0U) {
+        return Fail(error_message);
+    }
+
+    if (result.failed_capacity_component_type_id != 0U) {
+        return Fail(error_message);
+    }
+
+    if (result.failed_capacity_component_slot_id != 0U) {
+        return Fail(error_message);
+    }
+
+    if (result.failed_capacity_destination_capacity != 0U) {
+        return Fail(error_message);
+    }
+
+    if (result.failed_capacity_destination_count != 0U) {
+        return Fail(error_message);
+    }
+
+    if (result.failed_capacity_required_count != 0U) {
+        return Fail(error_message);
+    }
+
+    if (snapshot.last_failed_capacity_record_index != 0U) {
+        return Fail(error_message);
+    }
+
+    if (snapshot.last_failed_capacity_world_object_id != 0U) {
+        return Fail(error_message);
+    }
+
+    if (snapshot.last_failed_capacity_component_type_id != 0U) {
+        return Fail(error_message);
+    }
+
+    if (snapshot.last_failed_capacity_component_slot_id != 0U) {
+        return Fail(error_message);
+    }
+
+    if (snapshot.last_failed_capacity_destination_capacity != 0U) {
+        return Fail(error_message);
+    }
+
+    if (snapshot.last_failed_capacity_destination_count != 0U) {
+        return Fail(error_message);
+    }
+
+    if (snapshot.last_failed_capacity_required_count != 0U) {
+        return Fail(error_message);
     }
 
     return 0;
@@ -11573,17 +11726,60 @@ int WorldSceneAssemblyBridgeRejectsAttachmentCapacityOverflowWithoutMutation() {
     WorldSceneAssemblyBridge assembly_bridge(desc);
     WorldComponentAttachmentBridge attachment_destination;
     WorldComponentResourceBindingBridge binding_destination;
-    return ExpectSceneAssemblyFailureWithoutMutation(
-        assembly_bridge,
-        &attachment_destination,
-        &binding_destination,
+    WorldSceneAssemblyResult result{};
+    const std::uint32_t input_attachment_count = static_cast<std::uint32_t>(input_attachments.size());
+    if (ExpectSceneAssemblyFailureWithoutMutation(
+            assembly_bridge,
+            &attachment_destination,
+            &binding_destination,
+            &registry,
+            input_attachments.data(),
+            input_attachment_count,
+            input_bindings.data(),
+            0U,
+            WorldSceneAssemblyStatus::AttachmentCapacityExceeded,
+            "scene assembly attachment capacity status wrong",
+            &result) != 0) {
+        return 1;
+    }
+
+    SceneAssemblyCapacityEntryExpectation expected{};
+    expected.status = WorldSceneAssemblyStatus::AttachmentCapacityExceeded;
+    expected.record_index = 1U;
+    expected.world_object_id = OBJECT_CAMERA;
+    expected.component_type_id = COMPONENT_TYPE_SECONDARY;
+    expected.component_slot_id = COMPONENT_SLOT_SECONDARY;
+    expected.destination_capacity = 1U;
+    expected.destination_count = 0U;
+    expected.required_count = input_attachment_count;
+    const WorldSceneAssemblySnapshot failed_snapshot = assembly_bridge.Snapshot();
+    if (ExpectSceneAssemblyCapacityEntry(
+            result,
+            failed_snapshot,
+            expected,
+            "scene assembly attachment capacity entry wrong") != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachmentBridge success_attachment_destination;
+    WorldComponentResourceBindingBridge success_binding_destination;
+    const WorldSceneAssemblyResult success_result = assembly_bridge.Restore(
+        &success_attachment_destination,
+        &success_binding_destination,
         &registry,
         input_attachments.data(),
-        static_cast<std::uint32_t>(input_attachments.size()),
+        1U,
         input_bindings.data(),
-        0U,
-        WorldSceneAssemblyStatus::AttachmentCapacityExceeded,
-        "scene assembly attachment capacity status wrong");
+        0U);
+    if (!success_result.Succeeded()) {
+        return Fail("scene assembly attachment capacity success clear failed");
+    }
+
+    const WorldSceneAssemblySnapshot success_snapshot = assembly_bridge.Snapshot();
+    return ExpectSceneAssemblyCapacityEntryCleared(
+        success_result,
+        success_snapshot,
+        "scene assembly attachment capacity success entry not cleared");
 }
 
 int WorldSceneAssemblyBridgeRejectsBindingCapacityOverflowWithoutMutation() {
@@ -11619,17 +11815,163 @@ int WorldSceneAssemblyBridgeRejectsBindingCapacityOverflowWithoutMutation() {
     WorldSceneAssemblyBridge assembly_bridge(desc);
     WorldComponentAttachmentBridge attachment_destination;
     WorldComponentResourceBindingBridge binding_destination;
-    return ExpectSceneAssemblyFailureWithoutMutation(
-        assembly_bridge,
+    WorldSceneAssemblyResult result{};
+    const std::uint32_t input_attachment_count = static_cast<std::uint32_t>(input_attachments.size());
+    const std::uint32_t input_binding_count = static_cast<std::uint32_t>(input_bindings.size());
+    if (ExpectSceneAssemblyFailureWithoutMutation(
+            assembly_bridge,
+            &attachment_destination,
+            &binding_destination,
+            &registry,
+            input_attachments.data(),
+            input_attachment_count,
+            input_bindings.data(),
+            input_binding_count,
+            WorldSceneAssemblyStatus::BindingCapacityExceeded,
+            "scene assembly binding capacity status wrong",
+            &result) != 0) {
+        return 1;
+    }
+
+    SceneAssemblyCapacityEntryExpectation expected{};
+    expected.status = WorldSceneAssemblyStatus::BindingCapacityExceeded;
+    expected.record_index = 1U;
+    expected.world_object_id = OBJECT_CAMERA;
+    expected.component_type_id = COMPONENT_TYPE_SECONDARY;
+    expected.component_slot_id = COMPONENT_SLOT_SECONDARY;
+    expected.destination_capacity = 1U;
+    expected.destination_count = 0U;
+    expected.required_count = input_binding_count;
+    const WorldSceneAssemblySnapshot failed_snapshot = assembly_bridge.Snapshot();
+    if (ExpectSceneAssemblyCapacityEntry(
+            result,
+            failed_snapshot,
+            expected,
+            "scene assembly binding capacity entry wrong") != 0) {
+        return 1;
+    }
+
+    const WorldSceneAssemblyResult invalid_result = assembly_bridge.Restore(
         &attachment_destination,
         &binding_destination,
         &registry,
         input_attachments.data(),
-        static_cast<std::uint32_t>(input_attachments.size()),
-        input_bindings.data(),
-        static_cast<std::uint32_t>(input_bindings.size()),
-        WorldSceneAssemblyStatus::BindingCapacityExceeded,
-        "scene assembly binding capacity status wrong");
+        input_attachment_count,
+        nullptr,
+        1U);
+    if (invalid_result.status != WorldSceneAssemblyStatus::InvalidBindingInput) {
+        return Fail("scene assembly binding capacity clear status wrong");
+    }
+
+    const WorldSceneAssemblySnapshot invalid_snapshot = assembly_bridge.Snapshot();
+    return ExpectSceneAssemblyCapacityEntryCleared(
+        invalid_result,
+        invalid_snapshot,
+        "scene assembly binding capacity invalid entry not cleared");
+}
+
+int WorldSceneAssemblyBridgeRecordsDestinationCapacityEntry() {
+    ResourceRegistry registry = MakeResourceRegistry();
+    std::array<WorldComponentAttachmentSnapshotRecord, 2U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY),
+        MakeSceneAttachmentRecord(OBJECT_CAMERA, COMPONENT_TYPE_SECONDARY, COMPONENT_SLOT_SECONDARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 2U> input_bindings{};
+    if (RegisterSceneBindingInput(
+            registry,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            RESOURCE_TYPE_TEXTURE,
+            "texture_scene_destination_capacity",
+            &input_bindings[0]) != 0) {
+        return 1;
+    }
+
+    if (RegisterSceneBindingInput(
+            registry,
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            RESOURCE_TYPE_AUDIO,
+            "audio_scene_destination_capacity",
+            &input_bindings[1]) != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachmentBridgeDesc attachment_desc{};
+    attachment_desc.attachment_capacity = 1U;
+    WorldComponentAttachmentBridge attachment_destination{attachment_desc};
+    WorldComponentResourceBindingBridge binding_destination;
+    WorldSceneAssemblyBridge assembly_bridge;
+    WorldSceneAssemblyResult attachment_result{};
+    const std::uint32_t input_attachment_count = static_cast<std::uint32_t>(input_attachments.size());
+    const std::uint32_t input_binding_count = static_cast<std::uint32_t>(input_bindings.size());
+    if (ExpectSceneAssemblyFailureWithoutMutation(
+            assembly_bridge,
+            &attachment_destination,
+            &binding_destination,
+            &registry,
+            input_attachments.data(),
+            input_attachment_count,
+            input_bindings.data(),
+            input_binding_count,
+            WorldSceneAssemblyStatus::AttachmentCapacityExceeded,
+            "scene assembly destination attachment capacity status wrong",
+            &attachment_result) != 0) {
+        return 1;
+    }
+
+    SceneAssemblyCapacityEntryExpectation attachment_expected{};
+    attachment_expected.status = WorldSceneAssemblyStatus::AttachmentCapacityExceeded;
+    attachment_expected.record_index = 1U;
+    attachment_expected.world_object_id = OBJECT_CAMERA;
+    attachment_expected.component_type_id = COMPONENT_TYPE_SECONDARY;
+    attachment_expected.component_slot_id = COMPONENT_SLOT_SECONDARY;
+    attachment_expected.destination_capacity = 1U;
+    attachment_expected.destination_count = 0U;
+    attachment_expected.required_count = input_attachment_count;
+    if (ExpectSceneAssemblyCapacityEntry(
+            attachment_result,
+            assembly_bridge.Snapshot(),
+            attachment_expected,
+            "scene assembly destination attachment capacity entry wrong") != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachmentBridge binding_attachment_destination;
+    WorldComponentResourceBindingBridgeDesc binding_desc{};
+    binding_desc.binding_capacity = 1U;
+    WorldComponentResourceBindingBridge small_binding_destination{binding_desc};
+    WorldSceneAssemblyResult binding_result{};
+    if (ExpectSceneAssemblyFailureWithoutMutation(
+            assembly_bridge,
+            &binding_attachment_destination,
+            &small_binding_destination,
+            &registry,
+            input_attachments.data(),
+            input_attachment_count,
+            input_bindings.data(),
+            input_binding_count,
+            WorldSceneAssemblyStatus::BindingCapacityExceeded,
+            "scene assembly destination binding capacity status wrong",
+            &binding_result) != 0) {
+        return 1;
+    }
+
+    SceneAssemblyCapacityEntryExpectation binding_expected{};
+    binding_expected.status = WorldSceneAssemblyStatus::BindingCapacityExceeded;
+    binding_expected.record_index = 1U;
+    binding_expected.world_object_id = OBJECT_CAMERA;
+    binding_expected.component_type_id = COMPONENT_TYPE_SECONDARY;
+    binding_expected.component_slot_id = COMPONENT_SLOT_SECONDARY;
+    binding_expected.destination_capacity = 1U;
+    binding_expected.destination_count = 0U;
+    binding_expected.required_count = input_binding_count;
+    return ExpectSceneAssemblyCapacityEntry(
+        binding_result,
+        assembly_bridge.Snapshot(),
+        binding_expected,
+        "scene assembly destination binding capacity entry wrong");
 }
 
 int WorldSceneAssemblyBridgeRejectsNonEmptyDestinationsWithoutMutation() {
@@ -22493,6 +22835,8 @@ int main(int argc, char **argv) {
             WorldSceneAssemblyBridgeRejectsAttachmentCapacityOverflowWithoutMutation},
         {TEST_SCENE_ASSEMBLY_BINDING_CAPACITY,
             WorldSceneAssemblyBridgeRejectsBindingCapacityOverflowWithoutMutation},
+        {TEST_SCENE_ASSEMBLY_DESTINATION_CAPACITY_ENTRY,
+            WorldSceneAssemblyBridgeRecordsDestinationCapacityEntry},
         {TEST_SCENE_ASSEMBLY_NON_EMPTY_DESTINATIONS,
             WorldSceneAssemblyBridgeRejectsNonEmptyDestinationsWithoutMutation},
         {TEST_SCENE_ASSEMBLY_RESOURCE_PREFLIGHT,

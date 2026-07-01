@@ -33,5 +33,12 @@ struct WorldSceneAssemblySnapshot final {
     WorldComponentResourceBindingRestoreStatus last_binding_restore_status =
         WorldComponentResourceBindingRestoreStatus::Success;
     WorldSceneAssemblyStatus last_status = WorldSceneAssemblyStatus::Success;
+    std::uint32_t last_failed_capacity_record_index = 0U;
+    std::uint32_t last_failed_capacity_world_object_id = 0U;
+    std::uint32_t last_failed_capacity_component_type_id = 0U;
+    std::uint32_t last_failed_capacity_component_slot_id = 0U;
+    std::uint32_t last_failed_capacity_destination_capacity = 0U;
+    std::uint32_t last_failed_capacity_destination_count = 0U;
+    std::uint32_t last_failed_capacity_required_count = 0U;
 };
 }

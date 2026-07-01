@@ -82,6 +82,30 @@ private:
         WorldSceneAssemblyStatus status,
         yuengine::resource::ResourceStatus resource_status);
     WorldSceneAssemblyResult RecordSuccess(const WorldSceneAssemblyState &state);
+    void ClearCapacityEntry();
+    void StoreCapacityEntry(
+        std::uint32_t record_index,
+        WorldObjectId world_object_id,
+        WorldComponentTypeId component_type_id,
+        WorldComponentSlotId component_slot_id,
+        std::uint32_t destination_capacity,
+        std::uint32_t destination_count,
+        std::uint32_t required_count,
+        WorldSceneAssemblyResult *result);
+    void StoreAttachmentCapacityEntry(
+        const WorldComponentAttachmentSnapshotRecord *input_attachments,
+        std::uint32_t input_attachment_count,
+        std::uint32_t record_index,
+        std::uint32_t destination_capacity,
+        std::uint32_t destination_count,
+        WorldSceneAssemblyResult *result);
+    void StoreBindingCapacityEntry(
+        const WorldComponentResourceBindingSnapshotRecord *input_bindings,
+        std::uint32_t input_binding_count,
+        std::uint32_t record_index,
+        std::uint32_t destination_capacity,
+        std::uint32_t destination_count,
+        WorldSceneAssemblyResult *result);
     WorldSceneAssemblyStatus ValidateBridgeCapacity() const;
     WorldSceneAssemblyStatus ValidateAttachmentDestination(
         const WorldComponentAttachmentBridge &attachment_destination,

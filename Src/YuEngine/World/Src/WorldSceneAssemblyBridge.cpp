@@ -92,6 +92,25 @@ WorldSceneAssemblyResult WorldSceneAssemblyBridge::Restore(
         input_attachment_count,
         &attachment_status);
     if (attachment_destination_status != WorldSceneAssemblyStatus::Success) {
+        if (attachment_destination_status == WorldSceneAssemblyStatus::AttachmentCapacityExceeded) {
+            const WorldComponentAttachmentSnapshot attachment_snapshot = attachment_destination->Snapshot();
+            std::uint32_t record_index = 0U;
+            if (attachment_snapshot.attachment_capacity > attachment_snapshot.active_attachment_count) {
+                record_index =
+                    attachment_snapshot.attachment_capacity - attachment_snapshot.active_attachment_count;
+            }
+
+            WorldSceneAssemblyResult result = RecordFailure(attachment_destination_status, attachment_status);
+            StoreAttachmentCapacityEntry(
+                input_attachments,
+                input_attachment_count,
+                record_index,
+                attachment_snapshot.attachment_capacity,
+                attachment_snapshot.active_attachment_count,
+                &result);
+            return result;
+        }
+
         return RecordFailure(attachment_destination_status, attachment_status);
     }
 
@@ -101,15 +120,51 @@ WorldSceneAssemblyResult WorldSceneAssemblyBridge::Restore(
         input_binding_count,
         &binding_status);
     if (binding_destination_status != WorldSceneAssemblyStatus::Success) {
+        if (binding_destination_status == WorldSceneAssemblyStatus::BindingCapacityExceeded) {
+            const WorldComponentResourceBindingSnapshot binding_snapshot = binding_destination->Snapshot();
+            std::uint32_t record_index = 0U;
+            if (binding_snapshot.binding_capacity > binding_snapshot.active_binding_count) {
+                record_index = binding_snapshot.binding_capacity - binding_snapshot.active_binding_count;
+            }
+
+            WorldSceneAssemblyResult result = RecordFailure(binding_destination_status, binding_status);
+            StoreBindingCapacityEntry(
+                input_bindings,
+                input_binding_count,
+                record_index,
+                binding_snapshot.binding_capacity,
+                binding_snapshot.active_binding_count,
+                &result);
+            return result;
+        }
+
         return RecordFailure(binding_destination_status, binding_status);
     }
 
     if (input_attachment_count > attachment_capacity_) {
-        return RecordRejectedFailure(WorldSceneAssemblyStatus::AttachmentCapacityExceeded);
+        WorldSceneAssemblyResult result =
+            RecordRejectedFailure(WorldSceneAssemblyStatus::AttachmentCapacityExceeded);
+        StoreAttachmentCapacityEntry(
+            input_attachments,
+            input_attachment_count,
+            attachment_capacity_,
+            attachment_capacity_,
+            0U,
+            &result);
+        return result;
     }
 
     if (input_binding_count > binding_capacity_) {
-        return RecordRejectedFailure(WorldSceneAssemblyStatus::BindingCapacityExceeded);
+        WorldSceneAssemblyResult result =
+            RecordRejectedFailure(WorldSceneAssemblyStatus::BindingCapacityExceeded);
+        StoreBindingCapacityEntry(
+            input_bindings,
+            input_binding_count,
+            binding_capacity_,
+            binding_capacity_,
+            0U,
+            &result);
+        return result;
     }
 
     const WorldSceneAssemblyStatus attachment_record_status =
@@ -157,6 +212,7 @@ WorldSceneAssemblySnapshot WorldSceneAssemblyBridge::Snapshot() const {
 
 WorldSceneAssemblyResult WorldSceneAssemblyBridge::RecordFailure(WorldSceneAssemblyStatus status) {
     ++snapshot_.failed_operation_count;
+    ClearCapacityEntry();
     snapshot_.last_status = status;
     snapshot_.last_attachment_status = WorldComponentAttachmentStatus::Success;
     snapshot_.last_binding_status = WorldComponentResourceBindingStatus::Success;
@@ -169,6 +225,7 @@ WorldSceneAssemblyResult WorldSceneAssemblyBridge::RecordFailure(
     WorldSceneAssemblyStatus status,
     WorldComponentAttachmentStatus attachment_status) {
     ++snapshot_.failed_operation_count;
+    ClearCapacityEntry();
     snapshot_.last_status = status;
     snapshot_.last_attachment_status = attachment_status;
     snapshot_.last_binding_status = WorldComponentResourceBindingStatus::Success;
@@ -186,6 +243,7 @@ WorldSceneAssemblyResult WorldSceneAssemblyBridge::RecordFailure(
     WorldSceneAssemblyStatus status,
     WorldComponentResourceBindingStatus binding_status) {
     ++snapshot_.failed_operation_count;
+    ClearCapacityEntry();
     snapshot_.last_status = status;
     snapshot_.last_attachment_status = WorldComponentAttachmentStatus::Success;
     snapshot_.last_binding_status = binding_status;
@@ -205,6 +263,7 @@ WorldSceneAssemblyResult WorldSceneAssemblyBridge::RecordFailure(
     WorldComponentResourceBindingStatus binding_status,
     ResourceStatus resource_status) {
     ++snapshot_.failed_operation_count;
+    ClearCapacityEntry();
     snapshot_.last_status = status;
     snapshot_.last_attachment_status = WorldComponentAttachmentStatus::Success;
     snapshot_.last_binding_status = binding_status;
@@ -226,6 +285,7 @@ WorldSceneAssemblyResult WorldSceneAssemblyBridge::RecordFailure(
     WorldSceneAssemblyStatus status,
     ResourceStatus resource_status) {
     ++snapshot_.failed_operation_count;
+    ClearCapacityEntry();
     snapshot_.last_status = status;
     snapshot_.last_attachment_status = WorldComponentAttachmentStatus::Success;
     snapshot_.last_binding_status = WorldComponentResourceBindingStatus::Success;
@@ -254,6 +314,7 @@ WorldSceneAssemblyResult WorldSceneAssemblyBridge::RecordRejectedFailure(
 
 WorldSceneAssemblyResult WorldSceneAssemblyBridge::RecordSuccess(
     const WorldSceneAssemblyState &state) {
+    ClearCapacityEntry();
     snapshot_.restored_attachment_count += state.restored_attachment_count;
     snapshot_.restored_binding_count += state.restored_binding_count;
     snapshot_.last_status = WorldSceneAssemblyStatus::Success;
@@ -262,6 +323,99 @@ WorldSceneAssemblyResult WorldSceneAssemblyBridge::RecordSuccess(
     snapshot_.last_binding_restore_status = WorldComponentResourceBindingRestoreStatus::Success;
     snapshot_.last_resource_status = ResourceStatus::Success;
     return WorldSceneAssemblyResult::Success(state);
+}
+
+void WorldSceneAssemblyBridge::ClearCapacityEntry() {
+    snapshot_.last_failed_capacity_record_index = 0U;
+    snapshot_.last_failed_capacity_world_object_id = 0U;
+    snapshot_.last_failed_capacity_component_type_id = 0U;
+    snapshot_.last_failed_capacity_component_slot_id = 0U;
+    snapshot_.last_failed_capacity_destination_capacity = 0U;
+    snapshot_.last_failed_capacity_destination_count = 0U;
+    snapshot_.last_failed_capacity_required_count = 0U;
+}
+
+void WorldSceneAssemblyBridge::StoreCapacityEntry(
+    std::uint32_t record_index,
+    WorldObjectId world_object_id,
+    WorldComponentTypeId component_type_id,
+    WorldComponentSlotId component_slot_id,
+    std::uint32_t destination_capacity,
+    std::uint32_t destination_count,
+    std::uint32_t required_count,
+    WorldSceneAssemblyResult *result) {
+    snapshot_.last_failed_capacity_record_index = record_index;
+    snapshot_.last_failed_capacity_world_object_id = world_object_id.value;
+    snapshot_.last_failed_capacity_component_type_id = component_type_id.value;
+    snapshot_.last_failed_capacity_component_slot_id = component_slot_id.value;
+    snapshot_.last_failed_capacity_destination_capacity = destination_capacity;
+    snapshot_.last_failed_capacity_destination_count = destination_count;
+    snapshot_.last_failed_capacity_required_count = required_count;
+    if (result == nullptr) {
+        return;
+    }
+
+    result->failed_capacity_record_index = record_index;
+    result->failed_capacity_world_object_id = world_object_id.value;
+    result->failed_capacity_component_type_id = component_type_id.value;
+    result->failed_capacity_component_slot_id = component_slot_id.value;
+    result->failed_capacity_destination_capacity = destination_capacity;
+    result->failed_capacity_destination_count = destination_count;
+    result->failed_capacity_required_count = required_count;
+}
+
+void WorldSceneAssemblyBridge::StoreAttachmentCapacityEntry(
+    const WorldComponentAttachmentSnapshotRecord *input_attachments,
+    std::uint32_t input_attachment_count,
+    std::uint32_t record_index,
+    std::uint32_t destination_capacity,
+    std::uint32_t destination_count,
+    WorldSceneAssemblyResult *result) {
+    if (input_attachments == nullptr) {
+        return;
+    }
+
+    if (record_index >= input_attachment_count) {
+        return;
+    }
+
+    const WorldComponentAttachmentSnapshotRecord &attachment = input_attachments[record_index];
+    StoreCapacityEntry(
+        record_index,
+        attachment.world_object_id,
+        attachment.component_type_id,
+        attachment.component_slot_id,
+        destination_capacity,
+        destination_count,
+        input_attachment_count,
+        result);
+}
+
+void WorldSceneAssemblyBridge::StoreBindingCapacityEntry(
+    const WorldComponentResourceBindingSnapshotRecord *input_bindings,
+    std::uint32_t input_binding_count,
+    std::uint32_t record_index,
+    std::uint32_t destination_capacity,
+    std::uint32_t destination_count,
+    WorldSceneAssemblyResult *result) {
+    if (input_bindings == nullptr) {
+        return;
+    }
+
+    if (record_index >= input_binding_count) {
+        return;
+    }
+
+    const WorldComponentResourceBindingSnapshotRecord &binding = input_bindings[record_index];
+    StoreCapacityEntry(
+        record_index,
+        binding.world_object_id,
+        binding.component_type_id,
+        binding.component_slot_id,
+        destination_capacity,
+        destination_count,
+        input_binding_count,
+        result);
 }
 
 WorldSceneAssemblyStatus WorldSceneAssemblyBridge::ValidateBridgeCapacity() const {
