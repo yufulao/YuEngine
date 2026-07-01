@@ -10,6 +10,7 @@
 #include "YuEngine/Streaming/PackageResourceStagingCompletion.h"
 #include "YuEngine/Streaming/PackageResourceStagingConstants.h"
 #include "YuEngine/Streaming/PackageResourceStagingQueueDesc.h"
+#include "YuEngine/Streaming/PackageResourceStagingPendingRequestSnapshot.h"
 #include "YuEngine/Streaming/PackageResourceStagingRequest.h"
 #include "YuEngine/Streaming/PackageResourceStagingSnapshot.h"
 #include "YuEngine/Streaming/PackageResourceStagingStatus.h"
@@ -70,6 +71,17 @@ public:
      * @return 显式操作状态。
      */
     PackageResourceStagingStatus GetPendingCountSnapshot(std::uint32_t *pending_count) const;
+    /**
+     * @comment 枚举当前 pending staging 请求快照。
+     * @param output_requests 输出 pending 请求快照存储。
+     * @param output_capacity 输出存储容量。
+     * @param written_count 输出写入数量。
+     * @return pending 请求枚举结果。
+     */
+    PackageResourceStagingPendingRequestEnumerationResult EnumeratePendingRequests(
+        PackageResourceStagingPendingRequestSnapshot *output_requests,
+        std::uint32_t output_capacity,
+        std::uint32_t *written_count) const;
     /**
      * @comment 返回队列快照值。
      * @return 快照值。

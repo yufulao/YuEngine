@@ -426,6 +426,56 @@ PackageResourceStagingStatus PackageResourceStagingQueue::GetPendingCountSnapsho
     return PackageResourceStagingStatus::Success;
 }
 
+PackageResourceStagingPendingRequestEnumerationResult PackageResourceStagingQueue::EnumeratePendingRequests(
+    PackageResourceStagingPendingRequestSnapshot *output_requests,
+    std::uint32_t output_capacity,
+    std::uint32_t *written_count) const {
+    PackageResourceStagingPendingRequestEnumerationResult result;
+    std::uint32_t pending_count = 0U;
+    for (const PendingRecord &pending_record : pending_records_) {
+        if (!pending_record.is_active) {
+            continue;
+        }
+
+        ++pending_count;
+    }
+
+    result.required_request_count = pending_count;
+
+    if (written_count == nullptr) {
+        result.status = PackageResourceStagingStatus::InvalidArgument;
+        return result;
+    }
+
+    if (output_requests == nullptr) {
+        result.status = PackageResourceStagingStatus::InvalidArgument;
+        return result;
+    }
+
+    if (output_capacity < pending_count) {
+        result.status = PackageResourceStagingStatus::OutputTooSmall;
+        return result;
+    }
+
+    std::uint32_t pending_index = 0U;
+    for (const PendingRecord &pending_record : pending_records_) {
+        if (!pending_record.is_active) {
+            continue;
+        }
+
+        output_requests[pending_index].package_record = pending_record.package_record;
+        output_requests[pending_index].resource = pending_record.resource;
+        output_requests[pending_index].expected_type = pending_record.expected_type;
+        output_requests[pending_index].request_id = pending_record.request_id;
+        ++pending_index;
+    }
+
+    *written_count = pending_index;
+    result.written_count = pending_index;
+    result.required_request_count = pending_index;
+    return result;
+}
+
 PackageResourceStagingSnapshot PackageResourceStagingQueue::Snapshot() const {
     return snapshot_;
 }

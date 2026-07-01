@@ -99,6 +99,8 @@ using yuengine::rhi::RhiStatus;
 using yuengine::rhi::RhiTextureDesc;
 using yuengine::rhi::RhiTextureHandle;
 using yuengine::streaming::PackageResourceStagingCompletion;
+using yuengine::streaming::PackageResourceStagingPendingRequestEnumerationResult;
+using yuengine::streaming::PackageResourceStagingPendingRequestSnapshot;
 using yuengine::streaming::PackageResourceStagingQueue;
 using yuengine::streaming::PackageResourceStagingQueueDesc;
 using yuengine::streaming::PackageResourceStagingRequest;
@@ -154,6 +156,8 @@ constexpr const char *TEST_STAGING_BATCH_SUBMIT_OUTPUT_ATOMIC =
     "Streaming_PackageResourceStaging_BatchSubmitOutputFailureIsAtomic";
 constexpr const char *TEST_STAGING_PENDING_COUNT_SNAPSHOT =
     "Streaming_PackageResourceStaging_PendingCountSnapshotIsReadOnly";
+constexpr const char *TEST_STAGING_PENDING_REQUEST_ENUMERATION =
+    "Streaming_PackageResourceStaging_PendingRequestEnumerationIsAtomic";
 constexpr const char *TEST_MISSING_COMPLETION =
     "Streaming_PackageResourceStaging_ReportsMissingFileCompletion";
 constexpr const char *TEST_QUEUE_OVERFLOW =
@@ -487,6 +491,94 @@ PackageResourceStagingRequest BuildStagingRequest(
     request.file_request = BuildFileRequest(table, output_bytes, output_capacity);
     request.request_id = request_id;
     return request;
+}
+
+bool PackageLoadPlanRecordsEqual(const PackageLoadPlanRecord &left, const PackageLoadPlanRecord &right) {
+    if (left.package.value != right.package.value) {
+        return false;
+    }
+
+    if (left.entry.value != right.entry.value) {
+        return false;
+    }
+
+    if (left.type.value != right.type.value) {
+        return false;
+    }
+
+    if (!left.logical_key.Equals(right.logical_key)) {
+        return false;
+    }
+
+    if (!left.source_key.Equals(right.source_key)) {
+        return false;
+    }
+
+    if (left.byte_offset != right.byte_offset) {
+        return false;
+    }
+
+    if (left.byte_size != right.byte_size) {
+        return false;
+    }
+
+    if (left.archive_byte_offset != right.archive_byte_offset) {
+        return false;
+    }
+
+    if (left.archive_byte_size != right.archive_byte_size) {
+        return false;
+    }
+
+    if (left.payload_hash != right.payload_hash) {
+        return false;
+    }
+
+    if (left.payload_logical_byte_count != right.payload_logical_byte_count) {
+        return false;
+    }
+
+    if (left.payload_window_byte_offset != right.payload_window_byte_offset) {
+        return false;
+    }
+
+    return left.payload_window_byte_size == right.payload_window_byte_size;
+}
+
+bool PendingRequestSnapshotsEqual(
+    const PackageResourceStagingPendingRequestSnapshot &left,
+    const PackageResourceStagingPendingRequestSnapshot &right) {
+    if (!PackageLoadPlanRecordsEqual(left.package_record, right.package_record)) {
+        return false;
+    }
+
+    if (left.resource.slot != right.resource.slot) {
+        return false;
+    }
+
+    if (left.resource.generation != right.resource.generation) {
+        return false;
+    }
+
+    if (left.expected_type.value != right.expected_type.value) {
+        return false;
+    }
+
+    return left.request_id == right.request_id;
+}
+
+bool PendingRequestSnapshotMatches(
+    const PackageResourceStagingPendingRequestSnapshot &snapshot,
+    const PackageLoadPlanRecord &record,
+    ResourceHandle resource,
+    ResourceTypeId expected_type,
+    std::uint64_t request_id) {
+    PackageResourceStagingPendingRequestSnapshot expected_snapshot;
+    expected_snapshot.package_record = record;
+    expected_snapshot.resource = resource;
+    expected_snapshot.expected_type = expected_type;
+    expected_snapshot.request_id = request_id;
+    return PendingRequestSnapshotsEqual(snapshot, expected_snapshot);
 }
 
 PackageResourceStagingRequest BuildValidRequest(
@@ -2332,6 +2424,282 @@ int StreamingPackageResourceStagingPendingCountSnapshotIsReadOnly() {
 
     if (file_queue.Shutdown(true) != AsyncFileReadStatus::ShutdownComplete) {
         return Fail("staging pending count shutdown failed");
+    }
+
+    return 0;
+}
+
+int StreamingPackageResourceStagingPendingRequestEnumerationIsAtomic() {
+    MountTable table = CreateMountedTable();
+    ResourceRegistry resource_registry;
+    PackageLoadPlanRecord record;
+    if (!BuildPackageRecord(&record, 0U, FixtureByteCount())) {
+        return Fail("staging pending enumeration record setup failed");
+    }
+
+    const ResourceRegistrationResult first_resource =
+        RegisterResourceWithKey(resource_registry, TYPE_TEXTURE, RESOURCE_KEY);
+    if (!first_resource.Succeeded()) {
+        return Fail("staging pending enumeration first resource setup failed");
+    }
+
+    const ResourceRegistrationResult second_resource =
+        RegisterResourceWithKey(resource_registry, TYPE_TEXTURE, RESOURCE_KEY_ALT);
+    if (!second_resource.Succeeded()) {
+        return Fail("staging pending enumeration second resource setup failed");
+    }
+
+    const ResourceRegistrationResult third_resource =
+        RegisterResourceWithKey(resource_registry, TYPE_TEXTURE, RESOURCE_KEY_THIRD);
+    if (!third_resource.Succeeded()) {
+        return Fail("staging pending enumeration third resource setup failed");
+    }
+
+    AsyncFileReadQueue file_queue;
+    if (file_queue.Initialize(4U, 4U) != AsyncFileReadStatus::Success) {
+        return Fail("staging pending enumeration file queue init failed");
+    }
+
+    if (file_queue.Start() != AsyncFileReadStatus::Success) {
+        return Fail("staging pending enumeration file queue start failed");
+    }
+
+    std::array<std::uint8_t, OUTPUT_CAPACITY> first_output_bytes{};
+    std::array<std::uint8_t, OUTPUT_CAPACITY> second_output_bytes{};
+    std::array<std::uint8_t, OUTPUT_CAPACITY> third_output_bytes{};
+    PackageResourceStagingRequest first_request = BuildStagingRequest(
+        resource_registry,
+        file_queue,
+        table,
+        record,
+        first_resource.handle,
+        REQUEST_ONE,
+        first_output_bytes.data(),
+        first_output_bytes.size());
+    std::array<PackageResourceStagingRequest, 2U> batch_requests{
+        BuildStagingRequest(
+            resource_registry,
+            file_queue,
+            table,
+            record,
+            second_resource.handle,
+            REQUEST_TWO,
+            second_output_bytes.data(),
+            second_output_bytes.size()),
+        BuildStagingRequest(
+            resource_registry,
+            file_queue,
+            table,
+            record,
+            third_resource.handle,
+            REQUEST_THREE,
+            third_output_bytes.data(),
+            third_output_bytes.size())};
+    PackageResourceStagingQueue queue(PackageResourceStagingQueueDesc{4U, 4U});
+
+    std::array<PackageResourceStagingPendingRequestSnapshot, 3U> caller_requests{};
+    const std::uint32_t caller_request_capacity = static_cast<std::uint32_t>(caller_requests.size());
+    std::uint32_t written_count = 777U;
+    const PackageResourceStagingPendingRequestEnumerationResult empty_result =
+        queue.EnumeratePendingRequests(caller_requests.data(), 0U, &written_count);
+    if (empty_result.status != PackageResourceStagingStatus::Success) {
+        return Fail("staging pending enumeration empty status changed");
+    }
+
+    if (empty_result.required_request_count != 0U || empty_result.written_count != 0U) {
+        return Fail("staging pending enumeration empty result counts changed");
+    }
+
+    if (written_count != 0U) {
+        return Fail("staging pending enumeration empty caller count changed");
+    }
+
+    if (queue.Submit(first_request) != PackageResourceStagingStatus::Queued) {
+        return Fail("staging pending enumeration single submit failed");
+    }
+
+    std::array<PackageResourceStagingSubmitResult, 2U> submit_results{};
+    const std::uint32_t submit_result_capacity = static_cast<std::uint32_t>(submit_results.size());
+    const PackageResourceStagingBatchSubmitResult batch_result = queue.SubmitBatch(
+        batch_requests.data(),
+        submit_result_capacity,
+        submit_results.data(),
+        submit_result_capacity);
+    if (batch_result.status != PackageResourceStagingStatus::Queued) {
+        return Fail("staging pending enumeration batch submit failed");
+    }
+
+    written_count = 999U;
+    const PackageResourceStagingPendingRequestEnumerationResult success_result =
+        queue.EnumeratePendingRequests(caller_requests.data(), caller_request_capacity, &written_count);
+    if (success_result.status != PackageResourceStagingStatus::Success) {
+        return Fail("staging pending enumeration success status changed");
+    }
+
+    if (success_result.required_request_count != 3U || success_result.written_count != 3U) {
+        return Fail("staging pending enumeration success result counts changed");
+    }
+
+    if (written_count != 3U) {
+        return Fail("staging pending enumeration success caller count changed");
+    }
+
+    if (!PendingRequestSnapshotMatches(caller_requests[0U], record, first_resource.handle, TYPE_TEXTURE, REQUEST_ONE)) {
+        return Fail("staging pending enumeration first row changed");
+    }
+
+    if (!PendingRequestSnapshotMatches(caller_requests[1U], record, second_resource.handle, TYPE_TEXTURE, REQUEST_TWO)) {
+        return Fail("staging pending enumeration second row changed");
+    }
+
+    if (!PendingRequestSnapshotMatches(caller_requests[2U], record, third_resource.handle, TYPE_TEXTURE, REQUEST_THREE)) {
+        return Fail("staging pending enumeration third row changed");
+    }
+
+    const std::array<PackageResourceStagingPendingRequestSnapshot, 3U> successful_requests = caller_requests;
+    written_count = 3U;
+    const PackageResourceStagingPendingRequestEnumerationResult capacity_result =
+        queue.EnumeratePendingRequests(caller_requests.data(), 2U, &written_count);
+    if (capacity_result.status != PackageResourceStagingStatus::OutputTooSmall) {
+        return Fail("staging pending enumeration capacity status changed");
+    }
+
+    if (capacity_result.required_request_count != 3U || capacity_result.written_count != 0U) {
+        return Fail("staging pending enumeration capacity result counts changed");
+    }
+
+    if (written_count != 3U) {
+        return Fail("staging pending enumeration capacity mutated caller count");
+    }
+
+    for (std::uint32_t index = 0U; index < caller_request_capacity; ++index) {
+        if (!PendingRequestSnapshotsEqual(caller_requests[index], successful_requests[index])) {
+            return Fail("staging pending enumeration capacity mutated caller rows");
+        }
+    }
+
+    const PackageResourceStagingPendingRequestEnumerationResult null_output_result =
+        queue.EnumeratePendingRequests(nullptr, caller_request_capacity, &written_count);
+    if (null_output_result.status != PackageResourceStagingStatus::InvalidArgument) {
+        return Fail("staging pending enumeration null output status changed");
+    }
+
+    if (null_output_result.required_request_count != 3U || null_output_result.written_count != 0U) {
+        return Fail("staging pending enumeration null output counts changed");
+    }
+
+    if (written_count != 3U) {
+        return Fail("staging pending enumeration null output mutated caller count");
+    }
+
+    for (std::uint32_t index = 0U; index < caller_request_capacity; ++index) {
+        if (!PendingRequestSnapshotsEqual(caller_requests[index], successful_requests[index])) {
+            return Fail("staging pending enumeration null output mutated caller rows");
+        }
+    }
+
+    const PackageResourceStagingPendingRequestEnumerationResult null_count_result =
+        queue.EnumeratePendingRequests(caller_requests.data(), caller_request_capacity, nullptr);
+    if (null_count_result.status != PackageResourceStagingStatus::InvalidArgument) {
+        return Fail("staging pending enumeration null count status changed");
+    }
+
+    if (null_count_result.required_request_count != 3U || null_count_result.written_count != 0U) {
+        return Fail("staging pending enumeration null count result changed");
+    }
+
+    for (std::uint32_t index = 0U; index < caller_request_capacity; ++index) {
+        if (!PendingRequestSnapshotsEqual(caller_requests[index], successful_requests[index])) {
+            return Fail("staging pending enumeration null count mutated caller rows");
+        }
+    }
+
+    if (queue.CompleteFileRead(SuccessFileResult(REQUEST_ONE)) != PackageResourceStagingStatus::Success) {
+        return Fail("staging pending enumeration completion failed");
+    }
+
+    written_count = 999U;
+    const PackageResourceStagingPendingRequestEnumerationResult after_completion_result =
+        queue.EnumeratePendingRequests(caller_requests.data(), caller_request_capacity, &written_count);
+    if (after_completion_result.status != PackageResourceStagingStatus::Success) {
+        return Fail("staging pending enumeration after completion status changed");
+    }
+
+    if (after_completion_result.required_request_count != 2U || after_completion_result.written_count != 2U) {
+        return Fail("staging pending enumeration after completion result counts changed");
+    }
+
+    if (written_count != 2U) {
+        return Fail("staging pending enumeration after completion caller count changed");
+    }
+
+    if (!PendingRequestSnapshotMatches(caller_requests[0U], record, second_resource.handle, TYPE_TEXTURE, REQUEST_TWO)) {
+        return Fail("staging pending enumeration after completion first row changed");
+    }
+
+    if (!PendingRequestSnapshotMatches(caller_requests[1U], record, third_resource.handle, TYPE_TEXTURE, REQUEST_THREE)) {
+        return Fail("staging pending enumeration after completion second row changed");
+    }
+
+    const std::array<PackageResourceStagingPendingRequestSnapshot, 3U> after_completion_requests = caller_requests;
+    std::array<PackageResourceStagingCompletion, 1U> drained_completions{};
+    written_count = 0U;
+    const PackageResourceStagingStatus drain_status = queue.DrainCompletions(
+        drained_completions.data(),
+        static_cast<std::uint32_t>(drained_completions.size()),
+        &written_count);
+    if (drain_status != PackageResourceStagingStatus::Success) {
+        return Fail("staging pending enumeration drain failed");
+    }
+
+    if (written_count != 1U) {
+        return Fail("staging pending enumeration drain count changed");
+    }
+
+    written_count = 999U;
+    const PackageResourceStagingPendingRequestEnumerationResult after_drain_result =
+        queue.EnumeratePendingRequests(caller_requests.data(), caller_request_capacity, &written_count);
+    if (after_drain_result.status != PackageResourceStagingStatus::Success) {
+        return Fail("staging pending enumeration after drain status changed");
+    }
+
+    if (after_drain_result.required_request_count != 2U || after_drain_result.written_count != 2U) {
+        return Fail("staging pending enumeration after drain result counts changed");
+    }
+
+    if (written_count != 2U) {
+        return Fail("staging pending enumeration after drain caller count changed");
+    }
+
+    for (std::uint32_t index = 0U; index < 2U; ++index) {
+        if (!PendingRequestSnapshotsEqual(caller_requests[index], after_completion_requests[index])) {
+            return Fail("staging pending enumeration drain mutated pending rows");
+        }
+    }
+
+    written_count = 2U;
+    const PackageResourceStagingPendingRequestEnumerationResult repeated_capacity_result =
+        queue.EnumeratePendingRequests(caller_requests.data(), 1U, &written_count);
+    if (repeated_capacity_result.status != PackageResourceStagingStatus::OutputTooSmall) {
+        return Fail("staging pending enumeration repeated capacity status changed");
+    }
+
+    if (repeated_capacity_result.required_request_count != 2U || repeated_capacity_result.written_count != 0U) {
+        return Fail("staging pending enumeration repeated capacity result counts changed");
+    }
+
+    if (written_count != 2U) {
+        return Fail("staging pending enumeration repeated capacity mutated caller count");
+    }
+
+    for (std::uint32_t index = 0U; index < 2U; ++index) {
+        if (!PendingRequestSnapshotsEqual(caller_requests[index], after_completion_requests[index])) {
+            return Fail("staging pending enumeration repeated capacity mutated caller rows");
+        }
+    }
+
+    if (file_queue.Shutdown(true) != AsyncFileReadStatus::ShutdownComplete) {
+        return Fail("staging pending enumeration shutdown failed");
     }
 
     return 0;
@@ -5444,6 +5812,8 @@ int main(int argc, char **argv) {
         {TEST_STAGING_BATCH_SUBMIT_OUTPUT_ATOMIC,
          StreamingPackageResourceStagingBatchSubmitOutputFailureIsAtomic},
         {TEST_STAGING_PENDING_COUNT_SNAPSHOT, StreamingPackageResourceStagingPendingCountSnapshotIsReadOnly},
+        {TEST_STAGING_PENDING_REQUEST_ENUMERATION,
+         StreamingPackageResourceStagingPendingRequestEnumerationIsAtomic},
         {TEST_MISSING_COMPLETION, StreamingPackageResourceStagingReportsMissingFileCompletion},
         {TEST_QUEUE_OVERFLOW, StreamingPackageResourceStagingRejectsQueueOverflowWithoutMutation},
         {TEST_COMPLETION_OVERFLOW, StreamingPackageResourceStagingReportsCompletionOverflowWithoutDroppingPending},
