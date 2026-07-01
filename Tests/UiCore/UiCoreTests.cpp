@@ -4,6 +4,7 @@
 #include <array>
 #include <cstdint>
 #include <cstdio>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -114,6 +115,8 @@ constexpr std::string_view TEST_INVALIDATION_MODEL =
     "UiCore_InvalidationModel_SubtreeRulesExposeCacheCounters";
 constexpr std::string_view TEST_INVALIDATION_SMALL_OUTPUT =
     "UiCore_InvalidationModel_RejectsSmallOutputWithoutMutation";
+constexpr std::string_view TEST_INVALIDATION_CAPACITY_ENTRY =
+    "UiCore_InvalidationModel_OutputCapacityReportsRejectedRequest";
 constexpr std::string_view TEST_HIT_TEST =
     "UiCore_HitTest_LayerClipDisabled";
 constexpr std::string_view TEST_DRAW_LIST =
@@ -138,6 +141,69 @@ int Fail(const std::string &message) {
 
 UiNodeId NodeId(std::uint32_t value) {
     return UiNodeId{value};
+}
+
+int RequireInvalidationCapacityEntry(const UiInvalidationResult &result,
+    UiNodeId node_id,
+    UiInvalidationScope scope,
+    UiDirtyChangeType change_type,
+    std::uint32_t output_node_capacity,
+    std::uint32_t current_affected_node_count,
+    std::uint32_t required_affected_node_count,
+    const char *message) {
+    if (result.failed_request_node_id.value != node_id.value) {
+        return Fail(message);
+    }
+
+    if (result.failed_scope != scope) {
+        return Fail(message);
+    }
+
+    if (result.failed_change_type != change_type) {
+        return Fail(message);
+    }
+
+    if (result.failed_output_node_capacity != output_node_capacity) {
+        return Fail(message);
+    }
+
+    if (result.current_affected_node_count != current_affected_node_count) {
+        return Fail(message);
+    }
+
+    if (result.required_affected_node_count != required_affected_node_count) {
+        return Fail(message);
+    }
+
+    return 0;
+}
+
+int RequireInvalidationCapacityEntryCleared(const UiInvalidationResult &result, const char *message) {
+    if (result.failed_request_node_id.IsValid()) {
+        return Fail(message);
+    }
+
+    if (result.failed_scope != UiInvalidationScope::Self) {
+        return Fail(message);
+    }
+
+    if (result.failed_change_type != UiDirtyChangeType::PaintOnly) {
+        return Fail(message);
+    }
+
+    if (result.failed_output_node_capacity != 0U) {
+        return Fail(message);
+    }
+
+    if (result.current_affected_node_count != 0U) {
+        return Fail(message);
+    }
+
+    if (result.required_affected_node_count != 0U) {
+        return Fail(message);
+    }
+
+    return 0;
 }
 
 UiNodeTreeDesc MakeTreeDesc() {
@@ -787,11 +853,110 @@ int UiCoreInvalidationModelRejectsSmallOutputWithoutMutation() {
         return Fail("small invalidation output did not expose cache counters");
     }
 
+    ret_code = RequireInvalidationCapacityEntry(
+        result,
+        NodeId(1U),
+        UiInvalidationScope::Subtree,
+        UiDirtyChangeType::Layout,
+        1U,
+        1U,
+        3U,
+        "small invalidation output capacity entry wrong");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
     if (affected_nodes[0U].node_id.value != 99U || affected_nodes[0U].domains != 777U) {
         return Fail("small invalidation output mutated caller storage");
     }
 
     return 0;
+}
+
+int UiCoreInvalidationModelOutputCapacityReportsRejectedRequest() {
+    UiNodeTree tree(MakeTreeDesc());
+    int ret_code = CreateRootAndChildren(tree, 2U);
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    UiInvalidationModel model;
+    UiInvalidationRequest request;
+    request.node_id = NodeId(1U);
+    request.change_type = UiDirtyChangeType::Transform;
+    request.scope = UiInvalidationScope::Subtree;
+
+    std::array<UiInvalidatedNode, 1U> affected_nodes{};
+    affected_nodes[0U].node_id = NodeId(77U);
+    affected_nodes[0U].domains = 88U;
+    UiInvalidationResult result{};
+    UiInvalidationStatus status = model.Invalidate(tree, request, affected_nodes, &result);
+    if (status != UiInvalidationStatus::OutputCapacityExceeded) {
+        return Fail("invalidation capacity entry status wrong");
+    }
+
+    ret_code = RequireInvalidationCapacityEntry(
+        result,
+        NodeId(1U),
+        UiInvalidationScope::Subtree,
+        UiDirtyChangeType::Transform,
+        1U,
+        1U,
+        3U,
+        "invalidation capacity entry wrong");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    if (affected_nodes[0U].node_id.value != 77U || affected_nodes[0U].domains != 88U) {
+        return Fail("invalidation capacity entry mutated output");
+    }
+
+    request.node_id = NodeId(99U);
+    status = model.Invalidate(tree, request, affected_nodes, &result);
+    if (status != UiInvalidationStatus::NodeNotFound) {
+        return Fail("invalidation capacity entry missing-node status wrong");
+    }
+
+    ret_code = RequireInvalidationCapacityEntryCleared(
+        result,
+        "invalidation capacity entry missing-node did not clear");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    request.node_id = NodeId(1U);
+    request.scope = UiInvalidationScope::Self;
+    UiInvalidatedNode *null_nodes = nullptr;
+    std::span<UiInvalidatedNode> invalid_output(null_nodes, 1U);
+    status = model.Invalidate(tree, request, invalid_output, &result);
+    if (status != UiInvalidationStatus::InvalidOutput) {
+        return Fail("invalidation capacity entry invalid-output status wrong");
+    }
+
+    ret_code = RequireInvalidationCapacityEntryCleared(
+        result,
+        "invalidation capacity entry invalid-output did not clear");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    request.scope = UiInvalidationScope::Subtree;
+    status = model.Invalidate(tree, request, affected_nodes, &result);
+    if (status != UiInvalidationStatus::OutputCapacityExceeded) {
+        return Fail("invalidation capacity entry restale status wrong");
+    }
+
+    std::array<UiInvalidatedNode, 3U> full_output{};
+    request.scope = UiInvalidationScope::Subtree;
+    status = model.Invalidate(tree, request, full_output, &result);
+    if (status != UiInvalidationStatus::Success) {
+        return Fail("invalidation capacity entry success status wrong");
+    }
+
+    return RequireInvalidationCapacityEntryCleared(
+        result,
+        "invalidation capacity entry success did not clear");
 }
 
 int UiCoreHitTestLayerClipDisabled() {
@@ -1113,6 +1278,7 @@ int main(int argc, char **argv) {
         {TEST_DIRTY_TRACKER, UiCoreDirtyTrackerPaintOnlyDoesNotTriggerLayoutRebuild},
         {TEST_INVALIDATION_MODEL, UiCoreInvalidationModelSubtreeRulesExposeCacheCounters},
         {TEST_INVALIDATION_SMALL_OUTPUT, UiCoreInvalidationModelRejectsSmallOutputWithoutMutation},
+        {TEST_INVALIDATION_CAPACITY_ENTRY, UiCoreInvalidationModelOutputCapacityReportsRejectedRequest},
         {TEST_HIT_TEST, UiCoreHitTestLayerClipDisabled},
         {TEST_DRAW_LIST, UiCoreDrawListDeterministicElements},
         {TEST_DRAW_LIST_SMALL_OUTPUT, UiCoreDrawListOutputCapacityReportsVisibleCount},

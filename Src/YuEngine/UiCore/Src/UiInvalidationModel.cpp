@@ -32,7 +32,14 @@ UiInvalidationStatus UiInvalidationModel::Invalidate(
     const std::uint32_t affected_node_count =
         CollectAffectedNodes(tree, request.node_id, request.scope, affected_node_ids);
     if (out_nodes.size() < static_cast<std::size_t>(affected_node_count)) {
+        const std::uint32_t output_node_capacity = static_cast<std::uint32_t>(out_nodes.size());
         WriteResult(dirty_state, UiInvalidationStatus::OutputCapacityExceeded, affected_node_count, out_result);
+        out_result->failed_request_node_id = request.node_id;
+        out_result->failed_scope = request.scope;
+        out_result->failed_change_type = request.change_type;
+        out_result->failed_output_node_capacity = output_node_capacity;
+        out_result->current_affected_node_count = output_node_capacity;
+        out_result->required_affected_node_count = affected_node_count;
         return UiInvalidationStatus::OutputCapacityExceeded;
     }
 
