@@ -11,6 +11,11 @@ namespace yuengine::audio {
 namespace {
 constexpr std::uint32_t INVALID_GENERATION = 0U;
 
+void ClearDeviceRequiredCounts(AudioDeviceSnapshot &snapshot) {
+    snapshot.last_required_source_count = 0U;
+    snapshot.last_required_voice_count = 0U;
+}
+
 void ClearPcmSamplePacketRequiredCounts(AudioPcmSamplePacketSnapshot &snapshot) {
     snapshot.last_required_packet_count = 0U;
 }
@@ -144,7 +149,10 @@ AudioStatus TestAudioDevice::RegisterSyntheticSource(std::span<const std::int16_
         return AudioStatus::Success;
     }
 
-    return RecordFailure(AudioStatus::CapacityExceeded);
+    const std::size_t required_source_count = snapshot_.source_count + 1U;
+    const AudioStatus status = RecordFailure(AudioStatus::CapacityExceeded);
+    snapshot_.last_required_source_count = required_source_count;
+    return status;
 }
 
 AudioStatus TestAudioDevice::CreatePcmSamplePacket(const AudioPcmSamplePacketRequest& request, AudioPcmSamplePacketHandle& out_packet) {
@@ -508,7 +516,10 @@ AudioStatus TestAudioDevice::StartVoice(AudioSourceId source, std::uint32_t gain
         return AudioStatus::Success;
     }
 
-    return RecordFailure(AudioStatus::CapacityExceeded);
+    const std::size_t required_voice_count = snapshot_.active_voice_count + 1U;
+    const AudioStatus status = RecordFailure(AudioStatus::CapacityExceeded);
+    snapshot_.last_required_voice_count = required_voice_count;
+    return status;
 }
 
 AudioStatus TestAudioDevice::StopVoice(AudioVoiceHandle handle) {
@@ -603,12 +614,14 @@ AudioPcmStreamQueueSnapshot TestAudioDevice::PcmStreamQueueSnapshot() const {
 }
 
 AudioStatus TestAudioDevice::RecordFailure(AudioStatus status) {
+    ClearDeviceRequiredCounts(snapshot_);
     ++snapshot_.failed_operation_count;
     snapshot_.last_status = status;
     return status;
 }
 
 void TestAudioDevice::RecordSuccess() {
+    ClearDeviceRequiredCounts(snapshot_);
     snapshot_.last_status = AudioStatus::Success;
 }
 

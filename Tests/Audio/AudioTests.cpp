@@ -239,6 +239,8 @@ bool SnapshotsEqual(const AudioDeviceSnapshot& left, const AudioDeviceSnapshot& 
            left.voice_capacity == right.voice_capacity &&
            left.source_count == right.source_count &&
            left.active_voice_count == right.active_voice_count &&
+           left.last_required_source_count == right.last_required_source_count &&
+           left.last_required_voice_count == right.last_required_voice_count &&
            left.voice_storage_capacity_before_mix == right.voice_storage_capacity_before_mix &&
            left.voice_storage_capacity_after_last_mix == right.voice_storage_capacity_after_last_mix &&
            left.registered_source_count == right.registered_source_count &&
@@ -651,6 +653,15 @@ int AudioSourceCapacityOverflowDoesNotMutate() {
         return Fail("source overflow status was not recorded");
     }
 
+    const std::size_t required_source_count = before_snapshot.source_count + 1U;
+    if (device.Snapshot().last_required_source_count != required_source_count) {
+        return Fail("source overflow missed required source count");
+    }
+
+    if (device.Snapshot().last_required_voice_count != 0U) {
+        return Fail("source overflow reported required voice count");
+    }
+
     return 0;
 }
 
@@ -756,6 +767,15 @@ int AudioVoiceCapacityOverflowDoesNotMutate() {
 
     if (device.Snapshot().last_status != AudioStatus::CapacityExceeded) {
         return Fail("voice overflow status was not recorded");
+    }
+
+    const std::size_t required_voice_count = before_snapshot.active_voice_count + 1U;
+    if (device.Snapshot().last_required_voice_count != required_voice_count) {
+        return Fail("voice overflow missed required voice count");
+    }
+
+    if (device.Snapshot().last_required_source_count != 0U) {
+        return Fail("voice overflow reported required source count");
     }
 
     return 0;
