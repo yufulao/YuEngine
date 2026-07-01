@@ -4,6 +4,18 @@
 #include "YuEngine/Input/InputCommandMapper.h"
 
 namespace yuengine::input {
+namespace {
+void ClearCommandMapperCapacityEntry(InputCommandMapperSnapshot &snapshot) {
+    snapshot.last_failed_capacity_context_id = InputContextId{};
+    snapshot.last_failed_capacity_action_id = InputActionId{};
+    snapshot.last_failed_capacity_device_id = InputDeviceId{};
+    snapshot.last_failed_capacity_control_id = InputControlId{};
+    snapshot.last_failed_binding_capacity = 0U;
+    snapshot.last_failed_binding_count = 0U;
+    snapshot.last_required_binding_count = 0U;
+}
+}
+
 InputCommandMapper::InputCommandMapper()
     : contexts_(),
       bindings_(),
@@ -55,7 +67,7 @@ InputStatus InputCommandMapper::RegisterBinding(InputCommandBinding binding) {
     }
 
     if (binding_count_ >= bindings_.size()) {
-        return RecordFailure(InputStatus::CapacityExceeded);
+        return RecordBindingCapacityFailure(binding);
     }
 
     bindings_[binding_count_] = binding;
@@ -117,6 +129,7 @@ InputCommandMapperSnapshot InputCommandMapper::Snapshot() const {
 }
 
 InputStatus InputCommandMapper::RecordStatus(InputStatus status) {
+    ClearCommandMapperCapacityEntry(snapshot_);
     snapshot_.last_status = status;
     return status;
 }
@@ -124,6 +137,19 @@ InputStatus InputCommandMapper::RecordStatus(InputStatus status) {
 InputStatus InputCommandMapper::RecordFailure(InputStatus status) {
     ++snapshot_.failed_operation_count;
     return RecordStatus(status);
+}
+
+InputStatus InputCommandMapper::RecordBindingCapacityFailure(InputCommandBinding binding) {
+    const std::size_t required_binding_count = binding_count_ + 1U;
+    const InputStatus status = RecordFailure(InputStatus::CapacityExceeded);
+    snapshot_.last_failed_capacity_context_id = binding.context;
+    snapshot_.last_failed_capacity_action_id = binding.action;
+    snapshot_.last_failed_capacity_device_id = binding.device;
+    snapshot_.last_failed_capacity_control_id = binding.control;
+    snapshot_.last_failed_binding_capacity = bindings_.size();
+    snapshot_.last_failed_binding_count = binding_count_;
+    snapshot_.last_required_binding_count = required_binding_count;
+    return status;
 }
 
 InputStatus InputCommandMapper::RejectOperation(InputStatus status) {

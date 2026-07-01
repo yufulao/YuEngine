@@ -6,8 +6,11 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "YuEngine/Input/InputActionId.h"
+#include "YuEngine/Input/InputControlId.h"
 #include "YuEngine/Input/InputContextFocusMode.h"
 #include "YuEngine/Input/InputContextId.h"
+#include "YuEngine/Input/InputDeviceId.h"
 #include "YuEngine/Input/InputStatus.h"
 
 namespace yuengine::input {
@@ -17,6 +20,13 @@ struct InputCommandMapperSnapshot final {
     std::size_t command_capacity = 0U;
     std::size_t context_count = 0U;
     std::size_t binding_count = 0U;
+    InputContextId last_failed_capacity_context_id;
+    InputActionId last_failed_capacity_action_id;
+    InputDeviceId last_failed_capacity_device_id;
+    InputControlId last_failed_capacity_control_id;
+    std::size_t last_failed_binding_capacity = 0U;
+    std::size_t last_failed_binding_count = 0U;
+    std::size_t last_required_binding_count = 0U;
     std::uint64_t build_count = 0U;
     std::uint64_t accepted_event_count = 0U;
     std::uint64_t rejected_event_count = 0U;

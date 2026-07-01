@@ -37,6 +37,7 @@ using yuengine::input::InputBridgeEventType;
 using yuengine::input::InputBridgeSnapshot;
 using yuengine::input::InputCommandBinding;
 using yuengine::input::InputCommandMapper;
+using yuengine::input::InputCommandMapperSnapshot;
 using yuengine::input::InputCommandSnapshot;
 using yuengine::input::InputCommandValueKind;
 using yuengine::input::InputControlId;
@@ -109,6 +110,7 @@ constexpr const char *TEST_COMMAND_RUNTIME_BOUNDARY = "Input_CommandMapper_Keybo
 constexpr const char *TEST_COMMAND_FOCUS = "Input_CommandMapper_FocusRejectsInputWithoutMutation";
 constexpr const char *TEST_COMMAND_INVALID = "Input_CommandMapper_InvalidEventDoesNotMutateHeldState";
 constexpr const char *TEST_COMMAND_SETUP_REJECTION = "Input_CommandMapper_SetupFailuresDoNotCountRejectedEvents";
+constexpr const char *TEST_COMMAND_CAPACITY_ENTRY = "Input_CommandMapper_CapacityFailuresRecordEntryIdentity";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 
@@ -291,6 +293,34 @@ bool RegisterCommandContext(InputCommandMapper &mapper) {
     }
 
     return mapper.SetActiveContext(CONTEXT_A, InputContextFocusMode::AcceptInput) == InputStatus::Success;
+}
+
+bool CommandMapperCapacityEntryIsClear(const InputCommandMapperSnapshot &snapshot) {
+    if (snapshot.last_failed_capacity_context_id.value != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_capacity_action_id.value != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_capacity_device_id.value != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_capacity_control_id.value != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_binding_capacity != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_binding_count != 0U) {
+        return false;
+    }
+
+    return snapshot.last_required_binding_count == 0U;
 }
 
 bool StateEquals(const InputActionState& left, const InputActionState& right) {
@@ -1867,6 +1897,76 @@ int InputCommandMapperSetupFailuresDoNotCountRejectedEvents() {
 
     return 0;
 }
+
+int InputCommandMapperCapacityFailuresRecordEntryIdentity() {
+    InputCommandMapper mapper;
+    if (!RegisterCommandContext(mapper)) {
+        return Fail("command mapper setup failed");
+    }
+
+    for (std::size_t index = 0U; index < MAX_INPUT_BINDINGS; ++index) {
+        const std::uint32_t control_value = static_cast<std::uint32_t>(100U + index);
+        const std::uint32_t action_value = static_cast<std::uint32_t>(index % 2U);
+        const InputControlId control{control_value};
+        const InputActionId action{action_value};
+        const InputCommandBinding binding = ButtonCommandBinding(CONTEXT_A, DEVICE_A, control, action);
+        if (mapper.RegisterBinding(binding) != InputStatus::Success) {
+            return Fail("command binding capacity fixture setup failed");
+        }
+    }
+
+    const InputControlId overflow_control{9999U};
+    const InputCommandBinding overflow_binding =
+        ButtonCommandBinding(CONTEXT_A, DEVICE_B, overflow_control, ACTION_B);
+    if (mapper.RegisterBinding(overflow_binding) != InputStatus::CapacityExceeded) {
+        return Fail("command binding capacity overflow did not return explicit status");
+    }
+
+    auto mapper_snapshot = mapper.Snapshot();
+    if (mapper_snapshot.last_failed_capacity_context_id.value != CONTEXT_A.value ||
+        mapper_snapshot.last_failed_capacity_action_id.value != ACTION_B.value ||
+        mapper_snapshot.last_failed_capacity_device_id.value != DEVICE_B.value ||
+        mapper_snapshot.last_failed_capacity_control_id.value != overflow_control.value) {
+        return Fail("command binding capacity entry identity mismatch");
+    }
+
+    if (mapper_snapshot.last_failed_binding_capacity != MAX_INPUT_BINDINGS ||
+        mapper_snapshot.last_failed_binding_count != MAX_INPUT_BINDINGS ||
+        mapper_snapshot.last_required_binding_count != MAX_INPUT_BINDINGS + 1U) {
+        return Fail("command binding capacity entry counts mismatch");
+    }
+
+    if (mapper_snapshot.binding_count != MAX_INPUT_BINDINGS ||
+        mapper_snapshot.last_status != InputStatus::CapacityExceeded) {
+        return Fail("command binding capacity overflow mutated mapper state");
+    }
+
+    InputCommandBinding invalid_binding = overflow_binding;
+    invalid_binding.context = UNKNOWN_CONTEXT;
+    if (mapper.RegisterBinding(invalid_binding) != InputStatus::UnknownContext) {
+        return Fail("command binding validation failure did not return explicit status");
+    }
+
+    mapper_snapshot = mapper.Snapshot();
+    if (!CommandMapperCapacityEntryIsClear(mapper_snapshot)) {
+        return Fail("command binding validation failure did not clear capacity entry");
+    }
+
+    if (mapper.RegisterBinding(overflow_binding) != InputStatus::CapacityExceeded) {
+        return Fail("second command binding overflow did not return explicit status");
+    }
+
+    if (mapper.SetActiveContext(CONTEXT_A, InputContextFocusMode::AcceptInput) != InputStatus::Success) {
+        return Fail("command mapper success status setup failed");
+    }
+
+    mapper_snapshot = mapper.Snapshot();
+    if (!CommandMapperCapacityEntryIsClear(mapper_snapshot)) {
+        return Fail("command mapper success status did not clear capacity entry");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv) {
@@ -1914,7 +2014,8 @@ int main(int argc, char** argv) {
         {TEST_COMMAND_RUNTIME_BOUNDARY, InputCommandMapperKeyboardAndXInputFixturesStayRuntimeOnly},
         {TEST_COMMAND_FOCUS, InputCommandMapperFocusRejectsInputWithoutMutation},
         {TEST_COMMAND_INVALID, InputCommandMapperInvalidEventDoesNotMutateHeldState},
-        {TEST_COMMAND_SETUP_REJECTION, InputCommandMapperSetupFailuresDoNotCountRejectedEvents}};
+        {TEST_COMMAND_SETUP_REJECTION, InputCommandMapperSetupFailuresDoNotCountRejectedEvents},
+        {TEST_COMMAND_CAPACITY_ENTRY, InputCommandMapperCapacityFailuresRecordEntryIdentity}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);
