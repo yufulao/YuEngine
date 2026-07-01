@@ -183,6 +183,29 @@ void SetResult(
     out_result->required_allocation_count = required_allocation_count;
 }
 
+void SetFailedSpriteRequest(
+    UiDynamicAtlasPackResult *out_result,
+    const UiDynamicAtlasSpriteRequest &request,
+    std::uint32_t request_index) {
+    if (out_result == nullptr) {
+        return;
+    }
+
+    out_result->failed_sprite_key = request.sprite_key;
+    out_result->failed_request_index = request_index;
+    out_result->failed_sprite_width = request.width;
+    out_result->failed_sprite_height = request.height;
+}
+
+void SetOutputCapacityEntry(
+    UiDynamicAtlasPackResult *out_result,
+    std::uint32_t output_capacity,
+    std::uint32_t required_output_count) {
+    out_result->capacity_entry_output_capacity = output_capacity;
+    out_result->capacity_entry_current_output_count = output_capacity;
+    out_result->capacity_entry_required_output_count = required_output_count;
+}
+
 bool IsSpriteRequestValid(const UiDynamicAtlasSpriteRequest &request) {
     if (request.sprite_key == 0U) {
         return false;
@@ -248,6 +271,12 @@ UiDynamicAtlasStatus UiDynamicAtlasPacker::Pack(
     }
 
     if (out_sprites.size() < requests.size()) {
+        const std::size_t failed_request_index = out_sprites.size();
+        const UiDynamicAtlasSpriteRequest &failed_request = requests[failed_request_index];
+        const std::uint32_t failed_request_index_value = static_cast<std::uint32_t>(failed_request_index);
+        const std::uint32_t output_capacity = static_cast<std::uint32_t>(out_sprites.size());
+        SetFailedSpriteRequest(out_result, failed_request, failed_request_index_value);
+        SetOutputCapacityEntry(out_result, output_capacity, out_result->required_allocation_count);
         SetResult(out_result, UiDynamicAtlasStatus::OutputCapacityExceeded, out_result->required_allocation_count);
         return UiDynamicAtlasStatus::OutputCapacityExceeded;
     }

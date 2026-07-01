@@ -28,6 +28,8 @@ constexpr const char *TEST_PAINT_PATH =
     "UiCore_DynamicAtlasPacker_RejectsPaintPathPacking";
 constexpr const char *TEST_OVERFLOW =
     "UiCore_DynamicAtlasPacker_ReportsOverflowWithoutMutation";
+constexpr const char *TEST_OUTPUT_CAPACITY_ENTRY =
+    "UiCore_DynamicAtlasPacker_OutputCapacityReportsFirstUnreportedSprite";
 constexpr const char *TEST_SMALL_OUTPUT =
     "UiCore_DynamicAtlasPacker_RejectsSmallOutputAndInvalidRequest";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
@@ -196,6 +198,56 @@ int UiCoreDynamicAtlasPackerReportsOverflowWithoutMutation() {
     return 0;
 }
 
+int UiCoreDynamicAtlasPackerOutputCapacityReportsFirstUnreportedSprite() {
+    const std::array<UiStaticAtlasPageDesc, 1U> pages{
+        MakePage(7U, 77U, 64U, 64U)};
+    const std::array<UiDynamicAtlasSpriteRequest, 3U> requests{
+        MakeRequest(21U, 16U, 16U),
+        MakeRequest(22U, 24U, 12U),
+        MakeRequest(23U, 8U, 32U)};
+    std::array<UiStaticAtlasSpriteDesc, 2U> sprites{SentinelSprite(), SentinelSprite()};
+    UiDynamicAtlasPackResult result{};
+    UiDynamicAtlasPacker packer{};
+    const UiDynamicAtlasPackDesc desc{pages, UiDynamicAtlasPackPhase::SafePoint, 0U};
+    UiDynamicAtlasStatus status = packer.Pack(desc, requests, sprites, &result);
+    if (status != UiDynamicAtlasStatus::OutputCapacityExceeded) {
+        return Fail("dynamic atlas accepted undersized sprite output");
+    }
+
+    if (result.required_allocation_count != 3U ||
+        result.capacity_entry_output_capacity != 2U ||
+        result.capacity_entry_current_output_count != 2U ||
+        result.capacity_entry_required_output_count != 3U ||
+        result.failed_sprite_key != 23U ||
+        result.failed_request_index != 2U ||
+        result.failed_sprite_width != 8U ||
+        result.failed_sprite_height != 32U) {
+        return Fail("dynamic atlas output capacity entry mismatch");
+    }
+
+    if (!SpriteMatchesSentinel(sprites[0U]) || !SpriteMatchesSentinel(sprites[1U])) {
+        return Fail("dynamic atlas mutated output after output capacity rejection");
+    }
+
+    std::array<UiStaticAtlasSpriteDesc, 3U> success_sprites{};
+    status = packer.Pack(desc, requests, success_sprites, &result);
+    if (status != UiDynamicAtlasStatus::Success || !result.Succeeded()) {
+        return Fail("dynamic atlas retry after output capacity failed");
+    }
+
+    if (result.failed_sprite_key != 0U ||
+        result.failed_request_index != 0U ||
+        result.failed_sprite_width != 0U ||
+        result.failed_sprite_height != 0U ||
+        result.capacity_entry_output_capacity != 0U ||
+        result.capacity_entry_current_output_count != 0U ||
+        result.capacity_entry_required_output_count != 0U) {
+        return Fail("dynamic atlas success left stale output capacity entry");
+    }
+
+    return 0;
+}
+
 int UiCoreDynamicAtlasPackerRejectsSmallOutputAndInvalidRequest() {
     const std::array<UiStaticAtlasPageDesc, 1U> pages{
         MakePage(7U, 77U, 64U, 64U)};
@@ -211,7 +263,15 @@ int UiCoreDynamicAtlasPackerRejectsSmallOutputAndInvalidRequest() {
         return Fail("dynamic atlas accepted undersized output storage");
     }
 
-    if (result.required_allocation_count != 2U || !SpriteMatchesSentinel(sprites[0U])) {
+    if (result.required_allocation_count != 2U ||
+        result.capacity_entry_output_capacity != 1U ||
+        result.capacity_entry_current_output_count != 1U ||
+        result.capacity_entry_required_output_count != 2U ||
+        result.failed_sprite_key != 12U ||
+        result.failed_request_index != 1U ||
+        result.failed_sprite_width != 16U ||
+        result.failed_sprite_height != 16U ||
+        !SpriteMatchesSentinel(sprites[0U])) {
         return Fail("dynamic atlas small output result mismatch");
     }
 
@@ -229,6 +289,15 @@ int UiCoreDynamicAtlasPackerRejectsSmallOutputAndInvalidRequest() {
         return Fail("dynamic atlas invalid request diagnostics changed");
     }
 
+    if (result.failed_request_index != 0U ||
+        result.failed_sprite_width != 0U ||
+        result.failed_sprite_height != 0U ||
+        result.capacity_entry_output_capacity != 0U ||
+        result.capacity_entry_current_output_count != 0U ||
+        result.capacity_entry_required_output_count != 0U) {
+        return Fail("dynamic atlas invalid request left stale capacity entry");
+    }
+
     const std::array<UiDynamicAtlasSpriteRequest, 2U> duplicate_requests{
         MakeRequest(15U, 16U, 16U),
         MakeRequest(15U, 8U, 8U)};
@@ -239,6 +308,15 @@ int UiCoreDynamicAtlasPackerRejectsSmallOutputAndInvalidRequest() {
 
     if (result.failed_sprite_key != 15U || !SpriteMatchesSentinel(sprites[0U])) {
         return Fail("dynamic atlas duplicate request diagnostics changed");
+    }
+
+    if (result.failed_request_index != 0U ||
+        result.failed_sprite_width != 0U ||
+        result.failed_sprite_height != 0U ||
+        result.capacity_entry_output_capacity != 0U ||
+        result.capacity_entry_current_output_count != 0U ||
+        result.capacity_entry_required_output_count != 0U) {
+        return Fail("dynamic atlas duplicate request left stale capacity entry");
     }
 
     return 0;
@@ -255,6 +333,10 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_OVERFLOW) {
         return UiCoreDynamicAtlasPackerReportsOverflowWithoutMutation();
+    }
+
+    if (name == TEST_OUTPUT_CAPACITY_ENTRY) {
+        return UiCoreDynamicAtlasPackerOutputCapacityReportsFirstUnreportedSprite();
     }
 
     if (name == TEST_SMALL_OUTPUT) {

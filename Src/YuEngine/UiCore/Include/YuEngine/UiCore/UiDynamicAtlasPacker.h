@@ -48,8 +48,14 @@ struct UiDynamicAtlasPackResult final {
     std::uint32_t request_count = 0U;
     std::uint32_t allocation_count = 0U;
     std::uint32_t required_allocation_count = 0U;
+    std::uint32_t capacity_entry_output_capacity = 0U;
+    std::uint32_t capacity_entry_current_output_count = 0U;
+    std::uint32_t capacity_entry_required_output_count = 0U;
     std::uint32_t used_page_count = 0U;
     std::uint32_t failed_sprite_key = 0U;
+    std::uint32_t failed_request_index = 0U;
+    std::uint32_t failed_sprite_width = 0U;
+    std::uint32_t failed_sprite_height = 0U;
 
     /**
      * @comment 检查 dynamic atlas pack 是否成功。
