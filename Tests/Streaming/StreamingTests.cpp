@@ -146,6 +146,8 @@ constexpr const char *TEST_FILE_BYTE_MISMATCH =
     "Streaming_PackageResourceStaging_ReportsFileByteCountMismatch";
 constexpr const char *TEST_STAGING_MULTI_DRAIN_MIXED_STATUS =
     "Streaming_PackageResourceStaging_MultiDrainPreservesMixedFinalStatus";
+constexpr const char *TEST_STAGING_DRAIN_OUTPUT_ATOMIC =
+    "Streaming_PackageResourceStaging_DrainOutputFailureIsAtomic";
 constexpr const char *TEST_MISSING_COMPLETION =
     "Streaming_PackageResourceStaging_ReportsMissingFileCompletion";
 constexpr const char *TEST_QUEUE_OVERFLOW =
@@ -1819,6 +1821,180 @@ int StreamingPackageResourceStagingMultiDrainPreservesMixedFinalStatus() {
 
     if (final_snapshot.last_file_status != FileStatus::ReadFailure) {
         return Fail("empty mixed staging drain overwrote file failure status");
+    }
+
+    return 0;
+}
+
+int StreamingPackageResourceStagingDrainOutputFailureIsAtomic() {
+    MountTable table = CreateMountedTable();
+    AsyncFileReadQueue file_queue;
+    if (file_queue.Initialize(2U, 2U) != AsyncFileReadStatus::Success) {
+        return Fail("atomic staging file queue initialize failed");
+    }
+
+    if (file_queue.Start() != AsyncFileReadStatus::Success) {
+        return Fail("atomic staging file queue start failed");
+    }
+
+    ResourceRegistry resource_registry;
+    PackageLoadPlanRecord record;
+    if (!BuildPackageRecord(&record, 0U, FixtureByteCount())) {
+        return Fail("atomic staging package record build failed");
+    }
+
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("atomic staging resource registration failed");
+    }
+
+    std::array<std::uint8_t, OUTPUT_CAPACITY> first_output{};
+    std::array<std::uint8_t, OUTPUT_CAPACITY> second_output{};
+    PackageResourceStagingRequest first_request = BuildStagingRequest(
+        resource_registry,
+        file_queue,
+        table,
+        record,
+        resource_result.handle,
+        REQUEST_ONE,
+        first_output.data(),
+        first_output.size());
+    PackageResourceStagingRequest second_request = BuildStagingRequest(
+        resource_registry,
+        file_queue,
+        table,
+        record,
+        resource_result.handle,
+        REQUEST_TWO,
+        second_output.data(),
+        second_output.size());
+    PackageResourceStagingQueue queue(PackageResourceStagingQueueDesc{2U, 2U});
+    if (queue.Submit(first_request) != PackageResourceStagingStatus::Queued) {
+        return Fail("first atomic staging request was not queued");
+    }
+
+    if (queue.Submit(second_request) != PackageResourceStagingStatus::Queued) {
+        return Fail("second atomic staging request was not queued");
+    }
+
+    AsyncFileReadResult failed_result = SuccessFileResult(REQUEST_ONE);
+    failed_result.status = AsyncFileReadStatus::ReadFailure;
+    failed_result.file_status = FileStatus::ReadFailure;
+    failed_result.byte_count = 0U;
+    if (queue.CompleteFileRead(failed_result) != PackageResourceStagingStatus::FileReadFailed) {
+        return Fail("atomic staging failed request did not preserve failure status");
+    }
+
+    if (queue.CompleteFileRead(SuccessFileResult(REQUEST_TWO)) != PackageResourceStagingStatus::Success) {
+        return Fail("atomic staging successful request did not complete");
+    }
+
+    if (file_queue.Shutdown(true) != AsyncFileReadStatus::ShutdownComplete) {
+        return Fail("atomic staging file queue shutdown failed");
+    }
+
+    std::array<PackageResourceStagingCompletion, 2U> caller_completions{};
+    caller_completions[0U].request_id = REQUEST_THREE;
+    caller_completions[0U].status = PackageResourceStagingStatus::DuplicateRequestId;
+    caller_completions[1U].request_id = REQUEST_THREE;
+    caller_completions[1U].status = PackageResourceStagingStatus::QueueFull;
+    std::uint32_t written_count = 77U;
+    const PackageResourceStagingStatus capacity_status = queue.DrainCompletions(
+        caller_completions.data(),
+        1U,
+        &written_count);
+    if (capacity_status != PackageResourceStagingStatus::CompletionQueueFull) {
+        return Fail("atomic staging capacity failure did not report queue full");
+    }
+
+    if (written_count != 77U) {
+        return Fail("atomic staging capacity failure changed written count");
+    }
+
+    if (caller_completions[0U].request_id != REQUEST_THREE) {
+        return Fail("atomic staging capacity failure changed first caller row");
+    }
+
+    if (caller_completions[0U].status != PackageResourceStagingStatus::DuplicateRequestId) {
+        return Fail("atomic staging capacity failure changed first caller status");
+    }
+
+    if (caller_completions[1U].request_id != REQUEST_THREE) {
+        return Fail("atomic staging capacity failure changed second caller row");
+    }
+
+    if (caller_completions[1U].status != PackageResourceStagingStatus::QueueFull) {
+        return Fail("atomic staging capacity failure changed second caller status");
+    }
+
+    const PackageResourceStagingSnapshot capacity_snapshot = queue.Snapshot();
+    if (capacity_snapshot.completion_count != 2U) {
+        return Fail("atomic staging capacity failure dropped completions");
+    }
+
+    if (capacity_snapshot.pending_count != 0U) {
+        return Fail("atomic staging capacity failure restored pending records");
+    }
+
+    std::uint32_t null_written_count = 88U;
+    const PackageResourceStagingStatus null_output_status = queue.DrainCompletions(
+        nullptr,
+        2U,
+        &null_written_count);
+    if (null_output_status != PackageResourceStagingStatus::InvalidArgument) {
+        return Fail("atomic staging null output did not fail");
+    }
+
+    if (null_written_count != 88U) {
+        return Fail("atomic staging null output changed written count");
+    }
+
+    const PackageResourceStagingSnapshot null_output_snapshot = queue.Snapshot();
+    if (null_output_snapshot.completion_count != 2U) {
+        return Fail("atomic staging null output dropped completions");
+    }
+
+    std::array<PackageResourceStagingCompletion, 2U> drained_completions{};
+    std::uint32_t final_written_count = 0U;
+    const PackageResourceStagingStatus final_status = queue.DrainCompletions(
+        drained_completions.data(),
+        static_cast<std::uint32_t>(drained_completions.size()),
+        &final_written_count);
+    if (final_status != PackageResourceStagingStatus::Success) {
+        return Fail("atomic staging final drain failed");
+    }
+
+    if (final_written_count != 2U) {
+        return Fail("atomic staging final drain count changed");
+    }
+
+    if (drained_completions[0U].request_id != REQUEST_ONE) {
+        return Fail("atomic staging failure request id changed");
+    }
+
+    if (drained_completions[0U].status != PackageResourceStagingStatus::FileReadFailed) {
+        return Fail("atomic staging failure completion status changed");
+    }
+
+    if (drained_completions[1U].request_id != REQUEST_TWO) {
+        return Fail("atomic staging success request id changed");
+    }
+
+    if (drained_completions[1U].status != PackageResourceStagingStatus::Success) {
+        return Fail("atomic staging success completion status changed");
+    }
+
+    const PackageResourceStagingSnapshot final_snapshot = queue.Snapshot();
+    if (final_snapshot.completion_count != 0U) {
+        return Fail("atomic staging final drain left completions");
+    }
+
+    if (final_snapshot.last_status != PackageResourceStagingStatus::FileReadFailed) {
+        return Fail("atomic staging final drain lost failure status");
+    }
+
+    if (final_snapshot.last_async_file_status != AsyncFileReadStatus::ReadFailure) {
+        return Fail("atomic staging final drain lost async failure status");
     }
 
     return 0;
@@ -4927,6 +5103,7 @@ int main(int argc, char **argv) {
         {TEST_FILE_BYTE_MISMATCH, StreamingPackageResourceStagingReportsFileByteCountMismatch},
         {TEST_STAGING_MULTI_DRAIN_MIXED_STATUS,
          StreamingPackageResourceStagingMultiDrainPreservesMixedFinalStatus},
+        {TEST_STAGING_DRAIN_OUTPUT_ATOMIC, StreamingPackageResourceStagingDrainOutputFailureIsAtomic},
         {TEST_MISSING_COMPLETION, StreamingPackageResourceStagingReportsMissingFileCompletion},
         {TEST_QUEUE_OVERFLOW, StreamingPackageResourceStagingRejectsQueueOverflowWithoutMutation},
         {TEST_COMPLETION_OVERFLOW, StreamingPackageResourceStagingReportsCompletionOverflowWithoutDroppingPending},

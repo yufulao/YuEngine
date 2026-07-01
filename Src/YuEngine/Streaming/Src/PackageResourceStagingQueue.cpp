@@ -166,10 +166,9 @@ PackageResourceStagingStatus PackageResourceStagingQueue::DrainCompletions(
         return PackageResourceStagingStatus::InvalidArgument;
     }
 
-    *written_count = 0U;
-
     if (snapshot_.completion_count == 0U) {
         snapshot_.required_completion_count = 0U;
+        *written_count = 0U;
         return PackageResourceStagingStatus::Success;
     }
 
@@ -182,6 +181,8 @@ PackageResourceStagingStatus PackageResourceStagingQueue::DrainCompletions(
         snapshot_.last_status = PackageResourceStagingStatus::CompletionQueueFull;
         return PackageResourceStagingStatus::CompletionQueueFull;
     }
+
+    *written_count = 0U;
 
     PackageResourceStagingStatus last_status = PackageResourceStagingStatus::Success;
     file::AsyncFileReadStatus last_async_file_status = file::AsyncFileReadStatus::Success;
