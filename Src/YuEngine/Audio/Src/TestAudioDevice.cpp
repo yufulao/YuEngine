@@ -46,6 +46,9 @@ void ClearPcmStreamQueueRequiredCounts(AudioPcmStreamQueueSnapshot &snapshot) {
     snapshot.last_failed_packet_id = 0U;
     snapshot.last_failed_queue_capacity = 0U;
     snapshot.last_failed_active_queue_count = 0U;
+    snapshot.last_failed_output_chunk_index = 0U;
+    snapshot.last_failed_output_queue_id = 0U;
+    snapshot.last_failed_output_frame_offset = 0U;
 }
 }
 
@@ -430,7 +433,6 @@ AudioStatus TestAudioDevice::DrainPcmStreamQueue(AudioPcmStreamQueueHandle queue
         return AudioStatus::InvalidDescriptor;
     }
 
-    out_chunk_count = 0U;
     if (!IsPcmStreamQueueHandleValid(queue)) {
         ++pcm_stream_queue_snapshot_.stale_queue_rejected_count;
         return RecordPcmStreamQueueFailure(AudioStatus::InvalidHandle, AudioPcmStreamQueueOperation::Drain);
@@ -442,6 +444,7 @@ AudioStatus TestAudioDevice::DrainPcmStreamQueue(AudioPcmStreamQueueHandle queue
     pcm_stream_queue_snapshot_.last_packet_id = record.packet_id;
     pcm_stream_queue_snapshot_.last_frame_count = record.remaining_frame_count;
     if (record.remaining_frame_count == 0U) {
+        out_chunk_count = 0U;
         SetPcmStreamQueueLastStatus(AudioStatus::Success, AudioPcmStreamQueueOperation::Drain);
         RecordSuccess();
         return AudioStatus::Success;
@@ -453,7 +456,14 @@ AudioStatus TestAudioDevice::DrainPcmStreamQueue(AudioPcmStreamQueueHandle queue
         ++pcm_stream_queue_snapshot_.output_capacity_rejected_count;
         const AudioStatus status =
             RecordPcmStreamQueueFailure(AudioStatus::CapacityExceeded, AudioPcmStreamQueueOperation::Drain);
+        const std::size_t failed_chunk_index = out_chunks.size();
+        const std::size_t failed_chunk_frame_offset = failed_chunk_index * chunk_frame_count;
+        const std::size_t failed_frame_offset =
+            record.first_frame + record.drained_frame_count + failed_chunk_frame_offset;
         pcm_stream_queue_snapshot_.last_required_output_chunk_count = required_chunk_count;
+        pcm_stream_queue_snapshot_.last_failed_output_chunk_index = failed_chunk_index;
+        pcm_stream_queue_snapshot_.last_failed_output_queue_id = record.queue_id;
+        pcm_stream_queue_snapshot_.last_failed_output_frame_offset = failed_frame_offset;
         return status;
     }
 

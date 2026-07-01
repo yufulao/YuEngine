@@ -2234,6 +2234,9 @@ int AudioPcmStreamQueueDrainRejectsSmallOutputWithoutMutation() {
     }
 
     std::array<AudioPcmStreamQueueChunk, 1U> chunks{};
+    chunks[0].queue_id = 901U;
+    chunks[0].packet_id = 902U;
+    chunks[0].chunk_index = 903U;
     std::size_t chunk_count = 7U;
     if (device.DrainPcmStreamQueue(queue, std::span<AudioPcmStreamQueueChunk>(chunks.data(), chunks.size()), chunk_count) != AudioStatus::CapacityExceeded) {
         return Fail("stream queue small output was not rejected");
@@ -2245,8 +2248,12 @@ int AudioPcmStreamQueueDrainRejectsSmallOutputWithoutMutation() {
         return Fail("stream queue small output post-query failed");
     }
 
-    if (chunk_count != 0U) {
+    if (chunk_count != 7U) {
         return Fail("stream queue small output wrote a descriptor count");
+    }
+
+    if (chunks[0].queue_id != 901U || chunks[0].packet_id != 902U || chunks[0].chunk_index != 903U) {
+        return Fail("stream queue small output mutated output chunk");
     }
 
     if (after_record.drained_frame_count != before_record.drained_frame_count) {
@@ -2268,8 +2275,28 @@ int AudioPcmStreamQueueDrainRejectsSmallOutputWithoutMutation() {
         return Fail("stream queue small output missed required chunk count");
     }
 
+    if (failure_snapshot.last_failed_output_chunk_index != 1U) {
+        return Fail("stream queue small output failed chunk index mismatch");
+    }
+
+    if (failure_snapshot.last_failed_output_queue_id != 213U) {
+        return Fail("stream queue small output failed queue id mismatch");
+    }
+
+    if (failure_snapshot.last_failed_output_frame_offset != 1U) {
+        return Fail("stream queue small output failed frame offset mismatch");
+    }
+
     if (failure_snapshot.last_required_queue_count != 0U) {
         return Fail("stream queue small output reported required queue count");
+    }
+
+    if (after_query_snapshot.last_required_output_chunk_count != 0U) {
+        return Fail("stream queue small output query kept stale required chunk count");
+    }
+
+    if (after_query_snapshot.last_failed_output_queue_id != 0U) {
+        return Fail("stream queue small output query kept stale failed queue id");
     }
 
     return 0;
@@ -2293,9 +2320,13 @@ int AudioPcmStreamQueueRejectsStaleHandleWithoutMutation() {
     }
 
     std::array<AudioPcmStreamQueueChunk, 1U> chunks{};
-    std::size_t chunk_count = 0U;
+    std::size_t chunk_count = 9U;
     if (device.DrainPcmStreamQueue(queue, std::span<AudioPcmStreamQueueChunk>(chunks.data(), chunks.size()), chunk_count) != AudioStatus::InvalidHandle) {
         return Fail("stale stream queue drain did not return invalid handle");
+    }
+
+    if (chunk_count != 9U) {
+        return Fail("stale stream queue drain changed output count");
     }
 
     if (device.ReleasePcmStreamQueue(queue) != AudioStatus::InvalidHandle) {
@@ -2309,6 +2340,14 @@ int AudioPcmStreamQueueRejectsStaleHandleWithoutMutation() {
 
     if (after_snapshot.stale_queue_rejected_count != before_snapshot.stale_queue_rejected_count + 3U) {
         return Fail("stale stream queue rejection counter changed");
+    }
+
+    if (after_snapshot.last_required_output_chunk_count != 0U) {
+        return Fail("stale stream queue reported required output chunks");
+    }
+
+    if (after_snapshot.last_failed_output_queue_id != 0U) {
+        return Fail("stale stream queue reported failed output queue");
     }
 
     return 0;
