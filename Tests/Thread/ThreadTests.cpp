@@ -64,6 +64,8 @@ constexpr const char* TEST_WORKER_COMPLETION_LOOKUP =
     "Thread_WorkerCompletionLookup_ReturnsStableSnapshots";
 constexpr const char* TEST_WORKER_COMPLETION_STATUS_ENUMERATION =
     "Thread_WorkerCompletionStatusEnumeration_ReturnsStableSnapshots";
+constexpr const char* TEST_WORKER_COMPLETION_STATUS_COUNT =
+    "Thread_WorkerCompletionStatusCount_MatchesEnumeration";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr std::size_t SMALL_CAPACITY = 2U;
@@ -1986,6 +1988,168 @@ int ThreadWorkerCompletionStatusEnumerationReturnsStableSnapshots() {
     return 0;
 }
 
+int ThreadWorkerCompletionStatusCountMatchesEnumeration() {
+    ThreadWorker worker;
+    ThreadWorkerDesc desc;
+    desc.work_capacity = LARGE_CAPACITY;
+    desc.completion_capacity = LARGE_CAPACITY;
+
+    const ThreadWorkerStatus init_status = worker.Initialize(desc);
+    if (init_status != ThreadWorkerStatus::Success) {
+        return Fail("worker initialize failed");
+    }
+
+    const ThreadWorkerStatus start_status = worker.Start();
+    if (start_status != ThreadWorkerStatus::Success) {
+        return Fail("worker start failed");
+    }
+
+    FixedTraceBuffer trace;
+    ThreadTestContext first_context{&trace, FIRST_VALUE, false};
+    ThreadTestContext second_context{&trace, SECOND_VALUE, true};
+    ThreadTestContext third_context{&trace, THIRD_VALUE, false};
+
+    const ThreadWorkerStatus first_submit_status = worker.Submit(&RecordTask, &first_context);
+    if (first_submit_status != ThreadWorkerStatus::Success) {
+        return Fail("first status count submit failed");
+    }
+
+    const ThreadWorkerStatus second_submit_status = worker.Submit(&RecordTask, &second_context);
+    if (second_submit_status != ThreadWorkerStatus::Success) {
+        return Fail("second status count submit failed");
+    }
+
+    const ThreadWorkerStatus third_submit_status = worker.Submit(&RecordTask, &third_context);
+    if (third_submit_status != ThreadWorkerStatus::Success) {
+        return Fail("third status count submit failed");
+    }
+
+    const ThreadWorkerStatus shutdown_status = worker.Shutdown(ShutdownPolicy::DrainQueued);
+    if (shutdown_status != ThreadWorkerStatus::ShutdownComplete) {
+        return Fail("status count shutdown failed");
+    }
+
+    std::size_t completed_count = SENTINEL_TASK_ID;
+    const ThreadWorkerCompletionEnumerationStatus completed_count_status = worker.CountCompletionsByStatus(
+        TaskStatus::Completed,
+        &completed_count);
+    if (completed_count_status != ThreadWorkerCompletionEnumerationStatus::Success) {
+        return Fail("completed status count failed");
+    }
+
+    if (completed_count != 2U) {
+        return Fail("completed status count returned wrong count");
+    }
+
+    std::array<ThreadWorkerCompletion, 2U> completed_records{};
+    const ThreadWorkerCompletionEnumerationResult completed_enumeration = worker.EnumerateCompletionsByStatus(
+        TaskStatus::Completed,
+        completed_records.data(),
+        completed_records.size());
+    if (completed_enumeration.status != ThreadWorkerCompletionEnumerationStatus::Success) {
+        return Fail("completed status enumeration failed during count test");
+    }
+
+    if (completed_enumeration.written_count != completed_count) {
+        return Fail("completed status count did not match enumeration");
+    }
+
+    std::size_t failed_count = SENTINEL_TASK_ID;
+    const ThreadWorkerCompletionEnumerationStatus failed_count_status = worker.CountCompletionsByStatus(
+        TaskStatus::Failed,
+        &failed_count);
+    if (failed_count_status != ThreadWorkerCompletionEnumerationStatus::Success) {
+        return Fail("failed status count failed");
+    }
+
+    if (failed_count != 1U) {
+        return Fail("failed status count returned wrong count");
+    }
+
+    std::size_t invalid_count = completed_count;
+    const ThreadWorkerCompletionEnumerationStatus default_status_count = worker.CountCompletionsByStatus(
+        TaskStatus::Created,
+        &invalid_count);
+    if (default_status_count != ThreadWorkerCompletionEnumerationStatus::InvalidArgument) {
+        return Fail("default status count did not fail");
+    }
+
+    if (invalid_count != completed_count) {
+        return Fail("default status count mutated caller count");
+    }
+
+    const ThreadWorkerCompletionEnumerationStatus queued_status_count = worker.CountCompletionsByStatus(
+        TaskStatus::Queued,
+        &invalid_count);
+    if (queued_status_count != ThreadWorkerCompletionEnumerationStatus::InvalidArgument) {
+        return Fail("queued status count did not fail");
+    }
+
+    if (invalid_count != completed_count) {
+        return Fail("queued status count mutated caller count");
+    }
+
+    const ThreadWorkerCompletionEnumerationStatus null_count_status = worker.CountCompletionsByStatus(
+        TaskStatus::Completed,
+        nullptr);
+    if (null_count_status != ThreadWorkerCompletionEnumerationStatus::InvalidArgument) {
+        return Fail("null status count output did not fail");
+    }
+
+    const auto before_drain_snapshot = worker.Snapshot();
+    if (before_drain_snapshot.completion_pending_count != 3U) {
+        return Fail("status count changed pending completion count");
+    }
+
+    if (before_drain_snapshot.drained_completion_count != 0U) {
+        return Fail("status count drained completions");
+    }
+
+    std::array<ThreadWorkerCompletion, 3U> drained_completions{};
+    std::size_t drained_count = 0U;
+    const ThreadWorkerStatus drain_status = worker.DrainCompletions(
+        drained_completions.data(),
+        drained_completions.size(),
+        &drained_count);
+    if (drain_status != ThreadWorkerStatus::Success) {
+        return Fail("status count drain failed");
+    }
+
+    if (drained_count != drained_completions.size()) {
+        return Fail("status count drain wrote wrong count");
+    }
+
+    std::size_t completed_count_after_drain = 0U;
+    const ThreadWorkerCompletionEnumerationStatus completed_count_after_drain_status =
+        worker.CountCompletionsByStatus(
+            TaskStatus::Completed,
+            &completed_count_after_drain);
+    if (completed_count_after_drain_status != ThreadWorkerCompletionEnumerationStatus::Success) {
+        return Fail("completed status count after drain failed");
+    }
+
+    if (completed_count_after_drain != completed_count) {
+        return Fail("completed status count changed after drain");
+    }
+
+    const auto final_snapshot = worker.Snapshot();
+    if (final_snapshot.completion_pending_count != 0U) {
+        return Fail("status count after drain restored pending completions");
+    }
+
+    const std::uint64_t expected_drained_count = static_cast<std::uint64_t>(drained_completions.size());
+    if (final_snapshot.drained_completion_count != expected_drained_count) {
+        return Fail("status count after drain changed drained count");
+    }
+
+    const std::array<int, 3U> expected_trace{FIRST_VALUE, SECOND_VALUE, THIRD_VALUE};
+    if (!TraceEquals(trace, expected_trace)) {
+        return Fail("status count changed execution order");
+    }
+
+    return 0;
+}
+
 int main(int argc, char** argv) {
     if (argc != 2) {
         return Fail(ERROR_EXPECTED_ONE_TEST_NAME);
@@ -2012,7 +2176,8 @@ int main(int argc, char** argv) {
         {TEST_WORKER_COMPLETION_DRAIN_ENTRY, ThreadWorkerCompletionDrainOutputEntryRecordsFirstUnfitCompletion},
         {TEST_WORKER_MIXED_COMPLETION_DRAIN, ThreadWorkerMixedCompletionDrainPreservesFailureStatus},
         {TEST_WORKER_COMPLETION_LOOKUP, ThreadWorkerCompletionLookupReturnsStableSnapshots},
-        {TEST_WORKER_COMPLETION_STATUS_ENUMERATION, ThreadWorkerCompletionStatusEnumerationReturnsStableSnapshots}};
+        {TEST_WORKER_COMPLETION_STATUS_ENUMERATION, ThreadWorkerCompletionStatusEnumerationReturnsStableSnapshots},
+        {TEST_WORKER_COMPLETION_STATUS_COUNT, ThreadWorkerCompletionStatusCountMatchesEnumeration}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);

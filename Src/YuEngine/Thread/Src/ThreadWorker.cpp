@@ -724,6 +724,26 @@ ThreadWorkerCompletionEnumerationResult ThreadWorker::EnumerateCompletionsByStat
     return result;
 }
 
+ThreadWorkerCompletionEnumerationStatus ThreadWorker::CountCompletionsByStatus(
+    TaskStatus status,
+    std::size_t* output_count) const {
+    if (!IsCompletionEnumerationStatus(status)) {
+        return ThreadWorkerCompletionEnumerationStatus::InvalidArgument;
+    }
+
+    if (output_count == nullptr) {
+        return ThreadWorkerCompletionEnumerationStatus::InvalidArgument;
+    }
+
+    if (state_ == nullptr) {
+        return ThreadWorkerCompletionEnumerationStatus::NotInitialized;
+    }
+
+    std::lock_guard<std::mutex> lock(state_->mutex);
+    *output_count = CountCompletionSnapshotsByStatusLocked(*state_, status);
+    return ThreadWorkerCompletionEnumerationStatus::Success;
+}
+
 ThreadWorkerSnapshot ThreadWorker::Snapshot() const {
     if (state_ == nullptr) {
         return ThreadWorkerSnapshot{};
