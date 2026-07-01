@@ -43,6 +43,11 @@ struct UiGridViewVirtualizationResult final {
     std::uint32_t materialized_group_count = 0U;
     std::uint32_t required_pool_group_count = 0U;
     std::uint32_t required_pool_cell_count = 0U;
+    std::uint32_t capacity_entry_pool_cell_capacity = 0U;
+    std::uint32_t capacity_entry_current_pool_cell_count = 0U;
+    std::uint32_t capacity_entry_required_pool_cell_count = 0U;
+    std::uint32_t failed_pool_group_index = INVALID_UI_GRID_INDEX;
+    std::uint32_t failed_pool_cell_index = INVALID_UI_GRID_INDEX;
     std::uint32_t pool_cell_count = 0U;
     std::uint32_t materialized_item_count = 0U;
     std::uint32_t visible_item_count = 0U;

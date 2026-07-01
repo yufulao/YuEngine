@@ -73,6 +73,20 @@ bool IsOptionalIndexValid(std::uint32_t item_count, std::uint32_t item_index) {
 void SetFailure(UiGridViewVirtualizationResult *out_result, UiGridViewStatus status) {
     out_result->status = status;
 }
+
+void SetOutputCapacityFailure(
+    UiGridViewVirtualizationResult *out_result,
+    std::uint32_t axis_cell_count,
+    std::size_t output_capacity,
+    std::uint32_t required_pool_cell_count) {
+    SetFailure(out_result, UiGridViewStatus::OutputCapacityExceeded);
+    const std::uint32_t output_capacity_value = static_cast<std::uint32_t>(output_capacity);
+    out_result->capacity_entry_pool_cell_capacity = output_capacity_value;
+    out_result->capacity_entry_current_pool_cell_count = output_capacity_value;
+    out_result->capacity_entry_required_pool_cell_count = required_pool_cell_count;
+    out_result->failed_pool_cell_index = output_capacity_value;
+    out_result->failed_pool_group_index = output_capacity_value / axis_cell_count;
+}
 }
 
 UiGridViewStatus UiGridViewVirtualizer::Build(
@@ -157,7 +171,11 @@ UiGridViewStatus UiGridViewVirtualizer::Build(
     out_result->visible_item_count = visible_item_count;
 
     if (SpanTooSmall(out_cells.size(), required_pool_cell_count)) {
-        SetFailure(out_result, UiGridViewStatus::OutputCapacityExceeded);
+        SetOutputCapacityFailure(
+            out_result,
+            desc.grid_desc.axis_cell_count,
+            out_cells.size(),
+            required_pool_cell_count);
         return UiGridViewStatus::OutputCapacityExceeded;
     }
 

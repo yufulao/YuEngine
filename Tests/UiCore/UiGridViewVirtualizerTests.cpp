@@ -4,6 +4,7 @@
 #include <array>
 #include <cstdint>
 #include <cstdio>
+#include <span>
 #include <string_view>
 
 #include "YuEngine/UiCore/UiGridViewSemantics.h"
@@ -27,6 +28,8 @@ constexpr const char *TEST_REJECT_FULL_POOL =
     "UiCore_GridViewVirtualizer_RejectsFullPoolAsNonVirtualized";
 constexpr const char *TEST_SMALL_OUTPUT =
     "UiCore_GridViewVirtualizer_RejectsSmallOutputWithoutMutation";
+constexpr const char *TEST_CAPACITY_IDENTITY =
+    "UiCore_GridViewVirtualizer_OutputCapacityReportsFirstUnfitPoolCell";
 constexpr const char *TEST_SCROLL_DIRTY =
     "UiCore_GridViewVirtualizer_ResolvesAutoScrollAndAffectedDirtyCells";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
@@ -77,6 +80,42 @@ bool CellMatchesSentinel(const UiGridViewVirtualCellRecord &record) {
     }
 
     return record.cell_index == SENTINEL_INDEX;
+}
+
+void FillSentinelCells(std::span<UiGridViewVirtualCellRecord> cells) {
+    for (UiGridViewVirtualCellRecord &cell : cells) {
+        cell = SentinelCell();
+    }
+}
+
+bool CellsMatchSentinel(std::span<const UiGridViewVirtualCellRecord> cells) {
+    for (const UiGridViewVirtualCellRecord &cell : cells) {
+        if (!CellMatchesSentinel(cell)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool ResultHasNoCapacityEntry(const UiGridViewVirtualizationResult &result) {
+    if (result.capacity_entry_pool_cell_capacity != 0U) {
+        return false;
+    }
+
+    if (result.capacity_entry_current_pool_cell_count != 0U) {
+        return false;
+    }
+
+    if (result.capacity_entry_required_pool_cell_count != 0U) {
+        return false;
+    }
+
+    if (result.failed_pool_group_index != INVALID_UI_GRID_INDEX) {
+        return false;
+    }
+
+    return result.failed_pool_cell_index == INVALID_UI_GRID_INDEX;
 }
 
 int UiCoreGridViewVirtualizerLargeListUsesVisibleBufferPool() {
@@ -203,7 +242,8 @@ int UiCoreGridViewVirtualizerRejectsSmallOutputWithoutMutation() {
     desc.grid_desc = MakeGridDesc(20U, 5U, 2U, 1U, 3U);
     desc.first_visible_group = 0U;
 
-    std::array<UiGridViewVirtualCellRecord, 1U> cells{SentinelCell()};
+    std::array<UiGridViewVirtualCellRecord, 1U> cells{};
+    FillSentinelCells(cells);
     UiGridViewVirtualizationResult result{};
     UiGridViewVirtualizer virtualizer{};
     const UiGridViewStatus status = virtualizer.Build(desc, cells, &result);
@@ -211,8 +251,79 @@ int UiCoreGridViewVirtualizerRejectsSmallOutputWithoutMutation() {
         return Fail("virtualizer accepted small output");
     }
 
-    if (result.required_pool_cell_count != 15U || !CellMatchesSentinel(cells[0U])) {
+    if (result.required_pool_cell_count != 15U ||
+        result.capacity_entry_pool_cell_capacity != 1U ||
+        result.capacity_entry_current_pool_cell_count != 1U ||
+        result.capacity_entry_required_pool_cell_count != 15U ||
+        !CellsMatchSentinel(cells)) {
         return Fail("virtualizer small output mutation or count mismatch");
+    }
+
+    if (result.required_pool_group_count != 3U ||
+        result.failed_pool_group_index != 0U ||
+        result.failed_pool_cell_index != 1U) {
+        return Fail("virtualizer small output failed identity mismatch");
+    }
+
+    return 0;
+}
+
+int UiCoreGridViewVirtualizerOutputCapacityReportsFirstUnfitPoolCell() {
+    UiGridViewVirtualizationDesc desc{};
+    desc.grid_desc = MakeGridDesc(20U, 5U, 2U, 1U, 3U);
+    desc.first_visible_group = 0U;
+
+    std::array<UiGridViewVirtualCellRecord, 6U> small_cells{};
+    FillSentinelCells(small_cells);
+    UiGridViewVirtualizationResult result{};
+    UiGridViewVirtualizer virtualizer{};
+    UiGridViewStatus status = virtualizer.Build(desc, small_cells, &result);
+    if (status != UiGridViewStatus::OutputCapacityExceeded) {
+        return Fail("virtualizer accepted capacity identity fixture");
+    }
+
+    if (result.required_pool_group_count != 3U || result.required_pool_cell_count != 15U) {
+        return Fail("virtualizer capacity identity required count mismatch");
+    }
+
+    if (result.capacity_entry_pool_cell_capacity != 6U ||
+        result.capacity_entry_current_pool_cell_count != 6U ||
+        result.capacity_entry_required_pool_cell_count != 15U ||
+        result.failed_pool_group_index != 1U ||
+        result.failed_pool_cell_index != 6U) {
+        return Fail("virtualizer capacity identity mismatch");
+    }
+
+    if (!CellsMatchSentinel(small_cells)) {
+        return Fail("virtualizer mutated capacity identity output");
+    }
+
+    desc.grid_desc.axis_cell_count = 0U;
+    std::array<UiGridViewVirtualCellRecord, 15U> cells{};
+    status = virtualizer.Build(desc, cells, &result);
+    if (status != UiGridViewStatus::InvalidAxisCellCount || !ResultHasNoCapacityEntry(result)) {
+        return Fail("virtualizer kept capacity identity after invalid descriptor");
+    }
+
+    desc.grid_desc = MakeGridDesc(100U, 5U, 2U, 1U, 20U);
+    desc.first_visible_group = 3U;
+    status = virtualizer.Build(desc, cells, &result);
+    if (status != UiGridViewStatus::FullPoolRejected || !ResultHasNoCapacityEntry(result)) {
+        return Fail("virtualizer kept capacity identity after full pool rejection");
+    }
+
+    desc.grid_desc = MakeGridDesc(20U, 5U, 2U, 1U, 3U);
+    desc.first_visible_group = 0U;
+    UiGridViewVirtualCellRecord *invalid_output = nullptr;
+    std::span<UiGridViewVirtualCellRecord> invalid_cells(invalid_output, 15U);
+    status = virtualizer.Build(desc, invalid_cells, &result);
+    if (status != UiGridViewStatus::InvalidOutputBuffer || !ResultHasNoCapacityEntry(result)) {
+        return Fail("virtualizer kept capacity identity after invalid output pointer");
+    }
+
+    status = virtualizer.Build(desc, cells, &result);
+    if (status != UiGridViewStatus::Success || !ResultHasNoCapacityEntry(result)) {
+        return Fail("virtualizer kept capacity identity after success");
     }
 
     return 0;
@@ -269,6 +380,10 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_SMALL_OUTPUT) {
         return UiCoreGridViewVirtualizerRejectsSmallOutputWithoutMutation();
+    }
+
+    if (name == TEST_CAPACITY_IDENTITY) {
+        return UiCoreGridViewVirtualizerOutputCapacityReportsFirstUnfitPoolCell();
     }
 
     if (name == TEST_SCROLL_DIRTY) {
