@@ -239,6 +239,134 @@ int AssetRegisterRuntimeAssetReturnsStableHandleAndState() {
         return Fail("asset manager allocation vocabulary changed");
     }
 
+    const ResourceRegistrationResult asset_capacity_resource =
+        RegisterResource(registry, 16U, RESOURCE_TYPE_TEXTURE);
+    const ResourceRegistrationResult asset_capacity_overflow_resource =
+        RegisterResource(registry, 17U, RESOURCE_TYPE_AUDIO);
+    if (!asset_capacity_resource.Succeeded() || !asset_capacity_overflow_resource.Succeeded()) {
+        return Fail("asset capacity resource registration failed");
+    }
+
+    AssetManager asset_capacity_manager(AssetManagerDesc{1U, 2U, 1U});
+    const AssetRegistrationResult first_capacity_asset = RegisterAsset(
+        asset_capacity_manager,
+        registry,
+        1002U,
+        ASSET_TYPE_TEXTURE,
+        asset_capacity_resource.handle,
+        RESOURCE_TYPE_TEXTURE);
+    if (!first_capacity_asset.Succeeded()) {
+        return Fail("asset capacity fixture registration failed");
+    }
+
+    const AssetRegistrationResult asset_capacity_result = RegisterAsset(
+        asset_capacity_manager,
+        registry,
+        1003U,
+        ASSET_TYPE_AUDIO,
+        asset_capacity_overflow_resource.handle,
+        RESOURCE_TYPE_AUDIO);
+    if (asset_capacity_result.status != AssetStatus::CapacityExceeded) {
+        return Fail("asset capacity overflow did not return explicit status");
+    }
+
+    if (asset_capacity_result.required_asset_count != 2U ||
+        asset_capacity_result.required_type_count != 2U ||
+        asset_capacity_result.required_dependency_edge_count != 0U) {
+        return Fail("asset capacity overflow did not report required counts");
+    }
+
+    AssetSnapshot capacity_snapshot = asset_capacity_manager.Snapshot();
+    if (capacity_snapshot.last_required_asset_count != 2U ||
+        capacity_snapshot.last_required_type_count != 2U ||
+        capacity_snapshot.last_required_dependency_edge_count != 0U) {
+        return Fail("asset capacity snapshot did not report required counts");
+    }
+
+    const ResourceRegistrationResult type_capacity_resource =
+        RegisterResource(registry, 18U, RESOURCE_TYPE_TEXTURE);
+    const ResourceRegistrationResult type_capacity_overflow_resource =
+        RegisterResource(registry, 19U, RESOURCE_TYPE_AUDIO);
+    const ResourceRegistrationResult type_capacity_recovery_resource =
+        RegisterResource(registry, 20U, RESOURCE_TYPE_TEXTURE);
+    if (!type_capacity_resource.Succeeded() ||
+        !type_capacity_overflow_resource.Succeeded() ||
+        !type_capacity_recovery_resource.Succeeded()) {
+        return Fail("type capacity resource registration failed");
+    }
+
+    AssetManager type_capacity_manager(AssetManagerDesc{4U, 1U, 1U});
+    const AssetRegistrationResult first_type_asset = RegisterAsset(
+        type_capacity_manager,
+        registry,
+        1004U,
+        ASSET_TYPE_TEXTURE,
+        type_capacity_resource.handle,
+        RESOURCE_TYPE_TEXTURE);
+    if (!first_type_asset.Succeeded()) {
+        return Fail("type capacity fixture registration failed");
+    }
+
+    const AssetRegistrationResult type_capacity_result = RegisterAsset(
+        type_capacity_manager,
+        registry,
+        1005U,
+        ASSET_TYPE_AUDIO,
+        type_capacity_overflow_resource.handle,
+        RESOURCE_TYPE_AUDIO);
+    if (type_capacity_result.status != AssetStatus::CapacityExceeded) {
+        return Fail("asset type capacity overflow did not return explicit status");
+    }
+
+    if (type_capacity_result.required_asset_count != 2U ||
+        type_capacity_result.required_type_count != 2U ||
+        type_capacity_result.required_dependency_edge_count != 0U) {
+        return Fail("asset type capacity overflow did not report required counts");
+    }
+
+    capacity_snapshot = type_capacity_manager.Snapshot();
+    if (capacity_snapshot.last_required_asset_count != 2U ||
+        capacity_snapshot.last_required_type_count != 2U ||
+        capacity_snapshot.last_required_dependency_edge_count != 0U) {
+        return Fail("asset type capacity snapshot did not report required counts");
+    }
+
+    const AssetRegistrationResult duplicate_result = RegisterAsset(
+        type_capacity_manager,
+        registry,
+        1004U,
+        ASSET_TYPE_TEXTURE,
+        type_capacity_resource.handle,
+        RESOURCE_TYPE_TEXTURE);
+    if (duplicate_result.status != AssetStatus::DuplicateAsset) {
+        return Fail("duplicate asset did not clear through non-capacity status");
+    }
+
+    capacity_snapshot = type_capacity_manager.Snapshot();
+    if (capacity_snapshot.last_required_asset_count != 0U ||
+        capacity_snapshot.last_required_type_count != 0U ||
+        capacity_snapshot.last_required_dependency_edge_count != 0U) {
+        return Fail("non-capacity registration failure left stale required counts");
+    }
+
+    const AssetRegistrationResult recovery_asset = RegisterAsset(
+        type_capacity_manager,
+        registry,
+        1006U,
+        ASSET_TYPE_TEXTURE,
+        type_capacity_recovery_resource.handle,
+        RESOURCE_TYPE_TEXTURE);
+    if (!recovery_asset.Succeeded()) {
+        return Fail("asset registration recovery failed");
+    }
+
+    capacity_snapshot = type_capacity_manager.Snapshot();
+    if (capacity_snapshot.last_required_asset_count != 0U ||
+        capacity_snapshot.last_required_type_count != 0U ||
+        capacity_snapshot.last_required_dependency_edge_count != 0U) {
+        return Fail("successful registration left stale required counts");
+    }
+
     return 0;
 }
 
@@ -290,6 +418,21 @@ int AssetDependenciesTraverseBoundedAndRejectCycle() {
         return Fail("dependency cycle was not rejected");
     }
 
+    if (manager.AddDependency(asset_a.handle, asset_c.handle) != AssetStatus::CapacityExceeded) {
+        return Fail("dependency capacity overflow was not rejected");
+    }
+
+    AssetSnapshot dependency_snapshot = manager.Snapshot();
+    if (dependency_snapshot.last_required_asset_count != 0U ||
+        dependency_snapshot.last_required_type_count != 0U ||
+        dependency_snapshot.last_required_dependency_edge_count != 3U) {
+        return Fail("dependency capacity snapshot did not report required count");
+    }
+
+    if (dependency_snapshot.active_dependency_edge_count != 2U) {
+        return Fail("dependency capacity overflow mutated edge count");
+    }
+
     const AssetHandle sentinel_dependency{99U, 77U};
     std::array<AssetHandle, 1U> small_dependencies{};
     small_dependencies[0U] = sentinel_dependency;
@@ -309,6 +452,13 @@ int AssetDependenciesTraverseBoundedAndRejectCycle() {
 
     if (small_dependencies[0U].generation != sentinel_dependency.generation) {
         return Fail("small traversal failure mutated output generation");
+    }
+
+    dependency_snapshot = manager.Snapshot();
+    if (dependency_snapshot.last_required_asset_count != 0U ||
+        dependency_snapshot.last_required_type_count != 0U ||
+        dependency_snapshot.last_required_dependency_edge_count != 0U) {
+        return Fail("non-capacity dependency failure left stale required counts");
     }
 
     return 0;

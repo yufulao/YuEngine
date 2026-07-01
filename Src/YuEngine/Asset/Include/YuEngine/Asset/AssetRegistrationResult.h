@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 #include "YuEngine/Asset/AssetHandle.h"
 #include "YuEngine/Asset/AssetStatus.h"
 
@@ -10,6 +12,9 @@ namespace yuengine::asset {
 struct AssetRegistrationResult final {
     AssetStatus status = AssetStatus::Success;
     AssetHandle handle;
+    std::uint32_t required_asset_count = 0U;
+    std::uint32_t required_type_count = 0U;
+    std::uint32_t required_dependency_edge_count = 0U;
 
     /**
      * @comment 创建成功结果。
@@ -17,16 +22,31 @@ struct AssetRegistrationResult final {
      * @return 显式操作结果。
      */
     static AssetRegistrationResult Success(AssetHandle handle) {
-        return AssetRegistrationResult{AssetStatus::Success, handle};
+        AssetRegistrationResult result{};
+        result.status = AssetStatus::Success;
+        result.handle = handle;
+        return result;
     }
 
     /**
      * @comment 创建失败结果。
      * @param status 输入状态。
+     * @param required_asset_count 输入 required asset 数量。
+     * @param required_type_count 输入 required type 数量。
+     * @param required_dependency_edge_count 输入 required dependency edge 数量。
      * @return 显式操作结果。
      */
-    static AssetRegistrationResult Failure(AssetStatus status) {
-        return AssetRegistrationResult{status, AssetHandle{}};
+    static AssetRegistrationResult Failure(
+        AssetStatus status,
+        std::uint32_t required_asset_count=0U,
+        std::uint32_t required_type_count=0U,
+        std::uint32_t required_dependency_edge_count=0U) {
+        AssetRegistrationResult result{};
+        result.status = status;
+        result.required_asset_count = required_asset_count;
+        result.required_type_count = required_type_count;
+        result.required_dependency_edge_count = required_dependency_edge_count;
+        return result;
     }
 
     /**

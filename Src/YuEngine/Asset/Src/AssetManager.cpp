@@ -16,6 +16,22 @@ std::uint32_t ClampCapacity(std::uint32_t requested_capacity, std::uint32_t maxi
 
     return requested_capacity;
 }
+
+void ClearRequiredCounts(AssetSnapshot &snapshot) {
+    snapshot.last_required_asset_count = 0U;
+    snapshot.last_required_type_count = 0U;
+    snapshot.last_required_dependency_edge_count = 0U;
+}
+
+void RecordRequiredCounts(
+    AssetSnapshot &snapshot,
+    std::uint32_t required_asset_count,
+    std::uint32_t required_type_count,
+    std::uint32_t required_dependency_edge_count) {
+    snapshot.last_required_asset_count = required_asset_count;
+    snapshot.last_required_type_count = required_type_count;
+    snapshot.last_required_dependency_edge_count = required_dependency_edge_count;
+}
 }
 
 AssetManager::AssetManager()
@@ -30,6 +46,9 @@ AssetManager::AssetManager(AssetManagerDesc desc)
           ClampCapacity(desc.asset_capacity, MAX_ASSET_COUNT),
           ClampCapacity(desc.type_capacity, MAX_ASSET_TYPE_COUNT),
           ClampCapacity(desc.dependency_edge_capacity, MAX_ASSET_DEPENDENCY_EDGE_COUNT),
+          0U,
+          0U,
+          0U,
           0U,
           0U,
           0U,
@@ -66,18 +85,31 @@ AssetRegistrationResult AssetManager::RegisterRuntimeAsset(
         return AssetRegistrationResult::Failure(RecordFailure(AssetStatus::DuplicateAsset));
     }
 
-    if (snapshot_.active_asset_count >= snapshot_.asset_capacity) {
-        return AssetRegistrationResult::Failure(RecordFailure(AssetStatus::CapacityExceeded));
+    const bool needs_type_registration = !HasType(descriptor.asset_type);
+    const std::uint32_t required_asset_count = snapshot_.active_asset_count + 1U;
+    std::uint32_t required_type_count = snapshot_.type_count;
+    if (needs_type_registration) {
+        ++required_type_count;
     }
 
-    if (!HasType(descriptor.asset_type) && snapshot_.type_count >= snapshot_.type_capacity) {
-        return AssetRegistrationResult::Failure(RecordFailure(AssetStatus::CapacityExceeded));
+    if (snapshot_.active_asset_count >= snapshot_.asset_capacity) {
+        const AssetStatus status = RecordFailure(AssetStatus::CapacityExceeded);
+        RecordRequiredCounts(snapshot_, required_asset_count, required_type_count, 0U);
+        return AssetRegistrationResult::Failure(status, required_asset_count, required_type_count, 0U);
+    }
+
+    if (needs_type_registration && snapshot_.type_count >= snapshot_.type_capacity) {
+        const AssetStatus status = RecordFailure(AssetStatus::CapacityExceeded);
+        RecordRequiredCounts(snapshot_, required_asset_count, required_type_count, 0U);
+        return AssetRegistrationResult::Failure(status, required_asset_count, required_type_count, 0U);
     }
 
     std::uint32_t free_slot_index = 0U;
     AssetSlot *free_slot = FindFreeSlot(&free_slot_index);
     if (free_slot == nullptr) {
-        return AssetRegistrationResult::Failure(RecordFailure(AssetStatus::CapacityExceeded));
+        const AssetStatus status = RecordFailure(AssetStatus::CapacityExceeded);
+        RecordRequiredCounts(snapshot_, required_asset_count, required_type_count, 0U);
+        return AssetRegistrationResult::Failure(status, required_asset_count, required_type_count, 0U);
     }
 
     const yuengine::resource::ResourceStatus resource_status =
@@ -215,12 +247,20 @@ AssetStatus AssetManager::AddDependency(AssetHandle dependent, AssetHandle depen
     }
 
     if (snapshot_.active_dependency_edge_count >= snapshot_.dependency_edge_capacity) {
-        return RecordFailure(AssetStatus::CapacityExceeded);
+        const std::uint32_t required_dependency_edge_count =
+            snapshot_.active_dependency_edge_count + 1U;
+        const AssetStatus status = RecordFailure(AssetStatus::CapacityExceeded);
+        RecordRequiredCounts(snapshot_, 0U, 0U, required_dependency_edge_count);
+        return status;
     }
 
     AssetDependencyEdge *edge = FindFreeDependencyEdge();
     if (edge == nullptr) {
-        return RecordFailure(AssetStatus::CapacityExceeded);
+        const std::uint32_t required_dependency_edge_count =
+            snapshot_.active_dependency_edge_count + 1U;
+        const AssetStatus status = RecordFailure(AssetStatus::CapacityExceeded);
+        RecordRequiredCounts(snapshot_, 0U, 0U, required_dependency_edge_count);
+        return status;
     }
 
     edge->dependent = dependent;
@@ -528,6 +568,7 @@ AssetSnapshot AssetManager::Snapshot() const {
 AssetStatus AssetManager::RecordFailure(AssetStatus status) {
     ++snapshot_.failed_operation_count;
     snapshot_.last_status = status;
+    ClearRequiredCounts(snapshot_);
     return status;
 }
 
@@ -569,6 +610,7 @@ AssetStatus AssetManager::RecordAudioFailure(
 void AssetManager::RecordSuccess() {
     ++snapshot_.accepted_operation_count;
     snapshot_.last_status = AssetStatus::Success;
+    ClearRequiredCounts(snapshot_);
 }
 
 AssetStatus AssetManager::ResolveHandle(AssetHandle handle, std::size_t &out_index) const {

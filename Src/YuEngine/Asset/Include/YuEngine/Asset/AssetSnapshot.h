@@ -22,6 +22,9 @@ struct AssetSnapshot final {
     std::uint32_t active_asset_count = 0U;
     std::uint32_t released_asset_count = 0U;
     std::uint32_t active_dependency_edge_count = 0U;
+    std::uint32_t last_required_asset_count = 0U;
+    std::uint32_t last_required_type_count = 0U;
+    std::uint32_t last_required_dependency_edge_count = 0U;
     std::uint32_t texture_ready_count = 0U;
     std::uint32_t audio_ready_count = 0U;
     std::uint64_t registered_asset_count = 0U;
