@@ -22,6 +22,11 @@ struct AudioResourcePcmPacketImportSnapshot final {
     std::uint64_t duplicate_packet_rejected_count = 0U;
     std::uint64_t stale_import_rejected_count = 0U;
     std::uint64_t capacity_rejected_count = 0U;
+    std::uint64_t last_failed_import_id = 0U;
+    std::uint64_t last_failed_decode_result_id = 0U;
+    std::uint32_t last_failed_packet_id = 0U;
+    std::uint32_t last_failed_resource_slot = 0U;
+    std::uint32_t last_failed_resource_generation = 0U;
     std::uint64_t last_import_id = 0U;
     std::uint64_t last_decode_result_id = 0U;
     std::uint32_t last_packet_id = 0U;

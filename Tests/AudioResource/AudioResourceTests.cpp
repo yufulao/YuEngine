@@ -53,6 +53,7 @@ constexpr const char *TEST_REJECTS_DECODED_BYTE_MISMATCH = "AudioResource_PcmPac
 constexpr const char *TEST_REJECTS_INVALID_PACKET_SHAPE = "AudioResource_PcmPacketImportBridge_RejectsInvalidPacketShape";
 constexpr const char *TEST_REJECTS_DUPLICATE_IMPORT_AND_PACKET_IDS = "AudioResource_PcmPacketImportBridge_RejectsDuplicateImportAndPacketIds";
 constexpr const char *TEST_REJECTS_CAPACITY_OVERFLOW = "AudioResource_PcmPacketImportBridge_RejectsCapacityOverflow";
+constexpr const char *TEST_CAPACITY_IDENTITY_CLEARS_AFTER_NON_CAPACITY_RESULTS = "AudioResource_PcmPacketImportBridge_CapacityIdentityClearsAfterNonCapacityResults";
 constexpr const char *TEST_QUERY_AND_RELEASE_INVALIDATE_HANDLE = "AudioResource_PcmPacketImportBridge_QueryAndReleaseInvalidateHandle";
 constexpr const char *TEST_PUBLIC_CONTRACTS_ARE_PLAIN_VALUES = "AudioResource_PcmPacketImportBridge_PublicContractsArePlainValues";
 
@@ -176,6 +177,91 @@ bool ImportBasicMapping(
     }
 
     return packet_request.packet_id == PACKET_ID;
+}
+
+bool CapacityFailureIdentityMatches(
+    const AudioResourcePcmPacketImportSnapshot &snapshot,
+    const AudioResourcePcmPacketImportRequest &request) {
+    if (snapshot.last_failed_import_id != request.import_id) {
+        return false;
+    }
+
+    if (snapshot.last_failed_decode_result_id != request.decode_result_id) {
+        return false;
+    }
+
+    if (snapshot.last_failed_packet_id != request.packet_request.packet_id) {
+        return false;
+    }
+
+    if (snapshot.last_failed_resource_slot != request.resource.slot) {
+        return false;
+    }
+
+    return snapshot.last_failed_resource_generation == request.resource.generation;
+}
+
+bool CapacityFailureIdentityIsClear(const AudioResourcePcmPacketImportSnapshot &snapshot) {
+    if (snapshot.last_failed_import_id != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_decode_result_id != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_packet_id != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_resource_slot != 0U) {
+        return false;
+    }
+
+    return snapshot.last_failed_resource_generation == 0U;
+}
+
+bool FillImportCapacity(
+    AudioResourcePcmPacketImportBridge &bridge,
+    AudioResourcePcmPacketImportHandle *first_handle) {
+    if (first_handle == nullptr) {
+        return false;
+    }
+
+    std::uint32_t index = 0U;
+    while (index < MAX_AUDIO_RESOURCE_PCM_PACKET_IMPORT_RECORDS) {
+        AudioResourcePcmPacketImportHandle handle{};
+        AudioPcmSamplePacketRequest packet_request{};
+        AudioResourcePcmPacketImportRequest request = ImportRequest(
+            IMPORT_ID + index,
+            PACKET_ID + index);
+        const AudioResourcePcmPacketImportStatus status = bridge.ImportPcmPacket(
+            DecodeResultRecord(),
+            request,
+            &handle,
+            &packet_request);
+        if (status != AudioResourcePcmPacketImportStatus::Success) {
+            return false;
+        }
+
+        if (index == 0U) {
+            *first_handle = handle;
+        }
+
+        ++index;
+    }
+
+    return true;
+}
+
+bool RejectCapacityOverflow(
+    AudioResourcePcmPacketImportBridge &bridge,
+    const AudioResourcePcmPacketImportRequest &request) {
+    return ExpectRejectedWithoutActiveMutation(
+        bridge,
+        DecodeResultRecord(),
+        request,
+        AudioResourcePcmPacketImportStatus::CapacityExceeded);
 }
 
 int AudioResourcePcmPacketImportBridgeMapsResourceDecodeResult() {
@@ -347,31 +433,13 @@ int AudioResourcePcmPacketImportBridgeRejectsDuplicateImportAndPacketIds() {
 
 int AudioResourcePcmPacketImportBridgeRejectsCapacityOverflow() {
     AudioResourcePcmPacketImportBridge bridge;
-    std::uint32_t index = 0U;
-    while (index < MAX_AUDIO_RESOURCE_PCM_PACKET_IMPORT_RECORDS) {
-        AudioResourcePcmPacketImportHandle handle;
-        AudioPcmSamplePacketRequest packet_request;
-        AudioResourcePcmPacketImportRequest request = ImportRequest(
-            IMPORT_ID + index,
-            PACKET_ID + index);
-        const AudioResourcePcmPacketImportStatus status = bridge.ImportPcmPacket(
-            DecodeResultRecord(),
-            request,
-            &handle,
-            &packet_request);
-        if (status != AudioResourcePcmPacketImportStatus::Success) {
-            return Fail("capacity setup import failed");
-        }
-
-        ++index;
+    AudioResourcePcmPacketImportHandle first_handle{};
+    if (!FillImportCapacity(bridge, &first_handle)) {
+        return Fail("capacity setup import failed");
     }
 
     AudioResourcePcmPacketImportRequest request = ImportRequest(IMPORT_ID + 100U, PACKET_ID + 100U);
-    if (!ExpectRejectedWithoutActiveMutation(
-            bridge,
-            DecodeResultRecord(),
-            request,
-            AudioResourcePcmPacketImportStatus::CapacityExceeded)) {
+    if (!RejectCapacityOverflow(bridge, request)) {
         return Fail("capacity overflow was not rejected");
     }
 
@@ -383,6 +451,69 @@ int AudioResourcePcmPacketImportBridgeRejectsCapacityOverflow() {
     constexpr std::uint32_t EXPECTED_REQUIRED_IMPORT_COUNT = MAX_AUDIO_RESOURCE_PCM_PACKET_IMPORT_RECORDS + 1U;
     if (snapshot.last_required_import_count != EXPECTED_REQUIRED_IMPORT_COUNT) {
         return Fail("capacity required import count was unexpected");
+    }
+
+    if (!CapacityFailureIdentityMatches(snapshot, request)) {
+        return Fail("capacity failed import identity was unexpected");
+    }
+
+    return 0;
+}
+
+int AudioResourcePcmPacketImportBridgeCapacityIdentityClearsAfterNonCapacityResults() {
+    AudioResourcePcmPacketImportBridge bridge;
+    AudioResourcePcmPacketImportHandle first_handle{};
+    if (!FillImportCapacity(bridge, &first_handle)) {
+        return Fail("capacity identity setup import failed");
+    }
+
+    const AudioResourcePcmPacketImportRequest capacity_request = ImportRequest(
+        IMPORT_ID + 100U,
+        PACKET_ID + 100U);
+    if (!RejectCapacityOverflow(bridge, capacity_request)) {
+        return Fail("capacity identity baseline reject failed");
+    }
+
+    AudioResourcePcmPacketImportRecord record{};
+    if (bridge.QueryPcmPacketImport(first_handle, &record) != AudioResourcePcmPacketImportStatus::Success) {
+        return Fail("query after capacity reject failed");
+    }
+
+    AudioResourcePcmPacketImportSnapshot snapshot = bridge.Snapshot();
+    if (!CapacityFailureIdentityIsClear(snapshot)) {
+        return Fail("query success did not clear capacity identity");
+    }
+
+    if (!RejectCapacityOverflow(bridge, capacity_request)) {
+        return Fail("second capacity identity reject failed");
+    }
+
+    AudioResourcePcmPacketImportRequest duplicate_request = ImportRequest(IMPORT_ID, PACKET_ID + 200U);
+    if (!ExpectRejectedWithoutActiveMutation(
+            bridge,
+            DecodeResultRecord(),
+            duplicate_request,
+            AudioResourcePcmPacketImportStatus::DuplicateImportId)) {
+        return Fail("duplicate import after capacity reject failed");
+    }
+
+    snapshot = bridge.Snapshot();
+    if (!CapacityFailureIdentityIsClear(snapshot)) {
+        return Fail("duplicate import did not clear capacity identity");
+    }
+
+    if (!RejectCapacityOverflow(bridge, capacity_request)) {
+        return Fail("third capacity identity reject failed");
+    }
+
+    AudioResourcePcmPacketImportHandle invalid_handle{};
+    if (bridge.QueryPcmPacketImport(invalid_handle, &record) != AudioResourcePcmPacketImportStatus::InvalidHandle) {
+        return Fail("invalid handle after capacity reject failed");
+    }
+
+    snapshot = bridge.Snapshot();
+    if (!CapacityFailureIdentityIsClear(snapshot)) {
+        return Fail("handle failure did not clear capacity identity");
     }
 
     return 0;
@@ -477,13 +608,14 @@ int AudioResourcePcmPacketImportBridgePublicContractsArePlainValues() {
     return 0;
 }
 
-constexpr std::array<TestCase, 8U> TESTS = {{
+constexpr std::array<TestCase, 9U> TESTS = {{
     {TEST_MAPS_RESOURCE_DECODE_RESULT, AudioResourcePcmPacketImportBridgeMapsResourceDecodeResult},
     {TEST_REJECTS_NON_AUDIO_DECODE_RESULT, AudioResourcePcmPacketImportBridgeRejectsNonAudioDecodeResult},
     {TEST_REJECTS_DECODED_BYTE_MISMATCH, AudioResourcePcmPacketImportBridgeRejectsDecodedByteMismatch},
     {TEST_REJECTS_INVALID_PACKET_SHAPE, AudioResourcePcmPacketImportBridgeRejectsInvalidPacketShape},
     {TEST_REJECTS_DUPLICATE_IMPORT_AND_PACKET_IDS, AudioResourcePcmPacketImportBridgeRejectsDuplicateImportAndPacketIds},
     {TEST_REJECTS_CAPACITY_OVERFLOW, AudioResourcePcmPacketImportBridgeRejectsCapacityOverflow},
+    {TEST_CAPACITY_IDENTITY_CLEARS_AFTER_NON_CAPACITY_RESULTS, AudioResourcePcmPacketImportBridgeCapacityIdentityClearsAfterNonCapacityResults},
     {TEST_QUERY_AND_RELEASE_INVALIDATE_HANDLE, AudioResourcePcmPacketImportBridgeQueryAndReleaseInvalidateHandle},
     {TEST_PUBLIC_CONTRACTS_ARE_PLAIN_VALUES, AudioResourcePcmPacketImportBridgePublicContractsArePlainValues}
 }};
