@@ -17,6 +17,7 @@ namespace yuengine::rhi {
 struct RhiDeviceSnapshot final {
     std::size_t color_target_capacity = 0U;
     std::size_t color_target_count = 0U;
+    std::size_t required_color_target_count = 0U;
     std::size_t command_storage_capacity_before_frame = 0U;
     std::size_t command_storage_capacity_after_last_frame = 0U;
     std::uint64_t created_target_count = 0U;

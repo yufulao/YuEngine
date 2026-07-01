@@ -96,6 +96,14 @@ RhiStatus RecordDeviceSuccess(RhiDeviceSnapshot &snapshot) {
     snapshot.last_status = RhiStatus::Success;
     return RhiStatus::Success;
 }
+
+std::size_t RequiredColorTargetCount(std::size_t color_target_count) {
+    if (color_target_count == 0U) {
+        return 1U;
+    }
+
+    return color_target_count;
+}
 }
 
 RhiDeviceCreateResult RhiDeviceFactory::CreateDevice(const RhiDeviceDesc &desc, NullRhiDevice *null_device) {
@@ -265,6 +273,7 @@ RhiStatus NullRhiDevice::Initialize(const RhiDeviceDesc &desc) {
         MAX_RHI_SHADER_BYTECODE_BYTES};
     snapshot_ = RhiDeviceSnapshot{};
     snapshot_.color_target_capacity = desc.color_target_capacity;
+    snapshot_.required_color_target_count = RequiredColorTargetCount(snapshot_.color_target_count);
     snapshot_.resources.buffer_capacity = MAX_RHI_BUFFERS;
     snapshot_.resources.texture_capacity = MAX_RHI_TEXTURES;
     snapshot_.resources.sampler_capacity = MAX_RHI_SAMPLERS;
@@ -307,10 +316,12 @@ RhiStatus NullRhiDevice::CreateColorTarget(const RhiColorTargetDesc &desc, RhiTe
         slot.bytes.assign(PixelByteCount(desc), 0U);
         out_handle = RhiTextureHandle{static_cast<std::uint32_t>(index), slot.generation};
         ++snapshot_.color_target_count;
+        snapshot_.required_color_target_count = RequiredColorTargetCount(snapshot_.color_target_count);
         ++snapshot_.created_target_count;
         return RecordDeviceSuccess(snapshot_);
     }
 
+    snapshot_.required_color_target_count = snapshot_.color_target_count + 1U;
     return RecordFailure(RhiStatus::CapacityExceeded);
 }
 
@@ -339,6 +350,7 @@ RhiStatus NullRhiDevice::DestroyTarget(RhiTextureHandle handle) {
     slot.bytes.clear();
     ++slot.generation;
     --snapshot_.color_target_count;
+    snapshot_.required_color_target_count = RequiredColorTargetCount(snapshot_.color_target_count);
     ++snapshot_.destroyed_target_count;
     return RecordDeviceSuccess(snapshot_);
 }

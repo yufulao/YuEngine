@@ -738,6 +738,10 @@ bool DeviceSnapshotsEqual(const RhiDeviceSnapshot &left, const RhiDeviceSnapshot
         return false;
     }
 
+    if (left.required_color_target_count != right.required_color_target_count) {
+        return false;
+    }
+
     if (left.command_storage_capacity_before_frame != right.command_storage_capacity_before_frame) {
         return false;
     }
@@ -1509,6 +1513,10 @@ int RhiTargetCapacityOverflowDoesNotMutate() {
     }
 
     const auto before_snapshot = device.Snapshot();
+    if (before_snapshot.required_color_target_count != before_snapshot.color_target_count) {
+        return Fail("target capacity setup recorded wrong required target count");
+    }
+
     RhiTextureHandle overflow_handle{};
     const RhiStatus overflow_status = device.CreateColorTarget(SmallTargetDesc(), overflow_handle);
     if (overflow_status != RhiStatus::CapacityExceeded) {
@@ -1522,6 +1530,14 @@ int RhiTargetCapacityOverflowDoesNotMutate() {
 
     if (after_snapshot.created_target_count != before_snapshot.created_target_count) {
         return Fail("target overflow changed created count");
+    }
+
+    if (after_snapshot.required_color_target_count != before_snapshot.color_target_count + 1U) {
+        return Fail("target overflow did not record required target count");
+    }
+
+    if (after_snapshot.last_status != RhiStatus::CapacityExceeded) {
+        return Fail("target overflow did not record last status");
     }
 
     return 0;
