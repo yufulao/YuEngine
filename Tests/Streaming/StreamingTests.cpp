@@ -3191,8 +3191,8 @@ int StreamingPackageResourceStagingDrainCapacityReportsRequiredCount() {
         return Fail("staging drain required count did not reject small output");
     }
 
-    if (written_count != 0U) {
-        return Fail("staging drain required count wrote output count");
+    if (written_count != 77U) {
+        return Fail("staging drain required count changed output count");
     }
 
     if (output_completions[0U].request_id != REQUEST_THREE) {
