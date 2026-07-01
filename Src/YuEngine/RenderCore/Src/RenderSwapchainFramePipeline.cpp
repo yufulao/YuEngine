@@ -72,12 +72,18 @@ RenderSwapchainFramePipelineResult RenderSwapchainFramePipeline::Execute(
 
     if (desc_.command_capacity < RENDER_SWAPCHAIN_FRAME_COMMAND_COUNT) {
         result.status = RenderSwapchainFramePipelineStatus::CommandCapacityExceeded;
+        result.required_command_count = RENDER_SWAPCHAIN_FRAME_COMMAND_COUNT;
+        result.failed_command_index = desc_.command_capacity;
+        result.failed_frame_id = result.frame_id;
         RecordRejectedResult(result);
         return result;
     }
 
     if (!HasRecordCapacity()) {
         result.status = RenderSwapchainFramePipelineStatus::FrameRecordCapacityExceeded;
+        result.required_frame_record_count = snapshot_.frame_record_count + 1U;
+        result.failed_frame_record_index = snapshot_.frame_record_count;
+        result.failed_frame_id = result.frame_id;
         RecordRejectedResult(result);
         return result;
     }
@@ -238,12 +244,13 @@ void RenderSwapchainFramePipeline::RecordRejectedResult(
     }
 
     if (result.status == RenderSwapchainFramePipelineStatus::CommandCapacityExceeded) {
+        snapshot_.required_command_count = result.required_command_count;
         ++snapshot_.command_capacity_rejected_count;
         return;
     }
 
     if (result.status == RenderSwapchainFramePipelineStatus::FrameRecordCapacityExceeded) {
-        snapshot_.required_frame_record_count = snapshot_.frame_record_count + 1U;
+        snapshot_.required_frame_record_count = result.required_frame_record_count;
         ++snapshot_.frame_record_capacity_rejected_count;
         return;
     }
@@ -295,6 +302,9 @@ void RenderSwapchainFramePipeline::StoreLastResult(
     const RenderSwapchainFramePipelineResult &result) {
     snapshot_.last_frame_id = result.frame_id;
     snapshot_.last_recorded_command_count = result.recorded_command_count;
+    snapshot_.last_failed_command_index = result.failed_command_index;
+    snapshot_.last_failed_frame_record_index = result.failed_frame_record_index;
+    snapshot_.last_failed_frame_id = result.failed_frame_id;
     snapshot_.last_capture_bytes_written = result.capture_bytes_written;
     snapshot_.last_capture_extent = result.capture_extent;
     snapshot_.last_status = result.status;
