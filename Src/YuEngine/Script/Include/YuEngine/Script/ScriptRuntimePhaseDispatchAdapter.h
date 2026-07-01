@@ -62,12 +62,19 @@ public:
     ScriptRuntimePhaseDispatchSnapshot Snapshot() const;
 
 private:
-    ScriptRuntimePhaseDispatchStatus RecordBindFailure(ScriptRuntimePhaseDispatchStatus status);
+    ScriptRuntimePhaseDispatchStatus RecordBindFailure(
+        ScriptRuntimePhaseDispatchStatus status,
+        ScriptRuntimePhase phase,
+        ScriptCallId call_id);
     ScriptRuntimePhaseDispatchStatus RecordDispatchFailure(ScriptRuntimePhaseDispatchStatus status);
     ScriptRuntimePhaseDispatchStatus RecordDispatchFailure(
         ScriptRuntimePhaseDispatchStatus status,
         ScriptStatus script_status);
+    ScriptRuntimePhaseDispatchStatus RecordTraceCapacityFailure(
+        const ScriptRuntimePhaseTrace *phase_trace,
+        std::uint32_t phase_trace_count);
     void RecordSuccess(ScriptStatus script_status);
+    void ClearCapacityIdentity();
     ScriptRuntimePhaseDispatchStatus ValidateAdapterCapacity() const;
     ScriptRuntimePhaseDispatchStatus ValidateDispatchInputs(
         const ScriptRuntimePhaseTrace *phase_trace,

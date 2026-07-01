@@ -65,6 +65,8 @@ constexpr const char *TEST_RUNTIME_PHASE_INVALID_SLOTS =
     "Script_RuntimePhaseDispatch_InvalidSlotsReturnExplicitStatus";
 constexpr const char *TEST_RUNTIME_PHASE_INVALID_PHASE =
     "Script_RuntimePhaseDispatch_InvalidPhaseDoesNotMutate";
+constexpr const char *TEST_RUNTIME_PHASE_CAPACITY_ENTRY =
+    "Script_RuntimePhaseDispatch_CapacityEntriesClear";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr ScriptCallId CALL_ADD{1U};
@@ -247,6 +249,46 @@ ScriptRuntimePhaseTrace RuntimeTrace(ScriptRuntimePhase phase, std::uint64_t fra
     trace.active_object_count = 2U;
     trace.skipped_object_count = 1U;
     return trace;
+}
+
+int ExpectRuntimePhaseCapacityEntryClear(const ScriptRuntimePhaseDispatchSnapshot &snapshot) {
+    if (snapshot.last_failed_phase != ScriptRuntimePhase::BeginFrame) {
+        return Fail("runtime phase capacity entry retained failed phase");
+    }
+
+    if (snapshot.last_failed_call_id.IsValid()) {
+        return Fail("runtime phase capacity entry retained failed call id");
+    }
+
+    if (snapshot.last_failed_binding_capacity != 0U) {
+        return Fail("runtime phase capacity entry retained binding capacity");
+    }
+
+    if (snapshot.last_failed_binding_count != 0U) {
+        return Fail("runtime phase capacity entry retained binding count");
+    }
+
+    if (snapshot.last_required_binding_count != 0U) {
+        return Fail("runtime phase capacity entry retained required binding count");
+    }
+
+    if (snapshot.last_failed_trace_capacity != 0U) {
+        return Fail("runtime phase capacity entry retained trace capacity");
+    }
+
+    if (snapshot.last_failed_trace_count != 0U) {
+        return Fail("runtime phase capacity entry retained trace count");
+    }
+
+    if (snapshot.last_failed_trace_index != 0U) {
+        return Fail("runtime phase capacity entry retained failed trace index");
+    }
+
+    if (snapshot.last_required_trace_count != 0U) {
+        return Fail("runtime phase capacity entry retained required trace count");
+    }
+
+    return 0;
 }
 
 int ScriptRegisterNativeCallReturnsStableId() {
@@ -782,6 +824,273 @@ int ScriptRuntimePhaseDispatchInvalidPhaseDoesNotMutate() {
 
     return 0;
 }
+
+int ScriptRuntimePhaseDispatchCapacityEntriesClear() {
+    ScriptRuntimePhaseDispatchAdapterDesc bind_desc{};
+    bind_desc.binding_capacity = 1U;
+    bind_desc.trace_capacity = 2U;
+    ScriptRuntimePhaseDispatchAdapter bind_adapter(bind_desc);
+
+    const ScriptRuntimePhaseDispatchResult first_bind =
+        bind_adapter.Bind(ScriptRuntimePhase::BeginFrame, CALL_RUNTIME_BEGIN);
+    if (!first_bind.Succeeded()) {
+        return Fail("runtime phase capacity fixture first bind failed");
+    }
+
+    const ScriptRuntimePhaseDispatchResult overflow_bind =
+        bind_adapter.Bind(ScriptRuntimePhase::FixedStep, CALL_RUNTIME_END);
+    if (overflow_bind.status != ScriptRuntimePhaseDispatchStatus::CapacityExceeded) {
+        return Fail("runtime phase bind capacity did not return explicit status");
+    }
+
+    const ScriptRuntimePhaseDispatchSnapshot overflow_bind_snapshot = bind_adapter.Snapshot();
+    if (overflow_bind_snapshot.last_failed_phase != ScriptRuntimePhase::FixedStep) {
+        return Fail("runtime phase bind capacity missed failed phase");
+    }
+
+    if (overflow_bind_snapshot.last_failed_call_id.value != CALL_RUNTIME_END.value) {
+        return Fail("runtime phase bind capacity missed failed call id");
+    }
+
+    if (overflow_bind_snapshot.last_failed_binding_capacity != 1U) {
+        return Fail("runtime phase bind capacity missed binding capacity");
+    }
+
+    if (overflow_bind_snapshot.last_failed_binding_count != 1U) {
+        return Fail("runtime phase bind capacity missed binding count");
+    }
+
+    if (overflow_bind_snapshot.last_required_binding_count != 2U) {
+        return Fail("runtime phase bind capacity missed required binding count");
+    }
+
+    if (overflow_bind_snapshot.last_required_trace_count != 0U) {
+        return Fail("runtime phase bind capacity wrote trace required count");
+    }
+
+    const ScriptRuntimePhaseDispatchResult invalid_call_bind =
+        bind_adapter.Bind(ScriptRuntimePhase::EndFrame, ScriptCallId{});
+    if (invalid_call_bind.status != ScriptRuntimePhaseDispatchStatus::InvalidCallId) {
+        return Fail("runtime phase invalid call did not return explicit status");
+    }
+
+    const ScriptRuntimePhaseDispatchSnapshot invalid_call_snapshot = bind_adapter.Snapshot();
+    const int bind_clear_result = ExpectRuntimePhaseCapacityEntryClear(invalid_call_snapshot);
+    if (bind_clear_result != 0) {
+        return bind_clear_result;
+    }
+
+    ScriptNativeRegistry registry;
+    const ScriptNativeRegistrationResult begin_registration =
+        RegisterRuntimeBinding(registry, CALL_RUNTIME_BEGIN, AddOneRuntimeNative);
+    if (!begin_registration.Succeeded()) {
+        return Fail("runtime phase trace capacity begin registration failed");
+    }
+
+    const ScriptNativeRegistrationResult end_registration =
+        RegisterRuntimeBinding(registry, CALL_RUNTIME_END, AddTenRuntimeNative);
+    if (!end_registration.Succeeded()) {
+        return Fail("runtime phase trace capacity end registration failed");
+    }
+
+    ScriptRuntimePhaseDispatchAdapterDesc trace_desc{};
+    trace_desc.binding_capacity = 2U;
+    trace_desc.trace_capacity = 1U;
+    ScriptRuntimePhaseDispatchAdapter trace_adapter(trace_desc);
+    const ScriptRuntimePhaseDispatchResult begin_bind =
+        trace_adapter.Bind(ScriptRuntimePhase::BeginFrame, CALL_RUNTIME_BEGIN);
+    if (!begin_bind.Succeeded()) {
+        return Fail("runtime phase trace capacity begin bind failed");
+    }
+
+    const ScriptRuntimePhaseDispatchResult fixed_bind =
+        trace_adapter.Bind(ScriptRuntimePhase::FixedStep, CALL_RUNTIME_END);
+    if (!fixed_bind.Succeeded()) {
+        return Fail("runtime phase trace capacity fixed bind failed");
+    }
+
+    const std::array<ScriptRuntimePhaseTrace, 2U> overflow_traces{
+        RuntimeTrace(ScriptRuntimePhase::BeginFrame, 11U),
+        RuntimeTrace(ScriptRuntimePhase::FixedStep, 11U)};
+    std::array<ScriptValue, 1U> results = MakeRuntimeResult(0U);
+    const ScriptRuntimePhaseDispatchStatus trace_capacity_status = trace_adapter.DispatchTrace(
+        registry,
+        overflow_traces.data(),
+        static_cast<std::uint32_t>(overflow_traces.size()),
+        nullptr,
+        0U,
+        results.data(),
+        static_cast<std::uint32_t>(results.size()));
+    if (trace_capacity_status != ScriptRuntimePhaseDispatchStatus::TraceCapacityExceeded) {
+        return Fail("runtime phase trace capacity did not return explicit status");
+    }
+
+    const ScriptRuntimePhaseDispatchSnapshot trace_capacity_snapshot = trace_adapter.Snapshot();
+    if (trace_capacity_snapshot.last_failed_phase != ScriptRuntimePhase::FixedStep) {
+        return Fail("runtime phase trace capacity missed failed phase");
+    }
+
+    if (trace_capacity_snapshot.last_failed_call_id.value != CALL_RUNTIME_END.value) {
+        return Fail("runtime phase trace capacity missed failed call id");
+    }
+
+    if (trace_capacity_snapshot.last_failed_trace_capacity != 1U) {
+        return Fail("runtime phase trace capacity missed trace capacity");
+    }
+
+    if (trace_capacity_snapshot.last_failed_trace_count != 1U) {
+        return Fail("runtime phase trace capacity missed trace count");
+    }
+
+    if (trace_capacity_snapshot.last_failed_trace_index != 1U) {
+        return Fail("runtime phase trace capacity missed failed trace index");
+    }
+
+    if (trace_capacity_snapshot.last_required_trace_count != 2U) {
+        return Fail("runtime phase trace capacity missed required trace count");
+    }
+
+    const std::array<ScriptRuntimePhaseTrace, 1U> invalid_traces{
+        RuntimeTrace(static_cast<ScriptRuntimePhase>(99), 12U)};
+    const ScriptRuntimePhaseDispatchStatus invalid_phase_status = trace_adapter.DispatchTrace(
+        registry,
+        invalid_traces.data(),
+        static_cast<std::uint32_t>(invalid_traces.size()),
+        nullptr,
+        0U,
+        results.data(),
+        static_cast<std::uint32_t>(results.size()));
+    if (invalid_phase_status != ScriptRuntimePhaseDispatchStatus::InvalidPhase) {
+        return Fail("runtime phase invalid trace did not return explicit status");
+    }
+
+    const ScriptRuntimePhaseDispatchSnapshot invalid_phase_snapshot = trace_adapter.Snapshot();
+    const int invalid_clear_result = ExpectRuntimePhaseCapacityEntryClear(invalid_phase_snapshot);
+    if (invalid_clear_result != 0) {
+        return invalid_clear_result;
+    }
+
+    const ScriptRuntimePhaseDispatchStatus second_capacity_status = trace_adapter.DispatchTrace(
+        registry,
+        overflow_traces.data(),
+        static_cast<std::uint32_t>(overflow_traces.size()),
+        nullptr,
+        0U,
+        results.data(),
+        static_cast<std::uint32_t>(results.size()));
+    if (second_capacity_status != ScriptRuntimePhaseDispatchStatus::TraceCapacityExceeded) {
+        return Fail("runtime phase trace capacity could not be repeated");
+    }
+
+    const std::array<ScriptRuntimePhaseTrace, 1U> success_traces{
+        RuntimeTrace(ScriptRuntimePhase::BeginFrame, 13U)};
+    const ScriptRuntimePhaseDispatchStatus success_status = trace_adapter.DispatchTrace(
+        registry,
+        success_traces.data(),
+        static_cast<std::uint32_t>(success_traces.size()),
+        nullptr,
+        0U,
+        results.data(),
+        static_cast<std::uint32_t>(results.size()));
+    if (success_status != ScriptRuntimePhaseDispatchStatus::Success) {
+        return Fail("runtime phase trace success did not clear capacity entry");
+    }
+
+    const ScriptRuntimePhaseDispatchSnapshot success_snapshot = trace_adapter.Snapshot();
+    const int success_clear_result = ExpectRuntimePhaseCapacityEntryClear(success_snapshot);
+    if (success_clear_result != 0) {
+        return success_clear_result;
+    }
+
+    ScriptRuntimePhaseDispatchAdapter missing_adapter(trace_desc);
+    const ScriptRuntimePhaseDispatchResult missing_begin_bind =
+        missing_adapter.Bind(ScriptRuntimePhase::BeginFrame, CALL_UNKNOWN);
+    if (!missing_begin_bind.Succeeded()) {
+        return Fail("runtime phase missing call capacity begin bind failed");
+    }
+
+    const ScriptRuntimePhaseDispatchResult missing_fixed_bind =
+        missing_adapter.Bind(ScriptRuntimePhase::FixedStep, CALL_RUNTIME_END);
+    if (!missing_fixed_bind.Succeeded()) {
+        return Fail("runtime phase missing call capacity fixed bind failed");
+    }
+
+    const ScriptRuntimePhaseDispatchStatus missing_capacity_status = missing_adapter.DispatchTrace(
+        registry,
+        overflow_traces.data(),
+        static_cast<std::uint32_t>(overflow_traces.size()),
+        nullptr,
+        0U,
+        results.data(),
+        static_cast<std::uint32_t>(results.size()));
+    if (missing_capacity_status != ScriptRuntimePhaseDispatchStatus::TraceCapacityExceeded) {
+        return Fail("runtime phase missing call capacity fixture did not set stale entry");
+    }
+
+    const ScriptRuntimePhaseDispatchStatus missing_status = missing_adapter.DispatchTrace(
+        registry,
+        success_traces.data(),
+        static_cast<std::uint32_t>(success_traces.size()),
+        nullptr,
+        0U,
+        results.data(),
+        static_cast<std::uint32_t>(results.size()));
+    if (missing_status != ScriptRuntimePhaseDispatchStatus::MissingCall) {
+        return Fail("runtime phase missing call did not return explicit status");
+    }
+
+    const ScriptRuntimePhaseDispatchSnapshot missing_snapshot = missing_adapter.Snapshot();
+    const int missing_clear_result = ExpectRuntimePhaseCapacityEntryClear(missing_snapshot);
+    if (missing_clear_result != 0) {
+        return missing_clear_result;
+    }
+
+    ScriptRuntimePhaseDispatchAdapter slot_adapter(trace_desc);
+    const ScriptRuntimePhaseDispatchResult slot_begin_bind =
+        slot_adapter.Bind(ScriptRuntimePhase::BeginFrame, CALL_RUNTIME_BEGIN);
+    if (!slot_begin_bind.Succeeded()) {
+        return Fail("runtime phase invalid slot capacity begin bind failed");
+    }
+
+    const ScriptRuntimePhaseDispatchResult slot_fixed_bind =
+        slot_adapter.Bind(ScriptRuntimePhase::FixedStep, CALL_RUNTIME_END);
+    if (!slot_fixed_bind.Succeeded()) {
+        return Fail("runtime phase invalid slot capacity fixed bind failed");
+    }
+
+    const ScriptRuntimePhaseDispatchStatus slot_capacity_status = slot_adapter.DispatchTrace(
+        registry,
+        overflow_traces.data(),
+        static_cast<std::uint32_t>(overflow_traces.size()),
+        nullptr,
+        0U,
+        results.data(),
+        static_cast<std::uint32_t>(results.size()));
+    if (slot_capacity_status != ScriptRuntimePhaseDispatchStatus::TraceCapacityExceeded) {
+        return Fail("runtime phase invalid slot capacity fixture did not set stale entry");
+    }
+
+    std::array<ScriptValue, 1U> invalid_slot_results = MakeSingleIntResult(0);
+    const ScriptRuntimePhaseDispatchStatus slot_status = slot_adapter.DispatchTrace(
+        registry,
+        success_traces.data(),
+        static_cast<std::uint32_t>(success_traces.size()),
+        nullptr,
+        0U,
+        invalid_slot_results.data(),
+        static_cast<std::uint32_t>(invalid_slot_results.size()));
+    if (slot_status != ScriptRuntimePhaseDispatchStatus::InvalidScriptSlot) {
+        return Fail("runtime phase invalid slot did not return explicit status");
+    }
+
+    const ScriptRuntimePhaseDispatchSnapshot slot_snapshot = slot_adapter.Snapshot();
+    const int slot_clear_result = ExpectRuntimePhaseCapacityEntryClear(slot_snapshot);
+    if (slot_clear_result != 0) {
+        return slot_clear_result;
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv) {
@@ -807,7 +1116,8 @@ int main(int argc, char** argv) {
         {TEST_RUNTIME_PHASE_TRACE, ScriptRuntimePhaseDispatchTraceMapsToCallIds},
         {TEST_RUNTIME_PHASE_MISSING_CALL, ScriptRuntimePhaseDispatchMissingCallReturnsExplicitStatus},
         {TEST_RUNTIME_PHASE_INVALID_SLOTS, ScriptRuntimePhaseDispatchInvalidSlotsReturnExplicitStatus},
-        {TEST_RUNTIME_PHASE_INVALID_PHASE, ScriptRuntimePhaseDispatchInvalidPhaseDoesNotMutate}};
+        {TEST_RUNTIME_PHASE_INVALID_PHASE, ScriptRuntimePhaseDispatchInvalidPhaseDoesNotMutate},
+        {TEST_RUNTIME_PHASE_CAPACITY_ENTRY, ScriptRuntimePhaseDispatchCapacityEntriesClear}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);

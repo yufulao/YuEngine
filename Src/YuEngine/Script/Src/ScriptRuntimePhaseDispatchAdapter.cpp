@@ -32,7 +32,16 @@ ScriptRuntimePhaseDispatchAdapter::ScriptRuntimePhaseDispatchAdapter(
           0U,
           MemoryAccountingStatus::ExplicitlyTrackedOnly,
           ScriptStatus::Success,
-          ScriptRuntimePhaseDispatchStatus::Success} {
+          ScriptRuntimePhaseDispatchStatus::Success,
+          ScriptRuntimePhase::BeginFrame,
+          ScriptCallId{},
+          0U,
+          0U,
+          0U,
+          0U,
+          0U,
+          0U,
+          0U} {
     if (desc.binding_capacity == 0U) {
         snapshot_.last_status = ScriptRuntimePhaseDispatchStatus::InvalidBindingCapacity;
         return;
@@ -49,33 +58,33 @@ ScriptRuntimePhaseDispatchResult ScriptRuntimePhaseDispatchAdapter::Bind(
     ScriptCallId call_id) {
     const ScriptRuntimePhaseDispatchStatus capacity_status = ValidateAdapterCapacity();
     if (capacity_status != ScriptRuntimePhaseDispatchStatus::Success) {
-        return ScriptRuntimePhaseDispatchResult::Failure(RecordBindFailure(capacity_status));
+        return ScriptRuntimePhaseDispatchResult::Failure(RecordBindFailure(capacity_status, phase, call_id));
     }
 
     if (!IsPhaseValid(phase)) {
         return ScriptRuntimePhaseDispatchResult::Failure(
-            RecordBindFailure(ScriptRuntimePhaseDispatchStatus::InvalidPhase));
+            RecordBindFailure(ScriptRuntimePhaseDispatchStatus::InvalidPhase, phase, call_id));
     }
 
     if (!call_id.IsValid()) {
         return ScriptRuntimePhaseDispatchResult::Failure(
-            RecordBindFailure(ScriptRuntimePhaseDispatchStatus::InvalidCallId));
+            RecordBindFailure(ScriptRuntimePhaseDispatchStatus::InvalidCallId, phase, call_id));
     }
 
     if (FindBindingByPhase(phase) != nullptr) {
         return ScriptRuntimePhaseDispatchResult::Failure(
-            RecordBindFailure(ScriptRuntimePhaseDispatchStatus::DuplicatePhase));
+            RecordBindFailure(ScriptRuntimePhaseDispatchStatus::DuplicatePhase, phase, call_id));
     }
 
     if (snapshot_.binding_count >= snapshot_.binding_capacity) {
         return ScriptRuntimePhaseDispatchResult::Failure(
-            RecordBindFailure(ScriptRuntimePhaseDispatchStatus::CapacityExceeded));
+            RecordBindFailure(ScriptRuntimePhaseDispatchStatus::CapacityExceeded, phase, call_id));
     }
 
     ScriptRuntimePhaseDispatchBinding *binding = FindFreeBinding();
     if (binding == nullptr) {
         return ScriptRuntimePhaseDispatchResult::Failure(
-            RecordBindFailure(ScriptRuntimePhaseDispatchStatus::CapacityExceeded));
+            RecordBindFailure(ScriptRuntimePhaseDispatchStatus::CapacityExceeded, phase, call_id));
     }
 
     binding->phase = phase;
@@ -101,6 +110,10 @@ ScriptRuntimePhaseDispatchStatus ScriptRuntimePhaseDispatchAdapter::DispatchTrac
         argument_count,
         results,
         result_count);
+    if (input_status == ScriptRuntimePhaseDispatchStatus::TraceCapacityExceeded) {
+        return RecordTraceCapacityFailure(phase_trace, phase_trace_count);
+    }
+
     if (input_status != ScriptRuntimePhaseDispatchStatus::Success) {
         return RecordDispatchFailure(input_status);
     }
@@ -139,13 +152,27 @@ ScriptRuntimePhaseDispatchSnapshot ScriptRuntimePhaseDispatchAdapter::Snapshot()
 }
 
 ScriptRuntimePhaseDispatchStatus ScriptRuntimePhaseDispatchAdapter::RecordBindFailure(
-    ScriptRuntimePhaseDispatchStatus status) {
+    ScriptRuntimePhaseDispatchStatus status,
+    ScriptRuntimePhase phase,
+    ScriptCallId call_id) {
+    ClearCapacityIdentity();
     snapshot_.last_status = status;
+    if (status == ScriptRuntimePhaseDispatchStatus::CapacityExceeded) {
+        const std::uint32_t binding_capacity = snapshot_.binding_capacity;
+        const std::uint32_t binding_count = snapshot_.binding_count;
+        snapshot_.last_failed_phase = phase;
+        snapshot_.last_failed_call_id = call_id;
+        snapshot_.last_failed_binding_capacity = binding_capacity;
+        snapshot_.last_failed_binding_count = binding_count;
+        snapshot_.last_required_binding_count = binding_count + 1U;
+    }
+
     return status;
 }
 
 ScriptRuntimePhaseDispatchStatus ScriptRuntimePhaseDispatchAdapter::RecordDispatchFailure(
     ScriptRuntimePhaseDispatchStatus status) {
+    ClearCapacityIdentity();
     ++snapshot_.failed_dispatch_count;
     snapshot_.last_status = status;
     return status;
@@ -154,15 +181,62 @@ ScriptRuntimePhaseDispatchStatus ScriptRuntimePhaseDispatchAdapter::RecordDispat
 ScriptRuntimePhaseDispatchStatus ScriptRuntimePhaseDispatchAdapter::RecordDispatchFailure(
     ScriptRuntimePhaseDispatchStatus status,
     ScriptStatus script_status) {
+    ClearCapacityIdentity();
     ++snapshot_.failed_dispatch_count;
     snapshot_.last_status = status;
     snapshot_.last_script_status = script_status;
     return status;
 }
 
+ScriptRuntimePhaseDispatchStatus ScriptRuntimePhaseDispatchAdapter::RecordTraceCapacityFailure(
+    const ScriptRuntimePhaseTrace *phase_trace,
+    std::uint32_t phase_trace_count) {
+    ClearCapacityIdentity();
+    const std::uint32_t trace_capacity = snapshot_.trace_capacity;
+    const std::uint32_t trace_count = trace_capacity;
+    ++snapshot_.failed_dispatch_count;
+    snapshot_.last_status = ScriptRuntimePhaseDispatchStatus::TraceCapacityExceeded;
+    snapshot_.last_failed_trace_capacity = trace_capacity;
+    snapshot_.last_failed_trace_count = trace_count;
+    snapshot_.last_failed_trace_index = trace_capacity;
+    snapshot_.last_required_trace_count = phase_trace_count;
+
+    if (phase_trace == nullptr) {
+        return ScriptRuntimePhaseDispatchStatus::TraceCapacityExceeded;
+    }
+
+    if (snapshot_.trace_capacity >= phase_trace_count) {
+        return ScriptRuntimePhaseDispatchStatus::TraceCapacityExceeded;
+    }
+
+    const ScriptRuntimePhaseTrace &trace = phase_trace[snapshot_.trace_capacity];
+    snapshot_.last_failed_phase = trace.phase;
+
+    const ScriptRuntimePhaseDispatchBinding *binding = FindBindingByPhase(trace.phase);
+    if (binding == nullptr) {
+        return ScriptRuntimePhaseDispatchStatus::TraceCapacityExceeded;
+    }
+
+    snapshot_.last_failed_call_id = binding->call_id;
+    return ScriptRuntimePhaseDispatchStatus::TraceCapacityExceeded;
+}
+
 void ScriptRuntimePhaseDispatchAdapter::RecordSuccess(ScriptStatus script_status) {
+    ClearCapacityIdentity();
     snapshot_.last_status = ScriptRuntimePhaseDispatchStatus::Success;
     snapshot_.last_script_status = script_status;
+}
+
+void ScriptRuntimePhaseDispatchAdapter::ClearCapacityIdentity() {
+    snapshot_.last_failed_phase = ScriptRuntimePhase::BeginFrame;
+    snapshot_.last_failed_call_id = ScriptCallId{};
+    snapshot_.last_failed_binding_capacity = 0U;
+    snapshot_.last_failed_binding_count = 0U;
+    snapshot_.last_required_binding_count = 0U;
+    snapshot_.last_failed_trace_capacity = 0U;
+    snapshot_.last_failed_trace_count = 0U;
+    snapshot_.last_failed_trace_index = 0U;
+    snapshot_.last_required_trace_count = 0U;
 }
 
 ScriptRuntimePhaseDispatchStatus ScriptRuntimePhaseDispatchAdapter::ValidateAdapterCapacity() const {

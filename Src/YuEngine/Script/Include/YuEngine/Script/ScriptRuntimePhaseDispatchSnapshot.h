@@ -6,6 +6,8 @@
 #include <cstdint>
 
 #include "YuEngine/Memory/MemoryAccountingStatus.h"
+#include "YuEngine/Script/ScriptCallId.h"
+#include "YuEngine/Script/ScriptRuntimePhase.h"
 #include "YuEngine/Script/ScriptRuntimePhaseDispatchStatus.h"
 #include "YuEngine/Script/ScriptStatus.h"
 
@@ -21,5 +23,14 @@ struct ScriptRuntimePhaseDispatchSnapshot final {
         yuengine::memory::MemoryAccountingStatus::ExplicitlyTrackedOnly;
     ScriptStatus last_script_status = ScriptStatus::Success;
     ScriptRuntimePhaseDispatchStatus last_status = ScriptRuntimePhaseDispatchStatus::Success;
+    ScriptRuntimePhase last_failed_phase = ScriptRuntimePhase::BeginFrame;
+    ScriptCallId last_failed_call_id{};
+    std::uint32_t last_failed_binding_capacity = 0U;
+    std::uint32_t last_failed_binding_count = 0U;
+    std::uint32_t last_required_binding_count = 0U;
+    std::uint32_t last_failed_trace_capacity = 0U;
+    std::uint32_t last_failed_trace_count = 0U;
+    std::uint32_t last_failed_trace_index = 0U;
+    std::uint32_t last_required_trace_count = 0U;
 };
 }
