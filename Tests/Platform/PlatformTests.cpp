@@ -427,6 +427,10 @@ int PlatformWindowEventOverflowReportsSnapshotStatus() {
         return Fail("internal platform event overflow did not record dropped count");
     }
 
+    if (snapshot.required_queued_event_count != PlatformWindowDesc::DEFAULT_EVENT_QUEUE_CAPACITY + 1U) {
+        return Fail("internal platform event overflow did not expose required queue count");
+    }
+
     if (snapshot.last_status != PlatformWindowStatus::EventQueueOverflow) {
         return Fail("internal platform event overflow did not record snapshot status");
     }

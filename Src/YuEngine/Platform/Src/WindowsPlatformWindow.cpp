@@ -403,6 +403,10 @@ PlatformWindowSnapshot WindowsPlatformWindow::GetSnapshot() const {
     snapshot.client_height = client_height_;
     snapshot.queued_event_count = event_count_;
     snapshot.event_queue_capacity = event_queue_capacity_;
+    if (dropped_event_count_ != 0U) {
+        snapshot.required_queued_event_count = event_queue_capacity_ + dropped_event_count_;
+    }
+
     snapshot.dropped_event_count = dropped_event_count_;
     snapshot.last_status = last_status_;
     snapshot.native_surface = GetNativeSurface();

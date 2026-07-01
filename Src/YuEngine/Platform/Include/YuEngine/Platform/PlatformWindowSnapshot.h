@@ -21,6 +21,7 @@ struct PlatformWindowSnapshot {
     std::uint32_t client_height = 0U;
     std::size_t queued_event_count = 0U;
     std::size_t event_queue_capacity = 0U;
+    std::size_t required_queued_event_count = 0U;
     std::uint32_t dropped_event_count = 0U;
     PlatformWindowStatus last_status = PlatformWindowStatus::NotCreated;
     PlatformNativeSurface native_surface;
