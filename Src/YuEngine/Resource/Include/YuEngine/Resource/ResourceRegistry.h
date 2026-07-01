@@ -78,6 +78,17 @@ public:
      */
     ResourceStatus AddDependency(ResourceHandle dependent, ResourceHandle dependency);
     /**
+     * @comment 精确查找当前直接 Resource dependency 边。
+     * @param dependent 输入 dependent。
+     * @param dependency 输入 dependency。
+     * @param output_dependency_edge_exists 输出直接 dependency 边存在标记。
+     * @return 显式操作状态。
+     */
+    ResourceStatus FindDependencyEdge(
+        ResourceHandle dependent,
+        ResourceHandle dependency,
+        bool *output_dependency_edge_exists);
+    /**
      * @comment 获取操作。
      * @param handle 输入句柄。
      * @param expected_type 输入期望类型。

@@ -463,6 +463,49 @@ ResourceStatus ResourceRegistry::AddDependency(ResourceHandle dependent, Resourc
     return status;
 }
 
+ResourceStatus ResourceRegistry::FindDependencyEdge(
+    ResourceHandle dependent,
+    ResourceHandle dependency,
+    bool *output_dependency_edge_exists) {
+    if (output_dependency_edge_exists == nullptr) {
+        return RecordFailure(ResourceStatus::InvalidHandle);
+    }
+
+    std::size_t dependent_index = 0U;
+    const ResourceStatus dependent_status = ResolveHandle(dependent, dependent_index);
+    if (dependent_status != ResourceStatus::Success) {
+        return RecordFailure(dependent_status);
+    }
+
+    std::size_t dependency_index = 0U;
+    const ResourceStatus dependency_status = ResolveHandle(dependency, dependency_index);
+    if (dependency_status != ResourceStatus::Success) {
+        return RecordFailure(dependency_status);
+    }
+
+    const std::uint32_t dependent_slot = static_cast<std::uint32_t>(dependent_index);
+    const std::uint32_t dependency_slot = static_cast<std::uint32_t>(dependency_index);
+    for (const ResourceDependencyEdge &edge : dependency_edges_) {
+        if (!edge.is_active) {
+            continue;
+        }
+
+        if (edge.dependent_slot != dependent_slot) {
+            continue;
+        }
+
+        if (edge.dependency_slot != dependency_slot) {
+            continue;
+        }
+
+        *output_dependency_edge_exists = true;
+        RecordSuccess();
+        return ResourceStatus::Success;
+    }
+
+    return RecordFailure(ResourceStatus::NotFound);
+}
+
 ResourceStatus ResourceRegistry::Acquire(ResourceHandle handle, ResourceTypeId expected_type) {
     std::size_t slot_index = 0U;
     const ResourceStatus handle_status = ResolveHandle(handle, slot_index);

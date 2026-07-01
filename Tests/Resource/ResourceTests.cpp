@@ -124,6 +124,8 @@ constexpr const char* TEST_RETIRE_REFERENCED = "Resource_RetireRejectsOutstandin
 constexpr const char* TEST_RETIRE_DEPENDED_ON = "Resource_RetireRejectsLiveDependentEdge";
 constexpr const char* TEST_MISSING_DEPENDENCY = "Resource_DependencyValidationRejectsMissingDependency";
 constexpr const char* TEST_DEPENDENCY_CYCLE = "Resource_DependencyValidationRejectsCycle";
+constexpr const char *TEST_DEPENDENCY_EDGE_EXACT_LOOKUP =
+    "Resource_DependencyEdgeExactLookupFindsDirectEdge";
 constexpr const char* TEST_NO_FILE_PACKAGE = "Resource_NoFileOrPackageDependency_ForHandleRegistry";
 constexpr const char* TEST_DISABLED_DIAGNOSTICS = "Resource_DisabledDiagnosticsDoesNotChangeResults";
 constexpr const char* TEST_NO_HIDDEN_ALLOCATION = "Resource_NoHiddenAllocation_UsesYuMemorySignal";
@@ -1989,6 +1991,128 @@ int ResourceDependencyValidationRejectsCycle() {
 
     if (registry.Snapshot().dependency_edge_count != 2U) {
         return Fail("dependency cycle changed edge count");
+    }
+
+    return 0;
+}
+
+int ResourceDependencyEdgeExactLookupFindsDirectEdge() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult root = Register(registry, TYPE_MATERIAL, "edge_lookup_root");
+    const ResourceRegistrationResult shared = Register(registry, TYPE_TEXTURE, "edge_lookup_shared");
+    const ResourceRegistrationResult leaf = Register(registry, TYPE_AUDIO, "edge_lookup_leaf");
+    const ResourceRegistrationResult unrelated = Register(registry, TYPE_EFFECT, "edge_lookup_unrelated");
+    if (!root.Succeeded() ||
+        !shared.Succeeded() ||
+        !leaf.Succeeded() ||
+        !unrelated.Succeeded()) {
+        return Fail("dependency edge exact lookup fixture registration failed");
+    }
+
+    if (registry.AddDependency(root.handle, shared.handle) != ResourceStatus::Success) {
+        return Fail("dependency edge exact lookup root edge setup failed");
+    }
+
+    if (registry.AddDependency(shared.handle, leaf.handle) != ResourceStatus::Success) {
+        return Fail("dependency edge exact lookup transitive edge setup failed");
+    }
+
+    bool edge_exists = false;
+    const ResourceSnapshot before_direct_snapshot = registry.Snapshot();
+    const ResourceStatus direct_status = registry.FindDependencyEdge(
+        root.handle,
+        shared.handle,
+        &edge_exists);
+    if (direct_status != ResourceStatus::Success || !edge_exists) {
+        return Fail("dependency edge exact lookup did not find direct edge");
+    }
+
+    ResourceSnapshot after_snapshot = registry.Snapshot();
+    if (after_snapshot.dependency_edge_count != before_direct_snapshot.dependency_edge_count ||
+        after_snapshot.dependency_validation_count != before_direct_snapshot.dependency_validation_count) {
+        return Fail("dependency edge exact lookup direct success mutated dependency counters");
+    }
+
+    if (after_snapshot.last_status != ResourceStatus::Success) {
+        return Fail("dependency edge exact lookup direct success did not record last status");
+    }
+
+    bool preserve_output = true;
+    const ResourceStatus transitive_status = registry.FindDependencyEdge(
+        root.handle,
+        leaf.handle,
+        &preserve_output);
+    if (transitive_status != ResourceStatus::NotFound || !preserve_output) {
+        return Fail("dependency edge exact lookup accepted transitive edge or mutated output");
+    }
+
+    after_snapshot = registry.Snapshot();
+    if (after_snapshot.dependency_edge_count != before_direct_snapshot.dependency_edge_count ||
+        after_snapshot.dependency_validation_count != before_direct_snapshot.dependency_validation_count) {
+        return Fail("dependency edge exact lookup transitive miss mutated dependency counters");
+    }
+
+    if (after_snapshot.last_status != ResourceStatus::NotFound) {
+        return Fail("dependency edge exact lookup transitive miss did not record not found");
+    }
+
+    preserve_output = true;
+    const ResourceStatus missing_status = registry.FindDependencyEdge(
+        unrelated.handle,
+        root.handle,
+        &preserve_output);
+    if (missing_status != ResourceStatus::NotFound || !preserve_output) {
+        return Fail("dependency edge exact lookup accepted missing edge or mutated output");
+    }
+
+    preserve_output = true;
+    const ResourceStatus invalid_dependent_status = registry.FindDependencyEdge(
+        ResourceHandle{},
+        shared.handle,
+        &preserve_output);
+    if (invalid_dependent_status != ResourceStatus::InvalidHandle || !preserve_output) {
+        return Fail("dependency edge exact lookup invalid dependent mutated output");
+    }
+
+    preserve_output = true;
+    const ResourceStatus invalid_dependency_status = registry.FindDependencyEdge(
+        root.handle,
+        ResourceHandle{},
+        &preserve_output);
+    if (invalid_dependency_status != ResourceStatus::InvalidHandle || !preserve_output) {
+        return Fail("dependency edge exact lookup invalid dependency mutated output");
+    }
+
+    const ResourceRegistrationResult stale_result = Register(registry, TYPE_TEXTURE, "edge_lookup_stale");
+    if (!stale_result.Succeeded()) {
+        return Fail("dependency edge exact lookup stale fixture registration failed");
+    }
+
+    if (registry.Retire(stale_result.handle) != ResourceStatus::Success) {
+        return Fail("dependency edge exact lookup stale fixture retire failed");
+    }
+
+    preserve_output = true;
+    const ResourceStatus stale_status = registry.FindDependencyEdge(
+        stale_result.handle,
+        shared.handle,
+        &preserve_output);
+    if (stale_status != ResourceStatus::GenerationMismatch || !preserve_output) {
+        return Fail("dependency edge exact lookup stale dependent mutated output");
+    }
+
+    const ResourceStatus null_output_status = registry.FindDependencyEdge(
+        root.handle,
+        shared.handle,
+        nullptr);
+    if (null_output_status != ResourceStatus::InvalidHandle) {
+        return Fail("dependency edge exact lookup null output did not fail explicitly");
+    }
+
+    after_snapshot = registry.Snapshot();
+    if (after_snapshot.dependency_edge_count != before_direct_snapshot.dependency_edge_count ||
+        after_snapshot.last_required_dependency_edge_count != 0U) {
+        return Fail("dependency edge exact lookup failure mutated dependency capacity data");
     }
 
     return 0;
@@ -7665,6 +7789,7 @@ int main(int argc, char** argv) {
         {TEST_RETIRE_DEPENDED_ON, ResourceRetireRejectsLiveDependentEdge},
         {TEST_MISSING_DEPENDENCY, ResourceDependencyValidationRejectsMissingDependency},
         {TEST_DEPENDENCY_CYCLE, ResourceDependencyValidationRejectsCycle},
+        {TEST_DEPENDENCY_EDGE_EXACT_LOOKUP, ResourceDependencyEdgeExactLookupFindsDirectEdge},
         {TEST_NO_FILE_PACKAGE, ResourceNoFileOrPackageDependencyForHandleRegistry},
         {TEST_DISABLED_DIAGNOSTICS, ResourceDisabledDiagnosticsDoesNotChangeResults},
         {TEST_NO_HIDDEN_ALLOCATION, ResourceNoHiddenAllocationUsesYuMemorySignal},
