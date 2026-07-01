@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 #include "YuEngine/Script/ScriptCallId.h"
 #include "YuEngine/Script/ScriptStatus.h"
 
@@ -10,6 +12,7 @@ namespace yuengine::script {
 struct ScriptNativeRegistrationResult final {
     ScriptStatus status = ScriptStatus::Success;
     ScriptCallId call_id{};
+    std::uint32_t required_binding_count = 0U;
 
     /**
      * @comment 创建成功 result。
@@ -17,16 +20,25 @@ struct ScriptNativeRegistrationResult final {
      * @return 显式操作结果。
      */
     static ScriptNativeRegistrationResult Success(ScriptCallId call_id) {
-        return ScriptNativeRegistrationResult{ScriptStatus::Success, call_id};
+        ScriptNativeRegistrationResult result{};
+        result.status = ScriptStatus::Success;
+        result.call_id = call_id;
+        return result;
     }
 
     /**
      * @comment 创建失败 result。
      * @param status 输入 status。
+     * @param required_binding_count 输入 required binding 数量。
      * @return 显式操作结果。
      */
-    static ScriptNativeRegistrationResult Failure(ScriptStatus status) {
-        return ScriptNativeRegistrationResult{status, ScriptCallId{}};
+    static ScriptNativeRegistrationResult Failure(
+        ScriptStatus status,
+        std::uint32_t required_binding_count=0U) {
+        ScriptNativeRegistrationResult result{};
+        result.status = status;
+        result.required_binding_count = required_binding_count;
+        return result;
     }
 
     /**

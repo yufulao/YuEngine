@@ -330,6 +330,10 @@ int ScriptRegistryCapacityOverflowDoesNotMutate() {
         return Fail("capacity overflow did not return explicit status");
     }
 
+    if (second_result.required_binding_count != 2U) {
+        return Fail("capacity overflow did not return required binding count");
+    }
+
     const ScriptSnapshot after_snapshot = registry.Snapshot();
     if (after_snapshot.binding_count != before_snapshot.binding_count) {
         return Fail("capacity overflow mutated binding count");
@@ -337,6 +341,10 @@ int ScriptRegistryCapacityOverflowDoesNotMutate() {
 
     if (after_snapshot.binding_capacity != before_snapshot.binding_capacity) {
         return Fail("capacity overflow mutated binding capacity");
+    }
+
+    if (after_snapshot.last_required_binding_count != 2U) {
+        return Fail("capacity overflow snapshot missed required binding count");
     }
 
     return 0;
@@ -581,6 +589,10 @@ int ScriptSnapshotReportsCountsAndLastStatus() {
 
     if (snapshot.failed_call_count != 1U) {
         return Fail("snapshot did not report failed call count");
+    }
+
+    if (snapshot.last_required_binding_count != 0U) {
+        return Fail("snapshot retained required binding count after non-capacity status");
     }
 
     if (snapshot.last_status != ScriptStatus::InvalidCallId) {

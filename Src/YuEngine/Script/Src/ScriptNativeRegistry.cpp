@@ -51,6 +51,7 @@ ScriptNativeRegistry::ScriptNativeRegistry(ScriptNativeRegistryDesc desc)
           0U,
           0U,
           0U,
+          0U,
           MemoryAccountingStatus::ExplicitlyTrackedOnly,
           ScriptStatus::Success} {
 }
@@ -66,11 +67,14 @@ ScriptNativeRegistrationResult ScriptNativeRegistry::RegisterNativeCall(const Sc
     }
 
     if (snapshot_.binding_count >= snapshot_.binding_capacity) {
-        return ScriptNativeRegistrationResult::Failure(RecordRegistryFailure(ScriptStatus::CapacityExceeded));
+        const std::uint32_t required_binding_count = snapshot_.binding_count + 1U;
+        const ScriptStatus status = RecordRegistryFailure(ScriptStatus::CapacityExceeded, required_binding_count);
+        return ScriptNativeRegistrationResult::Failure(status, required_binding_count);
     }
 
     bindings_[snapshot_.binding_count] = binding;
     ++snapshot_.binding_count;
+    snapshot_.last_required_binding_count = 0U;
     snapshot_.last_status = ScriptStatus::Success;
     return ScriptNativeRegistrationResult::Success(binding.call_id);
 }
@@ -127,19 +131,24 @@ ScriptSnapshot ScriptNativeRegistry::Snapshot() const {
     return snapshot_;
 }
 
-ScriptStatus ScriptNativeRegistry::RecordRegistryFailure(ScriptStatus status) {
+ScriptStatus ScriptNativeRegistry::RecordRegistryFailure(
+    ScriptStatus status,
+    std::uint32_t required_binding_count) {
+    snapshot_.last_required_binding_count = required_binding_count;
     snapshot_.last_status = status;
     return status;
 }
 
 ScriptStatus ScriptNativeRegistry::RecordCallFailure(ScriptStatus status) {
     ++snapshot_.failed_call_count;
+    snapshot_.last_required_binding_count = 0U;
     snapshot_.last_status = status;
     return status;
 }
 
 ScriptStatus ScriptNativeRegistry::RecordCallSuccess() {
     ++snapshot_.successful_call_count;
+    snapshot_.last_required_binding_count = 0U;
     snapshot_.last_status = ScriptStatus::Success;
     return ScriptStatus::Success;
 }

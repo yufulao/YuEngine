@@ -54,7 +54,9 @@ public:
     ScriptSnapshot Snapshot() const;
 
 private:
-    ScriptStatus RecordRegistryFailure(ScriptStatus status);
+    ScriptStatus RecordRegistryFailure(
+        ScriptStatus status,
+        std::uint32_t required_binding_count=0U);
     ScriptStatus RecordCallFailure(ScriptStatus status);
     ScriptStatus RecordCallSuccess();
     ScriptStatus ValidateBinding(const ScriptNativeBinding &binding) const;

@@ -12,6 +12,7 @@ namespace yuengine::script {
 struct ScriptSnapshot final {
     std::uint32_t binding_capacity = 0U;
     std::uint32_t binding_count = 0U;
+    std::uint32_t last_required_binding_count = 0U;
     std::uint64_t successful_call_count = 0U;
     std::uint64_t failed_call_count = 0U;
     yuengine::memory::MemoryAccountingStatus allocation_accounting_status =
