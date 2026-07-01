@@ -34,6 +34,7 @@ struct ThreadWorkerSnapshot {
     std::size_t completion_pending_count = 0U;
     std::size_t max_queue_depth = 0U;
     std::size_t max_completion_depth = 0U;
+    std::size_t last_required_completion_count = 0U;
     ShutdownPolicy shutdown_policy = ShutdownPolicy::DrainQueued;
     ThreadWorkerStatus last_status = ThreadWorkerStatus::NotInitialized;
     bool is_initialized = false;

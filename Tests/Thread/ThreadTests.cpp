@@ -715,6 +715,15 @@ int ThreadWorkerCompletionCapacityRejectsWithoutMutation() {
         return Fail("completion capacity did not reject second submit");
     }
 
+    const auto rejected_snapshot = worker.Snapshot();
+    if (rejected_snapshot.last_required_completion_count != 2U) {
+        return Fail("completion capacity did not report required completion count");
+    }
+
+    if (rejected_snapshot.completed_count != 0U) {
+        return Fail("completion capacity rejection changed completed count");
+    }
+
     ReleaseBlockingTask(blocking_context);
     worker.Shutdown(ShutdownPolicy::DrainQueued);
 
@@ -770,11 +779,24 @@ int ThreadWorkerCompletionDrainUsesCallerStorageLimit() {
         return Fail("small completion output did not keep remaining records");
     }
 
-    if (first_written_count != 1U) {
-        return Fail("small completion output wrote wrong count");
+    if (first_written_count != 0U) {
+        return Fail("small completion output wrote records before success");
     }
 
-    std::array<ThreadWorkerCompletion, 1U> second_drain{};
+    const auto rejected_snapshot = worker.Snapshot();
+    if (rejected_snapshot.completion_pending_count != 2U) {
+        return Fail("small completion output mutated pending records");
+    }
+
+    if (rejected_snapshot.drained_completion_count != 0U) {
+        return Fail("small completion output changed drained count");
+    }
+
+    if (rejected_snapshot.last_required_completion_count != 2U) {
+        return Fail("small completion output did not report required completion count");
+    }
+
+    std::array<ThreadWorkerCompletion, 2U> second_drain{};
     std::size_t second_written_count = 0U;
     const ThreadWorkerStatus second_drain_status = worker.DrainCompletions(
         second_drain.data(),
@@ -784,13 +806,17 @@ int ThreadWorkerCompletionDrainUsesCallerStorageLimit() {
         return Fail("second completion drain failed");
     }
 
-    if (second_written_count != 1U) {
+    if (second_written_count != second_drain.size()) {
         return Fail("second completion drain wrote wrong count");
     }
 
     const auto snapshot = worker.Snapshot();
     if (snapshot.drained_completion_count != 2U) {
         return Fail("drained completion count was wrong");
+    }
+
+    if (snapshot.last_required_completion_count != 2U) {
+        return Fail("second completion drain lost required completion count");
     }
 
     if (snapshot.last_status != ThreadWorkerStatus::CompletionQueueFull) {

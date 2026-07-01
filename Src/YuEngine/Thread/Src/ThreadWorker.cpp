@@ -45,6 +45,11 @@ void SetLastStatusLocked(ThreadWorkerState& state, ThreadWorkerStatus status) {
     state.snapshot.last_status = status;
 }
 
+void SetCompletionQueueFullLocked(ThreadWorkerState& state, std::size_t required_completion_count) {
+    state.snapshot.last_required_completion_count = required_completion_count;
+    SetLastStatusLocked(state, ThreadWorkerStatus::CompletionQueueFull);
+}
+
 ThreadWorkerStatus RejectSubmitLocked(ThreadWorkerState& state, ThreadWorkerStatus status) {
     ++state.snapshot.rejected_count;
     SetLastStatusLocked(state, status);
@@ -72,7 +77,8 @@ std::size_t ReservedCompletionCountLocked(const ThreadWorkerState& state) {
 
 void PushCompletionLocked(ThreadWorkerState& state, TaskId task_id, TaskStatus status) {
     if (state.snapshot.completion_pending_count >= state.completion_records.size()) {
-        SetLastStatusLocked(state, ThreadWorkerStatus::CompletionQueueFull);
+        const std::size_t required_completion_count = state.snapshot.completion_pending_count + 1U;
+        SetCompletionQueueFullLocked(state, required_completion_count);
         return;
     }
 
@@ -270,7 +276,9 @@ ThreadWorkerStatus ThreadWorker::Submit(TaskCallback callback, void* context, Ta
     }
 
     const std::size_t reserved_completion_count = ReservedCompletionCountLocked(*state_);
-    if (reserved_completion_count >= state_->completion_records.size()) {
+    const std::size_t required_completion_count = reserved_completion_count + 1U;
+    if (required_completion_count > state_->completion_records.size()) {
+        state_->snapshot.last_required_completion_count = required_completion_count;
         return RejectSubmitLocked(*state_, ThreadWorkerStatus::CompletionQueueFull);
     }
 
@@ -392,7 +400,9 @@ ThreadWorkerStatus ThreadWorker::DrainCompletions(
 
     std::lock_guard<std::mutex> lock(state_->mutex);
     const ThreadWorkerStatus status_before_drain = state_->snapshot.last_status;
-    if (state_->snapshot.completion_pending_count > 0U && output_capacity == 0U) {
+    const std::size_t required_completion_count = state_->snapshot.completion_pending_count;
+    if (required_completion_count > output_capacity) {
+        SetCompletionQueueFullLocked(*state_, required_completion_count);
         return ThreadWorkerStatus::CompletionQueueFull;
     }
 
