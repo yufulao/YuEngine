@@ -150,6 +150,8 @@ constexpr const char *TEST_QUEUE_OVERFLOW =
     "Streaming_PackageResourceStaging_RejectsQueueOverflowWithoutMutation";
 constexpr const char *TEST_COMPLETION_OVERFLOW =
     "Streaming_PackageResourceStaging_ReportsCompletionOverflowWithoutDroppingPending";
+constexpr const char *TEST_DRAIN_REQUIRED_COUNT =
+    "Streaming_PackageResourceStaging_DrainCapacityReportsRequiredCount";
 constexpr const char *TEST_DUPLICATE_REQUEST =
     "Streaming_PackageResourceStaging_RejectsDuplicateRequestId";
 constexpr const char *TEST_SNAPSHOT =
@@ -198,6 +200,8 @@ constexpr const char *TEST_UPLOAD_QUEUE_OVERFLOW =
     "Streaming_ResourceUpload_RejectsQueueOverflowWithoutMutation";
 constexpr const char *TEST_UPLOAD_COMPLETION_OVERFLOW =
     "Streaming_ResourceUpload_ReportsCompletionOverflowWithoutProcessingPending";
+constexpr const char *TEST_UPLOAD_DRAIN_REQUIRED_COUNT =
+    "Streaming_ResourceUpload_DrainCapacityReportsRequiredCount";
 constexpr const char *TEST_UPLOAD_DUPLICATE_ID =
     "Streaming_ResourceUpload_RejectsDuplicateUploadId";
 constexpr const char *TEST_UPLOAD_SNAPSHOT =
@@ -1788,6 +1792,145 @@ int StreamingPackageResourceStagingReportsCompletionOverflowWithoutDroppingPendi
     return 0;
 }
 
+int StreamingPackageResourceStagingDrainCapacityReportsRequiredCount() {
+    MountTable table = CreateMountedTable();
+    AsyncFileReadQueue file_queue;
+    file_queue.Initialize(2U, 2U);
+    file_queue.Start();
+
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult first_resource = RegisterResource(resource_registry);
+    if (!first_resource.Succeeded()) {
+        return Fail("staging drain required count first resource registration failed");
+    }
+
+    const ResourceRegistrationResult second_resource =
+        RegisterResourceWithKey(resource_registry, TYPE_TEXTURE, RESOURCE_KEY_ALT);
+    if (!second_resource.Succeeded()) {
+        return Fail("staging drain required count second resource registration failed");
+    }
+
+    PackageLoadPlanRecord record;
+    BuildPackageRecord(&record, 0U, FixtureByteCount());
+    std::array<std::uint8_t, OUTPUT_CAPACITY> first_output{};
+    std::array<std::uint8_t, OUTPUT_CAPACITY> second_output{};
+    PackageResourceStagingRequest first_request = BuildStagingRequest(
+        resource_registry,
+        file_queue,
+        table,
+        record,
+        first_resource.handle,
+        REQUEST_ONE,
+        first_output.data(),
+        first_output.size());
+    PackageResourceStagingRequest second_request = BuildStagingRequest(
+        resource_registry,
+        file_queue,
+        table,
+        record,
+        second_resource.handle,
+        REQUEST_TWO,
+        second_output.data(),
+        second_output.size());
+
+    PackageResourceStagingQueue queue(PackageResourceStagingQueueDesc{2U, 2U});
+    if (queue.Submit(first_request) != PackageResourceStagingStatus::Queued) {
+        return Fail("staging drain required count first request did not queue");
+    }
+
+    if (queue.Submit(second_request) != PackageResourceStagingStatus::Queued) {
+        return Fail("staging drain required count second request did not queue");
+    }
+
+    if (queue.CompleteFileRead(SuccessFileResult(REQUEST_ONE)) != PackageResourceStagingStatus::Success) {
+        return Fail("staging drain required count first completion failed");
+    }
+
+    if (queue.CompleteFileRead(SuccessFileResult(REQUEST_TWO)) != PackageResourceStagingStatus::Success) {
+        return Fail("staging drain required count second completion failed");
+    }
+
+    file_queue.Shutdown(false);
+
+    std::array<PackageResourceStagingCompletion, 2U> output_completions{};
+    output_completions[0U].status = PackageResourceStagingStatus::FileReadFailed;
+    output_completions[0U].request_id = REQUEST_THREE;
+    output_completions[1U].status = PackageResourceStagingStatus::MissingFileCompletion;
+    output_completions[1U].request_id = REQUEST_THREE;
+    std::uint32_t written_count = 77U;
+    const PackageResourceStagingStatus limited_status =
+        queue.DrainCompletions(output_completions.data(), 1U, &written_count);
+    if (limited_status != PackageResourceStagingStatus::CompletionQueueFull) {
+        return Fail("staging drain required count did not reject small output");
+    }
+
+    if (written_count != 0U) {
+        return Fail("staging drain required count wrote output count");
+    }
+
+    if (output_completions[0U].request_id != REQUEST_THREE) {
+        return Fail("staging drain required count mutated first output row");
+    }
+
+    if (output_completions[1U].status != PackageResourceStagingStatus::MissingFileCompletion) {
+        return Fail("staging drain required count mutated second output row");
+    }
+
+    PackageResourceStagingSnapshot snapshot = queue.Snapshot();
+    if (snapshot.required_completion_count != 2U) {
+        return Fail("staging drain required count snapshot did not record required count");
+    }
+
+    if (snapshot.completion_count != 2U) {
+        return Fail("staging drain required count dropped completions");
+    }
+
+    if (snapshot.last_status != PackageResourceStagingStatus::CompletionQueueFull) {
+        return Fail("staging drain required count snapshot status changed");
+    }
+
+    written_count = 0U;
+    const std::uint32_t retry_capacity = static_cast<std::uint32_t>(output_completions.size());
+    const PackageResourceStagingStatus retry_status =
+        queue.DrainCompletions(output_completions.data(), retry_capacity, &written_count);
+    if (retry_status != PackageResourceStagingStatus::Success) {
+        return Fail("staging drain required count retry did not succeed");
+    }
+
+    if (written_count != 2U) {
+        return Fail("staging drain required count retry wrote wrong count");
+    }
+
+    if (output_completions[0U].request_id != REQUEST_ONE) {
+        return Fail("staging drain required count retry changed first request id");
+    }
+
+    if (output_completions[1U].request_id != REQUEST_TWO) {
+        return Fail("staging drain required count retry changed second request id");
+    }
+
+    snapshot = queue.Snapshot();
+    if (snapshot.required_completion_count != 0U) {
+        return Fail("staging drain required count did not clear required count");
+    }
+
+    if (snapshot.completion_count != 0U) {
+        return Fail("staging drain required count retry left completions queued");
+    }
+
+    written_count = 3U;
+    if (queue.DrainCompletions(nullptr, 0U, &written_count) != PackageResourceStagingStatus::Success) {
+        return Fail("staging drain required count empty drain failed");
+    }
+
+    snapshot = queue.Snapshot();
+    if (snapshot.required_completion_count != 0U) {
+        return Fail("staging drain required count empty drain changed required count");
+    }
+
+    return 0;
+}
+
 int StreamingPackageResourceStagingRejectsDuplicateRequestId() {
     MountTable table = CreateMountedTable();
     AsyncFileReadQueue file_queue;
@@ -2652,6 +2795,135 @@ int StreamingResourceUploadReportsCompletionOverflowWithoutProcessingPending() {
 
     if (!UploadCapacitySnapshotCleared(queue.Snapshot())) {
         return Fail("upload drain output capacity did not clear queue capacity entry");
+    }
+
+    return 0;
+}
+
+int StreamingResourceUploadDrainCapacityReportsRequiredCount() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult first_resource = RegisterResource(resource_registry);
+    if (!first_resource.Succeeded()) {
+        return Fail("upload drain required count first resource registration failed");
+    }
+
+    const ResourceRegistrationResult second_resource =
+        RegisterResourceWithKey(resource_registry, TYPE_TEXTURE, RESOURCE_KEY_ALT);
+    if (!second_resource.Succeeded()) {
+        return Fail("upload drain required count second resource registration failed");
+    }
+
+    NullRhiDevice device = CreateInitializedUploadDevice();
+    const std::array<std::uint8_t, 4U> bytes = BufferUploadBytes();
+    const std::span<const std::uint8_t> byte_span(bytes.data(), bytes.size());
+    const PackageResourceStagingCompletion first_completion =
+        BuildSuccessfulStagingCompletion(first_resource.handle, TYPE_TEXTURE, REQUEST_ONE, 4U);
+    const PackageResourceStagingCompletion second_completion =
+        BuildSuccessfulStagingCompletion(second_resource.handle, TYPE_TEXTURE, REQUEST_TWO, 4U);
+    ResourceUploadRequest first_request =
+        BuildBaseUploadRequest(resource_registry, &device, first_completion, byte_span, UPLOAD_ONE);
+    ResourceUploadRequest second_request =
+        BuildBaseUploadRequest(resource_registry, &device, second_completion, byte_span, UPLOAD_TWO);
+    RhiBufferHandle first_handle{};
+    RhiBufferHandle second_handle{};
+    first_request.upload_kind = ResourceUploadKind::CreateBuffer;
+    first_request.buffer_desc = UploadBufferDesc(bytes.size());
+    first_request.output_buffer_handle = &first_handle;
+    second_request.upload_kind = ResourceUploadKind::CreateBuffer;
+    second_request.buffer_desc = UploadBufferDesc(bytes.size());
+    second_request.output_buffer_handle = &second_handle;
+
+    ResourceUploadQueue queue(ResourceUploadQueueDesc{2U, 2U});
+    if (queue.Submit(first_request) != ResourceUploadStatus::Queued) {
+        return Fail("upload drain required count first request did not queue");
+    }
+
+    if (queue.Submit(second_request) != ResourceUploadStatus::Queued) {
+        return Fail("upload drain required count second request did not queue");
+    }
+
+    if (queue.ProcessNext() != ResourceUploadStatus::Success) {
+        return Fail("upload drain required count first process failed");
+    }
+
+    if (queue.ProcessNext() != ResourceUploadStatus::Success) {
+        return Fail("upload drain required count second process failed");
+    }
+
+    std::array<ResourceUploadCompletion, 2U> output_completions{};
+    output_completions[0U].status = ResourceUploadStatus::RhiUploadFailed;
+    output_completions[0U].upload_id = UPLOAD_THREE;
+    output_completions[1U].status = ResourceUploadStatus::UnsupportedUploadKind;
+    output_completions[1U].upload_id = UPLOAD_THREE;
+    std::uint32_t written_count = 55U;
+    const ResourceUploadStatus limited_status =
+        queue.DrainCompletions(output_completions.data(), 1U, &written_count);
+    if (limited_status != ResourceUploadStatus::CompletionQueueFull) {
+        return Fail("upload drain required count did not reject small output");
+    }
+
+    if (written_count != 0U) {
+        return Fail("upload drain required count wrote output count");
+    }
+
+    if (output_completions[0U].upload_id != UPLOAD_THREE) {
+        return Fail("upload drain required count mutated first output row");
+    }
+
+    if (output_completions[1U].status != ResourceUploadStatus::UnsupportedUploadKind) {
+        return Fail("upload drain required count mutated second output row");
+    }
+
+    ResourceUploadSnapshot snapshot = queue.Snapshot();
+    if (snapshot.required_completion_count != 2U) {
+        return Fail("upload drain required count snapshot did not record required count");
+    }
+
+    if (snapshot.completion_count != 2U) {
+        return Fail("upload drain required count dropped completions");
+    }
+
+    if (snapshot.last_status != ResourceUploadStatus::CompletionQueueFull) {
+        return Fail("upload drain required count snapshot status changed");
+    }
+
+    written_count = 0U;
+    const std::uint32_t retry_capacity = static_cast<std::uint32_t>(output_completions.size());
+    const ResourceUploadStatus retry_status =
+        queue.DrainCompletions(output_completions.data(), retry_capacity, &written_count);
+    if (retry_status != ResourceUploadStatus::Success) {
+        return Fail("upload drain required count retry did not succeed");
+    }
+
+    if (written_count != 2U) {
+        return Fail("upload drain required count retry wrote wrong count");
+    }
+
+    if (output_completions[0U].upload_id != UPLOAD_ONE) {
+        return Fail("upload drain required count retry changed first upload id");
+    }
+
+    if (output_completions[1U].upload_id != UPLOAD_TWO) {
+        return Fail("upload drain required count retry changed second upload id");
+    }
+
+    snapshot = queue.Snapshot();
+    if (snapshot.required_completion_count != 0U) {
+        return Fail("upload drain required count did not clear required count");
+    }
+
+    if (snapshot.completion_count != 0U) {
+        return Fail("upload drain required count retry left completions queued");
+    }
+
+    written_count = 3U;
+    if (queue.DrainCompletions(nullptr, 0U, &written_count) != ResourceUploadStatus::Success) {
+        return Fail("upload drain required count empty drain failed");
+    }
+
+    snapshot = queue.Snapshot();
+    if (snapshot.required_completion_count != 0U) {
+        return Fail("upload drain required count empty drain changed required count");
     }
 
     return 0;
@@ -4353,6 +4625,7 @@ int main(int argc, char **argv) {
         {TEST_MISSING_COMPLETION, StreamingPackageResourceStagingReportsMissingFileCompletion},
         {TEST_QUEUE_OVERFLOW, StreamingPackageResourceStagingRejectsQueueOverflowWithoutMutation},
         {TEST_COMPLETION_OVERFLOW, StreamingPackageResourceStagingReportsCompletionOverflowWithoutDroppingPending},
+        {TEST_DRAIN_REQUIRED_COUNT, StreamingPackageResourceStagingDrainCapacityReportsRequiredCount},
         {TEST_DUPLICATE_REQUEST, StreamingPackageResourceStagingRejectsDuplicateRequestId},
         {TEST_SNAPSHOT, StreamingPackageResourceStagingSnapshotReportsBoundedCounters},
         {TEST_NO_UPPER_DEPENDENCY, StreamingPackageResourceStagingNoUpperRuntimeDependency},
@@ -4382,6 +4655,7 @@ int main(int argc, char **argv) {
         {TEST_UPLOAD_UNSUPPORTED_KIND, StreamingResourceUploadRejectsUnsupportedUploadKind},
         {TEST_UPLOAD_QUEUE_OVERFLOW, StreamingResourceUploadRejectsQueueOverflowWithoutMutation},
         {TEST_UPLOAD_COMPLETION_OVERFLOW, StreamingResourceUploadReportsCompletionOverflowWithoutProcessingPending},
+        {TEST_UPLOAD_DRAIN_REQUIRED_COUNT, StreamingResourceUploadDrainCapacityReportsRequiredCount},
         {TEST_UPLOAD_DUPLICATE_ID, StreamingResourceUploadRejectsDuplicateUploadId},
         {TEST_UPLOAD_SNAPSHOT, StreamingResourceUploadSnapshotReportsBoundedCounters},
         {TEST_UPLOAD_RHI_FAILURE, StreamingResourceUploadReportsRhiFailureWithoutWritingOutput},

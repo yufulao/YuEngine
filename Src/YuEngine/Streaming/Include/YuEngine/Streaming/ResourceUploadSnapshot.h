@@ -19,6 +19,7 @@ struct ResourceUploadSnapshot final {
     std::uint32_t completion_capacity = 0U;
     std::uint32_t pending_count = 0U;
     std::uint32_t completion_count = 0U;
+    std::uint32_t required_completion_count = 0U;
     std::uint32_t max_pending_count = 0U;
     std::uint32_t max_completion_count = 0U;
     std::uint64_t submitted_count = 0U;

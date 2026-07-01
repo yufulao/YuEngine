@@ -54,6 +54,7 @@ PackageResourceStagingQueue::PackageResourceStagingQueue(PackageResourceStagingQ
           0U,
           0U,
           0U,
+          0U,
           PackageResourceStagingStatus::Success,
           resource::ResourceStatus::Success,
           file::AsyncFileReadStatus::Success,
@@ -168,6 +169,7 @@ PackageResourceStagingStatus PackageResourceStagingQueue::DrainCompletions(
     *written_count = 0U;
 
     if (snapshot_.completion_count == 0U) {
+        snapshot_.required_completion_count = 0U;
         snapshot_.last_status = PackageResourceStagingStatus::Success;
         return PackageResourceStagingStatus::Success;
     }
@@ -177,6 +179,8 @@ PackageResourceStagingStatus PackageResourceStagingQueue::DrainCompletions(
     }
 
     if (output_capacity < snapshot_.completion_count) {
+        snapshot_.required_completion_count = snapshot_.completion_count;
+        snapshot_.last_status = PackageResourceStagingStatus::CompletionQueueFull;
         return PackageResourceStagingStatus::CompletionQueueFull;
     }
 
@@ -192,6 +196,7 @@ PackageResourceStagingStatus PackageResourceStagingQueue::DrainCompletions(
     }
 
     snapshot_.completion_count = 0U;
+    snapshot_.required_completion_count = 0U;
     snapshot_.last_status = last_status;
     return PackageResourceStagingStatus::Success;
 }

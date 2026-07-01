@@ -102,6 +102,7 @@ ResourceUploadQueue::ResourceUploadQueue(ResourceUploadQueueDesc desc)
           0U,
           0U,
           0U,
+          0U,
           ResourceUploadStatus::Success,
           resource::ResourceStatus::Success,
           rhi::RhiStatus::Success,
@@ -172,6 +173,7 @@ ResourceUploadStatus ResourceUploadQueue::DrainCompletions(
     *written_count = 0U;
 
     if (snapshot_.completion_count == 0U) {
+        snapshot_.required_completion_count = 0U;
         snapshot_.last_status = ResourceUploadStatus::Success;
         ClearUploadCapacityEntry(snapshot_);
         return ResourceUploadStatus::Success;
@@ -183,6 +185,8 @@ ResourceUploadStatus ResourceUploadQueue::DrainCompletions(
     }
 
     if (output_capacity < snapshot_.completion_count) {
+        snapshot_.required_completion_count = snapshot_.completion_count;
+        snapshot_.last_status = ResourceUploadStatus::CompletionQueueFull;
         ClearUploadCapacityEntry(snapshot_);
         return ResourceUploadStatus::CompletionQueueFull;
     }
@@ -200,6 +204,7 @@ ResourceUploadStatus ResourceUploadQueue::DrainCompletions(
     }
 
     snapshot_.completion_count = 0U;
+    snapshot_.required_completion_count = 0U;
     snapshot_.last_status = drained_status;
     ClearUploadCapacityEntry(snapshot_);
     return ResourceUploadStatus::Success;
