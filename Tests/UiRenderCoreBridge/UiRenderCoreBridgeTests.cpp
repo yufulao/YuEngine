@@ -432,6 +432,10 @@ int UiRenderCoreBridgeSubmitsDrawElementsThroughRenderCore() {
         return Fail("bridge result did not report both submitted entries");
     }
 
+    if (result.required_draw_record_count != 0U) {
+        return Fail("bridge success reported required draw count");
+    }
+
     if (pass_requests[0U].pass_id != PASS_ID_BASE || pass_requests[1U].pass_id != PASS_ID_BASE + 1U) {
         return Fail("bridge did not assign deterministic pass ids");
     }
@@ -460,7 +464,9 @@ int UiRenderCoreBridgeSubmitsDrawElementsThroughRenderCore() {
     }
 
     const auto bridge_snapshot = bridge.Snapshot();
-    if (bridge_snapshot.completed_draw_count != 2U || bridge_snapshot.last_status != UiRenderCoreBridgeStatus::Success) {
+    if (bridge_snapshot.completed_draw_count != 2U ||
+        bridge_snapshot.last_status != UiRenderCoreBridgeStatus::Success ||
+        bridge_snapshot.last_required_draw_record_count != 0U) {
         return Fail("bridge snapshot did not track completed UI draws");
     }
 
@@ -534,6 +540,7 @@ int UiRenderCoreBridgeRejectsSmallOutputStorageWithoutSubmission() {
 
     if (result.failed_entry_index != 1U ||
         result.failed_node_id.value != 13U ||
+        result.required_draw_record_count != 2U ||
         result.submitted_entry_count != 0U ||
         result.completed_entry_count != 0U) {
         return Fail("bridge output capacity diagnostics changed");
@@ -550,6 +557,7 @@ int UiRenderCoreBridgeRejectsSmallOutputStorageWithoutSubmission() {
     const auto bridge_snapshot = bridge.Snapshot();
     if (bridge_snapshot.last_failed_entry_index != 1U ||
         bridge_snapshot.last_failed_node_id.value != 13U ||
+        bridge_snapshot.last_required_draw_record_count != 2U ||
         bridge_snapshot.last_status != UiRenderCoreBridgeStatus::OutputCapacityExceeded) {
         return Fail("bridge output capacity snapshot diagnostics changed");
     }

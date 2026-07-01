@@ -150,6 +150,7 @@ UiRenderCoreBridgeStatus UiRenderCoreBridge::ValidateRequest(
 
     std::size_t capacity_failed_entry_index = 0U;
     if (FindOutputCapacityFailureIndex(request, draw_count, &capacity_failed_entry_index)) {
+        result->required_draw_record_count = draw_count;
         result->failed_entry_index = capacity_failed_entry_index;
         result->failed_node_id = request.draw_elements[capacity_failed_entry_index].node_id;
         return UiRenderCoreBridgeStatus::OutputCapacityExceeded;
@@ -226,6 +227,7 @@ void UiRenderCoreBridge::RecordRejectedResult(const UiRenderCoreBridgeResult &re
     ++snapshot_.failed_validation_count;
     snapshot_.last_draw_element_count = result.draw_element_count;
     snapshot_.last_completed_entry_count = result.completed_entry_count;
+    snapshot_.last_required_draw_record_count = result.required_draw_record_count;
     snapshot_.last_failed_entry_index = result.failed_entry_index;
     snapshot_.last_failed_node_id = result.failed_node_id;
     snapshot_.last_status = result.status;
@@ -240,6 +242,7 @@ void UiRenderCoreBridge::RecordSubmittedResult(const UiRenderCoreBridgeResult &r
     snapshot_.completed_draw_count += result.completed_entry_count;
     snapshot_.last_draw_element_count = result.draw_element_count;
     snapshot_.last_completed_entry_count = result.completed_entry_count;
+    snapshot_.last_required_draw_record_count = result.required_draw_record_count;
     snapshot_.last_failed_entry_index = result.failed_entry_index;
     snapshot_.last_failed_node_id = result.failed_node_id;
     snapshot_.last_status = result.status;

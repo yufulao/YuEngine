@@ -24,6 +24,7 @@ struct UiRenderCoreBridgeSnapshot final {
     std::uint64_t submission_failure_count = 0U;
     std::size_t last_draw_element_count = 0U;
     std::size_t last_completed_entry_count = 0U;
+    std::size_t last_required_draw_record_count = 0U;
     std::size_t last_failed_entry_index = 0U;
     yuengine::uicore::UiNodeId last_failed_node_id{};
     UiRenderCoreBridgeStatus last_status = UiRenderCoreBridgeStatus::InvalidArgument;

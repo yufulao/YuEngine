@@ -20,6 +20,7 @@ struct UiRenderCoreBridgeResult final {
     std::size_t draw_element_count = 0U;
     std::size_t submitted_entry_count = 0U;
     std::size_t completed_entry_count = 0U;
+    std::size_t required_draw_record_count = 0U;
     std::size_t failed_entry_index = 0U;
     yuengine::uicore::UiNodeId failed_node_id{};
     yuengine::rendercore::RenderSubmissionBatchFixtureStatus submission_status =
