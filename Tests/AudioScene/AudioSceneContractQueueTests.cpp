@@ -240,6 +240,7 @@ int AudioSceneOutputCapacityPreservesCountsWithoutMutation() {
         SourceRecord(packet)};
     sources[0].source_id = {1U, 1U};
     sources[1].source_id = {2U, 1U};
+    sources[1].bus_id = AUDIO_SCENE_EFFECTS_BUS_ID;
     sources[2].source_id = {3U, 1U};
     sources[2].state = AudioSceneSourceState::Paused;
 
@@ -268,6 +269,22 @@ int AudioSceneOutputCapacityPreservesCountsWithoutMutation() {
 
     if (result.required_output_contract_count != 2U) {
         return Fail("audio scene output capacity required output count mismatch");
+    }
+
+    if (result.failed_entry_index != 1U) {
+        return Fail("audio scene output capacity failed entry index mismatch");
+    }
+
+    if (result.failed_source_id.slot != 2U) {
+        return Fail("audio scene output capacity failed source slot mismatch");
+    }
+
+    if (result.failed_source_id.generation != 1U) {
+        return Fail("audio scene output capacity failed source generation mismatch");
+    }
+
+    if (result.failed_bus_id != AUDIO_SCENE_EFFECTS_BUS_ID) {
+        return Fail("audio scene output capacity failed bus mismatch");
     }
 
     if (result.status != AudioSceneStatus::OutputCapacityExceeded) {
@@ -303,6 +320,22 @@ int AudioSceneOutputCapacityPreservesCountsWithoutMutation() {
         return Fail("audio scene output capacity snapshot required output count mismatch");
     }
 
+    if (snapshot.last_failed_entry_index != 1U) {
+        return Fail("audio scene output capacity snapshot failed entry index mismatch");
+    }
+
+    if (snapshot.last_failed_source_id.slot != 2U) {
+        return Fail("audio scene output capacity snapshot failed source slot mismatch");
+    }
+
+    if (snapshot.last_failed_source_id.generation != 1U) {
+        return Fail("audio scene output capacity snapshot failed source generation mismatch");
+    }
+
+    if (snapshot.last_failed_bus_id != AUDIO_SCENE_EFFECTS_BUS_ID) {
+        return Fail("audio scene output capacity snapshot failed bus mismatch");
+    }
+
     if (snapshot.last_status != AudioSceneStatus::OutputCapacityExceeded) {
         return Fail("audio scene output capacity snapshot status mismatch");
     }
@@ -331,6 +364,14 @@ int AudioScenePausedSourceDoesNotSubmitQueue() {
 
     if (result.skipped_source_count != 1U) {
         return Fail("audio scene paused source skip count mismatch");
+    }
+
+    if (result.failed_source_id.generation != 0U) {
+        return Fail("audio scene paused source reported failed source");
+    }
+
+    if (queue.Snapshot().last_failed_source_id.generation != 0U) {
+        return Fail("audio scene paused snapshot reported failed source");
     }
 
     return 0;
@@ -377,6 +418,14 @@ int AudioSceneInvalidBusDoesNotMutateOutput() {
 
     if (queue.Snapshot().last_status != AudioSceneStatus::InvalidBusId) {
         return Fail("audio scene snapshot did not record invalid bus");
+    }
+
+    if (result.failed_source_id.generation != 0U) {
+        return Fail("audio scene invalid bus reported failed source");
+    }
+
+    if (queue.Snapshot().last_failed_source_id.generation != 0U) {
+        return Fail("audio scene invalid bus snapshot reported failed source");
     }
 
     return 0;

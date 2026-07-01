@@ -4,6 +4,38 @@
 #include "YuEngine/AudioScene/AudioSceneContractQueue.h"
 
 namespace yuengine::audioscene {
+namespace {
+void FillOutputCapacityFailureEntry(
+    const AudioSceneSubmitRequest &request,
+    std::size_t output_capacity,
+    AudioSceneSubmitResult *out_result) {
+    if (out_result == nullptr) {
+        return;
+    }
+
+    std::size_t playing_index = 0U;
+    for (const AudioSceneSourceRecord &source : request.sources) {
+        if (!source.is_active) {
+            continue;
+        }
+
+        if (source.state != AudioSceneSourceState::Playing) {
+            continue;
+        }
+
+        if (playing_index < output_capacity) {
+            ++playing_index;
+            continue;
+        }
+
+        out_result->failed_entry_index = playing_index;
+        out_result->failed_source_id = source.source_id;
+        out_result->failed_bus_id = source.bus_id;
+        return;
+    }
+}
+}
+
 AudioSceneStatus AudioSceneContractQueue::SubmitSourceUpdates(
     const AudioSceneSubmitRequest &request,
     std::span<yuengine::audio::AudioPcmStreamQueueRequest> out_requests,
@@ -24,6 +56,7 @@ AudioSceneStatus AudioSceneContractQueue::SubmitSourceUpdates(
     if (validate_status != AudioSceneStatus::Success) {
         if (validate_status == AudioSceneStatus::OutputCapacityExceeded) {
             result.required_output_contract_count = playing_source_count;
+            FillOutputCapacityFailureEntry(request, out_requests.size(), &result);
         }
 
         result.status = validate_status;
@@ -234,6 +267,9 @@ AudioSceneStatus AudioSceneContractQueue::RecordSuccess(const AudioSceneSubmitRe
     snapshot_.last_queue_request_count = result.queue_request_count;
     snapshot_.last_skipped_source_count = result.skipped_source_count;
     snapshot_.last_required_output_contract_count = result.required_output_contract_count;
+    snapshot_.last_failed_entry_index = result.failed_entry_index;
+    snapshot_.last_failed_source_id = result.failed_source_id;
+    snapshot_.last_failed_bus_id = result.failed_bus_id;
     snapshot_.last_bus_id = result.last_bus_id;
     snapshot_.last_status = AudioSceneStatus::Success;
     return AudioSceneStatus::Success;
@@ -249,6 +285,9 @@ AudioSceneStatus AudioSceneContractQueue::RecordFailure(
     snapshot_.last_queue_request_count = result.queue_request_count;
     snapshot_.last_skipped_source_count = result.skipped_source_count;
     snapshot_.last_required_output_contract_count = result.required_output_contract_count;
+    snapshot_.last_failed_entry_index = result.failed_entry_index;
+    snapshot_.last_failed_source_id = result.failed_source_id;
+    snapshot_.last_failed_bus_id = result.failed_bus_id;
     snapshot_.last_bus_id = result.last_bus_id;
     snapshot_.last_status = status;
     return status;

@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "YuEngine/Audio/AudioSourceId.h"
 #include "YuEngine/AudioScene/AudioSceneStatus.h"
 
 namespace yuengine::audioscene {
@@ -17,6 +18,9 @@ struct AudioSceneSubmitResult final {
     std::size_t queue_request_count = 0U;
     std::size_t skipped_source_count = 0U;
     std::size_t required_output_contract_count = 0U;
+    std::size_t failed_entry_index = 0U;
+    yuengine::audio::AudioSourceId failed_source_id{};
+    std::uint32_t failed_bus_id = 0U;
     std::uint32_t last_bus_id = 0U;
 };
 }
