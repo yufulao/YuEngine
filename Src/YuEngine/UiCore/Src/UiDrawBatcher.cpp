@@ -46,8 +46,10 @@ UiDrawBatchStatus UiDrawBatcher::Build(
     std::span<const UiDrawElement> elements,
     std::span<UiDrawBatch> out_batches,
     UiDrawBatchResult *out_result) const {
+    snapshot_.draw_element_count = static_cast<std::uint32_t>(elements.size());
+    snapshot_.batch_count = 0U;
     if (out_result == nullptr) {
-        return UiDrawBatchStatus::InvalidOutputBuffer;
+        return RecordFailure(UiDrawBatchStatus::InvalidOutputBuffer);
     }
 
     *out_result = UiDrawBatchResult{};
@@ -55,19 +57,57 @@ UiDrawBatchStatus UiDrawBatcher::Build(
     const UiDrawBatchStatus validate_status = ValidateElements(elements, out_result);
     if (validate_status != UiDrawBatchStatus::Success) {
         out_result->status = validate_status;
-        return validate_status;
+        return RecordFailure(validate_status);
     }
 
+    out_result->failed_element_index = 0U;
+    out_result->failed_node_id = UiNodeId{};
     const std::uint32_t batch_count = CountBatches(elements);
     out_result->batch_count = batch_count;
+    snapshot_.batch_count = batch_count;
     if (!IsBatchOutputStorageValid(out_batches, batch_count)) {
+        if (out_batches.size() < static_cast<std::size_t>(batch_count)) {
+            RecordOutputCapacityFailure(elements, out_batches.size(), batch_count, out_result);
+        }
+
+        if (out_batches.size() >= static_cast<std::size_t>(batch_count)) {
+            RecordFailure(UiDrawBatchStatus::OutputCapacityExceeded);
+        }
+
         out_result->status = UiDrawBatchStatus::OutputCapacityExceeded;
         return UiDrawBatchStatus::OutputCapacityExceeded;
     }
 
     WriteBatches(elements, out_batches);
     out_result->status = UiDrawBatchStatus::Success;
+    return RecordSuccess();
+}
+
+UiDrawBatcherSnapshot UiDrawBatcher::Snapshot() const {
+    return snapshot_;
+}
+
+UiDrawBatchStatus UiDrawBatcher::RecordFailure(UiDrawBatchStatus status) const {
+    ClearOutputCapacityEntry();
+    ++snapshot_.failed_operation_count;
+    snapshot_.last_status = status;
+    return status;
+}
+
+UiDrawBatchStatus UiDrawBatcher::RecordSuccess() const {
+    ClearOutputCapacityEntry();
+    ++snapshot_.accepted_operation_count;
+    snapshot_.last_status = UiDrawBatchStatus::Success;
     return UiDrawBatchStatus::Success;
+}
+
+void UiDrawBatcher::ClearOutputCapacityEntry() const {
+    snapshot_.last_capacity_entry_output_index = 0U;
+    snapshot_.last_capacity_entry_node_id = UiNodeId{};
+    snapshot_.last_capacity_entry_key = UiDrawBatchKey{};
+    snapshot_.last_capacity_entry_output_capacity = 0U;
+    snapshot_.last_capacity_entry_written_batch_count = 0U;
+    snapshot_.last_required_output_batch_count = 0U;
 }
 
 UiDrawBatchStatus UiDrawBatcher::ValidateElements(
@@ -142,6 +182,64 @@ std::uint32_t UiDrawBatcher::CountBatches(std::span<const UiDrawElement> element
     }
 
     return batch_count;
+}
+
+void UiDrawBatcher::RecordOutputCapacityFailure(
+    std::span<const UiDrawElement> elements,
+    std::size_t output_batch_capacity,
+    std::uint32_t required_batch_count,
+    UiDrawBatchResult *out_result) const {
+    if (out_result == nullptr) {
+        return;
+    }
+
+    const std::uint32_t output_capacity = static_cast<std::uint32_t>(output_batch_capacity);
+    out_result->capacity_entry_output_capacity = output_capacity;
+    out_result->capacity_entry_written_batch_count = output_capacity;
+    out_result->required_output_batch_count = required_batch_count;
+    snapshot_.last_capacity_entry_output_capacity = output_capacity;
+    snapshot_.last_capacity_entry_written_batch_count = output_capacity;
+    snapshot_.last_required_output_batch_count = required_batch_count;
+    ++snapshot_.failed_operation_count;
+    snapshot_.last_status = UiDrawBatchStatus::OutputCapacityExceeded;
+
+    if (elements.size() == 0U) {
+        return;
+    }
+
+    UiDrawBatchKey last_key = BuildKey(elements[0U]);
+    if (output_batch_capacity == 0U) {
+        out_result->failed_batch_element_index = 0U;
+        out_result->failed_batch_node_id = elements[0U].node_id;
+        out_result->failed_batch_key = last_key;
+        out_result->capacity_entry_output_index = 0U;
+        snapshot_.last_capacity_entry_output_index = 0U;
+        snapshot_.last_capacity_entry_node_id = elements[0U].node_id;
+        snapshot_.last_capacity_entry_key = last_key;
+        return;
+    }
+
+    std::uint32_t batch_index = 0U;
+    for (std::size_t index = 1U; index < elements.size(); ++index) {
+        const UiDrawBatchKey key = BuildKey(elements[index]);
+        if (KeyMatches(last_key, key)) {
+            continue;
+        }
+
+        ++batch_index;
+        if (static_cast<std::size_t>(batch_index) >= output_batch_capacity) {
+            out_result->failed_batch_element_index = static_cast<std::uint32_t>(index);
+            out_result->failed_batch_node_id = elements[index].node_id;
+            out_result->failed_batch_key = key;
+            out_result->capacity_entry_output_index = batch_index;
+            snapshot_.last_capacity_entry_output_index = batch_index;
+            snapshot_.last_capacity_entry_node_id = elements[index].node_id;
+            snapshot_.last_capacity_entry_key = key;
+            return;
+        }
+
+        last_key = key;
+    }
 }
 
 void UiDrawBatcher::WriteBatches(

@@ -5,6 +5,7 @@
 
 #include <cstdint>
 
+#include "YuEngine/UiCore/UiDrawBatchKey.h"
 #include "YuEngine/UiCore/UiDrawBatchStatus.h"
 #include "YuEngine/UiCore/UiNodeId.h"
 
@@ -15,6 +16,13 @@ struct UiDrawBatchResult final {
     std::uint32_t batch_count = 0U;
     std::uint32_t failed_element_index = 0U;
     UiNodeId failed_node_id{};
+    std::uint32_t failed_batch_element_index = 0U;
+    UiNodeId failed_batch_node_id{};
+    UiDrawBatchKey failed_batch_key{};
+    std::uint32_t capacity_entry_output_index = 0U;
+    std::uint32_t capacity_entry_output_capacity = 0U;
+    std::uint32_t capacity_entry_written_batch_count = 0U;
+    std::uint32_t required_output_batch_count = 0U;
 
     /**
      * @comment 检查 draw batch build 是否成功。
