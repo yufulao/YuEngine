@@ -134,6 +134,7 @@ constexpr const char* TEST_STREAM_QUEUE_SAMPLE_COUNT = "Audio_PcmStreamQueue_Rej
 constexpr const char* TEST_STREAM_QUEUE_BYTE_COUNT = "Audio_PcmStreamQueue_RejectsByteCountMismatchWithoutMutation";
 constexpr const char* TEST_STREAM_QUEUE_CHUNK = "Audio_PcmStreamQueue_RejectsInvalidChunkFrameCountWithoutMutation";
 constexpr const char* TEST_STREAM_QUEUE_CAPACITY = "Audio_PcmStreamQueue_RejectsCapacityOverflowWithoutMutation";
+constexpr const char* TEST_STREAM_QUEUE_CAPACITY_ENTRY = "Audio_PcmStreamQueue_CapacityOverflowReportsRejectedEntry";
 constexpr const char* TEST_STREAM_QUEUE_SMALL_OUTPUT = "Audio_PcmStreamQueue_DrainRejectsSmallOutputWithoutMutation";
 constexpr const char* TEST_STREAM_QUEUE_STALE = "Audio_PcmStreamQueue_RejectsStaleHandleWithoutMutation";
 constexpr const char* TEST_STREAM_QUEUE_NO_MUTATION = "Audio_PcmStreamQueue_RejectionsDoNotMutatePacketSourceVoiceCallbackState";
@@ -524,6 +525,77 @@ bool ExpectPcmStreamQueueCreateRejectedWithoutActiveMutation(TestAudioDevice& de
     }
 
     if (after_packet_snapshot.rejected_packet_count != before_packet_snapshot.rejected_packet_count) {
+        return false;
+    }
+
+    return true;
+}
+
+bool PcmStreamQueueCapacityEntryMatches(const AudioPcmStreamQueueSnapshot &snapshot,
+                                        const AudioPcmStreamQueueRequest &request,
+                                        std::size_t active_queue_count,
+                                        std::size_t required_queue_count) {
+    if (snapshot.last_required_queue_count != required_queue_count) {
+        return false;
+    }
+
+    if (snapshot.last_required_output_chunk_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_queue_id != request.queue_id) {
+        return false;
+    }
+
+    if (snapshot.last_failed_packet_slot != request.packet.slot) {
+        return false;
+    }
+
+    if (snapshot.last_failed_packet_generation != request.packet.generation) {
+        return false;
+    }
+
+    if (snapshot.last_failed_packet_id != request.expected_packet_id) {
+        return false;
+    }
+
+    if (snapshot.last_failed_queue_capacity != MAX_PCM_STREAM_QUEUES) {
+        return false;
+    }
+
+    if (snapshot.last_failed_active_queue_count != active_queue_count) {
+        return false;
+    }
+
+    return true;
+}
+
+bool PcmStreamQueueCapacityEntryIsClear(const AudioPcmStreamQueueSnapshot &snapshot) {
+    if (snapshot.last_required_queue_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_queue_id != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_packet_slot != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_packet_generation != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_packet_id != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_queue_capacity != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_active_queue_count != 0U) {
         return false;
     }
 
@@ -1983,6 +2055,76 @@ int AudioPcmStreamQueueRejectsCapacityOverflowWithoutMutation() {
     return 0;
 }
 
+int AudioPcmStreamQueueCapacityOverflowReportsRejectedEntry() {
+    TestAudioDevice device = CreateInitializedDevice();
+    AudioPcmSamplePacketHandle packet{};
+    if (!CreateBasicPcmSamplePacket(device, 132U, packet)) {
+        return Fail("stream queue capacity entry packet setup failed");
+    }
+
+    AudioPcmStreamQueueHandle first_queue{};
+    for (std::size_t index = 0U; index < MAX_PCM_STREAM_QUEUES; ++index) {
+        const std::uint32_t queue_id = static_cast<std::uint32_t>(index + 420U);
+        const AudioPcmStreamQueueRequest request = BasicPcmStreamQueueRequest(queue_id, packet, 132U);
+        AudioPcmStreamQueueHandle queue{};
+        if (device.CreatePcmStreamQueue(request, queue) != AudioStatus::Success) {
+            return Fail("stream queue capacity entry setup failed");
+        }
+
+        if (index == 0U) {
+            first_queue = queue;
+        }
+    }
+
+    const AudioPcmStreamQueueSnapshot before_snapshot = device.PcmStreamQueueSnapshot();
+    const AudioPcmStreamQueueRequest overflow_request = BasicPcmStreamQueueRequest(499U, packet, 132U);
+    if (!ExpectPcmStreamQueueCreateRejectedWithoutActiveMutation(device, overflow_request, AudioStatus::CapacityExceeded)) {
+        return Fail("stream queue capacity entry overflow was not rejected without queue mutation");
+    }
+
+    const std::size_t required_queue_count = before_snapshot.active_queue_count + 1U;
+    const AudioPcmStreamQueueSnapshot overflow_snapshot = device.PcmStreamQueueSnapshot();
+    if (!PcmStreamQueueCapacityEntryMatches(overflow_snapshot, overflow_request, before_snapshot.active_queue_count, required_queue_count)) {
+        return Fail("stream queue capacity entry snapshot did not match rejected request");
+    }
+
+    const AudioPcmStreamQueueRequest invalid_request = BasicPcmStreamQueueRequest(0U, packet, 132U);
+    AudioPcmStreamQueueHandle rejected_queue{};
+    if (device.CreatePcmStreamQueue(invalid_request, rejected_queue) != AudioStatus::InvalidDescriptor) {
+        return Fail("stream queue invalid request did not clear stale capacity entry");
+    }
+
+    const AudioPcmStreamQueueSnapshot invalid_snapshot = device.PcmStreamQueueSnapshot();
+    if (!PcmStreamQueueCapacityEntryIsClear(invalid_snapshot)) {
+        return Fail("stream queue invalid request kept stale capacity entry");
+    }
+
+    if (!ExpectPcmStreamQueueCreateRejectedWithoutActiveMutation(device, overflow_request, AudioStatus::CapacityExceeded)) {
+        return Fail("stream queue second capacity overflow was not rejected");
+    }
+
+    if (device.ReleasePcmStreamQueue(first_queue) != AudioStatus::Success) {
+        return Fail("stream queue release did not clear stale capacity entry");
+    }
+
+    const AudioPcmStreamQueueSnapshot release_snapshot = device.PcmStreamQueueSnapshot();
+    if (!PcmStreamQueueCapacityEntryIsClear(release_snapshot)) {
+        return Fail("stream queue release kept stale capacity entry");
+    }
+
+    AudioPcmStreamQueueHandle replacement_queue{};
+    if (device.CreatePcmStreamQueue(overflow_request, replacement_queue) != AudioStatus::Success) {
+        return Fail("stream queue success did not follow capacity entry clear");
+    }
+
+    const AudioPcmStreamQueueSnapshot success_snapshot = device.PcmStreamQueueSnapshot();
+    if (!PcmStreamQueueCapacityEntryIsClear(success_snapshot)) {
+        return Fail("stream queue success kept stale capacity entry");
+    }
+
+    return 0;
+}
+
 int AudioPcmStreamQueueDrainRejectsSmallOutputWithoutMutation() {
     TestAudioDevice device = CreateInitializedDevice();
     AudioPcmStreamQueueHandle queue{};
@@ -3135,6 +3277,7 @@ int main(int argc, char** argv) {
         {TEST_STREAM_QUEUE_BYTE_COUNT, AudioPcmStreamQueueRejectsByteCountMismatchWithoutMutation},
         {TEST_STREAM_QUEUE_CHUNK, AudioPcmStreamQueueRejectsInvalidChunkFrameCountWithoutMutation},
         {TEST_STREAM_QUEUE_CAPACITY, AudioPcmStreamQueueRejectsCapacityOverflowWithoutMutation},
+        {TEST_STREAM_QUEUE_CAPACITY_ENTRY, AudioPcmStreamQueueCapacityOverflowReportsRejectedEntry},
         {TEST_STREAM_QUEUE_SMALL_OUTPUT, AudioPcmStreamQueueDrainRejectsSmallOutputWithoutMutation},
         {TEST_STREAM_QUEUE_STALE, AudioPcmStreamQueueRejectsStaleHandleWithoutMutation},
         {TEST_STREAM_QUEUE_NO_MUTATION, AudioPcmStreamQueueRejectionsDoNotMutatePacketSourceVoiceCallbackState},

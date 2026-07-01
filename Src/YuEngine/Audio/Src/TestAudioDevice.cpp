@@ -30,6 +30,12 @@ void ClearPcmSamplePacketRequiredCounts(AudioPcmSamplePacketSnapshot &snapshot) 
 void ClearPcmStreamQueueRequiredCounts(AudioPcmStreamQueueSnapshot &snapshot) {
     snapshot.last_required_queue_count = 0U;
     snapshot.last_required_output_chunk_count = 0U;
+    snapshot.last_failed_queue_id = 0U;
+    snapshot.last_failed_packet_slot = 0U;
+    snapshot.last_failed_packet_generation = 0U;
+    snapshot.last_failed_packet_id = 0U;
+    snapshot.last_failed_queue_capacity = 0U;
+    snapshot.last_failed_active_queue_count = 0U;
 }
 }
 
@@ -372,6 +378,12 @@ AudioStatus TestAudioDevice::CreatePcmStreamQueue(const AudioPcmStreamQueueReque
     const AudioStatus status =
         RecordPcmStreamQueueFailure(AudioStatus::CapacityExceeded, AudioPcmStreamQueueOperation::Create);
     pcm_stream_queue_snapshot_.last_required_queue_count = required_queue_count;
+    pcm_stream_queue_snapshot_.last_failed_queue_id = request.queue_id;
+    pcm_stream_queue_snapshot_.last_failed_packet_slot = request.packet.slot;
+    pcm_stream_queue_snapshot_.last_failed_packet_generation = request.packet.generation;
+    pcm_stream_queue_snapshot_.last_failed_packet_id = request.expected_packet_id;
+    pcm_stream_queue_snapshot_.last_failed_queue_capacity = pcm_stream_queue_snapshot_.queue_capacity;
+    pcm_stream_queue_snapshot_.last_failed_active_queue_count = pcm_stream_queue_snapshot_.active_queue_count;
     return status;
 }
 

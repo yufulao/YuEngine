@@ -30,6 +30,12 @@ struct AudioPcmStreamQueueSnapshot final {
     std::uint64_t output_capacity_rejected_count = 0U;
     std::size_t last_required_queue_count = 0U;
     std::size_t last_required_output_chunk_count = 0U;
+    std::uint32_t last_failed_queue_id = 0U;
+    std::uint32_t last_failed_packet_slot = 0U;
+    std::uint32_t last_failed_packet_generation = 0U;
+    std::uint32_t last_failed_packet_id = 0U;
+    std::size_t last_failed_queue_capacity = 0U;
+    std::size_t last_failed_active_queue_count = 0U;
     std::uint32_t last_queue_id = 0U;
     std::uint32_t last_packet_id = 0U;
     std::size_t last_frame_count = 0U;
