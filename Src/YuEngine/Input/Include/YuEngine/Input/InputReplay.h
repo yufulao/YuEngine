@@ -75,8 +75,24 @@ private:
         InputActionId action);
     InputStatus RecordFailure(InputStatus status);
     InputStatus RejectReplayEvent(InputStatus status);
+    InputStatus RejectReplayEventCapacity(
+        std::size_t frame_index,
+        const InputEvent &event,
+        std::size_t event_index,
+        std::size_t event_capacity,
+        std::size_t event_count,
+        std::size_t required_event_count);
     void RecordSuccess();
     void ClearBindingCapacityEntry();
+    void ClearReplayCapacityEntry();
+    void ClearCapacityEntries();
+    void RecordReplayCapacityEntry(
+        std::size_t frame_index,
+        const InputEvent &event,
+        std::size_t event_index,
+        std::size_t event_capacity,
+        std::size_t event_count,
+        std::size_t required_event_count);
     bool IsDeviceValid(InputDeviceId device) const;
     bool IsActionInRange(InputActionId action) const;
     bool IsEventTypeKnown(InputEventType type) const;
@@ -86,6 +102,7 @@ private:
     void MarkActionChanged(InputActionId action);
     void RecalculateChangedActionCount();
     std::size_t ReplayStorageCapacity() const;
+    std::size_t StoredReplayEventCount() const;
 
     std::array<InputActionBinding, MAX_INPUT_BINDINGS> bindings_;
     std::array<InputReplayFrame, MAX_REPLAY_FRAMES> frames_;

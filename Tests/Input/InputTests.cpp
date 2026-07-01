@@ -85,6 +85,7 @@ constexpr const char* TEST_INVALID_AXIS = "Input_InvalidAxisValue_ReturnsExplici
 constexpr const char* TEST_INVALID_EVENT = "Input_InvalidEvent_DoesNotMutateReplayOrSnapshot";
 constexpr const char* TEST_UNKNOWN_IDS = "Input_UnknownDeviceControlOrAction_ReturnsExplicitStatus";
 constexpr const char* TEST_EVENT_CAPACITY = "Input_EventCapacityOverflow_DoesNotMutateReplay";
+constexpr const char* TEST_REPLAY_CAPACITY_ENTRY = "Input_ReplayEventCapacityFailureReportsEntry";
 constexpr const char* TEST_SNAPSHOT_DETERMINISM = "Input_FrameSnapshot_IsDeterministicAcrossReplay";
 constexpr const char* TEST_RESET = "Input_ResetClearsChangedStateWithoutClearingPressedState";
 constexpr const char* TEST_DISABLED_DIAGNOSTICS = "Input_DisabledDiagnosticsDoesNotChangeResults";
@@ -444,6 +445,42 @@ int RequireBindingCapacityEntryCleared(const InputReplaySnapshot &snapshot, cons
     }
 
     return 0;
+}
+
+bool ReplayCapacityEntryIsClear(const InputReplaySnapshot &snapshot) {
+    if (snapshot.last_failed_frame_index != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_event_index != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_event_type != InputEventType::ButtonPressed) {
+        return false;
+    }
+
+    if (snapshot.last_failed_device.value != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_control.value != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_axis_value != 0) {
+        return false;
+    }
+
+    if (snapshot.last_failed_event_capacity != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_event_count != 0U) {
+        return false;
+    }
+
+    return snapshot.last_required_event_count == 0U;
 }
 
 int InputRegisterActionBindingReturnsStableActionId() {
@@ -1007,6 +1044,133 @@ int InputEventCapacityOverflowDoesNotMutateReplay() {
 
     if (after_snapshot.last_apply_status != before_snapshot.last_apply_status) {
         return Fail("event overflow changed apply status");
+    }
+
+    return 0;
+}
+
+int InputReplayEventCapacityFailureReportsEntry() {
+    InputReplay replay;
+    const std::size_t invalid_frame_index = MAX_REPLAY_FRAMES;
+    const InputEvent invalid_frame_event = Axis(DEVICE_B, CONTROL_B, AXIS_NEGATIVE);
+    InputStatus status = replay.RecordReplayEvent(invalid_frame_index, invalid_frame_event);
+    if (status != InputStatus::CapacityExceeded) {
+        return Fail("invalid frame did not report capacity");
+    }
+
+    const std::size_t replay_event_capacity = MAX_REPLAY_FRAMES * MAX_EVENTS_PER_FRAME;
+    const std::size_t required_replay_event_count = replay_event_capacity + 1U;
+    InputReplaySnapshot snapshot = replay.Snapshot();
+    if (snapshot.last_failed_frame_index != invalid_frame_index) {
+        return Fail("invalid frame capacity index mismatch");
+    }
+
+    if (snapshot.last_failed_event_index != 0U) {
+        return Fail("invalid frame event index mismatch");
+    }
+
+    if (snapshot.last_failed_event_type != invalid_frame_event.type ||
+        snapshot.last_failed_device.value != invalid_frame_event.device.value ||
+        snapshot.last_failed_control.value != invalid_frame_event.control.value ||
+        snapshot.last_failed_axis_value != invalid_frame_event.axis_value) {
+        return Fail("invalid frame capacity event mismatch");
+    }
+
+    if (snapshot.last_failed_event_capacity != replay_event_capacity ||
+        snapshot.last_failed_event_count != 0U ||
+        snapshot.last_required_event_count != required_replay_event_count) {
+        return Fail("invalid frame capacity counts mismatch");
+    }
+
+    const InputEvent invalid_event{DEVICE_A, CONTROL_A, static_cast<InputEventType>(99), 0};
+    status = replay.RecordReplayEvent(0U, invalid_event);
+    if (status != InputStatus::InvalidEvent) {
+        return Fail("invalid event did not clear through non-capacity failure");
+    }
+
+    snapshot = replay.Snapshot();
+    if (!ReplayCapacityEntryIsClear(snapshot)) {
+        return Fail("invalid event left stale capacity entry");
+    }
+
+    InputReplay full_replay;
+    if (!RegisterPrimaryBinding(full_replay)) {
+        return Fail("capacity entry binding failed");
+    }
+
+    constexpr std::size_t FULL_FRAME_INDEX = 1U;
+    for (std::size_t index = 0U; index < MAX_EVENTS_PER_FRAME; ++index) {
+        status = full_replay.RecordReplayEvent(FULL_FRAME_INDEX, ButtonPress(DEVICE_A, CONTROL_A));
+        if (status != InputStatus::Success) {
+            return Fail("frame fill failed before capacity");
+        }
+    }
+
+    const InputEvent overflow_event = ButtonRelease(DEVICE_A, CONTROL_A);
+    status = full_replay.RecordReplayEvent(FULL_FRAME_INDEX, overflow_event);
+    if (status != InputStatus::CapacityExceeded) {
+        return Fail("full frame did not report capacity");
+    }
+
+    if (full_replay.EventCountForFrame(FULL_FRAME_INDEX) != MAX_EVENTS_PER_FRAME) {
+        return Fail("full frame capacity mutated replay frame");
+    }
+
+    snapshot = full_replay.Snapshot();
+    if (snapshot.last_failed_frame_index != FULL_FRAME_INDEX ||
+        snapshot.last_failed_event_index != MAX_EVENTS_PER_FRAME ||
+        snapshot.last_failed_event_type != overflow_event.type ||
+        snapshot.last_failed_device.value != overflow_event.device.value ||
+        snapshot.last_failed_control.value != overflow_event.control.value) {
+        return Fail("full frame capacity entry mismatch");
+    }
+
+    if (snapshot.last_failed_event_capacity != MAX_EVENTS_PER_FRAME ||
+        snapshot.last_failed_event_count != MAX_EVENTS_PER_FRAME ||
+        snapshot.last_required_event_count != MAX_EVENTS_PER_FRAME + 1U) {
+        return Fail("full frame capacity counts mismatch");
+    }
+
+    const std::int32_t invalid_axis_value = AXIS_MAX_VALUE + 1;
+    const InputEvent invalid_axis_event = Axis(DEVICE_A, CONTROL_A, invalid_axis_value);
+    status = full_replay.RecordReplayEvent(FULL_FRAME_INDEX, invalid_axis_event);
+    if (status != InputStatus::InvalidAxisValue) {
+        return Fail("invalid axis did not win over capacity");
+    }
+
+    snapshot = full_replay.Snapshot();
+    if (!ReplayCapacityEntryIsClear(snapshot)) {
+        return Fail("invalid axis left stale capacity entry");
+    }
+
+    status = full_replay.RecordReplayEvent(MAX_REPLAY_FRAMES, overflow_event);
+    if (status != InputStatus::CapacityExceeded) {
+        return Fail("second capacity setup failed");
+    }
+
+    status = full_replay.RecordReplayEvent(FULL_FRAME_INDEX, ButtonPress(DEVICE_A, UNKNOWN_CONTROL));
+    if (status != InputStatus::UnknownDeviceControl) {
+        return Fail("unknown control did not win over capacity");
+    }
+
+    snapshot = full_replay.Snapshot();
+    if (!ReplayCapacityEntryIsClear(snapshot)) {
+        return Fail("unknown control left stale capacity entry");
+    }
+
+    status = full_replay.RecordReplayEvent(MAX_REPLAY_FRAMES, overflow_event);
+    if (status != InputStatus::CapacityExceeded) {
+        return Fail("third capacity setup failed");
+    }
+
+    status = full_replay.RecordReplayEvent(0U, ButtonPress(DEVICE_A, CONTROL_A));
+    if (status != InputStatus::Success) {
+        return Fail("success after capacity failed");
+    }
+
+    snapshot = full_replay.Snapshot();
+    if (!ReplayCapacityEntryIsClear(snapshot)) {
+        return Fail("success left stale capacity entry");
     }
 
     return 0;
@@ -2244,6 +2408,7 @@ int main(int argc, char** argv) {
         {TEST_INVALID_EVENT, InputInvalidEventDoesNotMutateReplayOrSnapshot},
         {TEST_UNKNOWN_IDS, InputUnknownDeviceControlOrActionReturnsExplicitStatus},
         {TEST_EVENT_CAPACITY, InputEventCapacityOverflowDoesNotMutateReplay},
+        {TEST_REPLAY_CAPACITY_ENTRY, InputReplayEventCapacityFailureReportsEntry},
         {TEST_SNAPSHOT_DETERMINISM, InputFrameSnapshotIsDeterministicAcrossReplay},
         {TEST_RESET, InputResetClearsChangedStateWithoutClearingPressedState},
         {TEST_DISABLED_DIAGNOSTICS, InputDisabledDiagnosticsDoesNotChangeResults},

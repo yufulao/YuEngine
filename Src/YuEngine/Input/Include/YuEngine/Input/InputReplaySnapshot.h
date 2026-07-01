@@ -10,6 +10,7 @@
 #include "YuEngine/Input/InputAccountingStatus.h"
 #include "YuEngine/Input/InputControlId.h"
 #include "YuEngine/Input/InputDeviceId.h"
+#include "YuEngine/Input/InputEventType.h"
 #include "YuEngine/Input/InputStatus.h"
 
 namespace yuengine::input {
@@ -37,6 +38,15 @@ struct InputReplaySnapshot final {
     std::size_t last_required_binding_count = 0U;
     InputStatus last_status = InputStatus::Success;
     InputStatus last_apply_status = InputStatus::Success;
+    std::size_t last_failed_frame_index = 0U;
+    std::size_t last_failed_event_index = 0U;
+    InputEventType last_failed_event_type = InputEventType::ButtonPressed;
+    InputDeviceId last_failed_device{};
+    InputControlId last_failed_control{};
+    std::int32_t last_failed_axis_value = 0;
+    std::size_t last_failed_event_capacity = 0U;
+    std::size_t last_failed_event_count = 0U;
+    std::size_t last_required_event_count = 0U;
     InputAccountingStatus allocation_accounting_status = InputAccountingStatus::DeferredUntilYuMemoryIntegration;
 };
 }

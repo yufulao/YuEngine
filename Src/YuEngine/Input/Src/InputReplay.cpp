@@ -54,7 +54,10 @@ InputBindingResult InputReplay::RegisterActionBinding(InputDeviceId device, Inpu
 
 InputStatus InputReplay::RecordReplayEvent(std::size_t frame_index, InputEvent event) {
     if (frame_index >= frames_.size()) {
-        return RejectReplayEvent(InputStatus::CapacityExceeded);
+        const std::size_t event_capacity = ReplayStorageCapacity();
+        const std::size_t event_count = StoredReplayEventCount();
+        const std::size_t required_event_count = event_capacity + 1U;
+        return RejectReplayEventCapacity(frame_index, event, 0U, event_capacity, event_count, required_event_count);
     }
 
     if (!IsEventTypeKnown(event.type)) {
@@ -73,7 +76,14 @@ InputStatus InputReplay::RecordReplayEvent(std::size_t frame_index, InputEvent e
 
     InputReplayFrame& frame = frames_[frame_index];
     if (frame.event_count >= frame.events.size()) {
-        return RejectReplayEvent(InputStatus::CapacityExceeded);
+        const std::size_t required_event_count = frame.event_count + 1U;
+        return RejectReplayEventCapacity(
+            frame_index,
+            event,
+            frame.event_count,
+            frame.events.size(),
+            frame.event_count,
+            required_event_count);
     }
 
     frame.events[frame.event_count] = event;
@@ -138,7 +148,7 @@ InputApplyResult InputReplay::ApplyNextFrame() {
     snapshot_.last_apply_status = frame_status;
     snapshot_.replay_storage_capacity_after_last_frame = ReplayStorageCapacity();
     if (frame_status == InputStatus::Success) {
-        ClearBindingCapacityEntry();
+        ClearCapacityEntries();
     }
 
     const std::size_t applied_frame_index = next_frame_index_;
@@ -186,6 +196,7 @@ InputBindingResult InputReplay::RecordBindingCapacityFailure(
     InputDeviceId device,
     InputControlId control,
     InputActionId action) {
+    ClearReplayCapacityEntry();
     ++snapshot_.failed_operation_count;
     const std::size_t binding_capacity = bindings_.size();
     const std::size_t binding_count = binding_count_;
@@ -208,7 +219,7 @@ InputBindingResult InputReplay::RecordBindingCapacityFailure(
 }
 
 InputStatus InputReplay::RecordFailure(InputStatus status) {
-    ClearBindingCapacityEntry();
+    ClearCapacityEntries();
     ++snapshot_.failed_operation_count;
     snapshot_.last_status = status;
     return status;
@@ -219,8 +230,23 @@ InputStatus InputReplay::RejectReplayEvent(InputStatus status) {
     return RecordFailure(status);
 }
 
-void InputReplay::RecordSuccess() {
+InputStatus InputReplay::RejectReplayEventCapacity(
+    std::size_t frame_index,
+    const InputEvent &event,
+    std::size_t event_index,
+    std::size_t event_capacity,
+    std::size_t event_count,
+    std::size_t required_event_count) {
     ClearBindingCapacityEntry();
+    ++snapshot_.rejected_event_count;
+    ++snapshot_.failed_operation_count;
+    snapshot_.last_status = InputStatus::CapacityExceeded;
+    RecordReplayCapacityEntry(frame_index, event, event_index, event_capacity, event_count, required_event_count);
+    return InputStatus::CapacityExceeded;
+}
+
+void InputReplay::RecordSuccess() {
+    ClearCapacityEntries();
     snapshot_.last_status = InputStatus::Success;
 }
 
@@ -231,6 +257,41 @@ void InputReplay::ClearBindingCapacityEntry() {
     snapshot_.last_failed_binding_capacity = 0U;
     snapshot_.last_failed_binding_count = 0U;
     snapshot_.last_required_binding_count = 0U;
+}
+
+void InputReplay::ClearReplayCapacityEntry() {
+    snapshot_.last_failed_frame_index = 0U;
+    snapshot_.last_failed_event_index = 0U;
+    snapshot_.last_failed_event_type = InputEventType::ButtonPressed;
+    snapshot_.last_failed_device = InputDeviceId{};
+    snapshot_.last_failed_control = InputControlId{};
+    snapshot_.last_failed_axis_value = 0;
+    snapshot_.last_failed_event_capacity = 0U;
+    snapshot_.last_failed_event_count = 0U;
+    snapshot_.last_required_event_count = 0U;
+}
+
+void InputReplay::ClearCapacityEntries() {
+    ClearBindingCapacityEntry();
+    ClearReplayCapacityEntry();
+}
+
+void InputReplay::RecordReplayCapacityEntry(
+    std::size_t frame_index,
+    const InputEvent &event,
+    std::size_t event_index,
+    std::size_t event_capacity,
+    std::size_t event_count,
+    std::size_t required_event_count) {
+    snapshot_.last_failed_frame_index = frame_index;
+    snapshot_.last_failed_event_index = event_index;
+    snapshot_.last_failed_event_type = event.type;
+    snapshot_.last_failed_device = event.device;
+    snapshot_.last_failed_control = event.control;
+    snapshot_.last_failed_axis_value = event.axis_value;
+    snapshot_.last_failed_event_capacity = event_capacity;
+    snapshot_.last_failed_event_count = event_count;
+    snapshot_.last_required_event_count = required_event_count;
 }
 
 bool InputReplay::IsDeviceValid(InputDeviceId device) const {
@@ -305,5 +366,14 @@ void InputReplay::RecalculateChangedActionCount() {
 
 std::size_t InputReplay::ReplayStorageCapacity() const {
     return MAX_REPLAY_FRAMES * MAX_EVENTS_PER_FRAME;
+}
+
+std::size_t InputReplay::StoredReplayEventCount() const {
+    std::size_t event_count = 0U;
+    for (const InputReplayFrame &frame : frames_) {
+        event_count += frame.event_count;
+    }
+
+    return event_count;
 }
 }
