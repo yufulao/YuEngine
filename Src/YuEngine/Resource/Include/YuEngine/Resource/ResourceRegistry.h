@@ -52,6 +52,23 @@
 #include "YuEngine/Resource/ResourceSnapshot.h"
 
 namespace yuengine::resource {
+struct ResourceDescriptorBatchResult final {
+    ResourceStatus status = ResourceStatus::InvalidDescriptor;
+    std::uint32_t committed_descriptor_count = 0U;
+    std::uint32_t failed_descriptor_index = 0U;
+    std::uint32_t required_resource_count = 0U;
+    std::uint32_t required_type_count = 0U;
+    std::uint32_t required_dependency_edge_count = 0U;
+
+    /**
+     * @comment 检查 batch 结果是否成功。
+     * @return 条件满足时返回 true，否则返回 false。
+     */
+    bool Succeeded() const {
+        return status == ResourceStatus::Success;
+    }
+};
+
 struct ResourceDependencyRequest final {
     ResourceHandle dependent{};
     ResourceHandle dependency{};
@@ -89,6 +106,15 @@ public:
      * @return 显式操作结果。
      */
     ResourceRegistrationResult RegisterSyntheticDescriptor(const ResourceDescriptor& descriptor);
+    /**
+     * @comment 按顺序注册多个 synthetic 描述。
+     * @param descriptors 输入描述数组。
+     * @param descriptor_count 输入描述数量。
+     * @return 显式 batch 操作结果。
+     */
+    ResourceDescriptorBatchResult RegisterSyntheticDescriptors(
+        const ResourceDescriptor *descriptors,
+        std::uint32_t descriptor_count);
     /**
      * @comment 添加依赖。
      * @param dependent 输入 dependent。

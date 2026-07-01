@@ -53,6 +53,7 @@ using yuengine::resource::ResourceCachePayloadSnapshot;
 using yuengine::resource::ResourceCachePayloadStatus;
 using yuengine::resource::ResourceDependencyBatchResult;
 using yuengine::resource::ResourceDependencyRequest;
+using yuengine::resource::ResourceDescriptorBatchResult;
 using yuengine::resource::ResourceDescriptor;
 using yuengine::resource::ResourceDecodedPayloadBudgetDesc;
 using yuengine::resource::ResourceDecodedPayloadOperation;
@@ -108,6 +109,8 @@ using yuengine::resource::RESOURCE_DECODE_PLAN_HEADER_VERSION;
 
 namespace {
 constexpr const char* TEST_REGISTER = "Resource_RegisterSyntheticDescriptor_ReturnsGenerationHandle";
+constexpr const char *TEST_DESCRIPTOR_BATCH =
+    "Resource_DescriptorBatchRegistrationSubmitsRowsAndStopsOnFirstFailure";
 constexpr const char* TEST_INVALID_DESCRIPTOR =
     "Resource_RegisterRejectsInvalidDescriptorWithoutMutation";
 constexpr const char* TEST_DUPLICATE = "Resource_RegisterDuplicate_ReturnsExplicitStatus";
@@ -1392,6 +1395,118 @@ int ResourceRegisterSyntheticDescriptorReturnsGenerationHandle() {
 
     if (snapshot.last_status != ResourceStatus::Success) {
         return Fail("successful registration did not record success status");
+    }
+
+    return 0;
+}
+
+int ResourceDescriptorBatchRegistrationSubmitsRowsAndStopsOnFirstFailure() {
+    ResourceRegistry registry;
+    const ResourceDescriptor first_descriptor = Descriptor(TYPE_TEXTURE, "batch_texture_a");
+    const ResourceDescriptor second_descriptor = Descriptor(TYPE_MATERIAL, "batch_material_a");
+    const std::array<ResourceDescriptor, 2U> success_descriptors{{
+        first_descriptor,
+        second_descriptor}};
+
+    const ResourceDescriptorBatchResult empty_result = registry.RegisterSyntheticDescriptors(nullptr, 0U);
+    if (!empty_result.Succeeded() || empty_result.committed_descriptor_count != 0U) {
+        return Fail("descriptor batch empty submission did not succeed");
+    }
+
+    const ResourceSnapshot before_null_snapshot = registry.Snapshot();
+    const ResourceDescriptorBatchResult null_result = registry.RegisterSyntheticDescriptors(nullptr, 1U);
+    if (null_result.status != ResourceStatus::InvalidDescriptor ||
+        null_result.committed_descriptor_count != 0U ||
+        null_result.failed_descriptor_index != 0U) {
+        return Fail("descriptor batch null submission missed explicit failure result");
+    }
+
+    const ResourceSnapshot after_null_snapshot = registry.Snapshot();
+    if (after_null_snapshot.registered_resource_count != before_null_snapshot.registered_resource_count ||
+        after_null_snapshot.type_count != before_null_snapshot.type_count) {
+        return Fail("descriptor batch null submission mutated registration counts");
+    }
+
+    const ResourceDescriptor invalid_descriptor = Descriptor(ResourceTypeId{}, "batch_invalid_type");
+    const std::array<ResourceDescriptor, 2U> invalid_first_descriptors{{
+        invalid_descriptor,
+        first_descriptor}};
+    const ResourceSnapshot before_invalid_snapshot = registry.Snapshot();
+    const ResourceDescriptorBatchResult invalid_result = registry.RegisterSyntheticDescriptors(
+        invalid_first_descriptors.data(),
+        static_cast<std::uint32_t>(invalid_first_descriptors.size()));
+    if (invalid_result.status != ResourceStatus::InvalidDescriptor ||
+        invalid_result.committed_descriptor_count != 0U ||
+        invalid_result.failed_descriptor_index != 0U) {
+        return Fail("descriptor batch invalid first row missed explicit failure result");
+    }
+
+    const ResourceSnapshot after_invalid_snapshot = registry.Snapshot();
+    if (after_invalid_snapshot.registered_resource_count != before_invalid_snapshot.registered_resource_count ||
+        after_invalid_snapshot.type_count != before_invalid_snapshot.type_count) {
+        return Fail("descriptor batch invalid first row mutated registration counts");
+    }
+
+    const ResourceDescriptorBatchResult success_result = registry.RegisterSyntheticDescriptors(
+        success_descriptors.data(),
+        static_cast<std::uint32_t>(success_descriptors.size()));
+    if (!success_result.Succeeded() ||
+        success_result.committed_descriptor_count != 2U ||
+        success_result.failed_descriptor_index != 0U) {
+        return Fail("descriptor batch success result was not deterministic");
+    }
+
+    const ResourceSnapshot after_success_snapshot = registry.Snapshot();
+    if (after_success_snapshot.registered_resource_count != 2U ||
+        after_success_snapshot.type_count != 2U) {
+        return Fail("descriptor batch success missed registration counts");
+    }
+
+    const std::array<ResourceDescriptor, 3U> duplicate_descriptors{{
+        Descriptor(TYPE_EFFECT, "batch_effect_a"),
+        Descriptor(TYPE_TEXTURE, "batch_texture_a"),
+        Descriptor(TYPE_AUDIO, "batch_audio_after_duplicate")}};
+    const ResourceSnapshot before_duplicate_snapshot = registry.Snapshot();
+    const ResourceDescriptorBatchResult duplicate_result = registry.RegisterSyntheticDescriptors(
+        duplicate_descriptors.data(),
+        static_cast<std::uint32_t>(duplicate_descriptors.size()));
+    if (duplicate_result.status != ResourceStatus::DuplicateResource ||
+        duplicate_result.committed_descriptor_count != 1U ||
+        duplicate_result.failed_descriptor_index != 1U) {
+        return Fail("descriptor batch duplicate row missed committed count or failed index");
+    }
+
+    const ResourceSnapshot after_duplicate_snapshot = registry.Snapshot();
+    if (after_duplicate_snapshot.registered_resource_count !=
+            before_duplicate_snapshot.registered_resource_count + 1U ||
+        after_duplicate_snapshot.type_count != before_duplicate_snapshot.type_count + 1U) {
+        return Fail("descriptor batch duplicate failure rolled back or over-committed rows");
+    }
+
+    const ResourceRegistrationResult retry_result =
+        Register(registry, TYPE_AUDIO, "batch_audio_after_duplicate");
+    if (!retry_result.Succeeded()) {
+        return Fail("descriptor batch duplicate failure registered rows after failure");
+    }
+
+    ResourceRegistry capacity_registry(ResourceRegistryDesc{1U, 2U, 1U});
+    const std::array<ResourceDescriptor, 2U> capacity_descriptors{{
+        Descriptor(TYPE_TEXTURE, "batch_capacity_texture"),
+        Descriptor(TYPE_MATERIAL, "batch_capacity_material")}};
+    const ResourceDescriptorBatchResult capacity_result = capacity_registry.RegisterSyntheticDescriptors(
+        capacity_descriptors.data(),
+        static_cast<std::uint32_t>(capacity_descriptors.size()));
+    if (capacity_result.status != ResourceStatus::CapacityExceeded ||
+        capacity_result.committed_descriptor_count != 1U ||
+        capacity_result.failed_descriptor_index != 1U ||
+        capacity_result.required_resource_count != 2U) {
+        return Fail("descriptor batch capacity failure missed committed count or required count");
+    }
+
+    const ResourceSnapshot capacity_snapshot = capacity_registry.Snapshot();
+    if (capacity_snapshot.registered_resource_count != 1U ||
+        capacity_snapshot.last_required_resource_count != 2U) {
+        return Fail("descriptor batch capacity failure mutated counts incorrectly");
     }
 
     return 0;
@@ -8318,6 +8433,7 @@ int main(int argc, char** argv) {
 
     const TestRegistry test_registry{
         {TEST_REGISTER, ResourceRegisterSyntheticDescriptorReturnsGenerationHandle},
+        {TEST_DESCRIPTOR_BATCH, ResourceDescriptorBatchRegistrationSubmitsRowsAndStopsOnFirstFailure},
         {TEST_INVALID_DESCRIPTOR, ResourceRegisterRejectsInvalidDescriptorWithoutMutation},
         {TEST_DUPLICATE, ResourceRegisterDuplicateReturnsExplicitStatus},
         {TEST_CAPACITY, ResourceRegistryRejectsCapacityOverflowWithoutMutation},

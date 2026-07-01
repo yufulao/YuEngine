@@ -399,6 +399,42 @@ ResourceRegistrationResult ResourceRegistry::RegisterSyntheticDescriptor(const R
     return ResourceRegistrationResult::Success(ResourceHandle{free_slot_index, free_slot->generation});
 }
 
+ResourceDescriptorBatchResult ResourceRegistry::RegisterSyntheticDescriptors(
+    const ResourceDescriptor *descriptors,
+    std::uint32_t descriptor_count) {
+    ResourceDescriptorBatchResult result{};
+    result.status = ResourceStatus::Success;
+
+    if (descriptor_count == 0U) {
+        RecordSuccess();
+        return result;
+    }
+
+    if (descriptors == nullptr) {
+        result.status = RecordFailure(ResourceStatus::InvalidDescriptor);
+        return result;
+    }
+
+    for (std::uint32_t descriptor_index = 0U;
+        descriptor_index < descriptor_count;
+        ++descriptor_index) {
+        const ResourceRegistrationResult registration_result =
+            RegisterSyntheticDescriptor(descriptors[descriptor_index]);
+        if (!registration_result.Succeeded()) {
+            result.status = registration_result.status;
+            result.failed_descriptor_index = descriptor_index;
+            result.required_resource_count = registration_result.required_resource_count;
+            result.required_type_count = registration_result.required_type_count;
+            result.required_dependency_edge_count = registration_result.required_dependency_edge_count;
+            return result;
+        }
+
+        result.committed_descriptor_count = descriptor_index + 1U;
+    }
+
+    return result;
+}
+
 ResourceStatus ResourceRegistry::AddDependency(ResourceHandle dependent, ResourceHandle dependency) {
     ++snapshot_.dependency_validation_count;
 
