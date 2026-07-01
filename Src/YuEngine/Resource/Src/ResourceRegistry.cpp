@@ -95,6 +95,35 @@ bool PayloadLogicalByteCountOutOfBounds(
     return payload_logical_byte_count < payload_window_end;
 }
 
+void ClearLoadCommitCapacityEntry(ResourceSnapshot &snapshot) {
+    snapshot.last_required_load_commit_count = 0U;
+    snapshot.last_failed_load_commit_resource = ResourceHandle{};
+    snapshot.last_failed_load_commit_type = ResourceTypeId{};
+    snapshot.last_failed_load_commit_id = 0U;
+    snapshot.last_failed_load_upload_id = 0U;
+    snapshot.last_failed_load_staging_request_id = 0U;
+    snapshot.last_failed_load_upload_byte_count = 0U;
+    snapshot.last_failed_load_state = ResourceLoadState::Unloaded;
+    snapshot.last_failed_load_commit_capacity = 0U;
+    snapshot.last_failed_load_commit_count = 0U;
+    snapshot.last_failed_required_load_commit_count = 0U;
+}
+
+void RecordLoadCommitCapacityEntry(ResourceSnapshot &snapshot, const ResourceLoadCommitRequest &request) {
+    const std::uint32_t required_load_commit_count = snapshot.load_commit_record_count + 1U;
+    snapshot.last_required_load_commit_count = required_load_commit_count;
+    snapshot.last_failed_load_commit_resource = request.resource;
+    snapshot.last_failed_load_commit_type = request.expected_type;
+    snapshot.last_failed_load_commit_id = request.commit_id;
+    snapshot.last_failed_load_upload_id = request.upload_id;
+    snapshot.last_failed_load_staging_request_id = request.staging_request_id;
+    snapshot.last_failed_load_upload_byte_count = request.upload_byte_count;
+    snapshot.last_failed_load_state = request.load_state;
+    snapshot.last_failed_load_commit_capacity = MAX_RESOURCE_LOAD_COMMIT_RECORD_COUNT;
+    snapshot.last_failed_load_commit_count = snapshot.load_commit_record_count;
+    snapshot.last_failed_required_load_commit_count = required_load_commit_count;
+}
+
 void ClearLastRequiredCounts(ResourceSnapshot &snapshot) {
     snapshot.last_required_resource_count = 0U;
     snapshot.last_required_type_count = 0U;
@@ -365,7 +394,7 @@ ResourceLoadCommitStatus ResourceRegistry::CommitUploadCompletion(const Resource
     std::size_t slot_index = 0U;
     const ResourceLoadCommitStatus validation_status = ValidateLoadCommitRequest(request, &slot_index);
     if (validation_status != ResourceLoadCommitStatus::Success) {
-        return RecordLoadCommitRejected(validation_status);
+        return RecordLoadCommitRejected(request, validation_status);
     }
 
     ResourceSlot &slot = slots_[slot_index];
@@ -1679,6 +1708,7 @@ ResourceSnapshot ResourceRegistry::Snapshot() const {
 
 ResourceStatus ResourceRegistry::RecordFailure(ResourceStatus status) {
     ClearLastRequiredCounts(snapshot_);
+    ClearLoadCommitCapacityEntry(snapshot_);
     ++snapshot_.failed_operation_count;
     snapshot_.last_status = status;
     return status;
@@ -1686,18 +1716,26 @@ ResourceStatus ResourceRegistry::RecordFailure(ResourceStatus status) {
 
 void ResourceRegistry::RecordSuccess() {
     ClearLastRequiredCounts(snapshot_);
+    ClearLoadCommitCapacityEntry(snapshot_);
     snapshot_.last_status = ResourceStatus::Success;
 }
 
-ResourceLoadCommitStatus ResourceRegistry::RecordLoadCommitRejected(ResourceLoadCommitStatus status) {
+ResourceLoadCommitStatus ResourceRegistry::RecordLoadCommitRejected(
+    const ResourceLoadCommitRequest &request,
+    ResourceLoadCommitStatus status) {
     ++snapshot_.rejected_load_commit_count;
     ++snapshot_.failed_operation_count;
+    ClearLoadCommitCapacityEntry(snapshot_);
     if (status == ResourceLoadCommitStatus::DuplicateCommitId) {
         ++snapshot_.duplicate_load_commit_count;
     }
 
     if (status == ResourceLoadCommitStatus::InvalidTransition) {
         ++snapshot_.invalid_load_transition_count;
+    }
+
+    if (status == ResourceLoadCommitStatus::CapacityExceeded) {
+        RecordLoadCommitCapacityEntry(snapshot_, request);
     }
 
     snapshot_.last_load_commit_status = status;
@@ -1715,6 +1753,7 @@ void ResourceRegistry::RecordLoadCommitSuccess(ResourceLoadState load_state) {
         ++snapshot_.failed_resource_count;
     }
 
+    ClearLoadCommitCapacityEntry(snapshot_);
     snapshot_.last_load_state = load_state;
     snapshot_.last_load_commit_status = ResourceLoadCommitStatus::Success;
     snapshot_.last_status = ResourceStatus::Success;

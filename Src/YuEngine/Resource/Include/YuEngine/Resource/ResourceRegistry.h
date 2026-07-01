@@ -330,7 +330,9 @@ public:
 private:
     ResourceStatus RecordFailure(ResourceStatus status);
     void RecordSuccess();
-    ResourceLoadCommitStatus RecordLoadCommitRejected(ResourceLoadCommitStatus status);
+    ResourceLoadCommitStatus RecordLoadCommitRejected(
+        const ResourceLoadCommitRequest &request,
+        ResourceLoadCommitStatus status);
     void RecordLoadCommitSuccess(ResourceLoadState load_state);
     ResourceResidencyStatus RecordResidencyRejected(
         ResourceResidencyOperation operation,

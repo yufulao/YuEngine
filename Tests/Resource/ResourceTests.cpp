@@ -89,6 +89,7 @@ using yuengine::resource::ResourceStatus;
 using yuengine::resource::ResourceTypeId;
 using yuengine::resource::INVALID_RESOURCE_GENERATION;
 using yuengine::resource::MAX_LOGICAL_KEY_BYTES;
+using yuengine::resource::MAX_RESOURCE_LOAD_COMMIT_RECORD_COUNT;
 using yuengine::resource::MAX_RESOURCE_DECODE_PLAN_RECORD_COUNT;
 using yuengine::resource::MAX_RESOURCE_DECODE_RESULT_RECORD_COUNT;
 using yuengine::resource::MAX_RESOURCE_DECODED_PAYLOAD_RECORD_COUNT;
@@ -133,6 +134,8 @@ constexpr const char *TEST_LOAD_COMMIT_DUPLICATE = "Resource_LoadCommit_RejectsD
 constexpr const char *TEST_LOAD_COMMIT_INVALID_TRANSITION =
     "Resource_LoadCommit_RejectsInvalidTransition";
 constexpr const char *TEST_LOAD_COMMIT_SNAPSHOT = "Resource_LoadCommit_SnapshotTracksCounters";
+constexpr const char *TEST_LOAD_COMMIT_CAPACITY_ENTRY =
+    "Resource_LoadCommit_CapacityEntryRecordsRejectedIdentity";
 constexpr const char *TEST_RESIDENCY_ADMIT = "Resource_Residency_AdmitsUploadedSlotWithinBudget";
 constexpr const char *TEST_RESIDENCY_UNLOADED =
     "Resource_Residency_RejectsUnloadedWithoutMutation";
@@ -396,6 +399,110 @@ ResourceLoadCommitRequest LoadCommitRequest(
     request.staging_request_id = STAGING_ONE;
     request.upload_byte_count = UPLOAD_BYTE_COUNT;
     return request;
+}
+
+int ExpectLoadCommitCapacityEntryCleared(const ResourceSnapshot &snapshot) {
+    if (snapshot.last_required_load_commit_count != 0U) {
+        return Fail("load commit capacity entry kept required count");
+    }
+
+    if (snapshot.last_failed_load_commit_resource.IsValid()) {
+        return Fail("load commit capacity entry kept resource");
+    }
+
+    if (snapshot.last_failed_load_commit_type.IsValid()) {
+        return Fail("load commit capacity entry kept type");
+    }
+
+    if (snapshot.last_failed_load_commit_id != 0U) {
+        return Fail("load commit capacity entry kept commit id");
+    }
+
+    if (snapshot.last_failed_load_upload_id != 0U) {
+        return Fail("load commit capacity entry kept upload id");
+    }
+
+    if (snapshot.last_failed_load_staging_request_id != 0U) {
+        return Fail("load commit capacity entry kept staging request id");
+    }
+
+    if (snapshot.last_failed_load_upload_byte_count != 0U) {
+        return Fail("load commit capacity entry kept upload byte count");
+    }
+
+    if (snapshot.last_failed_load_state != ResourceLoadState::Unloaded) {
+        return Fail("load commit capacity entry kept load state");
+    }
+
+    if (snapshot.last_failed_load_commit_capacity != 0U) {
+        return Fail("load commit capacity entry kept capacity");
+    }
+
+    if (snapshot.last_failed_load_commit_count != 0U) {
+        return Fail("load commit capacity entry kept current count");
+    }
+
+    if (snapshot.last_failed_required_load_commit_count != 0U) {
+        return Fail("load commit capacity entry kept failed required count");
+    }
+
+    return 0;
+}
+
+int ExpectLoadCommitCapacityEntryMatches(
+    const ResourceSnapshot &snapshot,
+    const ResourceLoadCommitRequest &request,
+    std::uint32_t current_load_commit_count,
+    std::uint32_t required_load_commit_count) {
+    if (snapshot.last_required_load_commit_count != required_load_commit_count) {
+        return Fail("load commit capacity entry reported wrong required count");
+    }
+
+    if (snapshot.last_failed_required_load_commit_count != required_load_commit_count) {
+        return Fail("load commit capacity entry stored wrong required count");
+    }
+
+    if (snapshot.last_failed_load_commit_resource.slot != request.resource.slot) {
+        return Fail("load commit capacity entry stored wrong resource slot");
+    }
+
+    if (snapshot.last_failed_load_commit_resource.generation != request.resource.generation) {
+        return Fail("load commit capacity entry stored wrong resource generation");
+    }
+
+    if (snapshot.last_failed_load_commit_type.value != request.expected_type.value) {
+        return Fail("load commit capacity entry stored wrong type");
+    }
+
+    if (snapshot.last_failed_load_commit_id != request.commit_id) {
+        return Fail("load commit capacity entry stored wrong commit id");
+    }
+
+    if (snapshot.last_failed_load_upload_id != request.upload_id) {
+        return Fail("load commit capacity entry stored wrong upload id");
+    }
+
+    if (snapshot.last_failed_load_staging_request_id != request.staging_request_id) {
+        return Fail("load commit capacity entry stored wrong staging request id");
+    }
+
+    if (snapshot.last_failed_load_upload_byte_count != request.upload_byte_count) {
+        return Fail("load commit capacity entry stored wrong upload byte count");
+    }
+
+    if (snapshot.last_failed_load_state != request.load_state) {
+        return Fail("load commit capacity entry stored wrong load state");
+    }
+
+    if (snapshot.last_failed_load_commit_capacity != MAX_RESOURCE_LOAD_COMMIT_RECORD_COUNT) {
+        return Fail("load commit capacity entry stored wrong capacity");
+    }
+
+    if (snapshot.last_failed_load_commit_count != current_load_commit_count) {
+        return Fail("load commit capacity entry stored wrong current count");
+    }
+
+    return 0;
 }
 
 ResourceResidencyRequest ResidencyRequest(ResourceHandle resource, ResourceTypeId expected_type) {
@@ -1795,6 +1902,188 @@ int ResourceLoadCommitSnapshotTracksCounters() {
 
     if (snapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
         return Fail("load commit snapshot changed allocation vocabulary");
+    }
+
+    return 0;
+}
+
+int ResourceLoadCommitCapacityEntryRecordsRejectedIdentity() {
+    ResourceRegistry registry;
+    ResourceHandle retired_handle{};
+    ResourceHandle first_committed_handle{};
+    std::uint32_t commit_index = 0U;
+    while (commit_index < MAX_RESOURCE_LOAD_COMMIT_RECORD_COUNT) {
+        const std::string key = "texture_load_commit_capacity_" + std::to_string(commit_index);
+        const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, key.c_str());
+        if (!result.Succeeded()) {
+            return Fail("load commit capacity fixture registration failed");
+        }
+
+        ResourceLoadCommitRequest request = LoadCommitRequest(
+            result.handle,
+            TYPE_TEXTURE,
+            ResourceLoadState::Uploaded,
+            COMMIT_ONE + commit_index,
+            UPLOAD_ONE + commit_index);
+        request.staging_request_id = STAGING_ONE + commit_index;
+        request.upload_byte_count = UPLOAD_BYTE_COUNT + commit_index;
+        if (registry.CommitUploadCompletion(request) != ResourceLoadCommitStatus::Success) {
+            return Fail("load commit capacity fixture commit failed");
+        }
+
+        if (commit_index == 0U) {
+            retired_handle = result.handle;
+        }
+
+        if (commit_index == 1U) {
+            first_committed_handle = result.handle;
+        }
+
+        ++commit_index;
+    }
+
+    const ResourceStatus setup_retire_status = registry.Retire(retired_handle);
+    if (setup_retire_status != ResourceStatus::Success) {
+        return Fail("load commit capacity fixture retire failed");
+    }
+
+    const ResourceRegistrationResult overflow_result =
+        Register(registry, TYPE_TEXTURE, "texture_load_commit_capacity_overflow");
+    if (!overflow_result.Succeeded()) {
+        return Fail("load commit capacity overflow registration failed");
+    }
+
+    ResourceLoadCommitRequest overflow_request = LoadCommitRequest(
+        overflow_result.handle,
+        TYPE_TEXTURE,
+        ResourceLoadState::Uploaded,
+        COMMIT_ONE + MAX_RESOURCE_LOAD_COMMIT_RECORD_COUNT + 1U,
+        UPLOAD_ONE + MAX_RESOURCE_LOAD_COMMIT_RECORD_COUNT + 1U);
+    overflow_request.staging_request_id = STAGING_ONE + MAX_RESOURCE_LOAD_COMMIT_RECORD_COUNT + 1U;
+    overflow_request.upload_byte_count = UPLOAD_BYTE_COUNT + 7U;
+    const ResourceSnapshot before_capacity_snapshot = registry.Snapshot();
+    const ResourceLoadCommitStatus capacity_status = registry.CommitUploadCompletion(overflow_request);
+    if (capacity_status != ResourceLoadCommitStatus::CapacityExceeded) {
+        return Fail("load commit capacity entry returned wrong status");
+    }
+
+    if (!LoadStateMatches(registry, overflow_result.handle, TYPE_TEXTURE, ResourceLoadState::Unloaded)) {
+        return Fail("load commit capacity entry changed overflow resource state");
+    }
+
+    const ResourceSnapshot capacity_snapshot = registry.Snapshot();
+    if (capacity_snapshot.load_commit_record_count != before_capacity_snapshot.load_commit_record_count) {
+        return Fail("load commit capacity entry mutated record count");
+    }
+
+    if (capacity_snapshot.load_commit_count != before_capacity_snapshot.load_commit_count) {
+        return Fail("load commit capacity entry mutated commit count");
+    }
+
+    const std::uint32_t required_load_commit_count = before_capacity_snapshot.load_commit_record_count + 1U;
+    int entry_status = ExpectLoadCommitCapacityEntryMatches(
+        capacity_snapshot,
+        overflow_request,
+        before_capacity_snapshot.load_commit_record_count,
+        required_load_commit_count);
+    if (entry_status != 0) {
+        return entry_status;
+    }
+
+    const ResourceLoadCommitRequest duplicate_request = LoadCommitRequest(
+        overflow_result.handle,
+        TYPE_TEXTURE,
+        ResourceLoadState::Uploaded,
+        COMMIT_ONE,
+        UPLOAD_TWO);
+    const ResourceLoadCommitStatus duplicate_status = registry.CommitUploadCompletion(duplicate_request);
+    if (duplicate_status != ResourceLoadCommitStatus::DuplicateCommitId) {
+        return Fail("load commit capacity entry duplicate returned wrong status");
+    }
+
+    ResourceSnapshot cleared_snapshot = registry.Snapshot();
+    int clear_status = ExpectLoadCommitCapacityEntryCleared(cleared_snapshot);
+    if (clear_status != 0) {
+        return clear_status;
+    }
+
+    if (registry.CommitUploadCompletion(overflow_request) != ResourceLoadCommitStatus::CapacityExceeded) {
+        return Fail("load commit capacity entry second overflow failed");
+    }
+
+    const ResourceLoadCommitRequest type_mismatch_request = LoadCommitRequest(
+        overflow_result.handle,
+        TYPE_AUDIO,
+        ResourceLoadState::Uploaded,
+        COMMIT_ONE + MAX_RESOURCE_LOAD_COMMIT_RECORD_COUNT + 2U,
+        UPLOAD_ONE + MAX_RESOURCE_LOAD_COMMIT_RECORD_COUNT + 2U);
+    const ResourceLoadCommitStatus type_mismatch_status = registry.CommitUploadCompletion(type_mismatch_request);
+    if (type_mismatch_status != ResourceLoadCommitStatus::TypeMismatch) {
+        return Fail("load commit capacity entry type mismatch returned wrong status");
+    }
+
+    cleared_snapshot = registry.Snapshot();
+    clear_status = ExpectLoadCommitCapacityEntryCleared(cleared_snapshot);
+    if (clear_status != 0) {
+        return clear_status;
+    }
+
+    if (registry.CommitUploadCompletion(overflow_request) != ResourceLoadCommitStatus::CapacityExceeded) {
+        return Fail("load commit capacity entry third overflow failed");
+    }
+
+    const ResourceLoadCommitRequest invalid_transition_request = LoadCommitRequest(
+        first_committed_handle,
+        TYPE_TEXTURE,
+        ResourceLoadState::Failed,
+        COMMIT_ONE + MAX_RESOURCE_LOAD_COMMIT_RECORD_COUNT + 3U,
+        UPLOAD_ONE + MAX_RESOURCE_LOAD_COMMIT_RECORD_COUNT + 3U);
+    const ResourceLoadCommitStatus invalid_transition_status =
+        registry.CommitUploadCompletion(invalid_transition_request);
+    if (invalid_transition_status != ResourceLoadCommitStatus::InvalidTransition) {
+        return Fail("load commit capacity entry invalid transition returned wrong status");
+    }
+
+    cleared_snapshot = registry.Snapshot();
+    clear_status = ExpectLoadCommitCapacityEntryCleared(cleared_snapshot);
+    if (clear_status != 0) {
+        return clear_status;
+    }
+
+    if (registry.CommitUploadCompletion(overflow_request) != ResourceLoadCommitStatus::CapacityExceeded) {
+        return Fail("load commit capacity entry fourth overflow failed");
+    }
+
+    const ResourceLoadCommitRequest invalid_handle_request = LoadCommitRequest(
+        ResourceHandle{},
+        TYPE_TEXTURE,
+        ResourceLoadState::Uploaded,
+        COMMIT_ONE + MAX_RESOURCE_LOAD_COMMIT_RECORD_COUNT + 4U,
+        UPLOAD_ONE + MAX_RESOURCE_LOAD_COMMIT_RECORD_COUNT + 4U);
+    const ResourceLoadCommitStatus invalid_handle_status = registry.CommitUploadCompletion(invalid_handle_request);
+    if (invalid_handle_status != ResourceLoadCommitStatus::InvalidHandle) {
+        return Fail("load commit capacity entry invalid handle returned wrong status");
+    }
+
+    cleared_snapshot = registry.Snapshot();
+    clear_status = ExpectLoadCommitCapacityEntryCleared(cleared_snapshot);
+    if (clear_status != 0) {
+        return clear_status;
+    }
+
+    if (registry.CommitUploadCompletion(overflow_request) != ResourceLoadCommitStatus::CapacityExceeded) {
+        return Fail("load commit capacity entry fifth overflow failed");
+    }
+
+    const ResourceStatus retire_status = registry.Retire(overflow_result.handle);
+    if (retire_status != ResourceStatus::Success) {
+        return Fail("load commit capacity entry retire clear failed");
+    }
+
+    cleared_snapshot = registry.Snapshot();
+    clear_status = ExpectLoadCommitCapacityEntryCleared(cleared_snapshot);
+    if (clear_status != 0) {
+        return clear_status;
     }
 
     return 0;
@@ -6140,6 +6429,7 @@ int main(int argc, char** argv) {
         {TEST_LOAD_COMMIT_DUPLICATE, ResourceLoadCommitRejectsDuplicateCommitId},
         {TEST_LOAD_COMMIT_INVALID_TRANSITION, ResourceLoadCommitRejectsInvalidTransition},
         {TEST_LOAD_COMMIT_SNAPSHOT, ResourceLoadCommitSnapshotTracksCounters},
+        {TEST_LOAD_COMMIT_CAPACITY_ENTRY, ResourceLoadCommitCapacityEntryRecordsRejectedIdentity},
         {TEST_RESIDENCY_ADMIT, ResourceResidencyAdmitsUploadedSlotWithinBudget},
         {TEST_RESIDENCY_UNLOADED, ResourceResidencyRejectsUnloadedWithoutMutation},
         {TEST_RESIDENCY_FAILED_LOAD, ResourceResidencyRejectsFailedLoadWithoutMutation},

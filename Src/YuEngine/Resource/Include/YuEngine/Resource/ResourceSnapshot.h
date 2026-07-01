@@ -6,9 +6,11 @@
 #include <cstdint>
 
 #include "YuEngine/Memory/MemoryAccountingStatus.h"
+#include "YuEngine/Resource/ResourceHandle.h"
 #include "YuEngine/Resource/ResourceLoadCommitStatus.h"
 #include "YuEngine/Resource/ResourceLoadState.h"
 #include "YuEngine/Resource/ResourceStatus.h"
+#include "YuEngine/Resource/ResourceTypeId.h"
 
 namespace yuengine::resource {
 struct ResourceSnapshot final {
@@ -37,5 +39,16 @@ struct ResourceSnapshot final {
     ResourceStatus last_status;
     ResourceLoadState last_load_state;
     ResourceLoadCommitStatus last_load_commit_status;
+    std::uint32_t last_required_load_commit_count = 0U;
+    ResourceHandle last_failed_load_commit_resource;
+    ResourceTypeId last_failed_load_commit_type;
+    std::uint64_t last_failed_load_commit_id = 0U;
+    std::uint64_t last_failed_load_upload_id = 0U;
+    std::uint64_t last_failed_load_staging_request_id = 0U;
+    std::uint32_t last_failed_load_upload_byte_count = 0U;
+    ResourceLoadState last_failed_load_state = ResourceLoadState::Unloaded;
+    std::uint32_t last_failed_load_commit_capacity = 0U;
+    std::uint32_t last_failed_load_commit_count = 0U;
+    std::uint32_t last_failed_required_load_commit_count = 0U;
 };
 }
