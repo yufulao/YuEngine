@@ -166,7 +166,9 @@ private:
         bool closed_current,
         bool closed_middle) const;
     UiManagerFullscreenStackStatus RecordFailure(UiManagerFullscreenStackStatus status);
+    UiManagerFullscreenStackStatus RecordFullscreenOrderCapacityFailure(UiPanelId panel_id);
     void RecordSuccess();
+    void ClearFullscreenOrderCapacityFailure();
 
     UiManagerFullscreenStackSnapshot snapshot_;
 };

@@ -36,6 +36,7 @@ using yuengine::uiruntime::BaseUiLifecycleSnapshot;
 using yuengine::uiruntime::BaseUiLifecycleStatus;
 using yuengine::uiruntime::MAX_UI_MANAGER_FULLSCREEN_STACK_COUNT;
 using yuengine::uiruntime::UiManagerFullscreenStack;
+using yuengine::uiruntime::UiManagerFullscreenStackOperation;
 using yuengine::uiruntime::UiManagerFullscreenStackResult;
 using yuengine::uiruntime::UiManagerFullscreenStackSnapshot;
 using yuengine::uiruntime::UiManagerFullscreenStackStatus;
@@ -71,6 +72,8 @@ constexpr const char *TEST_REJECTS_STATUS =
     "UiRuntime_ManagerFullscreenStack_RejectsMissingNonFullscreenAndBackEmptyStatus";
 constexpr const char *TEST_RELEASE_RESTORES =
     "UiRuntime_ManagerFullscreenStack_ReleaseRestoresPreviousFullscreen";
+constexpr const char *TEST_CAPACITY_ENTRY =
+    "UiRuntime_ManagerFullscreenStack_CapacityEntryClearsForOutputAndNonCapacityResults";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 
@@ -182,6 +185,50 @@ int RequireStatus(
     return Fail(message);
 }
 
+int RequireNoFullscreenCapacityEntryResult(
+    const UiManagerFullscreenStackResult &result,
+    std::string_view message) {
+    if (result.failed_panel_id.IsValid()) {
+        return Fail(message);
+    }
+
+    if (result.failed_previous_top_panel_id.IsValid()) {
+        return Fail(message);
+    }
+
+    if (result.failed_fullscreen_order_index != MAX_UI_MANAGER_FULLSCREEN_STACK_COUNT) {
+        return Fail(message);
+    }
+
+    if (result.failed_operation != UiManagerFullscreenStackOperation::None) {
+        return Fail(message);
+    }
+
+    return 0;
+}
+
+int RequireNoFullscreenCapacityEntrySnapshot(
+    const UiManagerFullscreenStackSnapshot &snapshot,
+    std::string_view message) {
+    if (snapshot.last_failed_panel_id.IsValid()) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_previous_top_panel_id.IsValid()) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_fullscreen_order_index != MAX_UI_MANAGER_FULLSCREEN_STACK_COUNT) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_operation != UiManagerFullscreenStackOperation::None) {
+        return Fail(message);
+    }
+
+    return 0;
+}
+
 int RegisterLayer(
     UiManagerLayerModel *layer_model,
     std::uint32_t layer_id,
@@ -220,6 +267,50 @@ int RegisterPanelAndBind(
     }
 
     return 0;
+}
+
+int RequireSmallFullscreenExportCapacity(
+    UiManagerFullscreenStack *fullscreen_stack,
+    std::uint32_t expected_count,
+    std::string_view message) {
+    if (fullscreen_stack == nullptr) {
+        return Fail(message);
+    }
+
+    std::array<UiPanelId, 2U> small_order{};
+    const std::uint32_t output_capacity = static_cast<std::uint32_t>(small_order.size());
+    const UiManagerFullscreenStackResult small_export =
+        fullscreen_stack->ExportFullscreenOrder(small_order.data(), output_capacity);
+    if (RequireStatus(small_export.status, UiManagerFullscreenStackStatus::InvalidOutputBuffer, message) != 0) {
+        return 1;
+    }
+
+    if (small_export.required_fullscreen_order_count != expected_count ||
+        small_export.fullscreen_count != expected_count) {
+        return Fail(message);
+    }
+
+    if (RequireNoFullscreenCapacityEntryResult(small_export, message) != 0) {
+        return 1;
+    }
+
+    const UiManagerFullscreenStackSnapshot snapshot = fullscreen_stack->Snapshot();
+    if (snapshot.last_required_fullscreen_order_count != expected_count) {
+        return Fail(message);
+    }
+
+    return RequireNoFullscreenCapacityEntrySnapshot(snapshot, message);
+}
+
+int RequireClearedFullscreenCapacityEntry(
+    const UiManagerFullscreenStack &fullscreen_stack,
+    std::string_view message) {
+    const UiManagerFullscreenStackSnapshot snapshot = fullscreen_stack.Snapshot();
+    if (snapshot.last_required_fullscreen_order_count != 0U) {
+        return Fail(message);
+    }
+
+    return RequireNoFullscreenCapacityEntrySnapshot(snapshot, message);
 }
 
 int RequireFullscreenOrder(
@@ -381,20 +472,8 @@ int RunOpenPushesFullscreenOrderTest() {
         return 1;
     }
 
-    std::array<UiPanelId, 2U> small_order{};
-    const UiManagerFullscreenStackResult small_export =
-        fullscreen_stack.ExportFullscreenOrder(small_order.data(), static_cast<std::uint32_t>(small_order.size()));
-    if (RequireStatus(small_export.status, UiManagerFullscreenStackStatus::InvalidOutputBuffer, "small fullscreen export status mismatch") != 0) {
+    if (RequireSmallFullscreenExportCapacity(&fullscreen_stack, 3U, "small fullscreen export capacity entry mismatch") != 0) {
         return 1;
-    }
-
-    if (small_export.required_fullscreen_order_count != 3U || small_export.fullscreen_count != 3U) {
-        return Fail("small fullscreen export required count mismatch");
-    }
-
-    const UiManagerFullscreenStackSnapshot failed_export_snapshot = fullscreen_stack.Snapshot();
-    if (failed_export_snapshot.last_required_fullscreen_order_count != 3U) {
-        return Fail("small fullscreen export snapshot required count mismatch");
     }
 
     return 0;
@@ -748,6 +827,129 @@ int RunRejectsMissingNonFullscreenAndBackEmptyStatusTest() {
     return 0;
 }
 
+int RunCapacityEntryClearsForOutputAndNonCapacityResultsTest() {
+    UiPanelRegistry registry;
+    UiManagerLayerModel layer_model;
+    const std::array<std::uint32_t, 4U> panel_ids{1061U, 1062U, 1063U, 1064U};
+    if (SetupFullscreenLayer(&registry, &layer_model, std::span<const std::uint32_t>(panel_ids.data(), panel_ids.size())) != 0) {
+        return 1;
+    }
+
+    if (RegisterLayer(&layer_model, 61U, UiManagerLayerType::Popup, 30, 961U) != 0) {
+        return 1;
+    }
+
+    if (RegisterPanelAndBind(&registry, &layer_model, 1065U, 61U) != 0) {
+        return 1;
+    }
+
+    UiManagerPanelMap panel_map;
+    UiManagerFullscreenStack fullscreen_stack;
+    TestPanelController first_controller;
+    TestPanelController second_controller;
+    TestPanelController third_controller;
+    TestPanelController popup_controller;
+    if (!fullscreen_stack.OpenFullscreenPanel(PanelId(1061U), registry, layer_model, &panel_map, &first_controller).Succeeded()) {
+        return Fail("first fullscreen open failed");
+    }
+
+    if (!fullscreen_stack.OpenFullscreenPanel(PanelId(1062U), registry, layer_model, &panel_map, &second_controller).Succeeded()) {
+        return Fail("second fullscreen open failed");
+    }
+
+    if (!fullscreen_stack.OpenFullscreenPanel(PanelId(1063U), registry, layer_model, &panel_map, &third_controller).Succeeded()) {
+        return Fail("third fullscreen open failed");
+    }
+
+    if (RequireSmallFullscreenExportCapacity(&fullscreen_stack, 3U, "first output capacity entry mismatch") != 0) {
+        return 1;
+    }
+
+    UiManagerFullscreenStackResult result =
+        fullscreen_stack.OpenFullscreenPanel(PanelId(0U), registry, layer_model, &panel_map, &first_controller);
+    if (RequireStatus(result.status, UiManagerFullscreenStackStatus::InvalidPanelId, "invalid panel status mismatch") != 0) {
+        return 1;
+    }
+
+    if (RequireNoFullscreenCapacityEntryResult(result, "invalid panel result capacity entry was stale") != 0) {
+        return 1;
+    }
+
+    if (RequireClearedFullscreenCapacityEntry(fullscreen_stack, "invalid panel did not clear capacity entry") != 0) {
+        return 1;
+    }
+
+    if (RequireSmallFullscreenExportCapacity(&fullscreen_stack, 3U, "second output capacity entry mismatch") != 0) {
+        return 1;
+    }
+
+    result = fullscreen_stack.OpenFullscreenPanel(PanelId(1061U), registry, layer_model, nullptr, nullptr);
+    if (RequireStatus(result.status, UiManagerFullscreenStackStatus::InvalidPanelMap, "invalid panel map status mismatch") != 0) {
+        return 1;
+    }
+
+    if (RequireNoFullscreenCapacityEntryResult(result, "invalid panel map result capacity entry was stale") != 0) {
+        return 1;
+    }
+
+    if (RequireClearedFullscreenCapacityEntry(fullscreen_stack, "invalid panel map did not clear capacity entry") != 0) {
+        return 1;
+    }
+
+    if (RequireSmallFullscreenExportCapacity(&fullscreen_stack, 3U, "third output capacity entry mismatch") != 0) {
+        return 1;
+    }
+
+    result = fullscreen_stack.OpenFullscreenPanel(PanelId(1064U), registry, layer_model, &panel_map, nullptr);
+    if (RequireStatus(result.status, UiManagerFullscreenStackStatus::InvalidController, "invalid controller status mismatch") != 0) {
+        return 1;
+    }
+
+    if (RequireNoFullscreenCapacityEntryResult(result, "invalid controller result capacity entry was stale") != 0) {
+        return 1;
+    }
+
+    if (RequireClearedFullscreenCapacityEntry(fullscreen_stack, "invalid controller did not clear capacity entry") != 0) {
+        return 1;
+    }
+
+    if (RequireSmallFullscreenExportCapacity(&fullscreen_stack, 3U, "fourth output capacity entry mismatch") != 0) {
+        return 1;
+    }
+
+    result = fullscreen_stack.OpenFullscreenPanel(PanelId(1065U), registry, layer_model, &panel_map, &popup_controller);
+    if (RequireStatus(result.status, UiManagerFullscreenStackStatus::NonFullscreenPanel, "non-fullscreen layer status mismatch") != 0) {
+        return 1;
+    }
+
+    if (RequireNoFullscreenCapacityEntryResult(result, "non-fullscreen result capacity entry was stale") != 0) {
+        return 1;
+    }
+
+    if (RequireClearedFullscreenCapacityEntry(fullscreen_stack, "non-fullscreen layer did not clear capacity entry") != 0) {
+        return 1;
+    }
+
+    if (RequireSmallFullscreenExportCapacity(&fullscreen_stack, 3U, "fifth output capacity entry mismatch") != 0) {
+        return 1;
+    }
+
+    result = fullscreen_stack.OpenFullscreenPanel(PanelId(1063U), registry, layer_model, &panel_map, nullptr);
+    if (RequireStatus(result.status, UiManagerFullscreenStackStatus::Success, "idempotent top open status mismatch") != 0) {
+        return 1;
+    }
+
+    if (RequireNoFullscreenCapacityEntryResult(result, "idempotent success result capacity entry was stale") != 0) {
+        return 1;
+    }
+
+    if (RequireClearedFullscreenCapacityEntry(fullscreen_stack, "idempotent success did not clear capacity entry") != 0) {
+        return 1;
+    }
+
+    return 0;
+}
+
 int RunReleaseRestoresPreviousFullscreenTest() {
     UiPanelRegistry registry;
     UiManagerLayerModel layer_model;
@@ -880,6 +1082,10 @@ int RunNamedTest(std::string_view test_name) {
 
     if (test_name == TEST_RELEASE_RESTORES) {
         return RunReleaseRestoresPreviousFullscreenTest();
+    }
+
+    if (test_name == TEST_CAPACITY_ENTRY) {
+        return RunCapacityEntryClearsForOutputAndNonCapacityResultsTest();
     }
 
     return Fail(ERROR_UNKNOWN_TEST_NAME);

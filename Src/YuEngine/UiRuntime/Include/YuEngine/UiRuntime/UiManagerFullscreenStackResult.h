@@ -5,12 +5,18 @@
 
 #include <cstdint>
 
+#include "YuEngine/UiRuntime/UiManagerFullscreenStackConstants.h"
 #include "YuEngine/UiRuntime/UiManagerFullscreenStackStatus.h"
 #include "YuEngine/UiRuntime/UiManagerPanelMapRecord.h"
 #include "YuEngine/UiRuntime/UiManagerPanelMapStatus.h"
 #include "YuEngine/UiRuntime/UiPanelId.h"
 
 namespace yuengine::uiruntime {
+enum class UiManagerFullscreenStackOperation {
+    None,
+    Open
+};
+
 struct UiManagerFullscreenStackResult final {
     UiManagerFullscreenStackStatus status = UiManagerFullscreenStackStatus::InvalidOutputBuffer;
     UiManagerPanelMapStatus panel_map_status = UiManagerPanelMapStatus::Success;
@@ -19,8 +25,12 @@ struct UiManagerFullscreenStackResult final {
     UiPanelId closed_panel_id;
     UiPanelId restored_panel_id;
     UiPanelId top_panel_id;
+    UiPanelId failed_panel_id;
+    UiPanelId failed_previous_top_panel_id;
     std::uint32_t fullscreen_count = 0U;
     std::uint32_t required_fullscreen_order_count = 0U;
+    std::uint32_t failed_fullscreen_order_index = MAX_UI_MANAGER_FULLSCREEN_STACK_COUNT;
+    UiManagerFullscreenStackOperation failed_operation = UiManagerFullscreenStackOperation::None;
     bool pushed = false;
     bool moved_to_top = false;
     bool navigated_back = false;

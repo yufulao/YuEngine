@@ -7,6 +7,7 @@
 #include <cstdint>
 
 #include "YuEngine/UiRuntime/UiManagerFullscreenStackConstants.h"
+#include "YuEngine/UiRuntime/UiManagerFullscreenStackResult.h"
 #include "YuEngine/UiRuntime/UiManagerFullscreenStackStatus.h"
 #include "YuEngine/UiRuntime/UiPanelId.h"
 
@@ -17,6 +18,10 @@ struct UiManagerFullscreenStackSnapshot final {
     std::uint32_t fullscreen_capacity = MAX_UI_MANAGER_FULLSCREEN_STACK_COUNT;
     std::uint32_t fullscreen_count = 0U;
     std::uint32_t last_required_fullscreen_order_count = 0U;
+    UiPanelId last_failed_panel_id;
+    UiPanelId last_failed_previous_top_panel_id;
+    std::uint32_t last_failed_fullscreen_order_index = MAX_UI_MANAGER_FULLSCREEN_STACK_COUNT;
+    UiManagerFullscreenStackOperation last_failed_operation = UiManagerFullscreenStackOperation::None;
     std::uint32_t open_operation_count = 0U;
     std::uint32_t back_navigation_operation_count = 0U;
     std::uint32_t close_operation_count = 0U;

@@ -112,7 +112,7 @@ UiManagerFullscreenStackResult UiManagerFullscreenStack::OpenFullscreenPanelWith
     if (stack_index >= snapshot_.fullscreen_count &&
         snapshot_.fullscreen_count >= snapshot_.fullscreen_capacity) {
         return MakeResult(
-            RecordFailure(UiManagerFullscreenStackStatus::CapacityExceeded),
+            RecordFullscreenOrderCapacityFailure(panel_id),
             UiManagerPanelMapStatus::Success,
             UiManagerPanelMapRecord{},
             panel_id,
@@ -711,12 +711,14 @@ UiManagerFullscreenStackResult UiManagerFullscreenStack::ExportFullscreenOrder(
     result.top_panel_id = snapshot_.top_panel_id;
 
     if (snapshot_.fullscreen_count > 0U && output_panel_ids == nullptr) {
+        ClearFullscreenOrderCapacityFailure();
         snapshot_.last_required_fullscreen_order_count = snapshot_.fullscreen_count;
         result.status = UiManagerFullscreenStackStatus::InvalidOutputBuffer;
         return result;
     }
 
     if (output_capacity < snapshot_.fullscreen_count) {
+        ClearFullscreenOrderCapacityFailure();
         snapshot_.last_required_fullscreen_order_count = snapshot_.fullscreen_count;
         result.status = UiManagerFullscreenStackStatus::InvalidOutputBuffer;
         return result;
@@ -727,6 +729,7 @@ UiManagerFullscreenStackResult UiManagerFullscreenStack::ExportFullscreenOrder(
     }
 
     snapshot_.last_required_fullscreen_order_count = 0U;
+    ClearFullscreenOrderCapacityFailure();
     result.status = UiManagerFullscreenStackStatus::Success;
     return result;
 }
@@ -1092,7 +1095,12 @@ UiManagerFullscreenStackResult UiManagerFullscreenStack::MakeResult(
     result.closed_panel_id = closed_panel_id;
     result.restored_panel_id = restored_panel_id;
     result.top_panel_id = snapshot_.top_panel_id;
+    result.failed_panel_id = snapshot_.last_failed_panel_id;
+    result.failed_previous_top_panel_id = snapshot_.last_failed_previous_top_panel_id;
     result.fullscreen_count = snapshot_.fullscreen_count;
+    result.required_fullscreen_order_count = snapshot_.last_required_fullscreen_order_count;
+    result.failed_fullscreen_order_index = snapshot_.last_failed_fullscreen_order_index;
+    result.failed_operation = snapshot_.last_failed_operation;
     result.pushed = pushed;
     result.moved_to_top = moved_to_top;
     result.navigated_back = navigated_back;
@@ -1108,15 +1116,36 @@ UiManagerFullscreenStackResult UiManagerFullscreenStack::MakeResult(
 
 UiManagerFullscreenStackStatus UiManagerFullscreenStack::RecordFailure(UiManagerFullscreenStackStatus status) {
     snapshot_.last_required_fullscreen_order_count = 0U;
+    ClearFullscreenOrderCapacityFailure();
     ++snapshot_.failed_operation_count;
     ++snapshot_.rejected_operation_count;
     snapshot_.last_status = status;
     return status;
 }
 
+UiManagerFullscreenStackStatus UiManagerFullscreenStack::RecordFullscreenOrderCapacityFailure(UiPanelId panel_id) {
+    snapshot_.last_required_fullscreen_order_count = snapshot_.fullscreen_count + 1U;
+    snapshot_.last_failed_panel_id = panel_id;
+    snapshot_.last_failed_previous_top_panel_id = snapshot_.top_panel_id;
+    snapshot_.last_failed_fullscreen_order_index = snapshot_.fullscreen_count;
+    snapshot_.last_failed_operation = UiManagerFullscreenStackOperation::Open;
+    ++snapshot_.failed_operation_count;
+    ++snapshot_.rejected_operation_count;
+    snapshot_.last_status = UiManagerFullscreenStackStatus::CapacityExceeded;
+    return UiManagerFullscreenStackStatus::CapacityExceeded;
+}
+
 void UiManagerFullscreenStack::RecordSuccess() {
     snapshot_.last_required_fullscreen_order_count = 0U;
+    ClearFullscreenOrderCapacityFailure();
     ++snapshot_.accepted_operation_count;
     snapshot_.last_status = UiManagerFullscreenStackStatus::Success;
+}
+
+void UiManagerFullscreenStack::ClearFullscreenOrderCapacityFailure() {
+    snapshot_.last_failed_panel_id = UiPanelId{};
+    snapshot_.last_failed_previous_top_panel_id = UiPanelId{};
+    snapshot_.last_failed_fullscreen_order_index = MAX_UI_MANAGER_FULLSCREEN_STACK_COUNT;
+    snapshot_.last_failed_operation = UiManagerFullscreenStackOperation::None;
 }
 }
