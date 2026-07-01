@@ -92,7 +92,37 @@ bool ByteRangeFits(
     return static_cast<std::uint64_t>(byte_count) <= remaining_bytes;
 }
 
+void ClearPrimitiveRetirementCapacityFailure(RhiDeviceSnapshot &snapshot) {
+    RhiPrimitiveRetirementSnapshot &retirement = snapshot.resources.primitive_retirement;
+    retirement.last_failed_retirement_capacity = 0U;
+    retirement.last_failed_retirement_current_count = 0U;
+    retirement.last_failed_retirement_required_count = 0U;
+    retirement.last_failed_retirement_request_id = 0U;
+    retirement.last_failed_retirement_kind = RhiPrimitiveKind::Unsupported;
+    retirement.last_failed_retirement_slot = 0U;
+    retirement.last_failed_retirement_generation = 0U;
+    retirement.last_failed_retirement_wait_fence = RhiFenceHandle{};
+}
+
+void RecordPrimitiveRetirementCapacityFailure(
+    RhiDeviceSnapshot &snapshot,
+    const RhiPrimitiveRetirementRequest &request,
+    std::size_t capacity,
+    std::size_t current_count,
+    std::size_t required_count) {
+    RhiPrimitiveRetirementSnapshot &retirement = snapshot.resources.primitive_retirement;
+    retirement.last_failed_retirement_capacity = capacity;
+    retirement.last_failed_retirement_current_count = current_count;
+    retirement.last_failed_retirement_required_count = required_count;
+    retirement.last_failed_retirement_request_id = request.request_id;
+    retirement.last_failed_retirement_kind = request.primitive_kind;
+    retirement.last_failed_retirement_slot = request.primitive_slot;
+    retirement.last_failed_retirement_generation = request.primitive_generation;
+    retirement.last_failed_retirement_wait_fence = request.wait_fence;
+}
+
 RhiStatus RecordDeviceSuccess(RhiDeviceSnapshot &snapshot) {
+    ClearPrimitiveRetirementCapacityFailure(snapshot);
     snapshot.last_status = RhiStatus::Success;
     return RhiStatus::Success;
 }
@@ -1219,7 +1249,14 @@ RhiStatus NullRhiDevice::RequestPrimitiveRetirement(
         snapshot_.resources.primitive_retirement.pending_count + 1U;
     ++snapshot_.resources.primitive_retirement.capacity_rejected_count;
     ++snapshot_.resources.primitive_retirement.rejected_count;
-    return RecordFailure(RhiStatus::CapacityExceeded);
+    const RhiStatus status = RecordFailure(RhiStatus::CapacityExceeded);
+    RecordPrimitiveRetirementCapacityFailure(
+        snapshot_,
+        request,
+        snapshot_.resources.primitive_retirement.capacity,
+        snapshot_.resources.primitive_retirement.pending_count,
+        snapshot_.resources.primitive_retirement.required_retirement_record_count);
+    return status;
 }
 
 RhiStatus NullRhiDevice::QueryPrimitiveRetirement(
@@ -1300,6 +1337,7 @@ RhiDeviceSnapshot NullRhiDevice::Snapshot() const {
 }
 
 RhiStatus NullRhiDevice::RecordFailure(RhiStatus status) {
+    ClearPrimitiveRetirementCapacityFailure(snapshot_);
     ++snapshot_.failed_operation_count;
     snapshot_.last_status = status;
     return status;
