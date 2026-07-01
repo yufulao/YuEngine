@@ -1972,16 +1972,29 @@ ResourceDecodeResultStatus ResourceRegistry::RecordDecodeResultRejected(
     const ResourceDecodeResultRequest &request,
     ResourceDecodeResultStatus status) {
     ++decode_result_snapshot_.rejected_result_request_count;
+    decode_result_snapshot_.last_required_result_count = 0U;
+    decode_result_snapshot_.last_required_decoded_byte_count = 0U;
     if (status == ResourceDecodeResultStatus::DuplicateDecodeResultId) {
         ++decode_result_snapshot_.duplicate_result_rejected_count;
     }
 
     if (status == ResourceDecodeResultStatus::CapacityExceeded) {
         ++decode_result_snapshot_.capacity_rejected_result_count;
+        decode_result_snapshot_.last_required_result_count =
+            decode_result_snapshot_.active_result_count + 1U;
     }
 
     if (status == ResourceDecodeResultStatus::BudgetExceeded) {
         ++decode_result_snapshot_.budget_rejected_result_count;
+        if (operation == ResourceDecodeResultOperation::Commit) {
+            decode_result_snapshot_.last_required_decoded_byte_count =
+                decode_result_snapshot_.committed_decoded_byte_count + request.decoded_byte_count;
+        }
+
+        if (operation == ResourceDecodeResultOperation::ConfigureBudget) {
+            decode_result_snapshot_.last_required_decoded_byte_count =
+                decode_result_snapshot_.committed_decoded_byte_count;
+        }
     }
 
     ++snapshot_.failed_operation_count;
@@ -2021,6 +2034,8 @@ void ResourceRegistry::RecordDecodeResultSuccess(
 
     decode_result_snapshot_.last_operation = operation;
     decode_result_snapshot_.last_status = ResourceDecodeResultStatus::Success;
+    decode_result_snapshot_.last_required_result_count = 0U;
+    decode_result_snapshot_.last_required_decoded_byte_count = 0U;
     decode_result_snapshot_.last_resource = request.resource;
     decode_result_snapshot_.last_payload_id = request.payload_id;
     decode_result_snapshot_.last_decode_plan_id = request.decode_plan_id;

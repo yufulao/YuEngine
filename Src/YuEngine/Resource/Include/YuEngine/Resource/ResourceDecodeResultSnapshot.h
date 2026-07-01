@@ -23,6 +23,8 @@ struct ResourceDecodeResultSnapshot {
     std::uint32_t committed_decoded_byte_count = 0U;
     std::uint32_t active_result_count = 0U;
     std::uint32_t decode_result_record_count = 0U;
+    std::uint32_t last_required_result_count = 0U;
+    std::uint32_t last_required_decoded_byte_count = 0U;
     std::uint32_t committed_result_count = 0U;
     std::uint32_t queried_result_count = 0U;
     std::uint32_t released_result_count = 0U;

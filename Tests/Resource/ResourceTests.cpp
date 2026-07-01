@@ -4256,6 +4256,15 @@ int ResourceDecodeResultRejectsCapacityOverflow() {
         return Fail("capacity decode result rejection was not counted");
     }
 
+    constexpr std::uint32_t REQUIRED_RESULT_COUNT = MAX_RESOURCE_DECODE_RESULT_RECORD_COUNT + 1U;
+    if (snapshot.last_required_result_count != REQUIRED_RESULT_COUNT) {
+        return Fail("capacity decode result required count was not reported");
+    }
+
+    if (snapshot.last_required_decoded_byte_count != 0U) {
+        return Fail("capacity decode result reported decoded byte count");
+    }
+
     return 0;
 }
 
@@ -4306,6 +4315,14 @@ int ResourceDecodeResultRejectsBudgetOverflow() {
 
     if (snapshot.budget_rejected_result_count != 1U) {
         return Fail("budget decode result rejection was not counted");
+    }
+
+    if (snapshot.last_required_decoded_byte_count != DECODE_PLAN_DECODED_BYTE_COUNT) {
+        return Fail("budget decode result required decoded bytes were not reported");
+    }
+
+    if (snapshot.last_required_result_count != 0U) {
+        return Fail("budget decode result reported result count");
     }
 
     return 0;
