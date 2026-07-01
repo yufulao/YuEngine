@@ -1180,7 +1180,7 @@ int TestRejectSidecarAssemblyFailureStatus() {
     assembly_desc.attachment_capacity = 0U;
     RuntimeAssetWorldObjectRestoreHandoffBridge bridge(assembly_desc);
     const RuntimeAssetWorldObjectRestoreHandoffResult result = bridge.ApplyRestore(handoff_request);
-    if (result.status != RuntimeAssetWorldObjectRestoreHandoffStatus::RestoreFailed) {
+    if (result.status != RuntimeAssetWorldObjectRestoreHandoffStatus::AssemblyFailed) {
         return Fail("sidecar assembly failure returned wrong handoff status");
     }
 
@@ -1239,7 +1239,7 @@ int TestRejectSidecarAssemblyFailureStatus() {
         return Fail("sidecar assembly failure snapshot rejection mismatch");
     }
 
-    if (snapshot.last_status != RuntimeAssetWorldObjectRestoreHandoffStatus::RestoreFailed) {
+    if (snapshot.last_status != RuntimeAssetWorldObjectRestoreHandoffStatus::AssemblyFailed) {
         return Fail("sidecar assembly failure snapshot handoff status mismatch");
     }
 
