@@ -134,6 +134,14 @@ AnimationRuntimeStatus AnimationRuntimeSampler::Sample(
 
     status = ValidateClip(request, *clip, sample_time_seconds, out_values);
     if (status != AnimationRuntimeStatus::Success) {
+        if (status == AnimationRuntimeStatus::OutputCapacityExceeded) {
+            result.required_sampled_value_count = clip->track_count;
+        }
+
+        if (status == AnimationRuntimeStatus::LayerCapacityExceeded) {
+            result.required_layer_count = clip->layer_count;
+        }
+
         result.status = status;
         *out_result = result;
         return status;

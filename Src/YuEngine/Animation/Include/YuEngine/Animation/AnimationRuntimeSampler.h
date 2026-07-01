@@ -100,6 +100,8 @@ struct AnimationRuntimeSampleResult final {
     std::uint32_t clip_id = 0U;
     float sample_time_seconds = 0.0F;
     std::size_t sampled_value_count = 0U;
+    std::size_t required_sampled_value_count = 0U;
+    std::uint32_t required_layer_count = 0U;
 };
 
 struct AnimationRuntimeTransformApplyRequest final {

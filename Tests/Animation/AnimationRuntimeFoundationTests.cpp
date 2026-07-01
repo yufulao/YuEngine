@@ -526,11 +526,19 @@ int AnimationRuntimeSamplerReportsFailureStates() {
         return Fail("runtime animation output capacity status mismatch");
     }
 
+    if (result.required_sampled_value_count != 1U) {
+        return Fail("runtime animation output required count mismatch");
+    }
+
     std::array<AnimationRuntimeClipRecord, 1U> layered_clips{ClipRecord()};
     layered_clips[0U].layer_count = 2U;
-    if (SampleStatus(SampleRequest(layered_clips, tracks, keyframes), values) !=
+    if (sampler.Sample(SampleRequest(layered_clips, tracks, keyframes), values, &result) !=
         AnimationRuntimeStatus::LayerCapacityExceeded) {
         return Fail("runtime animation layer capacity status mismatch");
+    }
+
+    if (result.required_layer_count != 2U) {
+        return Fail("runtime animation layer required count mismatch");
     }
 
     if (SampleStatus(SampleRequest(clips, tracks, keyframes, HALF_SECOND_NANOSECONDS,
