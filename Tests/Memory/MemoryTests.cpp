@@ -310,6 +310,14 @@ int MemoryTrackerRejectsBeyondFixedCapacityWithoutMutation() {
     }
 
     const auto before_overflow = tracker.Snapshot();
+    if (before_overflow.allocation_capacity != MAX_COUNTING_MEMORY_TRACKER_ACTIVE_ALLOCATIONS) {
+        return Fail("fixed-capacity tracker did not expose allocation capacity");
+    }
+
+    if (before_overflow.required_allocation_count != MAX_COUNTING_MEMORY_TRACKER_ACTIVE_ALLOCATIONS) {
+        return Fail("fixed-capacity tracker did not track filled allocation count");
+    }
+
     const auto overflow = tracker.RecordAllocation(owner, tag, MemoryBudgetClass::Setup, SMALL_BYTES, ALIGNMENT);
     if (overflow.status != MemoryAccountingStatus::CapacityExceeded) {
         return Fail("fixed-capacity tracker did not reject allocation overflow");
@@ -322,6 +330,14 @@ int MemoryTrackerRejectsBeyondFixedCapacityWithoutMutation() {
     const auto after_overflow = tracker.Snapshot();
     if (after_overflow.allocation_count != before_overflow.allocation_count) {
         return Fail("capacity overflow changed allocation count");
+    }
+
+    if (after_overflow.allocation_capacity != before_overflow.allocation_capacity) {
+        return Fail("capacity overflow changed allocation capacity");
+    }
+
+    if (after_overflow.required_allocation_count != before_overflow.allocation_capacity + 1U) {
+        return Fail("capacity overflow did not expose required allocation count");
     }
 
     if (after_overflow.retained_bytes != before_overflow.retained_bytes) {

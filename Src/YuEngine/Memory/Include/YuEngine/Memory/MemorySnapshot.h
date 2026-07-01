@@ -16,6 +16,8 @@ struct MemorySnapshot {
     std::size_t peak_retained_bytes;
     std::size_t leak_count;
     MemoryAccountingStatus last_status = MemoryAccountingStatus::Success;
+    std::size_t allocation_capacity = 0U;
+    std::size_t required_allocation_count = 0U;
 
     /**
      * @comment 检查 保留的 allocations 保留.

@@ -55,6 +55,8 @@ CountingMemoryTracker::CountingMemoryTracker()
       snapshot_{0U, 0U, 0U, 0U, 0U, MemoryAccountingStatus::Success},
       next_allocation_id_(1U),
       active_allocation_count_(0U) {
+    snapshot_.allocation_capacity = MAX_COUNTING_MEMORY_TRACKER_ACTIVE_ALLOCATIONS;
+    snapshot_.required_allocation_count = 1U;
 }
 
 MemoryAccountingResult CountingMemoryTracker::RecordAllocation(
@@ -103,6 +105,7 @@ MemoryAccountingResult CountingMemoryTracker::RecordAllocation(
         return MemoryAccountingResult::Failure(MemoryAccountingStatus::BudgetExceeded);
     }
 
+    snapshot_.required_allocation_count = active_allocation_count_ + 1U;
     ActiveAllocationRecord* record = FindFreeAllocationRecord();
     if (record == nullptr) {
         snapshot_.last_status = MemoryAccountingStatus::CapacityExceeded;
