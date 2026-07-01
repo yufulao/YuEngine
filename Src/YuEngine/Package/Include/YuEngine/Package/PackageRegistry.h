@@ -87,14 +87,19 @@ private:
     PackageStatus BuildDependencyClosurePlan(
         PackageId package,
         std::size_t root_index,
-        PackageLoadPlan& out_plan) const;
+        PackageLoadPlan& out_plan,
+        PackageEntryDescriptor *out_failed_load_plan_descriptor) const;
     PackageStatus AppendDependencyClosure(
         PackageId package,
         std::size_t entry_index,
         std::array<PackageEntryId, MAX_PACKAGE_ENTRY_COUNT>& visiting_entries,
         std::uint32_t& visiting_count,
-        PackageLoadPlan& out_plan) const;
-    PackageStatus TryAppendRecord(PackageLoadPlan& plan, const PackageEntryDescriptor& descriptor) const;
+        PackageLoadPlan& out_plan,
+        PackageEntryDescriptor *out_failed_load_plan_descriptor) const;
+    PackageStatus TryAppendRecord(
+        PackageLoadPlan& plan,
+        const PackageEntryDescriptor& descriptor,
+        PackageEntryDescriptor *out_failed_load_plan_descriptor) const;
     void AppendRecord(PackageLoadPlan& plan, const PackageEntryDescriptor& descriptor) const;
     bool TryFindEntryIndex(PackageId package, PackageEntryId entry, std::size_t& out_index) const;
     bool TryFindResourceIndex(

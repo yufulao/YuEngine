@@ -6,10 +6,16 @@
 #include <cstdint>
 
 #include "YuEngine/Memory/MemoryAccountingStatus.h"
+#include "YuEngine/Package/PackageEntryId.h"
+#include "YuEngine/Package/PackageId.h"
 #include "YuEngine/Package/PackageStatus.h"
+#include "YuEngine/Resource/ResourceLogicalKey.h"
+#include "YuEngine/Resource/ResourceTypeId.h"
 
 namespace yuengine::package {
 using memory::MemoryAccountingStatus;
+using resource::ResourceLogicalKey;
+using resource::ResourceTypeId;
 
 struct PackageSnapshot final {
     std::uint32_t manifest_capacity;
@@ -31,5 +37,11 @@ struct PackageSnapshot final {
     std::uint32_t rejected_operation_count;
     MemoryAccountingStatus allocation_accounting_status;
     PackageStatus last_status;
+    PackageId last_failed_load_plan_package{};
+    PackageEntryId last_failed_load_plan_entry_id{};
+    ResourceTypeId last_failed_load_plan_resource_type{};
+    ResourceLogicalKey last_failed_load_plan_resource_key{};
+    std::uint32_t last_failed_load_plan_record_capacity = 0U;
+    std::uint32_t last_failed_load_plan_record_count = 0U;
 };
 }

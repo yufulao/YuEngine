@@ -268,6 +268,42 @@ bool PlanContainsEntry(const PackageLoadPlan& plan, PackageEntryId entry) {
 
     return false;
 }
+
+void ClearLoadPlanCapacityEntry(PackageSnapshot& snapshot) {
+    snapshot.last_failed_load_plan_package = PackageId{};
+    snapshot.last_failed_load_plan_entry_id = PackageEntryId{};
+    snapshot.last_failed_load_plan_resource_type = ResourceTypeId{};
+    snapshot.last_failed_load_plan_resource_key = ResourceLogicalKey{};
+    snapshot.last_failed_load_plan_record_capacity = 0U;
+    snapshot.last_failed_load_plan_record_count = 0U;
+}
+
+void RecordLoadPlanCapacityEntry(
+    PackageLoadPlanResult *result,
+    PackageSnapshot *snapshot,
+    const PackageEntryDescriptor& descriptor,
+    std::uint32_t current_record_count,
+    std::uint32_t required_record_count) {
+    if (result == nullptr || snapshot == nullptr) {
+        return;
+    }
+
+    result->required_load_plan_record_count = required_record_count;
+    result->failed_load_plan_package = descriptor.package;
+    result->failed_load_plan_entry_id = descriptor.entry;
+    result->failed_load_plan_resource_type = descriptor.type;
+    result->failed_load_plan_resource_key = descriptor.logical_key;
+    result->failed_load_plan_record_capacity = snapshot->load_plan_record_capacity;
+    result->failed_load_plan_record_count = current_record_count;
+
+    snapshot->required_load_plan_record_count = required_record_count;
+    snapshot->last_failed_load_plan_package = descriptor.package;
+    snapshot->last_failed_load_plan_entry_id = descriptor.entry;
+    snapshot->last_failed_load_plan_resource_type = descriptor.type;
+    snapshot->last_failed_load_plan_resource_key = descriptor.logical_key;
+    snapshot->last_failed_load_plan_record_capacity = snapshot->load_plan_record_capacity;
+    snapshot->last_failed_load_plan_record_count = current_record_count;
+}
 }
 
 PackageRegistry::PackageRegistry()
@@ -533,12 +569,20 @@ PackageLoadPlanResult PackageRegistry::ResolveEntryByResourceKey(
     }
 
     PackageLoadPlan plan{};
-    const PackageStatus plan_status = BuildDependencyClosurePlan(package, root_index, plan);
+    PackageEntryDescriptor failed_load_plan_descriptor{};
+    const PackageStatus plan_status =
+        BuildDependencyClosurePlan(package, root_index, plan, &failed_load_plan_descriptor);
     if (plan_status != PackageStatus::Success) {
         PackageLoadPlanResult result = PackageLoadPlanResult::Failure(RecordFailure(plan_status));
         if (plan_status == PackageStatus::LoadPlanCapacityExceeded) {
-            result.required_load_plan_record_count = plan.record_count + 1U;
-            snapshot_.required_load_plan_record_count = result.required_load_plan_record_count;
+            const std::uint32_t current_record_count = plan.record_count;
+            const std::uint32_t required_record_count = plan.record_count + 1U;
+            RecordLoadPlanCapacityEntry(
+                &result,
+                &snapshot_,
+                failed_load_plan_descriptor,
+                current_record_count,
+                required_record_count);
         }
 
         return result;
@@ -561,12 +605,14 @@ PackageSnapshot PackageRegistry::Snapshot() const {
 PackageStatus PackageRegistry::RecordFailure(PackageStatus status) {
     ++snapshot_.rejected_operation_count;
     snapshot_.last_status = status;
+    ClearLoadPlanCapacityEntry(snapshot_);
     return status;
 }
 
 void PackageRegistry::RecordSuccess() {
     ++snapshot_.accepted_operation_count;
     snapshot_.last_status = PackageStatus::Success;
+    ClearLoadPlanCapacityEntry(snapshot_);
 }
 
 bool PackageRegistry::HasManifest(PackageId package) const {
@@ -751,14 +797,21 @@ bool PackageRegistry::HasDependencyPath(PackageId package, PackageEntryId start,
 PackageStatus PackageRegistry::BuildDependencyClosurePlan(
     PackageId package,
     std::size_t root_index,
-    PackageLoadPlan& out_plan) const {
+    PackageLoadPlan& out_plan,
+    PackageEntryDescriptor *out_failed_load_plan_descriptor) const {
     if (root_index >= snapshot_.entry_capacity) {
         return PackageStatus::DependencyMissing;
     }
 
     std::array<PackageEntryId, MAX_PACKAGE_ENTRY_COUNT> visiting_entries{};
     std::uint32_t visiting_count = 0U;
-    return AppendDependencyClosure(package, root_index, visiting_entries, visiting_count, out_plan);
+    return AppendDependencyClosure(
+        package,
+        root_index,
+        visiting_entries,
+        visiting_count,
+        out_plan,
+        out_failed_load_plan_descriptor);
 }
 
 PackageStatus PackageRegistry::AppendDependencyClosure(
@@ -766,7 +819,8 @@ PackageStatus PackageRegistry::AppendDependencyClosure(
     std::size_t entry_index,
     std::array<PackageEntryId, MAX_PACKAGE_ENTRY_COUNT>& visiting_entries,
     std::uint32_t& visiting_count,
-    PackageLoadPlan& out_plan) const {
+    PackageLoadPlan& out_plan,
+    PackageEntryDescriptor *out_failed_load_plan_descriptor) const {
     if (entry_index >= snapshot_.entry_capacity) {
         return PackageStatus::DependencyMissing;
     }
@@ -781,6 +835,10 @@ PackageStatus PackageRegistry::AppendDependencyClosure(
     }
 
     if (visiting_count >= MAX_PACKAGE_ENTRY_COUNT) {
+        if (out_failed_load_plan_descriptor != nullptr) {
+            *out_failed_load_plan_descriptor = descriptor;
+        }
+
         return PackageStatus::LoadPlanCapacityExceeded;
     }
 
@@ -800,7 +858,13 @@ PackageStatus PackageRegistry::AppendDependencyClosure(
         }
 
         const PackageStatus dependency_status =
-            AppendDependencyClosure(package, dependency_index, visiting_entries, visiting_count, out_plan);
+            AppendDependencyClosure(
+                package,
+                dependency_index,
+                visiting_entries,
+                visiting_count,
+                out_plan,
+                out_failed_load_plan_descriptor);
         if (dependency_status != PackageStatus::Success) {
             --visiting_count;
             return dependency_status;
@@ -810,11 +874,18 @@ PackageStatus PackageRegistry::AppendDependencyClosure(
     }
 
     --visiting_count;
-    return TryAppendRecord(out_plan, descriptor);
+    return TryAppendRecord(out_plan, descriptor, out_failed_load_plan_descriptor);
 }
 
-PackageStatus PackageRegistry::TryAppendRecord(PackageLoadPlan& plan, const PackageEntryDescriptor& descriptor) const {
+PackageStatus PackageRegistry::TryAppendRecord(
+    PackageLoadPlan& plan,
+    const PackageEntryDescriptor& descriptor,
+    PackageEntryDescriptor *out_failed_load_plan_descriptor) const {
     if (plan.record_count >= snapshot_.load_plan_record_capacity) {
+        if (out_failed_load_plan_descriptor != nullptr) {
+            *out_failed_load_plan_descriptor = descriptor;
+        }
+
         return PackageStatus::LoadPlanCapacityExceeded;
     }
 

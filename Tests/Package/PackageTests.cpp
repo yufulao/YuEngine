@@ -584,6 +584,124 @@ bool SnapshotsMatch(const PackageSnapshot& left, const PackageSnapshot& right) {
     return left.allocation_accounting_status == right.allocation_accounting_status;
 }
 
+bool LoadPlanCapacityResultMatches(
+    const PackageLoadPlanResult& result,
+    PackageEntryId expected_entry,
+    ResourceTypeId expected_type,
+    const char *expected_logical_key,
+    std::uint32_t expected_record_capacity,
+    std::uint32_t expected_record_count,
+    std::uint32_t expected_required_record_count) {
+    if (result.required_load_plan_record_count != expected_required_record_count) {
+        return false;
+    }
+
+    if (result.failed_load_plan_package.value != PACKAGE_A.value) {
+        return false;
+    }
+
+    if (result.failed_load_plan_entry_id.value != expected_entry.value) {
+        return false;
+    }
+
+    if (result.failed_load_plan_resource_type.value != expected_type.value) {
+        return false;
+    }
+
+    if (!result.failed_load_plan_resource_key.Equals(ResourceLogicalKey(expected_logical_key))) {
+        return false;
+    }
+
+    if (result.failed_load_plan_record_capacity != expected_record_capacity) {
+        return false;
+    }
+
+    return result.failed_load_plan_record_count == expected_record_count;
+}
+
+bool LoadPlanCapacitySnapshotMatches(
+    const PackageSnapshot& snapshot,
+    PackageEntryId expected_entry,
+    ResourceTypeId expected_type,
+    const char *expected_logical_key,
+    std::uint32_t expected_record_capacity,
+    std::uint32_t expected_record_count,
+    std::uint32_t expected_required_record_count) {
+    if (snapshot.required_load_plan_record_count != expected_required_record_count) {
+        return false;
+    }
+
+    if (snapshot.last_failed_load_plan_package.value != PACKAGE_A.value) {
+        return false;
+    }
+
+    if (snapshot.last_failed_load_plan_entry_id.value != expected_entry.value) {
+        return false;
+    }
+
+    if (snapshot.last_failed_load_plan_resource_type.value != expected_type.value) {
+        return false;
+    }
+
+    if (!snapshot.last_failed_load_plan_resource_key.Equals(ResourceLogicalKey(expected_logical_key))) {
+        return false;
+    }
+
+    if (snapshot.last_failed_load_plan_record_capacity != expected_record_capacity) {
+        return false;
+    }
+
+    return snapshot.last_failed_load_plan_record_count == expected_record_count;
+}
+
+bool LoadPlanCapacityResultCleared(const PackageLoadPlanResult& result) {
+    if (result.failed_load_plan_package.value != 0U) {
+        return false;
+    }
+
+    if (result.failed_load_plan_entry_id.value != 0U) {
+        return false;
+    }
+
+    if (result.failed_load_plan_resource_type.value != 0U) {
+        return false;
+    }
+
+    if (result.failed_load_plan_resource_key.IsValid()) {
+        return false;
+    }
+
+    if (result.failed_load_plan_record_capacity != 0U) {
+        return false;
+    }
+
+    return result.failed_load_plan_record_count == 0U;
+}
+
+bool LoadPlanCapacitySnapshotCleared(const PackageSnapshot& snapshot) {
+    if (snapshot.last_failed_load_plan_package.value != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_load_plan_entry_id.value != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_load_plan_resource_type.value != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_load_plan_resource_key.IsValid()) {
+        return false;
+    }
+
+    if (snapshot.last_failed_load_plan_record_capacity != 0U) {
+        return false;
+    }
+
+    return snapshot.last_failed_load_plan_record_count == 0U;
+}
+
 int ExpectInvalidArtifactRead(
     MountTable& table,
     std::string_view artifact_text,
@@ -1591,6 +1709,28 @@ int PackageDependencyClosureRejectsRecordBudgetWithoutMutation() {
         return Fail("dependency closure record budget did not snapshot required record count");
     }
 
+    if (!LoadPlanCapacityResultMatches(
+            result,
+            ENTRY_TEXTURE,
+            TYPE_TEXTURE,
+            "texture_a",
+            desc.load_plan_record_capacity,
+            desc.load_plan_record_capacity,
+            EXPECTED_REQUIRED_RECORD_COUNT)) {
+        return Fail("dependency closure record budget did not report rejected entry identity");
+    }
+
+    if (!LoadPlanCapacitySnapshotMatches(
+            after_snapshot,
+            ENTRY_TEXTURE,
+            TYPE_TEXTURE,
+            "texture_a",
+            desc.load_plan_record_capacity,
+            desc.load_plan_record_capacity,
+            EXPECTED_REQUIRED_RECORD_COUNT)) {
+        return Fail("dependency closure record budget did not snapshot rejected entry identity");
+    }
+
     if (result.plan.record_count != 0U) {
         return Fail("dependency closure record budget published partial plan");
     }
@@ -1599,12 +1739,17 @@ int PackageDependencyClosureRejectsRecordBudgetWithoutMutation() {
 }
 
 int PackageDependencyCapacityOverflowDoesNotMutate() {
-    PackageRegistry registry(PackageRegistryDesc{1U, 4U, 1U, 4U});
+    PackageRegistry registry(PackageRegistryDesc{1U, 4U, 1U, 1U});
     RegisterManifest(registry);
     RegisterEntry(registry, ENTRY_TEXTURE, TYPE_TEXTURE, "texture_a", "textures/texture_a.bin");
     RegisterEntry(registry, ENTRY_MATERIAL, TYPE_MATERIAL, "material_a", "materials/material_a.bin");
     RegisterEntry(registry, ENTRY_AUDIO, TYPE_AUDIO, "audio_a", "audio/audio_a.bin");
     registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_MATERIAL);
+    const PackageLoadPlanResult capacity_result =
+        registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_TEXTURE, ResourceLogicalKey("texture_a"));
+    if (capacity_result.status != PackageStatus::LoadPlanCapacityExceeded) {
+        return Fail("dependency capacity fixture did not seed load-plan capacity failure");
+    }
 
     const PackageSnapshot before_snapshot = registry.Snapshot();
     const PackageStatus overflow = registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_AUDIO);
@@ -1614,6 +1759,10 @@ int PackageDependencyCapacityOverflowDoesNotMutate() {
 
     if (registry.Snapshot().dependency_edge_count != before_snapshot.dependency_edge_count) {
         return Fail("dependency capacity overflow changed edge count");
+    }
+
+    if (!LoadPlanCapacitySnapshotCleared(registry.Snapshot())) {
+        return Fail("dependency capacity overflow did not clear load-plan capacity entry");
     }
 
     return 0;
@@ -1656,6 +1805,42 @@ int PackageLoadPlanCapacityOverflowDoesNotMutate() {
         return Fail("load-plan capacity overflow did not snapshot required record count");
     }
 
+    if (!LoadPlanCapacityResultMatches(
+            result,
+            ENTRY_TEXTURE,
+            TYPE_TEXTURE,
+            "texture_a",
+            1U,
+            1U,
+            EXPECTED_REQUIRED_RECORD_COUNT)) {
+        return Fail("load-plan capacity overflow did not report rejected entry identity");
+    }
+
+    if (!LoadPlanCapacitySnapshotMatches(
+            after_snapshot,
+            ENTRY_TEXTURE,
+            TYPE_TEXTURE,
+            "texture_a",
+            1U,
+            1U,
+            EXPECTED_REQUIRED_RECORD_COUNT)) {
+        return Fail("load-plan capacity overflow did not snapshot rejected entry identity");
+    }
+
+    const PackageLoadPlanResult success_result =
+        registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_MATERIAL, ResourceLogicalKey("material_a"));
+    if (!success_result.Succeeded()) {
+        return Fail("load-plan capacity follow-up success failed");
+    }
+
+    if (!LoadPlanCapacityResultCleared(success_result)) {
+        return Fail("load-plan capacity follow-up success did not clear result entry");
+    }
+
+    if (!LoadPlanCapacitySnapshotCleared(registry.Snapshot())) {
+        return Fail("load-plan capacity follow-up success did not clear snapshot entry");
+    }
+
     return 0;
 }
 
@@ -1664,7 +1849,7 @@ int PackageLoadPlanRejectsArchiveByteBudgetWithoutMutation() {
     desc.manifest_capacity = 1U;
     desc.entry_capacity = 4U;
     desc.dependency_edge_capacity = 4U;
-    desc.load_plan_record_capacity = 4U;
+    desc.load_plan_record_capacity = 1U;
     desc.load_plan_archive_byte_budget = 40ULL;
 
     PackageRegistry registry(desc);
@@ -1672,12 +1857,17 @@ int PackageLoadPlanRejectsArchiveByteBudgetWithoutMutation() {
     RegisterEntry(registry, ENTRY_TEXTURE, TYPE_TEXTURE, "texture_a", "textures/texture_a.bin", 64U, 32U);
     RegisterEntry(registry, ENTRY_MATERIAL, TYPE_MATERIAL, "material_a", "materials/material_a.bin", 8U, 16U);
     RegisterEntry(registry, ENTRY_AUDIO, TYPE_AUDIO, "audio_a", "audio/audio_a.bin", 24U, 8U);
+    RegisterEntry(registry, ENTRY_EFFECT, TYPE_EFFECT, "effect_a", "effects/effect_a.bin", 128U, 48U);
     registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_MATERIAL);
-    registry.AddDependency(PACKAGE_A, ENTRY_MATERIAL, ENTRY_AUDIO);
+    const PackageLoadPlanResult capacity_result =
+        registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_TEXTURE, ResourceLogicalKey("texture_a"));
+    if (capacity_result.status != PackageStatus::LoadPlanCapacityExceeded) {
+        return Fail("load-plan archive byte budget fixture did not seed capacity entry");
+    }
 
     const PackageSnapshot before_snapshot = registry.Snapshot();
     const PackageLoadPlanResult result =
-        registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_TEXTURE, ResourceLogicalKey("texture_a"));
+        registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_EFFECT, ResourceLogicalKey("effect_a"));
     if (result.status != PackageStatus::LoadPlanByteBudgetExceeded) {
         return Fail("load-plan archive byte budget did not return explicit status");
     }
@@ -1697,6 +1887,14 @@ int PackageLoadPlanRejectsArchiveByteBudgetWithoutMutation() {
 
     if (result.plan.record_count != 0U) {
         return Fail("load-plan archive byte budget published partial plan");
+    }
+
+    if (!LoadPlanCapacityResultCleared(result)) {
+        return Fail("load-plan archive byte budget did not clear result capacity entry");
+    }
+
+    if (!LoadPlanCapacitySnapshotCleared(after_snapshot)) {
+        return Fail("load-plan archive byte budget did not clear snapshot capacity entry");
     }
 
     return 0;
