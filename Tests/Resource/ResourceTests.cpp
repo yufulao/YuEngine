@@ -225,6 +225,8 @@ constexpr const char *TEST_DECODE_RESULT_DUPLICATE =
     "Resource_DecodeResult_RejectsDuplicateResultId";
 constexpr const char *TEST_DECODE_RESULT_CAPACITY =
     "Resource_DecodeResult_RejectsCapacityOverflow";
+constexpr const char *TEST_DECODE_RESULT_CAPACITY_ENTRY =
+    "Resource_DecodeResult_CapacityEntryClearsOnNonCapacity";
 constexpr const char *TEST_DECODE_RESULT_BUDGET =
     "Resource_DecodeResult_RejectsBudgetOverflow";
 constexpr const char *TEST_DECODE_RESULT_ASSET_CLASS =
@@ -830,6 +832,100 @@ bool ConfigureDecodeResultBudget(ResourceRegistry &registry, std::uint32_t byte_
     ResourceDecodeResultBudgetDesc budget;
     budget.decoded_byte_capacity = byte_capacity;
     return registry.SetDecodeResultBudget(budget) == ResourceDecodeResultStatus::Success;
+}
+
+int ExpectDecodeResultCapacityEntryClear(const ResourceDecodeResultSnapshot &snapshot) {
+    if (snapshot.last_failed_resource.IsValid()) {
+        return Fail("decode result capacity entry retained failed resource");
+    }
+
+    if (snapshot.last_failed_payload_id != 0U) {
+        return Fail("decode result capacity entry retained failed payload id");
+    }
+
+    if (snapshot.last_failed_decode_plan_id != 0U) {
+        return Fail("decode result capacity entry retained failed plan id");
+    }
+
+    if (snapshot.last_failed_decode_result_id != 0U) {
+        return Fail("decode result capacity entry retained failed result id");
+    }
+
+    if (snapshot.last_failed_asset_class != ResourceDecodePlanAssetClass::Unknown) {
+        return Fail("decode result capacity entry retained failed asset class");
+    }
+
+    if (snapshot.last_failed_result_class != ResourceDecodeResultClass::Unknown) {
+        return Fail("decode result capacity entry retained failed result class");
+    }
+
+    if (snapshot.last_failed_result_capacity != 0U) {
+        return Fail("decode result capacity entry retained failed result capacity");
+    }
+
+    if (snapshot.last_failed_result_count != 0U) {
+        return Fail("decode result capacity entry retained failed result count");
+    }
+
+    if (snapshot.last_failed_decoded_byte_count != 0U) {
+        return Fail("decode result capacity entry retained failed decoded byte count");
+    }
+
+    return 0;
+}
+
+int ExpectDecodeResultCapacityEntryMatches(
+    const ResourceDecodeResultSnapshot &snapshot,
+    ResourceHandle resource,
+    const ResourceDecodeResultRequest &request,
+    std::uint32_t expected_result_capacity,
+    std::uint32_t expected_result_count,
+    std::uint32_t expected_required_result_count) {
+    if (snapshot.last_failed_resource.slot != resource.slot) {
+        return Fail("decode result capacity entry missed resource slot");
+    }
+
+    if (snapshot.last_failed_resource.generation != resource.generation) {
+        return Fail("decode result capacity entry missed resource generation");
+    }
+
+    if (snapshot.last_failed_payload_id != request.payload_id) {
+        return Fail("decode result capacity entry missed payload id");
+    }
+
+    if (snapshot.last_failed_decode_plan_id != request.decode_plan_id) {
+        return Fail("decode result capacity entry missed plan id");
+    }
+
+    if (snapshot.last_failed_decode_result_id != request.decode_result_id) {
+        return Fail("decode result capacity entry missed result id");
+    }
+
+    if (snapshot.last_failed_asset_class != request.asset_class) {
+        return Fail("decode result capacity entry missed asset class");
+    }
+
+    if (snapshot.last_failed_result_class != request.result_class) {
+        return Fail("decode result capacity entry missed result class");
+    }
+
+    if (snapshot.last_failed_result_capacity != expected_result_capacity) {
+        return Fail("decode result capacity entry missed result capacity");
+    }
+
+    if (snapshot.last_failed_result_count != expected_result_count) {
+        return Fail("decode result capacity entry missed result count");
+    }
+
+    if (snapshot.last_required_result_count != expected_required_result_count) {
+        return Fail("decode result capacity entry missed required result count");
+    }
+
+    if (snapshot.last_failed_decoded_byte_count != request.decoded_byte_count) {
+        return Fail("decode result capacity entry missed decoded byte count");
+    }
+
+    return 0;
 }
 
 bool ConfigureDecodedPayloadBudget(ResourceRegistry &registry, std::uint32_t byte_capacity) {
@@ -4746,6 +4842,213 @@ int ResourceDecodeResultRejectsCapacityOverflow() {
         return Fail("capacity decode result reported decoded byte count");
     }
 
+    const int entry_result = ExpectDecodeResultCapacityEntryMatches(
+        snapshot,
+        result.handle,
+        overflow_request,
+        MAX_RESOURCE_DECODE_RESULT_RECORD_COUNT,
+        MAX_RESOURCE_DECODE_RESULT_RECORD_COUNT,
+        REQUIRED_RESULT_COUNT);
+    if (entry_result != 0) {
+        return entry_result;
+    }
+
+    return 0;
+}
+
+int ResourceDecodeResultCapacityEntryClearsOnNonCapacity() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(
+        registry,
+        TYPE_TEXTURE,
+        "texture_decode_result_capacity_entry");
+    if (!result.Succeeded()) {
+        return Fail("capacity entry decode result fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("capacity entry decode result fixture residency failed");
+    }
+
+    if (!CreateDecodePlanMetadata(
+        registry,
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        1U)) {
+        return Fail("capacity entry decode result fixture plan create failed");
+    }
+
+    std::uint32_t result_index = 0U;
+    while (result_index < MAX_RESOURCE_DECODE_RESULT_RECORD_COUNT) {
+        const ResourceDecodeResultRequest request = DecodeResultRequest(
+            result.handle,
+            TYPE_TEXTURE,
+            PAYLOAD_ONE,
+            DECODE_PLAN_ONE,
+            DECODE_RESULT_ONE + result_index,
+            ResourceDecodePlanAssetClass::Texture,
+            ResourceDecodeResultClass::Texture,
+            1U);
+        if (registry.CommitDecodeResult(request) != ResourceDecodeResultStatus::Success) {
+            return Fail("capacity entry decode result setup commit failed");
+        }
+
+        ++result_index;
+    }
+
+    const ResourceDecodeResultRequest existing_request = DecodeResultRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        1U);
+    const ResourceDecodeResultRequest overflow_request = DecodeResultRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE + MAX_RESOURCE_DECODE_RESULT_RECORD_COUNT,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        1U);
+    if (registry.CommitDecodeResult(overflow_request) != ResourceDecodeResultStatus::CapacityExceeded) {
+        return Fail("capacity entry decode result did not reject overflow");
+    }
+
+    ResourceDecodeResultSnapshot snapshot = registry.DecodeResultSnapshot();
+    int clear_result = ExpectDecodeResultCapacityEntryMatches(
+        snapshot,
+        result.handle,
+        overflow_request,
+        MAX_RESOURCE_DECODE_RESULT_RECORD_COUNT,
+        MAX_RESOURCE_DECODE_RESULT_RECORD_COUNT,
+        MAX_RESOURCE_DECODE_RESULT_RECORD_COUNT + 1U);
+    if (clear_result != 0) {
+        return clear_result;
+    }
+
+    ResourceDecodeResultRecord record{};
+    if (registry.QueryDecodeResult(existing_request, &record) != ResourceDecodeResultStatus::Success) {
+        return Fail("capacity entry decode result query success failed");
+    }
+
+    snapshot = registry.DecodeResultSnapshot();
+    clear_result = ExpectDecodeResultCapacityEntryClear(snapshot);
+    if (clear_result != 0) {
+        return clear_result;
+    }
+
+    if (registry.CommitDecodeResult(overflow_request) != ResourceDecodeResultStatus::CapacityExceeded) {
+        return Fail("capacity entry decode result did not refresh before missing plan");
+    }
+
+    const ResourceDecodeResultRequest missing_plan_request = DecodeResultRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_TWO,
+        DECODE_RESULT_ONE + MAX_RESOURCE_DECODE_RESULT_RECORD_COUNT + 1U,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        1U);
+    if (registry.CommitDecodeResult(missing_plan_request) != ResourceDecodeResultStatus::MissingDecodePlan) {
+        return Fail("capacity entry decode result missing plan returned wrong status");
+    }
+
+    snapshot = registry.DecodeResultSnapshot();
+    clear_result = ExpectDecodeResultCapacityEntryClear(snapshot);
+    if (clear_result != 0) {
+        return clear_result;
+    }
+
+    if (registry.CommitDecodeResult(overflow_request) != ResourceDecodeResultStatus::CapacityExceeded) {
+        return Fail("capacity entry decode result did not refresh before duplicate");
+    }
+
+    if (registry.CommitDecodeResult(existing_request) != ResourceDecodeResultStatus::DuplicateDecodeResultId) {
+        return Fail("capacity entry decode result duplicate returned wrong status");
+    }
+
+    snapshot = registry.DecodeResultSnapshot();
+    clear_result = ExpectDecodeResultCapacityEntryClear(snapshot);
+    if (clear_result != 0) {
+        return clear_result;
+    }
+
+    if (registry.CommitDecodeResult(overflow_request) != ResourceDecodeResultStatus::CapacityExceeded) {
+        return Fail("capacity entry decode result did not refresh before budget");
+    }
+
+    ResourceDecodeResultBudgetDesc budget{};
+    budget.decoded_byte_capacity = 1U;
+    if (registry.SetDecodeResultBudget(budget) != ResourceDecodeResultStatus::BudgetExceeded) {
+        return Fail("capacity entry decode result budget returned wrong status");
+    }
+
+    snapshot = registry.DecodeResultSnapshot();
+    clear_result = ExpectDecodeResultCapacityEntryClear(snapshot);
+    if (clear_result != 0) {
+        return clear_result;
+    }
+
+    if (registry.CommitDecodeResult(overflow_request) != ResourceDecodeResultStatus::CapacityExceeded) {
+        return Fail("capacity entry decode result did not refresh before query miss");
+    }
+
+    ResourceDecodeResultRecord missing_record{};
+    if (registry.QueryDecodeResult(overflow_request, &missing_record) != ResourceDecodeResultStatus::MissingDecodeResult) {
+        return Fail("capacity entry decode result query miss returned wrong status");
+    }
+
+    snapshot = registry.DecodeResultSnapshot();
+    clear_result = ExpectDecodeResultCapacityEntryClear(snapshot);
+    if (clear_result != 0) {
+        return clear_result;
+    }
+
+    if (registry.CommitDecodeResult(overflow_request) != ResourceDecodeResultStatus::CapacityExceeded) {
+        return Fail("capacity entry decode result did not refresh before release miss");
+    }
+
+    if (registry.ReleaseDecodeResult(overflow_request) != ResourceDecodeResultStatus::MissingDecodeResult) {
+        return Fail("capacity entry decode result release miss returned wrong status");
+    }
+
+    snapshot = registry.DecodeResultSnapshot();
+    clear_result = ExpectDecodeResultCapacityEntryClear(snapshot);
+    if (clear_result != 0) {
+        return clear_result;
+    }
+
+    if (registry.CommitDecodeResult(overflow_request) != ResourceDecodeResultStatus::CapacityExceeded) {
+        return Fail("capacity entry decode result did not refresh before invalid handle");
+    }
+
+    const ResourceDecodeResultRequest invalid_resource_request = DecodeResultRequest(
+        ResourceHandle{},
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE + MAX_RESOURCE_DECODE_RESULT_RECORD_COUNT + 2U,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        1U);
+    if (registry.CommitDecodeResult(invalid_resource_request) != ResourceDecodeResultStatus::InvalidHandle) {
+        return Fail("capacity entry decode result invalid handle returned wrong status");
+    }
+
+    snapshot = registry.DecodeResultSnapshot();
+    clear_result = ExpectDecodeResultCapacityEntryClear(snapshot);
+    if (clear_result != 0) {
+        return clear_result;
+    }
+
     return 0;
 }
 
@@ -7058,6 +7361,7 @@ int main(int argc, char** argv) {
         {TEST_DECODE_RESULT_FAILED_LOAD, ResourceDecodeResultRejectsFailedLoadWithoutMutation},
         {TEST_DECODE_RESULT_DUPLICATE, ResourceDecodeResultRejectsDuplicateResultId},
         {TEST_DECODE_RESULT_CAPACITY, ResourceDecodeResultRejectsCapacityOverflow},
+        {TEST_DECODE_RESULT_CAPACITY_ENTRY, ResourceDecodeResultCapacityEntryClearsOnNonCapacity},
         {TEST_DECODE_RESULT_BUDGET, ResourceDecodeResultRejectsBudgetOverflow},
         {TEST_DECODE_RESULT_ASSET_CLASS, ResourceDecodeResultRejectsAssetClassMismatch},
         {TEST_DECODE_RESULT_RESULT_CLASS, ResourceDecodeResultRejectsResultClassMismatch},

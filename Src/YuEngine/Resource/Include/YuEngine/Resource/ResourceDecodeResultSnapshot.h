@@ -42,6 +42,15 @@ struct ResourceDecodeResultSnapshot {
     ResourceDecodeResultClass last_result_class = ResourceDecodeResultClass::Unknown;
     std::uint32_t last_decoded_byte_count = 0U;
     std::uint32_t last_decode_plan_slot_index = INVALID_RESOURCE_SLOT;
+    ResourceHandle last_failed_resource;
+    std::uint64_t last_failed_payload_id = 0U;
+    std::uint64_t last_failed_decode_plan_id = 0U;
+    std::uint64_t last_failed_decode_result_id = 0U;
+    ResourceDecodePlanAssetClass last_failed_asset_class = ResourceDecodePlanAssetClass::Unknown;
+    ResourceDecodeResultClass last_failed_result_class = ResourceDecodeResultClass::Unknown;
+    std::uint32_t last_failed_result_capacity = 0U;
+    std::uint32_t last_failed_result_count = 0U;
+    std::uint32_t last_failed_decoded_byte_count = 0U;
 };
 
 } // namespace yuengine::resource

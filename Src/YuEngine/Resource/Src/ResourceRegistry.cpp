@@ -189,6 +189,34 @@ void RecordDecodedPayloadCapacityEntry(
     snapshot.last_failed_payload_count = snapshot.active_payload_count;
 }
 
+void ClearDecodeResultCapacityIdentity(ResourceDecodeResultSnapshot &snapshot) {
+    snapshot.last_failed_resource = ResourceHandle{};
+    snapshot.last_failed_payload_id = 0U;
+    snapshot.last_failed_decode_plan_id = 0U;
+    snapshot.last_failed_decode_result_id = 0U;
+    snapshot.last_failed_asset_class = ResourceDecodePlanAssetClass::Unknown;
+    snapshot.last_failed_result_class = ResourceDecodeResultClass::Unknown;
+    snapshot.last_failed_result_capacity = 0U;
+    snapshot.last_failed_result_count = 0U;
+    snapshot.last_failed_decoded_byte_count = 0U;
+}
+
+void RecordDecodeResultCapacityIdentity(
+    ResourceDecodeResultSnapshot &snapshot,
+    const ResourceDecodeResultRequest &request,
+    std::uint32_t result_capacity,
+    std::uint32_t result_count) {
+    snapshot.last_failed_resource = request.resource;
+    snapshot.last_failed_payload_id = request.payload_id;
+    snapshot.last_failed_decode_plan_id = request.decode_plan_id;
+    snapshot.last_failed_decode_result_id = request.decode_result_id;
+    snapshot.last_failed_asset_class = request.asset_class;
+    snapshot.last_failed_result_class = request.result_class;
+    snapshot.last_failed_result_capacity = result_capacity;
+    snapshot.last_failed_result_count = result_count;
+    snapshot.last_failed_decoded_byte_count = request.decoded_byte_count;
+}
+
 std::uint64_t EffectivePayloadLogicalByteCount(
     std::uint64_t payload_logical_byte_count,
     std::uint64_t payload_window_byte_offset,
@@ -2086,6 +2114,7 @@ ResourceDecodeResultStatus ResourceRegistry::RecordDecodeResultRejected(
     const ResourceDecodeResultRequest &request,
     ResourceDecodeResultStatus status) {
     ++decode_result_snapshot_.rejected_result_request_count;
+    ClearDecodeResultCapacityIdentity(decode_result_snapshot_);
     decode_result_snapshot_.last_required_result_count = 0U;
     decode_result_snapshot_.last_required_decoded_byte_count = 0U;
     if (status == ResourceDecodeResultStatus::DuplicateDecodeResultId) {
@@ -2096,6 +2125,11 @@ ResourceDecodeResultStatus ResourceRegistry::RecordDecodeResultRejected(
         ++decode_result_snapshot_.capacity_rejected_result_count;
         decode_result_snapshot_.last_required_result_count =
             decode_result_snapshot_.active_result_count + 1U;
+        RecordDecodeResultCapacityIdentity(
+            decode_result_snapshot_,
+            request,
+            MAX_RESOURCE_DECODE_RESULT_RECORD_COUNT,
+            decode_result_snapshot_.active_result_count);
     }
 
     if (status == ResourceDecodeResultStatus::BudgetExceeded) {
@@ -2150,6 +2184,7 @@ void ResourceRegistry::RecordDecodeResultSuccess(
     decode_result_snapshot_.last_status = ResourceDecodeResultStatus::Success;
     decode_result_snapshot_.last_required_result_count = 0U;
     decode_result_snapshot_.last_required_decoded_byte_count = 0U;
+    ClearDecodeResultCapacityIdentity(decode_result_snapshot_);
     decode_result_snapshot_.last_resource = request.resource;
     decode_result_snapshot_.last_payload_id = request.payload_id;
     decode_result_snapshot_.last_decode_plan_id = request.decode_plan_id;
