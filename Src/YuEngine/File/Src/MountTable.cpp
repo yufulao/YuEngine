@@ -144,6 +144,11 @@ MountTable::MountTable()
           0U,
           0U,
           0U,
+          MountId(),
+          std::filesystem::path(),
+          0U,
+          0U,
+          0U,
           0U,
           0U,
           0U,
@@ -166,6 +171,7 @@ FileStatus MountTable::RegisterLooseMount(MountId mount_id, std::filesystem::pat
     }
 
     if (mount_count_ >= MAX_MOUNT_COUNT) {
+        RecordMountCapacityEntryFailure(mount_id, root_path);
         RecordLastStatus(FileStatus::MountTableFull);
         return FileStatus::MountTableFull;
     }
@@ -305,6 +311,11 @@ void MountTable::RecordRejectedPath() {
 
 void MountTable::RecordLastStatus(FileStatus status) {
     snapshot_.last_status = status;
+    if (status == FileStatus::MountTableFull) {
+        return;
+    }
+
+    ClearMountCapacityEntry();
 }
 
 void MountTable::RecordLastReadStatus(FileStatus status) {
@@ -315,5 +326,21 @@ void MountTable::RecordLastReadStatus(FileStatus status) {
 void MountTable::RecordLastWriteStatus(FileStatus status) {
     RecordLastStatus(status);
     snapshot_.last_write_status = status;
+}
+
+void MountTable::ClearMountCapacityEntry() {
+    snapshot_.last_failed_mount_id = MountId();
+    snapshot_.last_failed_mount_root_path = std::filesystem::path();
+    snapshot_.last_failed_mount_capacity = 0U;
+    snapshot_.last_failed_mount_count = 0U;
+    snapshot_.last_required_mount_count = 0U;
+}
+
+void MountTable::RecordMountCapacityEntryFailure(const MountId &mount_id, const std::filesystem::path &root_path) {
+    snapshot_.last_failed_mount_id = mount_id;
+    snapshot_.last_failed_mount_root_path = root_path;
+    snapshot_.last_failed_mount_capacity = MAX_MOUNT_COUNT;
+    snapshot_.last_failed_mount_count = mount_count_;
+    snapshot_.last_required_mount_count = mount_count_ + 1U;
 }
 }

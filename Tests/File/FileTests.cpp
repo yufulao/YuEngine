@@ -38,6 +38,7 @@ constexpr const char* TEST_NORMALIZE = "File_PathNormalize_RemovesDotAndRepeated
 constexpr const char* TEST_TRAVERSAL = "File_PathNormalize_RejectsTraversalOutsideRoot";
 constexpr const char* TEST_EMPTY_ABSOLUTE = "File_PathNormalize_RejectsEmptyAndAbsolutePath";
 constexpr const char* TEST_DUPLICATE_MOUNT = "File_MountTable_RejectsDuplicateMount";
+constexpr const char* TEST_MOUNT_CAPACITY_ENTRY = "File_MountTable_CapacityEntryRecordsRejectedMount";
 constexpr const char* TEST_PRIORITY_ORDER = "File_MountTable_UsesDeterministicPriorityOrder";
 constexpr const char* TEST_MISSING = "File_MountTable_ReportsMissingMountOrFile";
 constexpr const char* TEST_MOUNT_LAST_STATUS = "File_MountTable_RecordsAggregateLastStatus";
@@ -107,6 +108,15 @@ MountTable CreateMountedTable() {
     }
 
     return table;
+}
+
+bool HasClearedMountCapacityEntry(const MountTable &table) {
+    const auto snapshot = table.Snapshot();
+    return !snapshot.last_failed_mount_id.IsValid() &&
+           snapshot.last_failed_mount_root_path.empty() &&
+           snapshot.last_failed_mount_capacity == 0U &&
+           snapshot.last_failed_mount_count == 0U &&
+           snapshot.last_required_mount_count == 0U;
 }
 
 AsyncFileReadRequest CreateAsyncRequest(
@@ -249,6 +259,86 @@ int FileMountTableRejectsDuplicateMount() {
         return Fail("mount table did not enforce capacity");
     }
 
+    return 0;
+}
+
+int FileMountTableCapacityEntryRecordsRejectedMount() {
+    const std::filesystem::path write_root = WritableFixtureRoot() / "MountCapacityEntry";
+    std::filesystem::remove_all(write_root);
+
+    MountTable table;
+    const FileStatus primary_status = table.RegisterLooseMount(MountId(PRIMARY_MOUNT), write_root / "Primary");
+    const FileStatus secondary_status = table.RegisterLooseMount(MountId(SECONDARY_MOUNT), write_root / "Secondary");
+    const FileStatus third_status = table.RegisterLooseMount(MountId(THIRD_MOUNT), write_root / "Third");
+    const FileStatus fourth_status = table.RegisterLooseMount(MountId(FOURTH_MOUNT), write_root / "Fourth");
+    const bool setup_succeeded =
+        primary_status == FileStatus::Success &&
+        secondary_status == FileStatus::Success &&
+        third_status == FileStatus::Success &&
+        fourth_status == FileStatus::Success;
+    if (!setup_succeeded) {
+        return Fail("mount capacity setup failed");
+    }
+
+    if (!HasClearedMountCapacityEntry(table)) {
+        return Fail("mount capacity setup left stale entry");
+    }
+
+    const std::filesystem::path overflow_root_path = write_root / "Overflow";
+    const FileStatus overflow_status = table.RegisterLooseMount(MountId(OVERFLOW_MOUNT), overflow_root_path);
+    if (overflow_status != FileStatus::MountTableFull) {
+        return Fail("mount capacity overflow status changed");
+    }
+
+    const auto overflow_snapshot = table.Snapshot();
+    if (overflow_snapshot.mount_count != yuengine::file::MAX_MOUNT_COUNT) {
+        return Fail("mount capacity overflow changed mount count");
+    }
+
+    if (overflow_snapshot.last_failed_mount_id.Value() != OVERFLOW_MOUNT) {
+        return Fail("mount capacity overflow did not record rejected mount id");
+    }
+
+    if (overflow_snapshot.last_failed_mount_root_path != overflow_root_path) {
+        return Fail("mount capacity overflow did not record rejected mount root path");
+    }
+
+    if (overflow_snapshot.last_failed_mount_capacity != yuengine::file::MAX_MOUNT_COUNT) {
+        return Fail("mount capacity overflow did not record mount capacity");
+    }
+
+    if (overflow_snapshot.last_failed_mount_count != yuengine::file::MAX_MOUNT_COUNT) {
+        return Fail("mount capacity overflow did not record current mount count");
+    }
+
+    if (overflow_snapshot.last_required_mount_count != yuengine::file::MAX_MOUNT_COUNT + 1U) {
+        return Fail("mount capacity overflow did not record required mount count");
+    }
+
+    const auto normalize_result = table.Normalize(VirtualPath(NORMALIZED_PATH));
+    if (!normalize_result.Succeeded()) {
+        return Fail("mount capacity clear success setup failed");
+    }
+
+    if (!HasClearedMountCapacityEntry(table)) {
+        return Fail("mount success did not clear capacity entry");
+    }
+
+    const FileStatus second_overflow_status = table.RegisterLooseMount(MountId(OVERFLOW_MOUNT), write_root / "Overflow");
+    if (second_overflow_status != FileStatus::MountTableFull) {
+        return Fail("second mount capacity overflow status changed");
+    }
+
+    const FileStatus duplicate_status = table.RegisterLooseMount(MountId(PRIMARY_MOUNT), write_root / "Duplicate");
+    if (duplicate_status != FileStatus::DuplicateMount) {
+        return Fail("mount duplicate status changed");
+    }
+
+    if (!HasClearedMountCapacityEntry(table)) {
+        return Fail("mount non-capacity failure did not clear capacity entry");
+    }
+
+    std::filesystem::remove_all(write_root);
     return 0;
 }
 
@@ -1312,6 +1402,7 @@ int main(int argc, char** argv) {
         {TEST_TRAVERSAL, FilePathNormalizeRejectsTraversalOutsideRoot},
         {TEST_EMPTY_ABSOLUTE, FilePathNormalizeRejectsEmptyAndAbsolutePath},
         {TEST_DUPLICATE_MOUNT, FileMountTableRejectsDuplicateMount},
+        {TEST_MOUNT_CAPACITY_ENTRY, FileMountTableCapacityEntryRecordsRejectedMount},
         {TEST_PRIORITY_ORDER, FileMountTableUsesDeterministicPriorityOrder},
         {TEST_MISSING, FileMountTableReportsMissingMountOrFile},
         {TEST_MOUNT_LAST_STATUS, FileMountTableRecordsAggregateLastStatus},

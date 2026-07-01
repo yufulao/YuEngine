@@ -67,6 +67,8 @@ private:
     void RecordLastStatus(FileStatus status);
     void RecordLastReadStatus(FileStatus status);
     void RecordLastWriteStatus(FileStatus status);
+    void ClearMountCapacityEntry();
+    void RecordMountCapacityEntryFailure(const MountId &mount_id, const std::filesystem::path &root_path);
 
     std::array<MountPoint, MAX_MOUNT_COUNT> mounts_;
     std::size_t mount_count_;
