@@ -4,6 +4,7 @@
 #include <array>
 #include <condition_variable>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <mutex>
 #include <string>
@@ -25,6 +26,8 @@ using TaskSchedulerSnapshot = yuengine::thread::TaskSchedulerSnapshot;
 using ThreadWorker = yuengine::thread::ThreadWorker;
 using ThreadWorkerCompletion = yuengine::thread::ThreadWorkerCompletion;
 using ThreadWorkerDesc = yuengine::thread::ThreadWorkerDesc;
+using ThreadWorkerSnapshot = yuengine::thread::ThreadWorkerSnapshot;
+using yuengine::thread::TaskId;
 using yuengine::thread::ThreadWorkerStatus;
 using yuengine::thread::ShutdownPolicy;
 using yuengine::thread::TaskStatus;
@@ -47,6 +50,8 @@ constexpr const char* TEST_WORKER_BEFORE_START = "Thread_WorkerSubmitBeforeStart
 constexpr const char* TEST_WORKER_DRAIN = "Thread_WorkerDrainShutdown_WritesCompletionRecords";
 constexpr const char* TEST_WORKER_CANCEL = "Thread_WorkerCancelShutdown_CancelsQueuedWork";
 constexpr const char* TEST_WORKER_COMPLETION_CAPACITY = "Thread_WorkerCompletionCapacity_RejectsWithoutMutation";
+constexpr const char* TEST_WORKER_COMPLETION_CAPACITY_ENTRY =
+    "Thread_WorkerCompletionCapacityEntry_ClearsOnNonQueueCapacity";
 constexpr const char* TEST_WORKER_COMPLETION_DRAIN = "Thread_WorkerCompletionDrain_UsesCallerStorageLimit";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
@@ -99,6 +104,56 @@ bool TraceEquals(const FixedTraceBuffer &left, const FixedTraceBuffer &right) {
     }
 
     return true;
+}
+
+int ExpectCompletionQueueCapacityEntryClear(const ThreadWorkerSnapshot &snapshot) {
+    if (snapshot.last_failed_completion_task_id.value != 0U) {
+        return Fail("completion queue capacity entry retained failed task id");
+    }
+
+    if (snapshot.last_failed_completion_status != TaskStatus::Created) {
+        return Fail("completion queue capacity entry retained failed task status");
+    }
+
+    if (snapshot.last_failed_completion_queue_capacity != 0U) {
+        return Fail("completion queue capacity entry retained failed queue capacity");
+    }
+
+    if (snapshot.last_failed_completion_pending_count != 0U) {
+        return Fail("completion queue capacity entry retained failed pending count");
+    }
+
+    return 0;
+}
+
+int ExpectCompletionQueueCapacityEntryMatches(
+    const ThreadWorkerSnapshot &snapshot,
+    std::uint64_t task_id,
+    TaskStatus status,
+    std::size_t queue_capacity,
+    std::size_t completion_pending_count,
+    std::size_t required_completion_count) {
+    if (snapshot.last_failed_completion_task_id.value != task_id) {
+        return Fail("completion queue capacity entry missed task id");
+    }
+
+    if (snapshot.last_failed_completion_status != status) {
+        return Fail("completion queue capacity entry missed task status");
+    }
+
+    if (snapshot.last_failed_completion_queue_capacity != queue_capacity) {
+        return Fail("completion queue capacity entry missed queue capacity");
+    }
+
+    if (snapshot.last_failed_completion_pending_count != completion_pending_count) {
+        return Fail("completion queue capacity entry missed pending count");
+    }
+
+    if (snapshot.last_required_completion_count != required_completion_count) {
+        return Fail("completion queue capacity entry missed required count");
+    }
+
+    return 0;
 }
 
 TaskStatus RecordTask(void* context) {
@@ -920,6 +975,172 @@ int ThreadWorkerCompletionCapacityRejectsWithoutMutation() {
     return 0;
 }
 
+int ThreadWorkerCompletionCapacityEntryClearsOnNonQueueCapacity() {
+    ThreadWorker worker;
+    ThreadWorkerDesc desc;
+    desc.work_capacity = LARGE_CAPACITY;
+    desc.completion_capacity = 1U;
+
+    const ThreadWorkerStatus init_status = worker.Initialize(desc);
+    if (init_status != ThreadWorkerStatus::Success) {
+        return Fail("capacity entry worker initialize failed");
+    }
+
+    const ThreadWorkerStatus start_status = worker.Start();
+    if (start_status != ThreadWorkerStatus::Success) {
+        return Fail("capacity entry worker start failed");
+    }
+
+    FixedTraceBuffer trace;
+    BlockingThreadContext blocking_context;
+    blocking_context.trace = &trace;
+    blocking_context.value = FIRST_VALUE;
+    ThreadTestContext rejected_context{&trace, SECOND_VALUE, false};
+
+    TaskId accepted_task_id{0U};
+    const ThreadWorkerStatus first_submit = worker.Submit(
+        &BlockingRecordTask,
+        &blocking_context,
+        &accepted_task_id);
+    if (first_submit != ThreadWorkerStatus::Success) {
+        return Fail("capacity entry first submit failed");
+    }
+
+    WaitForBlockingTask(blocking_context);
+
+    TaskId rejected_task_id{0U};
+    const ThreadWorkerStatus second_submit = worker.Submit(
+        &RecordTask,
+        &rejected_context,
+        &rejected_task_id);
+    if (second_submit != ThreadWorkerStatus::CompletionQueueFull) {
+        return Fail("capacity entry second submit returned wrong status");
+    }
+
+    if (accepted_task_id.value != 1U) {
+        return Fail("capacity entry accepted task id was unexpected");
+    }
+
+    if (rejected_task_id.value != 0U) {
+        return Fail("capacity entry wrote rejected task output id");
+    }
+
+    ThreadWorkerSnapshot snapshot = worker.Snapshot();
+    int check_result = ExpectCompletionQueueCapacityEntryMatches(
+        snapshot,
+        2U,
+        TaskStatus::Rejected,
+        1U,
+        0U,
+        2U);
+    if (check_result != 0) {
+        return check_result;
+    }
+
+    if (snapshot.completion_pending_count != 0U) {
+        return Fail("capacity entry rejection mutated completion storage");
+    }
+
+    const ThreadWorkerStatus invalid_status = worker.Submit(nullptr, nullptr);
+    if (invalid_status != ThreadWorkerStatus::InvalidArgument) {
+        return Fail("capacity entry invalid submit returned wrong status");
+    }
+
+    snapshot = worker.Snapshot();
+    check_result = ExpectCompletionQueueCapacityEntryClear(snapshot);
+    if (check_result != 0) {
+        return check_result;
+    }
+
+    const ThreadWorkerStatus refreshed_submit = worker.Submit(&RecordTask, &rejected_context);
+    if (refreshed_submit != ThreadWorkerStatus::CompletionQueueFull) {
+        return Fail("capacity entry refresh submit returned wrong status");
+    }
+
+    ReleaseBlockingTask(blocking_context);
+    const ThreadWorkerStatus shutdown_status = worker.Shutdown(ShutdownPolicy::DrainQueued);
+    if (shutdown_status != ThreadWorkerStatus::ShutdownComplete) {
+        return Fail("capacity entry shutdown returned wrong status");
+    }
+
+    snapshot = worker.Snapshot();
+    check_result = ExpectCompletionQueueCapacityEntryClear(snapshot);
+    if (check_result != 0) {
+        return check_result;
+    }
+
+    std::array<ThreadWorkerCompletion, 1U> small_output{};
+    std::size_t small_written_count = 0U;
+    const ThreadWorkerStatus drain_small_status = worker.DrainCompletions(
+        small_output.data(),
+        0U,
+        &small_written_count);
+    if (drain_small_status != ThreadWorkerStatus::CompletionQueueFull) {
+        return Fail("capacity entry small drain returned wrong status");
+    }
+
+    snapshot = worker.Snapshot();
+    check_result = ExpectCompletionQueueCapacityEntryClear(snapshot);
+    if (check_result != 0) {
+        return check_result;
+    }
+
+    std::array<ThreadWorkerCompletion, 1U> completion_output{};
+    std::size_t written_count = 0U;
+    const ThreadWorkerStatus drain_status = worker.DrainCompletions(
+        completion_output.data(),
+        completion_output.size(),
+        &written_count);
+    if (drain_status != ThreadWorkerStatus::Success) {
+        return Fail("capacity entry final drain returned wrong status");
+    }
+
+    if (written_count != 1U) {
+        return Fail("capacity entry final drain wrote wrong count");
+    }
+
+    snapshot = worker.Snapshot();
+    check_result = ExpectCompletionQueueCapacityEntryClear(snapshot);
+    if (check_result != 0) {
+        return check_result;
+    }
+
+    const ThreadWorkerStatus stopped_submit = worker.Submit(&RecordTask, &rejected_context);
+    if (stopped_submit != ThreadWorkerStatus::StopRequested) {
+        return Fail("capacity entry stopped submit returned wrong status");
+    }
+
+    snapshot = worker.Snapshot();
+    check_result = ExpectCompletionQueueCapacityEntryClear(snapshot);
+    if (check_result != 0) {
+        return check_result;
+    }
+
+    ThreadWorker not_started_worker;
+    ThreadWorkerDesc not_started_desc;
+    not_started_desc.work_capacity = SMALL_CAPACITY;
+    not_started_desc.completion_capacity = SMALL_CAPACITY;
+    if (not_started_worker.Initialize(not_started_desc) != ThreadWorkerStatus::Success) {
+        return Fail("capacity entry not-started worker initialize failed");
+    }
+
+    ThreadTestContext not_started_context{&trace, THIRD_VALUE, false};
+    const ThreadWorkerStatus not_started_status = not_started_worker.Submit(
+        &RecordTask,
+        &not_started_context);
+    if (not_started_status != ThreadWorkerStatus::NotStarted) {
+        return Fail("capacity entry not-started submit returned wrong status");
+    }
+
+    snapshot = not_started_worker.Snapshot();
+    check_result = ExpectCompletionQueueCapacityEntryClear(snapshot);
+    if (check_result != 0) {
+        return check_result;
+    }
+
+    return 0;
+}
+
 int ThreadWorkerCompletionDrainUsesCallerStorageLimit() {
     ThreadWorker worker;
     ThreadWorkerDesc desc;
@@ -1030,6 +1251,7 @@ int main(int argc, char** argv) {
         {TEST_WORKER_DRAIN, ThreadWorkerDrainShutdownWritesCompletionRecords},
         {TEST_WORKER_CANCEL, ThreadWorkerCancelShutdownCancelsQueuedWork},
         {TEST_WORKER_COMPLETION_CAPACITY, ThreadWorkerCompletionCapacityRejectsWithoutMutation},
+        {TEST_WORKER_COMPLETION_CAPACITY_ENTRY, ThreadWorkerCompletionCapacityEntryClearsOnNonQueueCapacity},
         {TEST_WORKER_COMPLETION_DRAIN, ThreadWorkerCompletionDrainUsesCallerStorageLimit}};
 
     const std::string_view test_name(argv[1]);
