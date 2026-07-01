@@ -637,6 +637,80 @@ bool DrainOneUploadCompletion(ResourceUploadQueue &queue, ResourceUploadCompleti
     return true;
 }
 
+bool UploadCapacitySnapshotMatches(
+    const ResourceUploadSnapshot &snapshot,
+    const ResourceUploadRequest &request,
+    std::uint32_t expected_request_capacity,
+    std::uint32_t expected_completion_capacity,
+    std::uint32_t expected_required_request_count,
+    std::uint32_t expected_required_completion_count) {
+    if (snapshot.last_failed_upload_id != request.upload_id) {
+        return false;
+    }
+
+    if (snapshot.last_failed_upload_kind != request.upload_kind) {
+        return false;
+    }
+
+    if (snapshot.last_failed_upload_resource.slot != request.resource.slot) {
+        return false;
+    }
+
+    if (snapshot.last_failed_upload_resource.generation != request.resource.generation) {
+        return false;
+    }
+
+    if (snapshot.last_failed_upload_expected_type.value != request.expected_type.value) {
+        return false;
+    }
+
+    if (snapshot.last_failed_upload_request_capacity != expected_request_capacity) {
+        return false;
+    }
+
+    if (snapshot.last_failed_upload_completion_capacity != expected_completion_capacity) {
+        return false;
+    }
+
+    if (snapshot.last_required_upload_request_count != expected_required_request_count) {
+        return false;
+    }
+
+    return snapshot.last_required_upload_completion_count == expected_required_completion_count;
+}
+
+bool UploadCapacitySnapshotCleared(const ResourceUploadSnapshot &snapshot) {
+    if (snapshot.last_failed_upload_id != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_upload_kind != ResourceUploadKind::Unsupported) {
+        return false;
+    }
+
+    if (snapshot.last_failed_upload_resource.IsValid()) {
+        return false;
+    }
+
+    if (snapshot.last_failed_upload_expected_type.IsValid()) {
+        return false;
+    }
+
+    if (snapshot.last_failed_upload_request_capacity != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_upload_completion_capacity != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_required_upload_request_count != 0U) {
+        return false;
+    }
+
+    return snapshot.last_required_upload_completion_count == 0U;
+}
+
 ResourceUploadCompletion BuildUploadCompletion(
     ResourceHandle resource,
     ResourceTypeId type,
@@ -2499,8 +2573,20 @@ int StreamingResourceUploadRejectsQueueOverflowWithoutMutation() {
         return Fail("upload queue overflow changed pending count");
     }
 
+    if (!UploadCapacitySnapshotMatches(snapshot, second_request, 1U, 1U, 2U, 0U)) {
+        return Fail("upload queue overflow did not snapshot rejected request identity");
+    }
+
     if (second_handle.generation != 0U) {
         return Fail("upload queue overflow wrote output handle");
+    }
+
+    if (queue.ProcessNext() != ResourceUploadStatus::Success) {
+        return Fail("upload queue overflow follow-up success failed");
+    }
+
+    if (!UploadCapacitySnapshotCleared(queue.Snapshot())) {
+        return Fail("upload queue overflow follow-up success did not clear capacity entry");
     }
 
     return 0;
@@ -2549,8 +2635,23 @@ int StreamingResourceUploadReportsCompletionOverflowWithoutProcessingPending() {
         return Fail("upload completion overflow dropped pending record");
     }
 
+    if (!UploadCapacitySnapshotMatches(snapshot, second_request, 2U, 1U, 0U, 2U)) {
+        return Fail("upload completion overflow did not snapshot pending request identity");
+    }
+
     if (second_handle.generation != 0U) {
         return Fail("upload completion overflow processed pending record");
+    }
+
+    std::array<ResourceUploadCompletion, 1U> completions{};
+    std::uint32_t written_count = 0U;
+    const ResourceUploadStatus drain_status = queue.DrainCompletions(completions.data(), 0U, &written_count);
+    if (drain_status != ResourceUploadStatus::CompletionQueueFull) {
+        return Fail("upload drain output capacity did not report completion queue full");
+    }
+
+    if (!UploadCapacitySnapshotCleared(queue.Snapshot())) {
+        return Fail("upload drain output capacity did not clear queue capacity entry");
     }
 
     return 0;

@@ -64,7 +64,7 @@ private:
     ResourceUploadStatus RecordRejected(
         ResourceUploadStatus status,
         resource::ResourceStatus resource_status);
-    ResourceUploadStatus RecordCompletionOverflow();
+    ResourceUploadStatus RecordCompletionOverflow(const ResourceUploadRequest &request);
     ResourceUploadStatus ValidateRequest(const ResourceUploadRequest &request) const;
     bool HasUploadId(std::uint64_t upload_id) const;
     PendingRecord *FindFreePendingRecord();

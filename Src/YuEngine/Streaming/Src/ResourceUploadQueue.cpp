@@ -54,6 +54,32 @@ bool IsTextureUploadKind(ResourceUploadKind upload_kind) {
 
     return upload_kind == ResourceUploadKind::UpdateTexture;
 }
+
+void ClearUploadCapacityEntry(ResourceUploadSnapshot &snapshot) {
+    snapshot.last_failed_upload_id = 0U;
+    snapshot.last_failed_upload_kind = ResourceUploadKind::Unsupported;
+    snapshot.last_failed_upload_resource = resource::ResourceHandle{};
+    snapshot.last_failed_upload_expected_type = resource::ResourceTypeId{};
+    snapshot.last_failed_upload_request_capacity = 0U;
+    snapshot.last_failed_upload_completion_capacity = 0U;
+    snapshot.last_required_upload_request_count = 0U;
+    snapshot.last_required_upload_completion_count = 0U;
+}
+
+void RecordUploadCapacityEntry(
+    ResourceUploadSnapshot &snapshot,
+    const ResourceUploadRequest &request,
+    std::uint32_t required_request_count,
+    std::uint32_t required_completion_count) {
+    snapshot.last_failed_upload_id = request.upload_id;
+    snapshot.last_failed_upload_kind = request.upload_kind;
+    snapshot.last_failed_upload_resource = request.resource;
+    snapshot.last_failed_upload_expected_type = request.expected_type;
+    snapshot.last_failed_upload_request_capacity = snapshot.request_capacity;
+    snapshot.last_failed_upload_completion_capacity = snapshot.completion_capacity;
+    snapshot.last_required_upload_request_count = required_request_count;
+    snapshot.last_required_upload_completion_count = required_completion_count;
+}
 }
 
 ResourceUploadQueue::ResourceUploadQueue()
@@ -104,7 +130,11 @@ ResourceUploadStatus ResourceUploadQueue::Submit(const ResourceUploadRequest &re
     }
 
     if (snapshot_.pending_count >= snapshot_.request_capacity) {
-        return RecordRejected(ResourceUploadStatus::QueueFull);
+        ++snapshot_.rejected_count;
+        snapshot_.last_status = ResourceUploadStatus::QueueFull;
+        const std::uint32_t required_request_count = snapshot_.pending_count + 1U;
+        RecordUploadCapacityEntry(snapshot_, request, required_request_count, 0U);
+        return ResourceUploadStatus::QueueFull;
     }
 
     StorePendingRecord(request);
@@ -112,17 +142,19 @@ ResourceUploadStatus ResourceUploadQueue::Submit(const ResourceUploadRequest &re
     snapshot_.last_status = ResourceUploadStatus::Queued;
     snapshot_.last_resource_status = resource::ResourceStatus::Success;
     snapshot_.last_rhi_status = rhi::RhiStatus::Success;
+    ClearUploadCapacityEntry(snapshot_);
     return ResourceUploadStatus::Queued;
 }
 
 ResourceUploadStatus ResourceUploadQueue::ProcessNext() {
     PendingRecord *pending_record = FindOldestPendingRecord();
     if (pending_record == nullptr) {
+        ClearUploadCapacityEntry(snapshot_);
         return ResourceUploadStatus::InvalidArgument;
     }
 
     if (snapshot_.completion_count >= snapshot_.completion_capacity) {
-        return RecordCompletionOverflow();
+        return RecordCompletionOverflow(pending_record->request);
     }
 
     return ProcessPendingRecord(*pending_record);
@@ -133,6 +165,7 @@ ResourceUploadStatus ResourceUploadQueue::DrainCompletions(
     std::uint32_t output_capacity,
     std::uint32_t *written_count) {
     if (written_count == nullptr) {
+        ClearUploadCapacityEntry(snapshot_);
         return ResourceUploadStatus::InvalidArgument;
     }
 
@@ -140,14 +173,17 @@ ResourceUploadStatus ResourceUploadQueue::DrainCompletions(
 
     if (snapshot_.completion_count == 0U) {
         snapshot_.last_status = ResourceUploadStatus::Success;
+        ClearUploadCapacityEntry(snapshot_);
         return ResourceUploadStatus::Success;
     }
 
     if (output_completions == nullptr) {
+        ClearUploadCapacityEntry(snapshot_);
         return ResourceUploadStatus::InvalidArgument;
     }
 
     if (output_capacity < snapshot_.completion_count) {
+        ClearUploadCapacityEntry(snapshot_);
         return ResourceUploadStatus::CompletionQueueFull;
     }
 
@@ -165,6 +201,7 @@ ResourceUploadStatus ResourceUploadQueue::DrainCompletions(
 
     snapshot_.completion_count = 0U;
     snapshot_.last_status = drained_status;
+    ClearUploadCapacityEntry(snapshot_);
     return ResourceUploadStatus::Success;
 }
 
@@ -175,6 +212,7 @@ ResourceUploadSnapshot ResourceUploadQueue::Snapshot() const {
 ResourceUploadStatus ResourceUploadQueue::RecordRejected(ResourceUploadStatus status) {
     ++snapshot_.rejected_count;
     snapshot_.last_status = status;
+    ClearUploadCapacityEntry(snapshot_);
     return status;
 }
 
@@ -184,11 +222,14 @@ ResourceUploadStatus ResourceUploadQueue::RecordRejected(
     ++snapshot_.rejected_count;
     snapshot_.last_status = status;
     snapshot_.last_resource_status = resource_status;
+    ClearUploadCapacityEntry(snapshot_);
     return status;
 }
 
-ResourceUploadStatus ResourceUploadQueue::RecordCompletionOverflow() {
+ResourceUploadStatus ResourceUploadQueue::RecordCompletionOverflow(const ResourceUploadRequest &request) {
     snapshot_.last_status = ResourceUploadStatus::CompletionQueueFull;
+    const std::uint32_t required_completion_count = snapshot_.completion_count + 1U;
+    RecordUploadCapacityEntry(snapshot_, request, 0U, required_completion_count);
     return ResourceUploadStatus::CompletionQueueFull;
 }
 
@@ -497,6 +538,7 @@ void ResourceUploadQueue::FinishCompletedRecord(
     snapshot_.last_status = completion.status;
     snapshot_.last_resource_status = completion.resource_status;
     snapshot_.last_rhi_status = completion.rhi_status;
+    ClearUploadCapacityEntry(snapshot_);
 }
 
 void ResourceUploadQueue::FinishFailedRecord(
@@ -512,6 +554,7 @@ void ResourceUploadQueue::FinishFailedRecord(
     snapshot_.last_status = completion.status;
     snapshot_.last_resource_status = completion.resource_status;
     snapshot_.last_rhi_status = completion.rhi_status;
+    ClearUploadCapacityEntry(snapshot_);
 }
 
 void ResourceUploadQueue::UpdateMaxPendingCount() {
