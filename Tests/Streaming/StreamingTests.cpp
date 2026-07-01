@@ -208,6 +208,8 @@ constexpr const char *TEST_UPLOAD_SNAPSHOT =
     "Streaming_ResourceUpload_SnapshotReportsBoundedCounters";
 constexpr const char *TEST_UPLOAD_RHI_FAILURE =
     "Streaming_ResourceUpload_ReportsRhiFailureWithoutWritingOutput";
+constexpr const char *TEST_UPLOAD_MULTI_DRAIN_MIXED_STATUS =
+    "Streaming_ResourceUpload_MultiDrainPreservesMixedFinalStatus";
 constexpr const char *TEST_UPLOAD_COMMIT_SUCCESS =
     "Streaming_ResourceUploadCommit_CommitsSuccessfulUpload";
 constexpr const char *TEST_UPLOAD_COMMIT_FAILED_UPLOAD =
@@ -3077,6 +3079,138 @@ int StreamingResourceUploadReportsRhiFailureWithoutWritingOutput() {
     return 0;
 }
 
+int StreamingResourceUploadMultiDrainPreservesMixedFinalStatus() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("resource registration failed");
+    }
+
+    NullRhiDevice device = CreateInitializedUploadDevice();
+    const std::array<std::uint8_t, 4U> bytes = BufferUploadBytes();
+    const std::span<const std::uint8_t> byte_span(bytes.data(), bytes.size());
+    const PackageResourceStagingCompletion failed_staging_completion =
+        BuildSuccessfulStagingCompletion(resource_result.handle, TYPE_TEXTURE, REQUEST_ONE, 4U);
+    const PackageResourceStagingCompletion success_staging_completion =
+        BuildSuccessfulStagingCompletion(resource_result.handle, TYPE_TEXTURE, REQUEST_TWO, 4U);
+    ResourceUploadRequest failed_request =
+        BuildBaseUploadRequest(resource_registry, &device, failed_staging_completion, byte_span, UPLOAD_ONE);
+    ResourceUploadRequest success_request =
+        BuildBaseUploadRequest(resource_registry, &device, success_staging_completion, byte_span, UPLOAD_TWO);
+    RhiBufferHandle failed_output_handle{};
+    RhiBufferHandle success_output_handle{};
+    failed_request.upload_kind = ResourceUploadKind::CreateBuffer;
+    failed_request.buffer_desc = RhiBufferDesc{};
+    failed_request.output_buffer_handle = &failed_output_handle;
+    success_request.upload_kind = ResourceUploadKind::CreateBuffer;
+    success_request.buffer_desc = UploadBufferDesc(bytes.size());
+    success_request.output_buffer_handle = &success_output_handle;
+
+    ResourceUploadQueue queue(ResourceUploadQueueDesc{2U, 2U});
+    if (queue.Submit(failed_request) != ResourceUploadStatus::Queued) {
+        return Fail("failed upload request was not queued");
+    }
+
+    if (queue.Submit(success_request) != ResourceUploadStatus::Queued) {
+        return Fail("success upload request was not queued");
+    }
+
+    if (queue.ProcessNext() != ResourceUploadStatus::RhiUploadFailed) {
+        return Fail("failed upload did not return explicit status");
+    }
+
+    if (queue.ProcessNext() != ResourceUploadStatus::Success) {
+        return Fail("success upload did not return explicit status");
+    }
+
+    std::array<ResourceUploadCompletion, 2U> completions{};
+    std::uint32_t written_count = 0U;
+    const ResourceUploadStatus drain_status = queue.DrainCompletions(
+        completions.data(),
+        static_cast<std::uint32_t>(completions.size()),
+        &written_count);
+    if (drain_status != ResourceUploadStatus::Success) {
+        return Fail("mixed upload completion drain failed");
+    }
+
+    if (written_count != 2U) {
+        return Fail("mixed upload completion drain count changed");
+    }
+
+    if (completions[0U].upload_id != UPLOAD_ONE) {
+        return Fail("failed upload completion order changed");
+    }
+
+    if (completions[0U].status != ResourceUploadStatus::RhiUploadFailed) {
+        return Fail("failed upload completion status changed");
+    }
+
+    if (completions[0U].rhi_status != RhiStatus::InvalidDescriptor) {
+        return Fail("failed upload RHI status changed");
+    }
+
+    if (completions[1U].upload_id != UPLOAD_TWO) {
+        return Fail("success upload completion order changed");
+    }
+
+    if (completions[1U].status != ResourceUploadStatus::Success) {
+        return Fail("success upload completion status changed");
+    }
+
+    if (success_output_handle.generation == 0U || completions[1U].buffer_handle.generation == 0U) {
+        return Fail("success upload did not write handle");
+    }
+
+    if (failed_output_handle.generation != 0U || completions[0U].buffer_handle.generation != 0U) {
+        return Fail("failed upload wrote handle");
+    }
+
+    const ResourceUploadSnapshot snapshot = queue.Snapshot();
+    if (snapshot.completed_count != 1U) {
+        return Fail("mixed upload completed count changed");
+    }
+
+    if (snapshot.failed_count != 1U) {
+        return Fail("mixed upload failed count changed");
+    }
+
+    if (snapshot.rhi_upload_failed_count != 1U) {
+        return Fail("mixed upload RHI failure count changed");
+    }
+
+    if (snapshot.last_status != ResourceUploadStatus::RhiUploadFailed) {
+        return Fail("mixed upload drain lost failure status");
+    }
+
+    if (snapshot.last_rhi_status != RhiStatus::InvalidDescriptor) {
+        return Fail("mixed upload drain lost RHI failure status");
+    }
+
+    std::uint32_t second_written_count = 1U;
+    const ResourceUploadStatus second_drain_status = queue.DrainCompletions(
+        completions.data(),
+        static_cast<std::uint32_t>(completions.size()),
+        &second_written_count);
+    if (second_drain_status != ResourceUploadStatus::Success) {
+        return Fail("empty mixed upload drain failed");
+    }
+
+    if (second_written_count != 0U) {
+        return Fail("empty mixed upload drain wrote completions");
+    }
+
+    const ResourceUploadSnapshot final_snapshot = queue.Snapshot();
+    if (final_snapshot.last_status != ResourceUploadStatus::RhiUploadFailed) {
+        return Fail("empty mixed upload drain overwrote failure status");
+    }
+
+    if (final_snapshot.last_rhi_status != RhiStatus::InvalidDescriptor) {
+        return Fail("empty mixed upload drain overwrote RHI status");
+    }
+
+    return 0;
+}
+
 int StreamingResourceUploadCommitCommitsSuccessfulUpload() {
     ResourceRegistry resource_registry;
     const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
@@ -4659,6 +4793,7 @@ int main(int argc, char **argv) {
         {TEST_UPLOAD_DUPLICATE_ID, StreamingResourceUploadRejectsDuplicateUploadId},
         {TEST_UPLOAD_SNAPSHOT, StreamingResourceUploadSnapshotReportsBoundedCounters},
         {TEST_UPLOAD_RHI_FAILURE, StreamingResourceUploadReportsRhiFailureWithoutWritingOutput},
+        {TEST_UPLOAD_MULTI_DRAIN_MIXED_STATUS, StreamingResourceUploadMultiDrainPreservesMixedFinalStatus},
         {TEST_UPLOAD_COMMIT_SUCCESS, StreamingResourceUploadCommitCommitsSuccessfulUpload},
         {TEST_UPLOAD_COMMIT_FAILED_UPLOAD, StreamingResourceUploadCommitCommitsFailedUpload},
         {TEST_UPLOAD_COMMIT_DRAIN_FAILED_STATUS,

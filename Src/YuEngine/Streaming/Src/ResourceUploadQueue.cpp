@@ -174,7 +174,6 @@ ResourceUploadStatus ResourceUploadQueue::DrainCompletions(
 
     if (snapshot_.completion_count == 0U) {
         snapshot_.required_completion_count = 0U;
-        snapshot_.last_status = ResourceUploadStatus::Success;
         ClearUploadCapacityEntry(snapshot_);
         return ResourceUploadStatus::Success;
     }
@@ -192,11 +191,15 @@ ResourceUploadStatus ResourceUploadQueue::DrainCompletions(
     }
 
     ResourceUploadStatus drained_status = ResourceUploadStatus::Success;
+    resource::ResourceStatus drained_resource_status = resource::ResourceStatus::Success;
+    rhi::RhiStatus drained_rhi_status = rhi::RhiStatus::Success;
     for (std::uint32_t index = 0U; index < snapshot_.completion_count; ++index) {
         const ResourceUploadCompletion completion = completions_[index];
         output_completions[index] = completion;
         if (completion.status != ResourceUploadStatus::Success) {
             drained_status = completion.status;
+            drained_resource_status = completion.resource_status;
+            drained_rhi_status = completion.rhi_status;
         }
 
         ++(*written_count);
@@ -206,6 +209,8 @@ ResourceUploadStatus ResourceUploadQueue::DrainCompletions(
     snapshot_.completion_count = 0U;
     snapshot_.required_completion_count = 0U;
     snapshot_.last_status = drained_status;
+    snapshot_.last_resource_status = drained_resource_status;
+    snapshot_.last_rhi_status = drained_rhi_status;
     ClearUploadCapacityEntry(snapshot_);
     return ResourceUploadStatus::Success;
 }
