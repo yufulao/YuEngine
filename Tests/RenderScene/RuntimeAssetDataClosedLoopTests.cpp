@@ -250,6 +250,7 @@ using yuengine::runtimeasset::CommitRuntimeAssetDataAssetDependencyBatch;
 using yuengine::runtimeasset::CommitRuntimeAssetDataWorldSceneAuthoringAssetDependencyBatch;
 using yuengine::runtimeasset::CompileRuntimeAssetShaderProgram;
 using yuengine::runtimeasset::DecodeRuntimeAssetShaderProgramData;
+using yuengine::runtimeasset::EnumerateRuntimeAssetDataAssetDependenciesByType;
 using yuengine::runtimeasset::ExecuteRuntimeAssetImportCookCommand;
 using yuengine::runtimeasset::LoadRuntimeAssetDataGraph;
 using yuengine::runtimeasset::LookupRuntimeAssetDataAssetDependencyExact;
@@ -285,6 +286,8 @@ using yuengine::runtimeasset::RuntimeAssetDataAssetDependencyExactLookupRequest;
 using yuengine::runtimeasset::RuntimeAssetDataAssetDependencyExactLookupResult;
 using yuengine::runtimeasset::RuntimeAssetDataAssetDependencyRecord;
 using yuengine::runtimeasset::RuntimeAssetDataAssetDependencyTraverseResult;
+using yuengine::runtimeasset::RuntimeAssetDataAssetDependencyTypeEnumerationRequest;
+using yuengine::runtimeasset::RuntimeAssetDataAssetDependencyTypeEnumerationResult;
 using yuengine::runtimeasset::RuntimeAssetDataWorldSceneAuthoringAssetDependencyBatchRequest;
 using yuengine::runtimeasset::RuntimeAssetRuntimeInstanceMappingRecord;
 using yuengine::runtimeasset::RuntimeAssetLoadedFile;
@@ -630,6 +633,8 @@ constexpr const char *TEST_RUNTIME_DEPENDENCY_TRAVERSE_ATOMIC =
     "RuntimeAssetData_AssetDependencyTraverseOutputIsAtomic";
 constexpr const char *TEST_RUNTIME_DEPENDENCY_EXACT_LOOKUP =
     "RuntimeAssetData_AssetDependencyExactLookupIsDirectAndReadOnly";
+constexpr const char *TEST_RUNTIME_DEPENDENCY_TYPE_ENUMERATION =
+    "RuntimeAssetData_AssetDependencyTypeEnumerationIsDirectAndAtomic";
 constexpr const char *TEST_RUNTIME_DEPENDENCIES =
     "RuntimeAssetData_LoadRegistersResourceAndAssetDependencyEdges";
 constexpr const char *TEST_LOAD_RENDER =
@@ -14288,6 +14293,276 @@ int RuntimeAssetDataAssetDependencyExactLookupIsDirectAndReadOnly() {
     return 0;
 }
 
+int RuntimeAssetDataAssetDependencyTypeEnumerationIsDirectAndAtomic() {
+    ResourceRegistry registry;
+    ResourceDescriptor document_resource_desc{};
+    document_resource_desc.type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    document_resource_desc.logical_key = ResourceLogicalKey("runtime_asset_type_enum_document");
+    const ResourceRegistrationResult document_resource =
+        registry.RegisterSyntheticDescriptor(document_resource_desc);
+
+    ResourceDescriptor texture_a_resource_desc{};
+    texture_a_resource_desc.type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    texture_a_resource_desc.logical_key = ResourceLogicalKey("runtime_asset_type_enum_texture_a");
+    const ResourceRegistrationResult texture_a_resource =
+        registry.RegisterSyntheticDescriptor(texture_a_resource_desc);
+
+    ResourceDescriptor shader_resource_desc{};
+    shader_resource_desc.type = ResourceTypeId{RESOURCE_TYPE_SHADER};
+    shader_resource_desc.logical_key = ResourceLogicalKey("runtime_asset_type_enum_shader");
+    const ResourceRegistrationResult shader_resource =
+        registry.RegisterSyntheticDescriptor(shader_resource_desc);
+
+    ResourceDescriptor texture_c_resource_desc{};
+    texture_c_resource_desc.type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    texture_c_resource_desc.logical_key = ResourceLogicalKey("runtime_asset_type_enum_texture_c");
+    const ResourceRegistrationResult texture_c_resource =
+        registry.RegisterSyntheticDescriptor(texture_c_resource_desc);
+
+    ResourceDescriptor transitive_resource_desc{};
+    transitive_resource_desc.type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    transitive_resource_desc.logical_key = ResourceLogicalKey("runtime_asset_type_enum_transitive");
+    const ResourceRegistrationResult transitive_resource =
+        registry.RegisterSyntheticDescriptor(transitive_resource_desc);
+    if (!document_resource.Succeeded() ||
+        !texture_a_resource.Succeeded() ||
+        !shader_resource.Succeeded() ||
+        !texture_c_resource.Succeeded() ||
+        !transitive_resource.Succeeded()) {
+        return Fail("runtime asset type enumeration resource registration failed");
+    }
+
+    AssetManager manager;
+    AssetDescriptor document_asset_desc{};
+    document_asset_desc.stable_id = 8901U;
+    document_asset_desc.asset_type = AssetTypeId{ASSET_TYPE_TEXTURE};
+    document_asset_desc.resource = document_resource.handle;
+    document_asset_desc.resource_type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    const AssetRegistrationResult document_asset =
+        manager.RegisterRuntimeAsset(&registry, document_asset_desc);
+
+    AssetDescriptor texture_a_asset_desc{};
+    texture_a_asset_desc.stable_id = 8902U;
+    texture_a_asset_desc.asset_type = AssetTypeId{ASSET_TYPE_TEXTURE};
+    texture_a_asset_desc.resource = texture_a_resource.handle;
+    texture_a_asset_desc.resource_type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    const AssetRegistrationResult texture_a_asset =
+        manager.RegisterRuntimeAsset(&registry, texture_a_asset_desc);
+
+    AssetDescriptor shader_asset_desc{};
+    shader_asset_desc.stable_id = 8903U;
+    shader_asset_desc.asset_type = AssetTypeId{ASSET_TYPE_SHADER};
+    shader_asset_desc.resource = shader_resource.handle;
+    shader_asset_desc.resource_type = ResourceTypeId{RESOURCE_TYPE_SHADER};
+    const AssetRegistrationResult shader_asset =
+        manager.RegisterRuntimeAsset(&registry, shader_asset_desc);
+
+    AssetDescriptor texture_c_asset_desc{};
+    texture_c_asset_desc.stable_id = 8904U;
+    texture_c_asset_desc.asset_type = AssetTypeId{ASSET_TYPE_TEXTURE};
+    texture_c_asset_desc.resource = texture_c_resource.handle;
+    texture_c_asset_desc.resource_type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    const AssetRegistrationResult texture_c_asset =
+        manager.RegisterRuntimeAsset(&registry, texture_c_asset_desc);
+
+    AssetDescriptor transitive_asset_desc{};
+    transitive_asset_desc.stable_id = 8905U;
+    transitive_asset_desc.asset_type = AssetTypeId{ASSET_TYPE_TEXTURE};
+    transitive_asset_desc.resource = transitive_resource.handle;
+    transitive_asset_desc.resource_type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    const AssetRegistrationResult transitive_asset =
+        manager.RegisterRuntimeAsset(&registry, transitive_asset_desc);
+    if (!document_asset.Succeeded() ||
+        !texture_a_asset.Succeeded() ||
+        !shader_asset.Succeeded() ||
+        !texture_c_asset.Succeeded() ||
+        !transitive_asset.Succeeded()) {
+        return Fail("runtime asset type enumeration asset registration failed");
+    }
+
+    std::array<RuntimeAssetDataAssetDependencyRecord, 4U> records{};
+    records[0U].stable_resource_id = 8902U;
+    records[0U].dependent_asset = document_asset.handle;
+    records[0U].dependency_asset = texture_a_asset.handle;
+    records[0U].expected_resource = texture_a_resource.handle;
+    records[0U].expected_resource_type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    records[1U].stable_resource_id = 8903U;
+    records[1U].dependent_asset = document_asset.handle;
+    records[1U].dependency_asset = shader_asset.handle;
+    records[1U].expected_resource = shader_resource.handle;
+    records[1U].expected_resource_type = ResourceTypeId{RESOURCE_TYPE_SHADER};
+    records[2U].stable_resource_id = 8904U;
+    records[2U].dependent_asset = document_asset.handle;
+    records[2U].dependency_asset = texture_c_asset.handle;
+    records[2U].expected_resource = texture_c_resource.handle;
+    records[2U].expected_resource_type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    records[3U].stable_resource_id = 8905U;
+    records[3U].dependent_asset = texture_a_asset.handle;
+    records[3U].dependency_asset = transitive_asset.handle;
+    records[3U].expected_resource = transitive_resource.handle;
+    records[3U].expected_resource_type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+
+    RuntimeAssetDataAssetDependencyBatchResult batch_result{};
+    const RuntimeAssetDataStatus batch_status =
+        CommitRuntimeAssetDataAssetDependencyBatch(
+            &manager,
+            records.data(),
+            static_cast<std::uint32_t>(records.size()),
+            &batch_result);
+    if (batch_status != RuntimeAssetDataStatus::Success ||
+        batch_result.status != RuntimeAssetDataStatus::Success ||
+        batch_result.committed_dependency_edge_count != 4U) {
+        return Fail("runtime asset type enumeration batch commit failed");
+    }
+
+    const AssetSnapshot committed_snapshot = manager.Snapshot();
+    RuntimeAssetDataAssetDependencyRecord sentinel_a{};
+    sentinel_a.stable_resource_id = 9902U;
+    sentinel_a.dependent_asset = AssetHandle{121U, 122U};
+    sentinel_a.dependency_asset = AssetHandle{123U, 124U};
+    sentinel_a.expected_resource = ResourceHandle{125U, 126U};
+    sentinel_a.expected_resource_type = ResourceTypeId{127U};
+    RuntimeAssetDataAssetDependencyRecord sentinel_b = sentinel_a;
+    sentinel_b.stable_resource_id = 9903U;
+    sentinel_b.dependent_asset = AssetHandle{131U, 132U};
+    RuntimeAssetDataAssetDependencyRecord sentinel_c = sentinel_a;
+    sentinel_c.stable_resource_id = 9904U;
+    sentinel_c.dependent_asset = AssetHandle{141U, 142U};
+    std::array<RuntimeAssetDataAssetDependencyRecord, 3U> output_records{
+        sentinel_a,
+        sentinel_b,
+        sentinel_c};
+    std::uint32_t output_count = 77U;
+
+    RuntimeAssetDataAssetDependencyTypeEnumerationRequest request{};
+    request.asset_manager = &manager;
+    request.dependent_asset = document_asset.handle;
+    request.expected_resource_type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+
+    RuntimeAssetDataAssetDependencyTypeEnumerationResult capacity_result{};
+    RuntimeAssetDataStatus enum_status =
+        EnumerateRuntimeAssetDataAssetDependenciesByType(
+            request,
+            output_records.data(),
+            1U,
+            &output_count,
+            &capacity_result);
+    if (enum_status != RuntimeAssetDataStatus::CapacityExceeded ||
+        capacity_result.status != RuntimeAssetDataStatus::CapacityExceeded ||
+        capacity_result.asset_status != AssetStatus::OutputBufferTooSmall ||
+        capacity_result.required_dependency_count != 2U ||
+        capacity_result.copied_dependency_count != 0U) {
+        return Fail("runtime asset type enumeration capacity status mismatch");
+    }
+
+    if (output_count != 77U ||
+        output_records[0U].stable_resource_id != sentinel_a.stable_resource_id ||
+        output_records[1U].stable_resource_id != sentinel_b.stable_resource_id ||
+        output_records[2U].stable_resource_id != sentinel_c.stable_resource_id) {
+        return Fail("runtime asset type enumeration capacity failure mutated output");
+    }
+
+    RuntimeAssetDataAssetDependencyTypeEnumerationRequest invalid_handle_request = request;
+    invalid_handle_request.dependent_asset = AssetHandle{};
+    RuntimeAssetDataAssetDependencyTypeEnumerationResult invalid_handle_result{};
+    enum_status =
+        EnumerateRuntimeAssetDataAssetDependenciesByType(
+            invalid_handle_request,
+            output_records.data(),
+            static_cast<std::uint32_t>(output_records.size()),
+            &output_count,
+            &invalid_handle_result);
+    if (enum_status != RuntimeAssetDataStatus::AssetDependencyFailed ||
+        invalid_handle_result.status != RuntimeAssetDataStatus::AssetDependencyFailed ||
+        invalid_handle_result.asset_status != AssetStatus::InvalidHandle ||
+        invalid_handle_result.required_dependency_count != 0U ||
+        invalid_handle_result.copied_dependency_count != 0U) {
+        return Fail("runtime asset type enumeration invalid handle status mismatch");
+    }
+
+    RuntimeAssetDataAssetDependencyTypeEnumerationRequest invalid_type_request = request;
+    invalid_type_request.expected_resource_type = ResourceTypeId{};
+    RuntimeAssetDataAssetDependencyTypeEnumerationResult invalid_type_result{};
+    enum_status =
+        EnumerateRuntimeAssetDataAssetDependenciesByType(
+            invalid_type_request,
+            output_records.data(),
+            static_cast<std::uint32_t>(output_records.size()),
+            &output_count,
+            &invalid_type_result);
+    if (enum_status != RuntimeAssetDataStatus::InvalidArgument ||
+        invalid_type_result.status != RuntimeAssetDataStatus::InvalidArgument ||
+        invalid_type_result.asset_status != AssetStatus::InvalidArgument) {
+        return Fail("runtime asset type enumeration invalid type status mismatch");
+    }
+
+    RuntimeAssetDataAssetDependencyTypeEnumerationResult success_result{};
+    enum_status =
+        EnumerateRuntimeAssetDataAssetDependenciesByType(
+            request,
+            output_records.data(),
+            static_cast<std::uint32_t>(output_records.size()),
+            &output_count,
+            &success_result);
+    if (enum_status != RuntimeAssetDataStatus::Success ||
+        success_result.status != RuntimeAssetDataStatus::Success ||
+        success_result.asset_status != AssetStatus::Success ||
+        success_result.required_dependency_count != 2U ||
+        success_result.copied_dependency_count != 2U ||
+        output_count != 2U) {
+        return Fail("runtime asset type enumeration success status mismatch");
+    }
+
+    if (output_records[0U].stable_resource_id != records[0U].stable_resource_id ||
+        output_records[0U].dependency_asset.slot != records[0U].dependency_asset.slot ||
+        output_records[0U].expected_resource.slot != records[0U].expected_resource.slot ||
+        output_records[0U].expected_resource_type.value != RESOURCE_TYPE_TEXTURE ||
+        output_records[1U].stable_resource_id != records[2U].stable_resource_id ||
+        output_records[1U].dependency_asset.slot != records[2U].dependency_asset.slot ||
+        output_records[1U].expected_resource.slot != records[2U].expected_resource.slot ||
+        output_records[1U].expected_resource_type.value != RESOURCE_TYPE_TEXTURE) {
+        return Fail("runtime asset type enumeration success output mismatch");
+    }
+
+    if (output_records[0U].dependency_asset.slot == shader_asset.handle.slot ||
+        output_records[1U].dependency_asset.slot == transitive_asset.handle.slot) {
+        return Fail("runtime asset type enumeration returned non-direct or wrong type dependency");
+    }
+
+    const RuntimeAssetDataAssetDependencyRecord prior_a = output_records[0U];
+    const RuntimeAssetDataAssetDependencyRecord prior_b = output_records[1U];
+    output_count = 91U;
+    RuntimeAssetDataAssetDependencyTypeEnumerationResult repeat_failure_result{};
+    enum_status =
+        EnumerateRuntimeAssetDataAssetDependenciesByType(
+            request,
+            output_records.data(),
+            1U,
+            &output_count,
+            &repeat_failure_result);
+    if (enum_status != RuntimeAssetDataStatus::CapacityExceeded ||
+        repeat_failure_result.status != RuntimeAssetDataStatus::CapacityExceeded ||
+        output_count != 91U) {
+        return Fail("runtime asset type enumeration repeat failure status mismatch");
+    }
+
+    if (output_records[0U].stable_resource_id != prior_a.stable_resource_id ||
+        output_records[0U].dependency_asset.slot != prior_a.dependency_asset.slot ||
+        output_records[1U].stable_resource_id != prior_b.stable_resource_id ||
+        output_records[1U].dependency_asset.slot != prior_b.dependency_asset.slot) {
+        return Fail("runtime asset type enumeration repeat failure mutated output");
+    }
+
+    const AssetSnapshot after_snapshot = manager.Snapshot();
+    if (after_snapshot.active_dependency_edge_count != committed_snapshot.active_dependency_edge_count ||
+        after_snapshot.accepted_operation_count != committed_snapshot.accepted_operation_count ||
+        after_snapshot.failed_operation_count != committed_snapshot.failed_operation_count) {
+        return Fail("runtime asset type enumeration mutated asset manager diagnostics");
+    }
+
+    return 0;
+}
+
 int RuntimeAssetDataLoadRegistersResourceAndAssetDependencyEdges() {
     MountTable table;
     if (!CreateMountedTable(TestRoot("DependencyEdges"), &table)) {
@@ -16138,6 +16413,8 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
      RuntimeAssetDataAssetDependencyTraverseOutputIsAtomic},
     {TEST_RUNTIME_DEPENDENCY_EXACT_LOOKUP,
      RuntimeAssetDataAssetDependencyExactLookupIsDirectAndReadOnly},
+    {TEST_RUNTIME_DEPENDENCY_TYPE_ENUMERATION,
+     RuntimeAssetDataAssetDependencyTypeEnumerationIsDirectAndAtomic},
     {TEST_RUNTIME_DEPENDENCIES, RuntimeAssetDataLoadRegistersResourceAndAssetDependencyEdges},
     {TEST_LOAD_RENDER, RuntimeAssetDataRenderClosedLoopCapturesCubeCylinderConeThroughRhi},
     {TEST_CPU_ORACLE, RuntimeAssetDataCpuPpmOracleDoesNotBypassRhiRenderCore},

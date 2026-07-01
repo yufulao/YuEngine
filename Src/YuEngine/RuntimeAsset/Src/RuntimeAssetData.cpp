@@ -9800,6 +9800,124 @@ RuntimeAssetDataStatus TraverseRuntimeAssetDataAssetDependencies(
     return result.status;
 }
 
+RuntimeAssetDataStatus EnumerateRuntimeAssetDataAssetDependenciesByType(
+    const RuntimeAssetDataAssetDependencyTypeEnumerationRequest &request,
+    RuntimeAssetDataAssetDependencyRecord *output_records,
+    std::uint32_t output_record_capacity,
+    std::uint32_t *output_record_count,
+    RuntimeAssetDataAssetDependencyTypeEnumerationResult *out_result) {
+    if (out_result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    RuntimeAssetDataAssetDependencyTypeEnumerationResult result{};
+    *out_result = result;
+    if (request.asset_manager == nullptr) {
+        result.asset_status = yuengine::asset::AssetStatus::InvalidArgument;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (output_record_count == nullptr) {
+        result.asset_status = yuengine::asset::AssetStatus::InvalidArgument;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (output_record_capacity > 0U && output_records == nullptr) {
+        result.asset_status = yuengine::asset::AssetStatus::InvalidArgument;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (!request.dependent_asset.IsValid()) {
+        result.status = RuntimeAssetDataStatus::AssetDependencyFailed;
+        result.asset_status = yuengine::asset::AssetStatus::InvalidHandle;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (!request.expected_resource_type.IsValid()) {
+        result.asset_status = yuengine::asset::AssetStatus::InvalidArgument;
+        *out_result = result;
+        return result.status;
+    }
+
+    yuengine::asset::AssetRecord dependent_record{};
+    yuengine::asset::AssetStatus asset_status =
+        request.asset_manager->GetAssetRecord(request.dependent_asset, &dependent_record);
+    result.asset_status = asset_status;
+    if (asset_status != yuengine::asset::AssetStatus::Success) {
+        result.status = RuntimeAssetDataStatus::AssetDependencyFailed;
+        *out_result = result;
+        return result.status;
+    }
+
+    std::array<
+        yuengine::asset::AssetHandle,
+        yuengine::asset::MAX_ASSET_DEPENDENCY_EDGE_COUNT> direct_dependencies{};
+    std::uint32_t direct_dependency_count = 0U;
+    asset_status =
+        request.asset_manager->EnumerateDirectDependencies(
+            request.dependent_asset,
+            direct_dependencies.data(),
+            static_cast<std::uint32_t>(direct_dependencies.size()),
+            &direct_dependency_count);
+    result.asset_status = asset_status;
+    if (asset_status != yuengine::asset::AssetStatus::Success) {
+        result.status = RuntimeAssetDataStatus::AssetDependencyFailed;
+        *out_result = result;
+        return result.status;
+    }
+
+    std::array<
+        RuntimeAssetDataAssetDependencyRecord,
+        yuengine::asset::MAX_ASSET_DEPENDENCY_EDGE_COUNT> staged_records{};
+    std::uint32_t staged_record_count = 0U;
+    for (std::uint32_t index = 0U; index < direct_dependency_count; ++index) {
+        yuengine::asset::AssetRecord dependency_record{};
+        asset_status = request.asset_manager->GetAssetRecord(direct_dependencies[index], &dependency_record);
+        result.asset_status = asset_status;
+        if (asset_status != yuengine::asset::AssetStatus::Success) {
+            result.status = RuntimeAssetDataStatus::AssetDependencyFailed;
+            *out_result = result;
+            return result.status;
+        }
+
+        if (dependency_record.resource_type.value != request.expected_resource_type.value) {
+            continue;
+        }
+
+        RuntimeAssetDataAssetDependencyRecord &record = staged_records[staged_record_count];
+        record.stable_resource_id = dependency_record.stable_id;
+        record.dependent_asset = request.dependent_asset;
+        record.dependency_asset = direct_dependencies[index];
+        record.expected_resource = dependency_record.resource;
+        record.expected_resource_type = dependency_record.resource_type;
+        ++staged_record_count;
+    }
+
+    result.required_dependency_count = staged_record_count;
+    if (output_record_capacity < staged_record_count) {
+        result.status = RuntimeAssetDataStatus::CapacityExceeded;
+        result.asset_status = yuengine::asset::AssetStatus::OutputBufferTooSmall;
+        *out_result = result;
+        return result.status;
+    }
+
+    for (std::uint32_t index = 0U; index < staged_record_count; ++index) {
+        output_records[index] = staged_records[index];
+    }
+
+    *output_record_count = staged_record_count;
+    result.status = RuntimeAssetDataStatus::Success;
+    result.asset_status = yuengine::asset::AssetStatus::Success;
+    result.copied_dependency_count = staged_record_count;
+    result.required_dependency_count = staged_record_count;
+    *out_result = result;
+    return result.status;
+}
+
 RuntimeAssetDataStatus LookupRuntimeAssetDataAssetDependencyExact(
     const RuntimeAssetDataAssetDependencyExactLookupRequest &request,
     RuntimeAssetDataAssetDependencyRecord *out_record,

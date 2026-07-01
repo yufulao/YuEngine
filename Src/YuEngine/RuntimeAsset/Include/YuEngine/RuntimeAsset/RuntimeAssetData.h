@@ -439,6 +439,25 @@ struct RuntimeAssetDataAssetDependencyTraverseResult final {
 };
 
 /**
+ * @brief Type-filtered enumeration key for committed RuntimeAsset asset dependency rows.
+ */
+struct RuntimeAssetDataAssetDependencyTypeEnumerationRequest final {
+    yuengine::asset::AssetManager *asset_manager = nullptr;
+    yuengine::asset::AssetHandle dependent_asset;
+    yuengine::resource::ResourceTypeId expected_resource_type;
+};
+
+/**
+ * @brief Atomic type-filtered enumeration diagnostics for RuntimeAsset asset dependency rows.
+ */
+struct RuntimeAssetDataAssetDependencyTypeEnumerationResult final {
+    RuntimeAssetDataStatus status = RuntimeAssetDataStatus::InvalidArgument;
+    yuengine::asset::AssetStatus asset_status = yuengine::asset::AssetStatus::Success;
+    std::uint32_t copied_dependency_count = 0U;
+    std::uint32_t required_dependency_count = 0U;
+};
+
+/**
  * @brief Exact lookup key for a committed RuntimeAsset asset dependency row.
  */
 struct RuntimeAssetDataAssetDependencyExactLookupRequest final {
@@ -1369,6 +1388,21 @@ RuntimeAssetDataStatus TraverseRuntimeAssetDataAssetDependencies(
     std::uint32_t output_asset_capacity,
     std::uint32_t *output_asset_count,
     RuntimeAssetDataAssetDependencyTraverseResult *out_result);
+/**
+ * @brief Enumerates direct RuntimeAsset asset dependency rows by dependency ResourceType.
+ * @param request Input manager, dependent asset, and ResourceType filter.
+ * @param output_records Caller-owned output records.
+ * @param output_record_capacity Caller-owned output record capacity.
+ * @param output_record_count Caller-owned output record count.
+ * @param out_result Output enumeration diagnostics.
+ * @return Explicit RuntimeAssetData status.
+ */
+RuntimeAssetDataStatus EnumerateRuntimeAssetDataAssetDependenciesByType(
+    const RuntimeAssetDataAssetDependencyTypeEnumerationRequest &request,
+    RuntimeAssetDataAssetDependencyRecord *output_records,
+    std::uint32_t output_record_capacity,
+    std::uint32_t *output_record_count,
+    RuntimeAssetDataAssetDependencyTypeEnumerationResult *out_result);
 /**
  * @brief Looks up one exact committed RuntimeAsset asset dependency row.
  * @param request Input manager and explicit dependency row key.
