@@ -11,5 +11,9 @@ namespace yuengine::audio {
 struct AudioMixResult final {
     AudioStatus status = AudioStatus::InvalidDescriptor;
     std::size_t frames_written = 0U;
+    std::size_t failed_mix_requested_frame_count = 0U;
+    std::size_t failed_mix_output_sample_capacity = 0U;
+    std::size_t failed_mix_required_sample_count = 0U;
+    std::size_t failed_mix_active_voice_count = 0U;
 };
 }

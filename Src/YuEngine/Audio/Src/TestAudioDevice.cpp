@@ -16,6 +16,13 @@ void ClearDeviceRequiredCounts(AudioDeviceSnapshot &snapshot) {
     snapshot.last_required_voice_count = 0U;
 }
 
+void ClearMixOutputCapacityEntry(AudioDeviceSnapshot &snapshot) {
+    snapshot.last_failed_mix_requested_frame_count = 0U;
+    snapshot.last_failed_mix_output_sample_capacity = 0U;
+    snapshot.last_failed_mix_required_sample_count = 0U;
+    snapshot.last_failed_mix_active_voice_count = 0U;
+}
+
 void ClearPcmSamplePacketRequiredCounts(AudioPcmSamplePacketSnapshot &snapshot) {
     snapshot.last_required_packet_count = 0U;
 }
@@ -549,9 +556,21 @@ AudioMixResult TestAudioDevice::Mix(std::span<std::int16_t> output_samples, std:
 
     const std::size_t required_samples = requested_frames * CHANNEL_COUNT;
     if (output_samples.size() < required_samples) {
-        RecordFailure(AudioStatus::CapacityExceeded);
+        const std::size_t output_sample_capacity = output_samples.size();
+        const std::size_t active_voice_count = snapshot_.active_voice_count;
+        const AudioStatus status = RecordFailure(AudioStatus::CapacityExceeded);
         snapshot_.last_frames_written = 0U;
-        return AudioMixResult{AudioStatus::CapacityExceeded, 0U};
+        snapshot_.last_failed_mix_requested_frame_count = requested_frames;
+        snapshot_.last_failed_mix_output_sample_capacity = output_sample_capacity;
+        snapshot_.last_failed_mix_required_sample_count = required_samples;
+        snapshot_.last_failed_mix_active_voice_count = active_voice_count;
+        return AudioMixResult{
+            status,
+            0U,
+            requested_frames,
+            output_sample_capacity,
+            required_samples,
+            active_voice_count};
     }
 
     snapshot_.voice_storage_capacity_before_mix = voices_.capacity();
@@ -615,6 +634,7 @@ AudioPcmStreamQueueSnapshot TestAudioDevice::PcmStreamQueueSnapshot() const {
 
 AudioStatus TestAudioDevice::RecordFailure(AudioStatus status) {
     ClearDeviceRequiredCounts(snapshot_);
+    ClearMixOutputCapacityEntry(snapshot_);
     ++snapshot_.failed_operation_count;
     snapshot_.last_status = status;
     return status;
@@ -622,6 +642,7 @@ AudioStatus TestAudioDevice::RecordFailure(AudioStatus status) {
 
 void TestAudioDevice::RecordSuccess() {
     ClearDeviceRequiredCounts(snapshot_);
+    ClearMixOutputCapacityEntry(snapshot_);
     snapshot_.last_status = AudioStatus::Success;
 }
 

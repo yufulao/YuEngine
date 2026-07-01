@@ -17,6 +17,10 @@ struct AudioDeviceSnapshot final {
     std::size_t active_voice_count = 0U;
     std::size_t last_required_source_count = 0U;
     std::size_t last_required_voice_count = 0U;
+    std::size_t last_failed_mix_requested_frame_count = 0U;
+    std::size_t last_failed_mix_output_sample_capacity = 0U;
+    std::size_t last_failed_mix_required_sample_count = 0U;
+    std::size_t last_failed_mix_active_voice_count = 0U;
     std::size_t voice_storage_capacity_before_mix = 0U;
     std::size_t voice_storage_capacity_after_last_mix = 0U;
     std::uint64_t registered_source_count = 0U;

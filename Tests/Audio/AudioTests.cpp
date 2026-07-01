@@ -93,6 +93,7 @@ constexpr const char* TEST_STOPS_AT_END = "Audio_MixStopsVoiceAtEndOfSource";
 constexpr const char* TEST_SILENT_TAIL = "Audio_MixEndedVoice_WritesSilentTail";
 constexpr const char* TEST_OVERWRITE = "Audio_MixOverwritesPrefilledDestination";
 constexpr const char* TEST_UNDERSIZED_OUTPUT = "Audio_MixRejectsUndersizedBufferWithoutWritingSamples";
+constexpr const char* TEST_MIX_OUTPUT_CAPACITY_ENTRY = "Audio_MixRejectsUndersizedBufferReportsCapacityEntry";
 constexpr const char* TEST_UNINITIALIZED_LIFECYCLE = "Audio_UninitializedDeviceOperationsReturnExplicitStatusWithoutMutation";
 constexpr const char* TEST_NO_GROW = "Audio_Mix_DoesNotGrowVoiceStorage";
 constexpr const char* TEST_DISABLED_DIAGNOSTICS = "Audio_DisabledDiagnosticsDoesNotChangeResults";
@@ -242,6 +243,10 @@ bool SnapshotsEqual(const AudioDeviceSnapshot& left, const AudioDeviceSnapshot& 
            left.active_voice_count == right.active_voice_count &&
            left.last_required_source_count == right.last_required_source_count &&
            left.last_required_voice_count == right.last_required_voice_count &&
+           left.last_failed_mix_requested_frame_count == right.last_failed_mix_requested_frame_count &&
+           left.last_failed_mix_output_sample_capacity == right.last_failed_mix_output_sample_capacity &&
+           left.last_failed_mix_required_sample_count == right.last_failed_mix_required_sample_count &&
+           left.last_failed_mix_active_voice_count == right.last_failed_mix_active_voice_count &&
            left.voice_storage_capacity_before_mix == right.voice_storage_capacity_before_mix &&
            left.voice_storage_capacity_after_last_mix == right.voice_storage_capacity_after_last_mix &&
            left.registered_source_count == right.registered_source_count &&
@@ -253,6 +258,20 @@ bool SnapshotsEqual(const AudioDeviceSnapshot& left, const AudioDeviceSnapshot& 
            left.last_status == right.last_status &&
            left.last_frames_written == right.last_frames_written &&
            left.allocation_accounting_status == right.allocation_accounting_status;
+}
+
+bool MixOutputCapacityEntryIsClear(const AudioMixResult &result) {
+    return result.failed_mix_requested_frame_count == 0U &&
+           result.failed_mix_output_sample_capacity == 0U &&
+           result.failed_mix_required_sample_count == 0U &&
+           result.failed_mix_active_voice_count == 0U;
+}
+
+bool MixOutputCapacityEntryIsClear(const AudioDeviceSnapshot &snapshot) {
+    return snapshot.last_failed_mix_requested_frame_count == 0U &&
+           snapshot.last_failed_mix_output_sample_capacity == 0U &&
+           snapshot.last_failed_mix_required_sample_count == 0U &&
+           snapshot.last_failed_mix_active_voice_count == 0U;
 }
 
 bool CallbackSnapshotsEqual(const AudioCallbackSnapshot &left, const AudioCallbackSnapshot &right) {
@@ -1082,6 +1101,142 @@ int AudioMixRejectsUndersizedBufferWithoutWritingSamples() {
 
     if (device.Snapshot().last_status != AudioStatus::CapacityExceeded) {
         return Fail("undersized mix status was not recorded");
+    }
+
+    return 0;
+}
+
+int AudioMixRejectsUndersizedBufferReportsCapacityEntry() {
+    constexpr std::size_t REQUESTED_FRAME_COUNT = 2U;
+    constexpr std::size_t REQUIRED_SAMPLE_COUNT = REQUESTED_FRAME_COUNT * CHANNEL_COUNT;
+    constexpr std::size_t OUTPUT_SAMPLE_CAPACITY = REQUIRED_SAMPLE_COUNT - 1U;
+
+    TestAudioDevice device = CreateInitializedDevice();
+    AudioVoiceHandle voice{};
+    if (!StartBasicVoice(device, voice)) {
+        return Fail("voice start failed");
+    }
+
+    std::array<std::int16_t, OUTPUT_SAMPLE_CAPACITY> output{};
+    output.fill(SENTINEL_SAMPLE);
+    std::span<std::int16_t> output_span(output.data(), output.size());
+    const AudioMixResult result = device.Mix(output_span, REQUESTED_FRAME_COUNT);
+    if (result.status != AudioStatus::CapacityExceeded) {
+        return Fail("mix output capacity status was not reported");
+    }
+
+    if (result.frames_written != 0U) {
+        return Fail("mix output capacity failure reported written frames");
+    }
+
+    if (result.failed_mix_requested_frame_count != REQUESTED_FRAME_COUNT) {
+        return Fail("mix output capacity result missed requested frame count");
+    }
+
+    if (result.failed_mix_output_sample_capacity != OUTPUT_SAMPLE_CAPACITY) {
+        return Fail("mix output capacity result missed output capacity");
+    }
+
+    if (result.failed_mix_required_sample_count != REQUIRED_SAMPLE_COUNT) {
+        return Fail("mix output capacity result missed required sample count");
+    }
+
+    if (result.failed_mix_active_voice_count != 1U) {
+        return Fail("mix output capacity result missed active voice count");
+    }
+
+    for (const std::int16_t sample : output) {
+        if (sample != SENTINEL_SAMPLE) {
+            return Fail("mix output capacity failure mutated output");
+        }
+    }
+
+    const AudioDeviceSnapshot capacity_snapshot = device.Snapshot();
+    if (capacity_snapshot.last_failed_mix_requested_frame_count != REQUESTED_FRAME_COUNT) {
+        return Fail("mix output capacity snapshot missed requested frame count");
+    }
+
+    if (capacity_snapshot.last_failed_mix_output_sample_capacity != OUTPUT_SAMPLE_CAPACITY) {
+        return Fail("mix output capacity snapshot missed output capacity");
+    }
+
+    if (capacity_snapshot.last_failed_mix_required_sample_count != REQUIRED_SAMPLE_COUNT) {
+        return Fail("mix output capacity snapshot missed required sample count");
+    }
+
+    if (capacity_snapshot.last_failed_mix_active_voice_count != 1U) {
+        return Fail("mix output capacity snapshot missed active voice count");
+    }
+
+    AudioSourceId invalid_source{};
+    const std::array<std::int16_t, REQUIRED_SAMPLE_COUNT> invalid_source_samples{100, -100, 200, -200};
+    std::span<const std::int16_t> invalid_source_span(invalid_source_samples.data(), invalid_source_samples.size());
+    if (device.RegisterSyntheticSource(invalid_source_span, 0U, invalid_source) != AudioStatus::InvalidDescriptor) {
+        return Fail("invalid source descriptor was accepted");
+    }
+
+    if (!MixOutputCapacityEntryIsClear(device.Snapshot())) {
+        return Fail("invalid source descriptor kept mix output capacity entry");
+    }
+
+    AudioVoiceHandle second_voice{};
+    if (!StartBasicVoice(device, second_voice)) {
+        return Fail("second voice start failed");
+    }
+
+    output.fill(SENTINEL_SAMPLE);
+    const AudioMixResult second_result = device.Mix(output_span, REQUESTED_FRAME_COUNT);
+    if (second_result.status != AudioStatus::CapacityExceeded) {
+        return Fail("second mix output capacity status was not reported");
+    }
+
+    std::array<std::int16_t, REQUIRED_SAMPLE_COUNT> full_output{};
+    std::span<std::int16_t> full_output_span(full_output.data(), full_output.size());
+    const AudioMixResult success_result = device.Mix(full_output_span, REQUESTED_FRAME_COUNT);
+    if (success_result.status != AudioStatus::Success) {
+        return Fail("mix after output capacity failure did not succeed");
+    }
+
+    if (!MixOutputCapacityEntryIsClear(success_result)) {
+        return Fail("mix success result kept output capacity entry");
+    }
+
+    if (!MixOutputCapacityEntryIsClear(device.Snapshot())) {
+        return Fail("mix success snapshot kept output capacity entry");
+    }
+
+    AudioVoiceHandle third_voice{};
+    if (!StartBasicVoice(device, third_voice)) {
+        return Fail("third voice start failed");
+    }
+
+    output.fill(SENTINEL_SAMPLE);
+    const AudioMixResult third_result = device.Mix(output_span, REQUESTED_FRAME_COUNT);
+    if (third_result.status != AudioStatus::CapacityExceeded) {
+        return Fail("third mix output capacity status was not reported");
+    }
+
+    AudioSourceId fill_source{};
+    if (!RegisterBasicSource(device, fill_source)) {
+        return Fail("voice capacity fill source registration failed");
+    }
+
+    for (std::size_t active_voice_count = device.Snapshot().active_voice_count;
+         active_voice_count < MAX_VOICES;
+         ++active_voice_count) {
+        AudioVoiceHandle fill_voice{};
+        if (device.StartVoice(fill_source, MAX_Q15_GAIN, fill_voice) != AudioStatus::Success) {
+            return Fail("voice capacity fill failed");
+        }
+    }
+
+    AudioVoiceHandle overflow_voice{};
+    if (device.StartVoice(fill_source, MAX_Q15_GAIN, overflow_voice) != AudioStatus::CapacityExceeded) {
+        return Fail("voice capacity failure was not reported");
+    }
+
+    if (!MixOutputCapacityEntryIsClear(device.Snapshot())) {
+        return Fail("voice capacity failure kept mix output capacity entry");
     }
 
     return 0;
@@ -2939,6 +3094,7 @@ int main(int argc, char** argv) {
         {TEST_SILENT_TAIL, AudioMixEndedVoiceWritesSilentTail},
         {TEST_OVERWRITE, AudioMixOverwritesPrefilledDestination},
         {TEST_UNDERSIZED_OUTPUT, AudioMixRejectsUndersizedBufferWithoutWritingSamples},
+        {TEST_MIX_OUTPUT_CAPACITY_ENTRY, AudioMixRejectsUndersizedBufferReportsCapacityEntry},
         {TEST_UNINITIALIZED_LIFECYCLE, AudioUninitializedDeviceOperationsReturnExplicitStatusWithoutMutation},
         {TEST_NO_GROW, AudioMixDoesNotGrowVoiceStorage},
         {TEST_DISABLED_DIAGNOSTICS, AudioDisabledDiagnosticsDoesNotChangeResults},
