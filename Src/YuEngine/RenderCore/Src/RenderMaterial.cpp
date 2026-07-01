@@ -107,6 +107,37 @@ bool AreBindingSpansValid(const RenderMaterialRequest &request) {
 
     return request.samplers.size() <= yuengine::rhi::MAX_RHI_SAMPLER_SLOTS;
 }
+
+void ClearCapacityEntryFailure(RenderMaterialSnapshot &snapshot) {
+    snapshot.last_failed_entry_index = 0U;
+    snapshot.last_failed_material_id = 0U;
+    snapshot.last_failed_program_id = 0U;
+    snapshot.last_failed_pass_id = 0U;
+    snapshot.last_capacity_entry_material_record_capacity = 0U;
+    snapshot.last_capacity_entry_current_material_record_count = 0U;
+    snapshot.last_capacity_entry_required_material_record_count = 0U;
+    snapshot.last_capacity_entry_failed_entry_index = 0U;
+    snapshot.last_capacity_entry_material_id = 0U;
+    snapshot.last_capacity_entry_program_id = 0U;
+    snapshot.last_capacity_entry_pass_id = 0U;
+    snapshot.last_capacity_entry_status = RenderMaterialStatus::InvalidArgument;
+}
+
+void StoreCapacityEntryFailure(
+    RenderMaterialSnapshot &snapshot,
+    const RenderMaterialResult &result) {
+    snapshot.last_capacity_entry_material_record_capacity =
+        result.material_record_capacity;
+    snapshot.last_capacity_entry_current_material_record_count =
+        result.current_material_record_count;
+    snapshot.last_capacity_entry_required_material_record_count =
+        result.required_material_record_count;
+    snapshot.last_capacity_entry_failed_entry_index = result.failed_entry_index;
+    snapshot.last_capacity_entry_material_id = result.failed_material_id;
+    snapshot.last_capacity_entry_program_id = result.failed_program_id;
+    snapshot.last_capacity_entry_pass_id = result.failed_pass_id;
+    snapshot.last_capacity_entry_status = result.status;
+}
 }
 
 RenderMaterial::RenderMaterial(const RenderMaterialDesc &desc)
@@ -141,9 +172,15 @@ RenderMaterialResult RenderMaterial::BuildBindingRequest(
         return result;
     }
 
+    result.material_record_capacity = desc_.material_record_capacity;
+    result.current_material_record_count = snapshot_.material_record_count;
     result.required_material_record_count = RequiredMaterialRecordCount();
     if (!HasRecordCapacity()) {
         result.status = RenderMaterialStatus::MaterialCapacityExceeded;
+        result.failed_entry_index = snapshot_.material_record_count;
+        result.failed_material_id = request.material_id;
+        result.failed_program_id = request.program_id;
+        result.failed_pass_id = request.pass_id;
         RecordRejectedMaterial(result);
         return result;
     }
@@ -162,6 +199,7 @@ void RenderMaterial::Reset() {
     snapshot_ = {};
     snapshot_.material_record_capacity = desc_.material_record_capacity;
     snapshot_.required_material_record_count = 1U;
+    ClearCapacityEntryFailure(snapshot_);
 }
 
 RenderMaterialStatus RenderMaterial::ValidateRequest(const RenderMaterialRequest &request) const {
@@ -282,6 +320,7 @@ void RenderMaterial::RecordAcceptedMaterial(
     snapshot_.last_pass_id = request.pass_id;
     snapshot_.last_constant_byte_count = request.constant_bytes.size();
     snapshot_.last_status = RenderMaterialStatus::Success;
+    ClearCapacityEntryFailure(snapshot_);
 
     result->status = RenderMaterialStatus::Success;
 }
@@ -297,15 +336,22 @@ void RenderMaterial::RecordRejectedMaterial(const RenderMaterialResult &result) 
     snapshot_.last_status = result.status;
 
     if (result.status == RenderMaterialStatus::DuplicateMaterialId) {
+        ClearCapacityEntryFailure(snapshot_);
         ++snapshot_.duplicate_material_id_count;
         return;
     }
 
     if (result.status == RenderMaterialStatus::MaterialCapacityExceeded) {
         ++snapshot_.material_capacity_rejected_count;
+        snapshot_.last_failed_entry_index = result.failed_entry_index;
+        snapshot_.last_failed_material_id = result.failed_material_id;
+        snapshot_.last_failed_program_id = result.failed_program_id;
+        snapshot_.last_failed_pass_id = result.failed_pass_id;
+        StoreCapacityEntryFailure(snapshot_, result);
         return;
     }
 
+    ClearCapacityEntryFailure(snapshot_);
     ++snapshot_.failed_validation_count;
 }
 }

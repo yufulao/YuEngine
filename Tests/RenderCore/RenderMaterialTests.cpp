@@ -134,6 +134,75 @@ bool BindingRequestMatchesSentinel(const MaterialBindingFixtureRequest &request)
     return request.pass_id == 77U;
 }
 
+bool CapacityEntrySnapshotIsClear(const yuengine::rendercore::RenderMaterialSnapshot &snapshot) {
+    if (snapshot.last_capacity_entry_material_record_capacity != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_current_material_record_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_required_material_record_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_failed_entry_index != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_material_id != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_program_id != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_pass_id != 0U) {
+        return false;
+    }
+
+    return snapshot.last_capacity_entry_status == RenderMaterialStatus::InvalidArgument;
+}
+
+bool CapacityEntrySnapshotMatchesResult(
+    const yuengine::rendercore::RenderMaterialResult &result,
+    const yuengine::rendercore::RenderMaterialSnapshot &snapshot) {
+    if (snapshot.last_capacity_entry_material_record_capacity !=
+        result.material_record_capacity) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_current_material_record_count !=
+        result.current_material_record_count) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_required_material_record_count !=
+        result.required_material_record_count) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_failed_entry_index != result.failed_entry_index) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_material_id != result.failed_material_id) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_program_id != result.failed_program_id) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_pass_id != result.failed_pass_id) {
+        return false;
+    }
+
+    return snapshot.last_capacity_entry_status == result.status;
+}
+
 int RenderCoreMaterialBuildsBindingRequest() {
     const auto constants = SmallConstants();
     RenderMaterial material;
@@ -216,6 +285,13 @@ int RenderCoreMaterialRejectsInvalidProgramIdWithoutOutputMutation() {
         return Fail("render material accepted invalid program id");
     }
 
+    if (result.failed_entry_index != 0U ||
+        result.failed_material_id != 0U ||
+        result.failed_program_id != 0U ||
+        result.failed_pass_id != 0U) {
+        return Fail("render material reported capacity entry for invalid program id");
+    }
+
     if (!BindingRequestMatchesSentinel(binding_request)) {
         return Fail("render material mutated output after invalid program id");
     }
@@ -262,6 +338,16 @@ int RenderCoreMaterialRejectsDuplicateMaterialId() {
         return Fail("render material snapshot missed duplicate id");
     }
 
+    if (result.failed_entry_index != 0U ||
+        snapshot.last_failed_entry_index != 0U ||
+        snapshot.last_failed_material_id != 0U) {
+        return Fail("render material reported capacity entry for duplicate id");
+    }
+
+    if (!CapacityEntrySnapshotIsClear(snapshot)) {
+        return Fail("render material kept capacity entry after duplicate id");
+    }
+
     return 0;
 }
 
@@ -285,14 +371,58 @@ int RenderCoreMaterialRejectsCapacityExceeded() {
     }
 
     const auto snapshot = material.Snapshot();
-    if (result.required_material_record_count != 2U ||
+    if (result.material_record_capacity != 1U ||
+        result.current_material_record_count != 1U ||
+        result.required_material_record_count != 2U ||
+        snapshot.material_record_capacity != 1U ||
+        snapshot.material_record_count != 1U ||
         snapshot.required_material_record_count != 2U ||
         snapshot.material_capacity_rejected_count != 1U) {
-        return Fail("render material did not expose required material count");
+        return Fail("render material did not expose capacity entry counts");
+    }
+
+    if (result.failed_entry_index != 1U ||
+        result.failed_material_id != 21U ||
+        result.failed_program_id != 10U ||
+        result.failed_pass_id != 30U) {
+        return Fail("render material result missed failed capacity entry identity");
+    }
+
+    if (snapshot.last_failed_entry_index != 1U ||
+        snapshot.last_failed_material_id != 21U ||
+        snapshot.last_failed_program_id != 10U ||
+        snapshot.last_failed_pass_id != 30U) {
+        return Fail("render material snapshot missed failed capacity entry identity");
+    }
+
+    if (!CapacityEntrySnapshotMatchesResult(result, snapshot)) {
+        return Fail("render material snapshot missed capacity entry diagnostics");
     }
 
     if (!BindingRequestMatchesSentinel(rejected_request)) {
         return Fail("render material mutated output after capacity overflow");
+    }
+
+    MaterialBindingFixtureRequest duplicate_request = SentinelBindingRequest();
+    const auto duplicate_result = material.BuildBindingRequest(DefaultRequest(constants), &duplicate_request);
+    if (duplicate_result.status != RenderMaterialStatus::DuplicateMaterialId) {
+        return Fail("render material capacity clear did not hit duplicate id");
+    }
+
+    if (!BindingRequestMatchesSentinel(duplicate_request)) {
+        return Fail("render material duplicate after capacity mutated output");
+    }
+
+    const auto duplicate_snapshot = material.Snapshot();
+    if (duplicate_snapshot.last_failed_entry_index != 0U ||
+        duplicate_snapshot.last_failed_material_id != 0U ||
+        duplicate_snapshot.last_failed_program_id != 0U ||
+        duplicate_snapshot.last_failed_pass_id != 0U) {
+        return Fail("render material duplicate kept failed capacity identity");
+    }
+
+    if (!CapacityEntrySnapshotIsClear(duplicate_snapshot)) {
+        return Fail("render material duplicate did not clear capacity entry");
     }
 
     return 0;
@@ -324,6 +454,10 @@ int RenderCoreMaterialSnapshotTracksCounters() {
         reset_snapshot.accepted_material_count != 0U ||
         reset_snapshot.required_material_record_count != 1U) {
         return Fail("render material reset did not clear counters");
+    }
+
+    if (!CapacityEntrySnapshotIsClear(reset_snapshot)) {
+        return Fail("render material reset did not clear capacity entry");
     }
 
     return 0;
