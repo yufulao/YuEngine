@@ -1159,9 +1159,18 @@ int FileAsyncReadQueueInitializedFailuresUpdateLastStatus() {
         return Fail("async zero output capacity did not update last status");
     }
 
+    if (zero_capacity_snapshot.required_completion_output_count != 1U) {
+        return Fail("async zero output capacity did not report required output count");
+    }
+
     const AsyncFileReadStatus final_drain_status = queue.DrainCompletions(results.data(), results.size(), &written_count);
     if (final_drain_status != AsyncFileReadStatus::Success) {
         return Fail("async final drain after zero capacity failed");
+    }
+
+    const auto final_drain_snapshot = queue.Snapshot();
+    if (final_drain_snapshot.required_completion_output_count != 0U) {
+        return Fail("async final drain did not clear required output count");
     }
 
     return 0;

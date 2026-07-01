@@ -27,6 +27,7 @@ struct AsyncFileReadQueueSnapshot {
     std::size_t completion_pending_count = 0U;
     std::size_t max_queue_depth = 0U;
     std::size_t max_completion_depth = 0U;
+    std::size_t required_completion_output_count = 0U;
     AsyncFileReadStatus last_status = AsyncFileReadStatus::NotInitialized;
     bool is_initialized = false;
     bool is_started = false;

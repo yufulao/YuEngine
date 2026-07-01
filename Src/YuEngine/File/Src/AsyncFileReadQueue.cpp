@@ -40,6 +40,12 @@ struct AsyncFileReadQueueState final {
 namespace {
 void SetLastStatus(AsyncFileReadQueueState& state, AsyncFileReadStatus status) {
     state.snapshot.last_status = status;
+    state.snapshot.required_completion_output_count = 0U;
+}
+
+void RecordCompletionQueueFull(AsyncFileReadQueueState& state, std::size_t required_output_count) {
+    SetLastStatus(state, AsyncFileReadStatus::CompletionQueueFull);
+    state.snapshot.required_completion_output_count = required_output_count;
 }
 
 AsyncFileReadStatus MapWorkerStatus(ThreadWorkerStatus status) {
@@ -447,7 +453,7 @@ AsyncFileReadStatus AsyncFileReadQueue::DrainCompletions(
 
     const ThreadWorkerSnapshot worker_snapshot = state_->worker.Snapshot();
     if (worker_snapshot.completion_pending_count > 0U && output_capacity == 0U) {
-        SetLastStatus(*state_, AsyncFileReadStatus::CompletionQueueFull);
+        RecordCompletionQueueFull(*state_, worker_snapshot.completion_pending_count);
         return AsyncFileReadStatus::CompletionQueueFull;
     }
 
@@ -493,7 +499,9 @@ AsyncFileReadStatus AsyncFileReadQueue::DrainCompletions(
     }
 
     if (final_worker_snapshot.completion_pending_count > 0U) {
-        SetLastStatus(*state_, AsyncFileReadStatus::CompletionQueueFull);
+        const std::size_t required_output_count =
+            *written_count + final_worker_snapshot.completion_pending_count;
+        RecordCompletionQueueFull(*state_, required_output_count);
         return AsyncFileReadStatus::CompletionQueueFull;
     }
 
