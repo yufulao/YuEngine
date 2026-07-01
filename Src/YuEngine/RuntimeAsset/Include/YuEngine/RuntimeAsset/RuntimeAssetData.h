@@ -467,6 +467,25 @@ struct RuntimeAssetDataAssetDependencyTypeCountSnapshotResult final {
 };
 
 /**
+ * @brief Batch type-filtered enumeration request for one RuntimeAsset dependency root.
+ */
+struct RuntimeAssetDataAssetDependencyBatchTypeEnumerationRequest final {
+    const RuntimeAssetDataAssetDependencyTypeEnumerationRequest *requests = nullptr;
+    std::uint32_t request_count = 0U;
+};
+
+/**
+ * @brief Atomic batch type-filtered enumeration diagnostics for RuntimeAsset asset dependency rows.
+ */
+struct RuntimeAssetDataAssetDependencyBatchTypeEnumerationResult final {
+    RuntimeAssetDataStatus status = RuntimeAssetDataStatus::InvalidArgument;
+    yuengine::asset::AssetStatus asset_status = yuengine::asset::AssetStatus::Success;
+    std::uint32_t copied_dependency_count = 0U;
+    std::uint32_t required_dependency_count = 0U;
+    std::uint32_t first_failed_request_index = 0U;
+};
+
+/**
  * @brief Exact lookup key for a committed RuntimeAsset asset dependency row.
  */
 struct RuntimeAssetDataAssetDependencyExactLookupRequest final {
@@ -1423,6 +1442,21 @@ RuntimeAssetDataStatus SnapshotRuntimeAssetDataAssetDependencyTypeCount(
     const RuntimeAssetDataAssetDependencyTypeEnumerationRequest &request,
     std::uint32_t *output_dependency_count,
     RuntimeAssetDataAssetDependencyTypeCountSnapshotResult *out_result);
+/**
+ * @brief Enumerates direct RuntimeAsset dependency rows for a batch of ResourceType filters.
+ * @param request Input type-filter request array for one dependent asset.
+ * @param output_records Caller-owned output records.
+ * @param output_record_capacity Caller-owned output record capacity.
+ * @param output_record_count Caller-owned output record count.
+ * @param out_result Output batch enumeration diagnostics.
+ * @return Explicit RuntimeAssetData status.
+ */
+RuntimeAssetDataStatus EnumerateRuntimeAssetDataAssetDependenciesByTypes(
+    const RuntimeAssetDataAssetDependencyBatchTypeEnumerationRequest &request,
+    RuntimeAssetDataAssetDependencyRecord *output_records,
+    std::uint32_t output_record_capacity,
+    std::uint32_t *output_record_count,
+    RuntimeAssetDataAssetDependencyBatchTypeEnumerationResult *out_result);
 /**
  * @brief Looks up one exact committed RuntimeAsset asset dependency row.
  * @param request Input manager and explicit dependency row key.
