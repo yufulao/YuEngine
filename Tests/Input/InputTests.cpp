@@ -62,6 +62,7 @@ using yuengine::input::GAMEPAD_LEFT_THUMB_X_CONTROL;
 using yuengine::input::GAMEPAD_RIGHT_TRIGGER_CONTROL;
 using yuengine::input::MAX_GAMEPAD_DEVICES;
 using yuengine::input::MAX_EVENTS_PER_FRAME;
+using yuengine::input::MAX_INPUT_ACTIONS;
 using yuengine::input::MAX_INPUT_BINDINGS;
 using yuengine::input::MAX_INPUT_CONTEXTS;
 using yuengine::input::MAX_REPLAY_FRAMES;
@@ -451,7 +452,19 @@ bool CommandMapperCapacityEntryIsClear(const InputCommandMapperSnapshot &snapsho
         return false;
     }
 
-    return snapshot.last_required_binding_count == 0U;
+    if (snapshot.last_failed_command_output_capacity != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_required_context_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_required_binding_count != 0U) {
+        return false;
+    }
+
+    return snapshot.last_required_command_count == 0U;
 }
 
 bool StateEquals(const InputActionState& left, const InputActionState& right) {
@@ -2512,70 +2525,160 @@ int InputCommandMapperSetupFailuresDoNotCountRejectedEvents() {
 }
 
 int InputCommandMapperCapacityFailuresRecordEntryIdentity() {
-    InputCommandMapper mapper;
-    if (!RegisterCommandContext(mapper)) {
-        return Fail("command mapper setup failed");
+    InputCommandMapper context_mapper;
+    for (std::size_t index = 0U; index < MAX_INPUT_CONTEXTS; ++index) {
+        const InputContextId context{static_cast<std::uint32_t>(index)};
+        if (context_mapper.RegisterContext(context) != InputStatus::Success) {
+            return Fail("context registration failed before capacity");
+        }
+    }
+
+    if (context_mapper.RegisterContext(CONTEXT_A) != InputStatus::CapacityExceeded) {
+        return Fail("context capacity did not return capacity status");
+    }
+
+    auto context_snapshot = context_mapper.Snapshot();
+    if (context_snapshot.last_failed_capacity_context_id.value != CONTEXT_A.value) {
+        return Fail("context capacity missed rejected context id");
+    }
+
+    if (context_snapshot.last_required_context_count != MAX_INPUT_CONTEXTS + 1U) {
+        return Fail("context capacity missed required context count");
+    }
+
+    if (context_snapshot.last_status != InputStatus::CapacityExceeded) {
+        return Fail("context capacity did not record last status");
+    }
+
+    if (context_snapshot.context_count != MAX_INPUT_CONTEXTS) {
+        return Fail("context capacity mutated context count");
+    }
+
+    if (context_mapper.RegisterContext(UNKNOWN_CONTEXT) != InputStatus::UnknownContext) {
+        return Fail("invalid context did not return explicit status");
+    }
+
+    if (!CommandMapperCapacityEntryIsClear(context_mapper.Snapshot())) {
+        return Fail("invalid context kept command mapper capacity entry");
+    }
+
+    InputCommandMapper binding_mapper;
+    if (!RegisterCommandContext(binding_mapper)) {
+        return Fail("binding mapper context registration failed");
     }
 
     for (std::size_t index = 0U; index < MAX_INPUT_BINDINGS; ++index) {
         const std::uint32_t control_value = static_cast<std::uint32_t>(100U + index);
-        const std::uint32_t action_value = static_cast<std::uint32_t>(index % 2U);
+        const std::uint32_t action_value = static_cast<std::uint32_t>(index % MAX_INPUT_ACTIONS);
         const InputControlId control{control_value};
         const InputActionId action{action_value};
         const InputCommandBinding binding = ButtonCommandBinding(CONTEXT_A, DEVICE_A, control, action);
-        if (mapper.RegisterBinding(binding) != InputStatus::Success) {
-            return Fail("command binding capacity fixture setup failed");
+        if (binding_mapper.RegisterBinding(binding) != InputStatus::Success) {
+            return Fail("binding registration failed before capacity");
         }
     }
 
     const InputControlId overflow_control{9999U};
     const InputCommandBinding overflow_binding =
         ButtonCommandBinding(CONTEXT_A, DEVICE_B, overflow_control, ACTION_B);
-    if (mapper.RegisterBinding(overflow_binding) != InputStatus::CapacityExceeded) {
-        return Fail("command binding capacity overflow did not return explicit status");
+    if (binding_mapper.RegisterBinding(overflow_binding) != InputStatus::CapacityExceeded) {
+        return Fail("binding capacity did not return capacity status");
     }
 
-    auto mapper_snapshot = mapper.Snapshot();
-    if (mapper_snapshot.last_failed_capacity_context_id.value != CONTEXT_A.value ||
-        mapper_snapshot.last_failed_capacity_action_id.value != ACTION_B.value ||
-        mapper_snapshot.last_failed_capacity_device_id.value != DEVICE_B.value ||
-        mapper_snapshot.last_failed_capacity_control_id.value != overflow_control.value) {
-        return Fail("command binding capacity entry identity mismatch");
+    auto binding_snapshot = binding_mapper.Snapshot();
+    if (binding_snapshot.last_failed_capacity_context_id.value != CONTEXT_A.value) {
+        return Fail("binding capacity missed context id");
     }
 
-    if (mapper_snapshot.last_failed_binding_capacity != MAX_INPUT_BINDINGS ||
-        mapper_snapshot.last_failed_binding_count != MAX_INPUT_BINDINGS ||
-        mapper_snapshot.last_required_binding_count != MAX_INPUT_BINDINGS + 1U) {
-        return Fail("command binding capacity entry counts mismatch");
+    if (binding_snapshot.last_failed_capacity_action_id.value != ACTION_B.value) {
+        return Fail("binding capacity missed action id");
     }
 
-    if (mapper_snapshot.binding_count != MAX_INPUT_BINDINGS ||
-        mapper_snapshot.last_status != InputStatus::CapacityExceeded) {
-        return Fail("command binding capacity overflow mutated mapper state");
+    if (binding_snapshot.last_failed_capacity_device_id.value != DEVICE_B.value) {
+        return Fail("binding capacity missed device id");
+    }
+
+    if (binding_snapshot.last_failed_capacity_control_id.value != overflow_control.value) {
+        return Fail("binding capacity missed control id");
+    }
+
+    if (binding_snapshot.last_failed_binding_capacity != MAX_INPUT_BINDINGS) {
+        return Fail("binding capacity missed binding capacity");
+    }
+
+    if (binding_snapshot.last_failed_binding_count != MAX_INPUT_BINDINGS) {
+        return Fail("binding capacity missed current binding count");
+    }
+
+    if (binding_snapshot.last_required_binding_count != MAX_INPUT_BINDINGS + 1U) {
+        return Fail("binding capacity missed required binding count");
+    }
+
+    if (binding_snapshot.binding_count != MAX_INPUT_BINDINGS) {
+        return Fail("binding capacity mutated binding count");
+    }
+
+    if (binding_snapshot.last_status != InputStatus::CapacityExceeded) {
+        return Fail("binding capacity did not record last status");
     }
 
     InputCommandBinding invalid_binding = overflow_binding;
     invalid_binding.context = UNKNOWN_CONTEXT;
-    if (mapper.RegisterBinding(invalid_binding) != InputStatus::UnknownContext) {
-        return Fail("command binding validation failure did not return explicit status");
+    if (binding_mapper.RegisterBinding(invalid_binding) != InputStatus::UnknownContext) {
+        return Fail("binding validation failure did not return explicit status");
     }
 
-    mapper_snapshot = mapper.Snapshot();
-    if (!CommandMapperCapacityEntryIsClear(mapper_snapshot)) {
-        return Fail("command binding validation failure did not clear capacity entry");
+    binding_snapshot = binding_mapper.Snapshot();
+    if (!CommandMapperCapacityEntryIsClear(binding_snapshot)) {
+        return Fail("binding validation failure did not clear capacity entry");
     }
 
-    if (mapper.RegisterBinding(overflow_binding) != InputStatus::CapacityExceeded) {
-        return Fail("second command binding overflow did not return explicit status");
+    if (binding_mapper.RegisterBinding(overflow_binding) != InputStatus::CapacityExceeded) {
+        return Fail("second binding capacity did not return capacity status");
     }
 
-    if (mapper.SetActiveContext(CONTEXT_A, InputContextFocusMode::AcceptInput) != InputStatus::Success) {
-        return Fail("command mapper success status setup failed");
+    if (binding_mapper.SetActiveContext(CONTEXT_A, InputContextFocusMode::AcceptInput) != InputStatus::Success) {
+        return Fail("binding mapper active context reset failed");
     }
 
-    mapper_snapshot = mapper.Snapshot();
-    if (!CommandMapperCapacityEntryIsClear(mapper_snapshot)) {
-        return Fail("command mapper success status did not clear capacity entry");
+    if (!CommandMapperCapacityEntryIsClear(binding_mapper.Snapshot())) {
+        return Fail("binding mapper success kept command mapper capacity entry");
+    }
+
+    InputCommandMapper command_mapper;
+    if (!RegisterCommandContext(command_mapper)) {
+        return Fail("command mapper context registration failed");
+    }
+
+    std::array<InputEvent, MAX_INPUT_ACTIONS> press_events{};
+    for (std::size_t index = 0U; index < MAX_INPUT_ACTIONS; ++index) {
+        const std::uint32_t control_value = static_cast<std::uint32_t>(500U + index);
+        const std::uint32_t action_value = static_cast<std::uint32_t>(index);
+        const InputControlId control{control_value};
+        const InputActionId action{action_value};
+        if (command_mapper.RegisterBinding(ButtonCommandBinding(CONTEXT_A, DEVICE_A, control, action)) != InputStatus::Success) {
+            return Fail("command mapper binding failed before max command output");
+        }
+
+        press_events[index] = ButtonPress(DEVICE_A, control);
+    }
+
+    InputCommandSnapshot command_snapshot{};
+    const std::span<const InputEvent> press_event_span(press_events.data(), press_events.size());
+    const InputStatus command_status = command_mapper.BuildSnapshot(
+        88U,
+        press_event_span,
+        &command_snapshot);
+    if (command_status != InputStatus::Success) {
+        return Fail("max command output build failed");
+    }
+
+    if (command_snapshot.command_count != MAX_INPUT_ACTIONS) {
+        return Fail("max command output count mismatch");
+    }
+
+    if (!CommandMapperCapacityEntryIsClear(command_mapper.Snapshot())) {
+        return Fail("max command output success kept command mapper capacity entry");
     }
 
     return 0;

@@ -69,7 +69,12 @@ public:
 private:
     InputStatus RecordStatus(InputStatus status);
     InputStatus RecordFailure(InputStatus status);
+    InputStatus RecordContextCapacityFailure(InputContextId context);
     InputStatus RecordBindingCapacityFailure(InputCommandBinding binding);
+    InputStatus RecordCommandCapacityFailure(
+        const InputCommandBinding &binding,
+        std::size_t output_capacity,
+        std::size_t required_command_count);
     InputStatus RejectOperation(InputStatus status);
     bool IsContextInRange(InputContextId context) const;
     bool IsActionInRange(InputActionId action) const;
@@ -80,10 +85,11 @@ private:
     bool HasContext(InputContextId context) const;
     bool HasBindingForControl(InputContextId context, InputDeviceId device, InputControlId control) const;
     bool HasActionRecord(InputContextId context, InputActionId action) const;
+    const InputCommandBinding *FindBindingForAction(InputContextId context, InputActionId action) const;
     const InputCommandBinding *FindBinding(InputContextId context, InputDeviceId device, InputControlId control) const;
     InputStatus ValidateBinding(InputCommandBinding binding) const;
     InputStatus ValidateEvents(std::span<const InputEvent> events) const;
-    InputStatus EmitActiveCommands(InputCommandSnapshot *snapshot) const;
+    InputStatus EmitActiveCommands(InputCommandSnapshot *snapshot);
     void ResetFrameFlags();
     void ApplyEvent(const InputEvent &event);
 
