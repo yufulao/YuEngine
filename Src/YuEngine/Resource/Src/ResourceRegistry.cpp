@@ -506,6 +506,16 @@ ResourceStatus ResourceRegistry::FindDependencyEdge(
     return RecordFailure(ResourceStatus::NotFound);
 }
 
+ResourceStatus ResourceRegistry::CountDependencyEdges(std::uint32_t *output_dependency_edge_count) {
+    if (output_dependency_edge_count == nullptr) {
+        return RecordFailure(ResourceStatus::InvalidHandle);
+    }
+
+    *output_dependency_edge_count = snapshot_.dependency_edge_count;
+    RecordSuccess();
+    return ResourceStatus::Success;
+}
+
 ResourceStatus ResourceRegistry::Acquire(ResourceHandle handle, ResourceTypeId expected_type) {
     std::size_t slot_index = 0U;
     const ResourceStatus handle_status = ResolveHandle(handle, slot_index);

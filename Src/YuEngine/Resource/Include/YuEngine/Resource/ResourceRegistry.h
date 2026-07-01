@@ -89,6 +89,12 @@ public:
         ResourceHandle dependency,
         bool *output_dependency_edge_exists);
     /**
+     * @comment 返回当前直接 Resource dependency 边数量快照。
+     * @param output_dependency_edge_count 输出 dependency 边数量。
+     * @return 显式操作状态。
+     */
+    ResourceStatus CountDependencyEdges(std::uint32_t *output_dependency_edge_count);
+    /**
      * @comment 获取操作。
      * @param handle 输入句柄。
      * @param expected_type 输入期望类型。
