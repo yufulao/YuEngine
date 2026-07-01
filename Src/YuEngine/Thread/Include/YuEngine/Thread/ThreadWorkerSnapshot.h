@@ -17,6 +17,13 @@ struct ThreadWorkerCompletion {
     TaskStatus status = TaskStatus::Created;
 };
 
+enum class ThreadWorkerCompletionLookupStatus {
+    Success,
+    InvalidArgument,
+    NotInitialized,
+    NotFound
+};
+
 struct ThreadWorkerSnapshot {
     std::size_t work_capacity = 0U;
     std::size_t completion_capacity = 0U;

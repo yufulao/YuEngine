@@ -16,7 +16,8 @@ struct ThreadWorkerState final {
     explicit ThreadWorkerState(const ThreadWorkerDesc& input_desc)
         : desc(input_desc),
           work_records(input_desc.work_capacity),
-          completion_records(input_desc.completion_capacity) {
+          completion_records(input_desc.completion_capacity),
+          completion_snapshots(input_desc.completion_capacity) {
         snapshot.work_capacity = input_desc.work_capacity;
         snapshot.completion_capacity = input_desc.completion_capacity;
         snapshot.shutdown_policy = input_desc.default_shutdown_policy;
@@ -27,6 +28,7 @@ struct ThreadWorkerState final {
     ThreadWorkerDesc desc;
     std::vector<TaskRecord> work_records;
     std::vector<ThreadWorkerCompletion> completion_records;
+    std::vector<ThreadWorkerCompletion> completion_snapshots;
     mutable std::mutex mutex;
     std::condition_variable condition;
     std::thread worker;
@@ -35,6 +37,8 @@ struct ThreadWorkerState final {
     std::size_t work_tail = 0U;
     std::size_t completion_head = 0U;
     std::size_t completion_tail = 0U;
+    std::size_t completion_snapshot_tail = 0U;
+    std::size_t completion_snapshot_count = 0U;
     std::uint64_t next_task_id = 1U;
 };
 
@@ -120,6 +124,18 @@ std::size_t ReservedCompletionCountLocked(const ThreadWorkerState& state) {
     return result;
 }
 
+void SaveCompletionSnapshotLocked(ThreadWorkerState &state, ThreadWorkerCompletion completion) {
+    if (state.completion_snapshots.empty()) {
+        return;
+    }
+
+    state.completion_snapshots[state.completion_snapshot_tail] = completion;
+    state.completion_snapshot_tail = (state.completion_snapshot_tail + 1U) % state.completion_snapshots.size();
+    if (state.completion_snapshot_count < state.completion_snapshots.size()) {
+        ++state.completion_snapshot_count;
+    }
+}
+
 bool PushCompletionLocked(ThreadWorkerState &state, TaskId task_id, TaskStatus status) {
     if (state.snapshot.completion_pending_count >= state.completion_records.size()) {
         const std::size_t required_completion_count = state.snapshot.completion_pending_count + 1U;
@@ -128,9 +144,11 @@ bool PushCompletionLocked(ThreadWorkerState &state, TaskId task_id, TaskStatus s
         return false;
     }
 
-    state.completion_records[state.completion_tail] = ThreadWorkerCompletion{task_id, status};
+    const ThreadWorkerCompletion completion{task_id, status};
+    state.completion_records[state.completion_tail] = completion;
     state.completion_tail = (state.completion_tail + 1U) % state.completion_records.size();
     ++state.snapshot.completion_pending_count;
+    SaveCompletionSnapshotLocked(state, completion);
 
     if (state.snapshot.completion_pending_count > state.snapshot.max_completion_depth) {
         state.snapshot.max_completion_depth = state.snapshot.completion_pending_count;
@@ -138,6 +156,57 @@ bool PushCompletionLocked(ThreadWorkerState &state, TaskId task_id, TaskStatus s
 
     ClearCompletionFailureEntriesLocked(state);
     return true;
+}
+
+bool FindPendingWorkCompletionLocked(
+    const ThreadWorkerState& state,
+    TaskId task_id,
+    ThreadWorkerCompletion* output_record) {
+    std::size_t record_index = state.work_head;
+    for (std::size_t count = 0U; count < state.snapshot.pending_count; ++count) {
+        const TaskRecord& record = state.work_records[record_index];
+        if (record.id.value == task_id.value) {
+            *output_record = ThreadWorkerCompletion{record.id, record.status};
+            return true;
+        }
+
+        record_index = (record_index + 1U) % state.work_records.size();
+    }
+
+    return false;
+}
+
+bool FindPendingCompletionLocked(
+    const ThreadWorkerState& state,
+    TaskId task_id,
+    ThreadWorkerCompletion* output_record) {
+    std::size_t record_index = state.completion_head;
+    for (std::size_t count = 0U; count < state.snapshot.completion_pending_count; ++count) {
+        const ThreadWorkerCompletion& completion = state.completion_records[record_index];
+        if (completion.task_id.value == task_id.value) {
+            *output_record = completion;
+            return true;
+        }
+
+        record_index = (record_index + 1U) % state.completion_records.size();
+    }
+
+    return false;
+}
+
+bool FindCompletionSnapshotLocked(
+    const ThreadWorkerState& state,
+    TaskId task_id,
+    ThreadWorkerCompletion* output_record) {
+    for (std::size_t index = 0U; index < state.completion_snapshot_count; ++index) {
+        const ThreadWorkerCompletion& completion = state.completion_snapshots[index];
+        if (completion.task_id.value == task_id.value) {
+            *output_record = completion;
+            return true;
+        }
+    }
+
+    return false;
 }
 
 TaskRecord PopWorkRecordLocked(ThreadWorkerState& state) {
@@ -518,6 +587,41 @@ ThreadWorkerStatus ThreadWorker::DrainCompletions(
     ClearCompletionFailureEntriesLocked(*state_);
     SetLastStatusLocked(*state_, ThreadWorkerStatus::Success);
     return ThreadWorkerStatus::Success;
+}
+
+ThreadWorkerCompletionLookupStatus ThreadWorker::LookupCompletion(
+    TaskId task_id,
+    ThreadWorkerCompletion* output_record) const {
+    if (output_record == nullptr) {
+        return ThreadWorkerCompletionLookupStatus::InvalidArgument;
+    }
+
+    if (task_id.value == INVALID_TASK_ID) {
+        return ThreadWorkerCompletionLookupStatus::InvalidArgument;
+    }
+
+    if (state_ == nullptr) {
+        return ThreadWorkerCompletionLookupStatus::NotInitialized;
+    }
+
+    std::lock_guard<std::mutex> lock(state_->mutex);
+    ThreadWorkerCompletion lookup_record{};
+    if (FindPendingWorkCompletionLocked(*state_, task_id, &lookup_record)) {
+        *output_record = lookup_record;
+        return ThreadWorkerCompletionLookupStatus::Success;
+    }
+
+    if (FindPendingCompletionLocked(*state_, task_id, &lookup_record)) {
+        *output_record = lookup_record;
+        return ThreadWorkerCompletionLookupStatus::Success;
+    }
+
+    if (FindCompletionSnapshotLocked(*state_, task_id, &lookup_record)) {
+        *output_record = lookup_record;
+        return ThreadWorkerCompletionLookupStatus::Success;
+    }
+
+    return ThreadWorkerCompletionLookupStatus::NotFound;
 }
 
 ThreadWorkerSnapshot ThreadWorker::Snapshot() const {

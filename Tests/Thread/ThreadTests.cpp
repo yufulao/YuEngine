@@ -25,6 +25,7 @@ using InlineTaskExecutor = yuengine::thread::InlineTaskExecutor;
 using TaskSchedulerSnapshot = yuengine::thread::TaskSchedulerSnapshot;
 using ThreadWorker = yuengine::thread::ThreadWorker;
 using ThreadWorkerCompletion = yuengine::thread::ThreadWorkerCompletion;
+using ThreadWorkerCompletionLookupStatus = yuengine::thread::ThreadWorkerCompletionLookupStatus;
 using ThreadWorkerDesc = yuengine::thread::ThreadWorkerDesc;
 using ThreadWorkerSnapshot = yuengine::thread::ThreadWorkerSnapshot;
 using yuengine::thread::TaskId;
@@ -57,6 +58,8 @@ constexpr const char* TEST_WORKER_COMPLETION_DRAIN_ENTRY =
     "Thread_WorkerCompletionDrainOutputEntry_RecordsFirstUnfitCompletion";
 constexpr const char* TEST_WORKER_MIXED_COMPLETION_DRAIN =
     "Thread_WorkerMixedCompletionDrain_PreservesFailureStatus";
+constexpr const char* TEST_WORKER_COMPLETION_LOOKUP =
+    "Thread_WorkerCompletionLookup_ReturnsStableSnapshots";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr std::size_t SMALL_CAPACITY = 2U;
@@ -1556,6 +1559,205 @@ int ThreadWorkerMixedCompletionDrainPreservesFailureStatus() {
     return 0;
 }
 
+int ThreadWorkerCompletionLookupReturnsStableSnapshots() {
+    ThreadWorker worker;
+    ThreadWorkerDesc desc;
+    desc.work_capacity = LARGE_CAPACITY;
+    desc.completion_capacity = LARGE_CAPACITY;
+
+    const ThreadWorkerStatus init_status = worker.Initialize(desc);
+    if (init_status != ThreadWorkerStatus::Success) {
+        return Fail("worker initialize failed");
+    }
+
+    const ThreadWorkerStatus start_status = worker.Start();
+    if (start_status != ThreadWorkerStatus::Success) {
+        return Fail("worker start failed");
+    }
+
+    FixedTraceBuffer trace;
+    BlockingThreadContext blocking_context;
+    blocking_context.trace = &trace;
+    blocking_context.value = FIRST_VALUE;
+    ThreadTestContext queued_context{&trace, SECOND_VALUE, false};
+    TaskId first_task_id{0U};
+    TaskId second_task_id{0U};
+
+    const ThreadWorkerStatus first_submit_status = worker.Submit(
+        &BlockingRecordTask,
+        &blocking_context,
+        &first_task_id);
+    if (first_submit_status != ThreadWorkerStatus::Success) {
+        return Fail("first lookup submit failed");
+    }
+
+    WaitForBlockingTask(blocking_context);
+
+    const ThreadWorkerStatus second_submit_status = worker.Submit(&RecordTask, &queued_context, &second_task_id);
+    if (second_submit_status != ThreadWorkerStatus::Success) {
+        return Fail("second lookup submit failed");
+    }
+
+    ThreadWorkerCompletion lookup_record = MakeSentinelCompletion();
+    const ThreadWorkerCompletionLookupStatus queued_lookup_status = worker.LookupCompletion(
+        second_task_id,
+        &lookup_record);
+    if (queued_lookup_status != ThreadWorkerCompletionLookupStatus::Success) {
+        return Fail("queued lookup failed");
+    }
+
+    if (lookup_record.task_id.value != second_task_id.value) {
+        return Fail("queued lookup returned wrong task id");
+    }
+
+    if (lookup_record.status != TaskStatus::Queued) {
+        return Fail("queued lookup returned wrong status");
+    }
+
+    const auto queued_snapshot = worker.Snapshot();
+    if (queued_snapshot.completion_pending_count != 0U) {
+        return Fail("queued lookup wrote completion rows");
+    }
+
+    if (queued_snapshot.drained_completion_count != 0U) {
+        return Fail("queued lookup drained completion rows");
+    }
+
+    ThreadWorkerCompletion invalid_lookup_record = lookup_record;
+    const ThreadWorkerCompletionLookupStatus invalid_lookup_status = worker.LookupCompletion(
+        TaskId{0U},
+        &invalid_lookup_record);
+    if (invalid_lookup_status != ThreadWorkerCompletionLookupStatus::InvalidArgument) {
+        return Fail("default task id lookup did not fail");
+    }
+
+    if (invalid_lookup_record.task_id.value != second_task_id.value) {
+        return Fail("default task id lookup mutated output");
+    }
+
+    ThreadWorkerCompletion missing_lookup_record = lookup_record;
+    const ThreadWorkerCompletionLookupStatus missing_lookup_status = worker.LookupCompletion(
+        TaskId{SENTINEL_TASK_ID},
+        &missing_lookup_record);
+    if (missing_lookup_status != ThreadWorkerCompletionLookupStatus::NotFound) {
+        return Fail("missing task id lookup did not report not found");
+    }
+
+    if (missing_lookup_record.task_id.value != second_task_id.value) {
+        return Fail("missing lookup mutated output");
+    }
+
+    const ThreadWorkerStatus stop_status = worker.RequestStop(ShutdownPolicy::DrainQueued);
+    if (stop_status != ThreadWorkerStatus::Success) {
+        return Fail("lookup stop request failed");
+    }
+
+    ReleaseBlockingTask(blocking_context);
+
+    const ThreadWorkerStatus join_status = worker.Join();
+    if (join_status != ThreadWorkerStatus::ShutdownComplete) {
+        return Fail("lookup join failed");
+    }
+
+    ThreadWorkerCompletion first_completion_lookup = MakeSentinelCompletion();
+    const ThreadWorkerCompletionLookupStatus first_completion_lookup_status = worker.LookupCompletion(
+        first_task_id,
+        &first_completion_lookup);
+    if (first_completion_lookup_status != ThreadWorkerCompletionLookupStatus::Success) {
+        return Fail("first completion lookup failed before drain");
+    }
+
+    if (first_completion_lookup.status != TaskStatus::Completed) {
+        return Fail("first completion lookup returned wrong status");
+    }
+
+    ThreadWorkerCompletion second_completion_lookup = MakeSentinelCompletion();
+    const ThreadWorkerCompletionLookupStatus second_completion_lookup_status = worker.LookupCompletion(
+        second_task_id,
+        &second_completion_lookup);
+    if (second_completion_lookup_status != ThreadWorkerCompletionLookupStatus::Success) {
+        return Fail("second completion lookup failed before drain");
+    }
+
+    if (second_completion_lookup.status != TaskStatus::Completed) {
+        return Fail("second completion lookup returned wrong status");
+    }
+
+    const auto before_drain_snapshot = worker.Snapshot();
+    if (before_drain_snapshot.completion_pending_count != 2U) {
+        return Fail("completion lookup changed pending completion count");
+    }
+
+    if (before_drain_snapshot.drained_completion_count != 0U) {
+        return Fail("completion lookup changed drained completion count");
+    }
+
+    std::array<ThreadWorkerCompletion, 2U> drained_completions{};
+    std::size_t written_count = 0U;
+    const ThreadWorkerStatus drain_status = worker.DrainCompletions(
+        drained_completions.data(),
+        drained_completions.size(),
+        &written_count);
+    if (drain_status != ThreadWorkerStatus::Success) {
+        return Fail("lookup completion drain failed");
+    }
+
+    if (written_count != drained_completions.size()) {
+        return Fail("lookup completion drain wrote wrong count");
+    }
+
+    ThreadWorkerCompletion drained_lookup = MakeSentinelCompletion();
+    const ThreadWorkerCompletionLookupStatus drained_lookup_status = worker.LookupCompletion(
+        first_task_id,
+        &drained_lookup);
+    if (drained_lookup_status != ThreadWorkerCompletionLookupStatus::Success) {
+        return Fail("lookup after drain failed");
+    }
+
+    if (drained_lookup.status != TaskStatus::Completed) {
+        return Fail("lookup after drain returned wrong status");
+    }
+
+    ThreadWorkerCompletion second_drained_lookup = drained_lookup;
+    const ThreadWorkerCompletionLookupStatus second_drained_lookup_status = worker.LookupCompletion(
+        second_task_id,
+        &second_drained_lookup);
+    if (second_drained_lookup_status != ThreadWorkerCompletionLookupStatus::Success) {
+        return Fail("second lookup after drain failed");
+    }
+
+    if (second_drained_lookup.task_id.value != second_task_id.value) {
+        return Fail("second lookup after drain returned wrong task id");
+    }
+
+    if (second_drained_lookup.status != TaskStatus::Completed) {
+        return Fail("second lookup after drain returned wrong status");
+    }
+
+    ThreadWorkerCompletion missing_after_drain_lookup = second_drained_lookup;
+    const ThreadWorkerCompletionLookupStatus missing_after_drain_status = worker.LookupCompletion(
+        TaskId{SENTINEL_TASK_ID},
+        &missing_after_drain_lookup);
+    if (missing_after_drain_status != ThreadWorkerCompletionLookupStatus::NotFound) {
+        return Fail("missing lookup after drain did not report not found");
+    }
+
+    if (missing_after_drain_lookup.task_id.value != second_task_id.value) {
+        return Fail("missing lookup after drain mutated output");
+    }
+
+    const auto final_snapshot = worker.Snapshot();
+    if (final_snapshot.completion_pending_count != 0U) {
+        return Fail("lookup after drain restored pending completions");
+    }
+
+    if (final_snapshot.drained_completion_count != 2U) {
+        return Fail("lookup after drain changed drained count");
+    }
+
+    return 0;
+}
+
 int main(int argc, char** argv) {
     if (argc != 2) {
         return Fail(ERROR_EXPECTED_ONE_TEST_NAME);
@@ -1580,7 +1782,8 @@ int main(int argc, char** argv) {
         {TEST_WORKER_COMPLETION_CAPACITY_ENTRY, ThreadWorkerCompletionCapacityEntryClearsOnNonQueueCapacity},
         {TEST_WORKER_COMPLETION_DRAIN, ThreadWorkerCompletionDrainUsesCallerStorageLimit},
         {TEST_WORKER_COMPLETION_DRAIN_ENTRY, ThreadWorkerCompletionDrainOutputEntryRecordsFirstUnfitCompletion},
-        {TEST_WORKER_MIXED_COMPLETION_DRAIN, ThreadWorkerMixedCompletionDrainPreservesFailureStatus}};
+        {TEST_WORKER_MIXED_COMPLETION_DRAIN, ThreadWorkerMixedCompletionDrainPreservesFailureStatus},
+        {TEST_WORKER_COMPLETION_LOOKUP, ThreadWorkerCompletionLookupReturnsStableSnapshots}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);

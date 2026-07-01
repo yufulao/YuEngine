@@ -79,6 +79,13 @@ public:
         std::size_t output_capacity,
         std::size_t* written_count);
     /**
+     * @comment 按 task id 查询 completion snapshot，不消费 completion records。
+     * @param task_id 输入 task id。
+     * @param output_record 输出 completion snapshot。
+     * @return 显式查询状态。
+     */
+    ThreadWorkerCompletionLookupStatus LookupCompletion(TaskId task_id, ThreadWorkerCompletion* output_record) const;
+    /**
      * @comment 返回 worker snapshot。
      * @return 快照值。
      */
