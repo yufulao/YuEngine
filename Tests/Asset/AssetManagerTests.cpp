@@ -67,6 +67,8 @@ constexpr const char *TEST_REGISTER = "Asset_RegisterRuntimeAsset_ReturnsStableH
 constexpr const char *TEST_REGISTRATION_CAPACITY_ENTRY =
     "Asset_RegisterRuntimeAssetCapacityEntryPreservesRejectedIdentity";
 constexpr const char *TEST_DEPENDENCIES = "Asset_DependenciesTraverseBoundedAndRejectCycle";
+constexpr const char *TEST_DEPENDENCY_OUTPUT_CAPACITY_ENTRY =
+    "Asset_DependencyOutputCapacityReportsEntryIdentity";
 constexpr const char *TEST_TEXTURE_READY =
     "Asset_TextureReadyRecordUsesStreamingResultWithoutOwningDevice";
 constexpr const char *TEST_AUDIO_READY =
@@ -143,6 +145,46 @@ bool DoAssetHandlesMatch(AssetHandle left, AssetHandle right) {
     }
 
     return left.generation == right.generation;
+}
+
+bool IsDependencyOutputCapacityEntryClear(const AssetSnapshot &snapshot) {
+    if (snapshot.last_failed_dependency_output_dependent.IsValid()) {
+        return false;
+    }
+
+    if (snapshot.last_dependency_output_capacity != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_required_dependency_output_count != 0U) {
+        return false;
+    }
+
+    return !snapshot.last_failed_dependency_output_dependency.IsValid();
+}
+
+int ExpectSmallDependencyOutputFailure(
+    AssetManager &manager,
+    AssetHandle root,
+    AssetHandle sentinel_dependency) {
+    std::array<AssetHandle, 1U> small_dependencies{};
+    small_dependencies[0U] = sentinel_dependency;
+    std::uint32_t dependency_count = 123U;
+    const AssetStatus status =
+        manager.TraverseDependencies(root, small_dependencies.data(), 1U, &dependency_count);
+    if (status != AssetStatus::OutputBufferTooSmall) {
+        return Fail("small traversal output was not rejected");
+    }
+
+    if (dependency_count != 0U) {
+        return Fail("small traversal failure did not clear output count");
+    }
+
+    if (!DoAssetHandlesMatch(small_dependencies[0U], sentinel_dependency)) {
+        return Fail("small traversal failure mutated output dependency");
+    }
+
+    return 0;
 }
 
 ResourceDecodedPayloadRecord MakeDecodedPayloadRecord(
@@ -763,6 +805,134 @@ int AssetDependenciesTraverseBoundedAndRejectCycle() {
     return 0;
 }
 
+int AssetDependencyOutputCapacityReportsEntryIdentity() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult resource_a = RegisterResource(registry, 21U, RESOURCE_TYPE_TEXTURE);
+    const ResourceRegistrationResult resource_b = RegisterResource(registry, 22U, RESOURCE_TYPE_TEXTURE);
+    const ResourceRegistrationResult resource_c = RegisterResource(registry, 23U, RESOURCE_TYPE_TEXTURE);
+    if (!resource_a.Succeeded() || !resource_b.Succeeded() || !resource_c.Succeeded()) {
+        return Fail("dependency output capacity resource registration failed");
+    }
+
+    AssetManager manager(AssetManagerDesc{4U, 2U, 4U});
+    const AssetRegistrationResult asset_a =
+        RegisterAsset(manager, registry, 2101U, ASSET_TYPE_TEXTURE, resource_a.handle, RESOURCE_TYPE_TEXTURE);
+    const AssetRegistrationResult asset_b =
+        RegisterAsset(manager, registry, 2102U, ASSET_TYPE_TEXTURE, resource_b.handle, RESOURCE_TYPE_TEXTURE);
+    const AssetRegistrationResult asset_c =
+        RegisterAsset(manager, registry, 2103U, ASSET_TYPE_TEXTURE, resource_c.handle, RESOURCE_TYPE_TEXTURE);
+    if (!asset_a.Succeeded() || !asset_b.Succeeded() || !asset_c.Succeeded()) {
+        return Fail("dependency output capacity asset registration failed");
+    }
+
+    if (manager.AddDependency(asset_a.handle, asset_b.handle) != AssetStatus::Success) {
+        return Fail("dependency output first edge failed");
+    }
+
+    if (manager.AddDependency(asset_b.handle, asset_c.handle) != AssetStatus::Success) {
+        return Fail("dependency output second edge failed");
+    }
+
+    const AssetHandle sentinel_dependency{99U, 77U};
+    if (ExpectSmallDependencyOutputFailure(manager, asset_a.handle, sentinel_dependency) != 0) {
+        return 1;
+    }
+
+    AssetSnapshot snapshot = manager.Snapshot();
+    if (snapshot.last_status != AssetStatus::OutputBufferTooSmall) {
+        return Fail("dependency output capacity did not set last status");
+    }
+
+    if (!DoAssetHandlesMatch(snapshot.last_failed_dependency_output_dependent, asset_b.handle)) {
+        return Fail("dependency output capacity did not record dependent asset");
+    }
+
+    if (snapshot.last_dependency_output_capacity != 1U) {
+        return Fail("dependency output capacity did not record output capacity");
+    }
+
+    if (snapshot.last_required_dependency_output_count != 2U) {
+        return Fail("dependency output capacity did not record required output count");
+    }
+
+    if (!DoAssetHandlesMatch(snapshot.last_failed_dependency_output_dependency, asset_c.handle)) {
+        return Fail("dependency output capacity did not record first rejected dependency");
+    }
+
+    if (snapshot.last_required_asset_count != 0U ||
+        snapshot.last_required_type_count != 0U ||
+        snapshot.last_required_dependency_edge_count != 0U) {
+        return Fail("dependency output capacity polluted registration counts");
+    }
+
+    if (manager.AddDependency(asset_c.handle, asset_a.handle) != AssetStatus::DependencyCycle) {
+        return Fail("dependency cycle did not fail after output capacity");
+    }
+
+    snapshot = manager.Snapshot();
+    if (!IsDependencyOutputCapacityEntryClear(snapshot)) {
+        return Fail("dependency cycle left stale output capacity identity");
+    }
+
+    if (ExpectSmallDependencyOutputFailure(manager, asset_a.handle, sentinel_dependency) != 0) {
+        return 1;
+    }
+
+    if (manager.AddDependency(asset_a.handle, asset_b.handle) != AssetStatus::DuplicateDependency) {
+        return Fail("duplicate dependency did not fail after output capacity");
+    }
+
+    snapshot = manager.Snapshot();
+    if (!IsDependencyOutputCapacityEntryClear(snapshot)) {
+        return Fail("duplicate dependency left stale output capacity identity");
+    }
+
+    if (ExpectSmallDependencyOutputFailure(manager, asset_a.handle, sentinel_dependency) != 0) {
+        return 1;
+    }
+
+    std::array<AssetHandle, 2U> dependencies{};
+    std::uint32_t dependency_count = 0U;
+    const AssetHandle invalid_asset{99U, 1U};
+    if (manager.TraverseDependencies(invalid_asset, dependencies.data(), 2U, &dependency_count) !=
+        AssetStatus::InvalidHandle) {
+        return Fail("invalid traversal did not fail after output capacity");
+    }
+
+    snapshot = manager.Snapshot();
+    if (!IsDependencyOutputCapacityEntryClear(snapshot)) {
+        return Fail("invalid traversal left stale output capacity identity");
+    }
+
+    if (ExpectSmallDependencyOutputFailure(manager, asset_a.handle, sentinel_dependency) != 0) {
+        return 1;
+    }
+
+    if (manager.TraverseDependencies(asset_a.handle, dependencies.data(), 2U, &dependency_count) !=
+        AssetStatus::Success) {
+        return Fail("dependency traversal recovery failed");
+    }
+
+    if (dependency_count != 2U) {
+        return Fail("dependency traversal recovery count mismatch");
+    }
+
+    if (!DoAssetHandlesMatch(dependencies[0U], asset_b.handle)) {
+        return Fail("dependency traversal recovery first output mismatch");
+    }
+
+    if (!DoAssetHandlesMatch(dependencies[1U], asset_c.handle)) {
+        return Fail("dependency traversal recovery second output mismatch");
+    }
+
+    snapshot = manager.Snapshot();
+    if (!IsDependencyOutputCapacityEntryClear(snapshot)) {
+        return Fail("successful traversal left stale output capacity identity");
+    }
+
+    return 0;
+}
+
 int AssetTextureReadyRecordUsesStreamingResultWithoutOwningDevice() {
     ResourceRegistry registry;
     const ResourceRegistrationResult resource_result = RegisterResource(registry, 5U, RESOURCE_TYPE_TEXTURE);
@@ -1326,6 +1496,7 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_REGISTER, AssetRegisterRuntimeAssetReturnsStableHandleAndState},
     {TEST_REGISTRATION_CAPACITY_ENTRY, AssetRegisterRuntimeAssetCapacityEntryPreservesRejectedIdentity},
     {TEST_DEPENDENCIES, AssetDependenciesTraverseBoundedAndRejectCycle},
+    {TEST_DEPENDENCY_OUTPUT_CAPACITY_ENTRY, AssetDependencyOutputCapacityReportsEntryIdentity},
     {TEST_TEXTURE_READY, AssetTextureReadyRecordUsesStreamingResultWithoutOwningDevice},
     {TEST_AUDIO_READY, AssetAudioReadyRecordUsesImportRecordWithoutOwningDevice},
     {TEST_REFRESH_STATE, AssetRefreshStateFromResourceMapsUploadedResidentAndFailed},

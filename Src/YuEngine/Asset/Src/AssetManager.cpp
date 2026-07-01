@@ -21,6 +21,10 @@ void ClearRequiredCounts(AssetSnapshot &snapshot) {
     snapshot.last_required_asset_count = 0U;
     snapshot.last_required_type_count = 0U;
     snapshot.last_required_dependency_edge_count = 0U;
+    snapshot.last_failed_dependency_output_dependent = AssetHandle{};
+    snapshot.last_dependency_output_capacity = 0U;
+    snapshot.last_required_dependency_output_count = 0U;
+    snapshot.last_failed_dependency_output_dependency = AssetHandle{};
 }
 
 void ClearCapacityEntry(AssetSnapshot &snapshot) {
@@ -104,6 +108,19 @@ AssetRegistrationResult MakeRegistrationCapacityResult(
     result.capacity_entry_type_count = snapshot.type_count;
     result.capacity_entry_dependency_edge_count = snapshot.active_dependency_edge_count;
     return result;
+}
+
+void RecordDependencyOutputCapacityEntry(
+    AssetSnapshot &snapshot,
+    AssetHandle dependent,
+    std::uint32_t output_capacity,
+    std::uint32_t required_dependency_output_count,
+    AssetHandle dependency) {
+    ClearRequiredCounts(snapshot);
+    snapshot.last_failed_dependency_output_dependent = dependent;
+    snapshot.last_dependency_output_capacity = output_capacity;
+    snapshot.last_required_dependency_output_count = required_dependency_output_count;
+    snapshot.last_failed_dependency_output_dependency = dependency;
 }
 }
 
@@ -380,7 +397,17 @@ AssetStatus AssetManager::TraverseDependencies(
             }
 
             if (staged_dependency_count >= output_asset_capacity) {
-                return RecordFailure(AssetStatus::OutputBufferTooSmall);
+                const AssetHandle dependent = slots_[current_slot].record.handle;
+                const std::uint32_t required_dependency_output_count = staged_dependency_count + 1U;
+                const AssetHandle dependency = edge.dependency;
+                const AssetStatus status = RecordFailure(AssetStatus::OutputBufferTooSmall);
+                RecordDependencyOutputCapacityEntry(
+                    snapshot_,
+                    dependent,
+                    output_asset_capacity,
+                    required_dependency_output_count,
+                    dependency);
+                return status;
             }
 
             if (pending_count >= MAX_ASSET_COUNT) {
