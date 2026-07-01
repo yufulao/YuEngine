@@ -61,6 +61,7 @@ constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr std::size_t SMALL_CAPACITY = 2U;
 constexpr std::size_t LARGE_CAPACITY = 4U;
+constexpr std::uint64_t SENTINEL_TASK_ID = 9000U;
 constexpr int FIRST_VALUE = 10;
 constexpr int SECOND_VALUE = 20;
 constexpr int THIRD_VALUE = 30;
@@ -79,6 +80,10 @@ int Fail(const std::string& message) {
     std::fwrite(message.data(), sizeof(char), message.size(), stderr);
     std::fputc('\n', stderr);
     return 1;
+}
+
+ThreadWorkerCompletion MakeSentinelCompletion() {
+    return ThreadWorkerCompletion{TaskId{SENTINEL_TASK_ID}, TaskStatus::Rejected};
 }
 
 template <std::size_t ExpectedCount>
@@ -1176,8 +1181,21 @@ int ThreadWorkerCompletionDrainUsesCallerStorageLimit() {
     worker.Submit(&RecordTask, &second_context);
     worker.Shutdown(ShutdownPolicy::DrainQueued);
 
-    std::array<ThreadWorkerCompletion, 1U> first_drain{};
-    std::size_t first_written_count = 0U;
+    std::size_t invalid_written_count = LARGE_CAPACITY;
+    const ThreadWorkerStatus invalid_drain_status = worker.DrainCompletions(
+        nullptr,
+        1U,
+        &invalid_written_count);
+    if (invalid_drain_status != ThreadWorkerStatus::InvalidArgument) {
+        return Fail("null completion output did not fail");
+    }
+
+    if (invalid_written_count != LARGE_CAPACITY) {
+        return Fail("null completion output mutated written count");
+    }
+
+    std::array<ThreadWorkerCompletion, 1U> first_drain{MakeSentinelCompletion()};
+    std::size_t first_written_count = LARGE_CAPACITY;
     const ThreadWorkerStatus first_drain_status = worker.DrainCompletions(
         first_drain.data(),
         first_drain.size(),
@@ -1186,8 +1204,12 @@ int ThreadWorkerCompletionDrainUsesCallerStorageLimit() {
         return Fail("small completion output did not keep remaining records");
     }
 
-    if (first_written_count != 0U) {
-        return Fail("small completion output wrote records before success");
+    if (first_written_count != LARGE_CAPACITY) {
+        return Fail("small completion output mutated written count");
+    }
+
+    if (first_drain[0U].status != TaskStatus::Rejected) {
+        return Fail("small completion output mutated caller storage");
     }
 
     const auto rejected_snapshot = worker.Snapshot();
@@ -1215,6 +1237,14 @@ int ThreadWorkerCompletionDrainUsesCallerStorageLimit() {
 
     if (second_written_count != second_drain.size()) {
         return Fail("second completion drain wrote wrong count");
+    }
+
+    if (second_drain[0U].status != TaskStatus::Completed) {
+        return Fail("second completion drain changed first completion status");
+    }
+
+    if (second_drain[1U].status != TaskStatus::Completed) {
+        return Fail("second completion drain changed second completion status");
     }
 
     const auto snapshot = worker.Snapshot();
@@ -1417,8 +1447,8 @@ int ThreadWorkerMixedCompletionDrainPreservesFailureStatus() {
         return Fail("mixed completion shutdown failed");
     }
 
-    std::array<ThreadWorkerCompletion, 1U> first_drain{};
-    std::size_t first_written_count = 0U;
+    std::array<ThreadWorkerCompletion, 1U> first_drain{MakeSentinelCompletion()};
+    std::size_t first_written_count = LARGE_CAPACITY;
     const ThreadWorkerStatus first_drain_status = worker.DrainCompletions(
         first_drain.data(),
         first_drain.size(),
@@ -1427,12 +1457,12 @@ int ThreadWorkerMixedCompletionDrainPreservesFailureStatus() {
         return Fail("first mixed drain did not report capacity failure");
     }
 
-    if (first_written_count != first_drain.size()) {
-        return Fail("first mixed drain wrote wrong count");
+    if (first_written_count != LARGE_CAPACITY) {
+        return Fail("first mixed drain mutated written count");
     }
 
-    if (first_drain[0U].status != TaskStatus::Completed) {
-        return Fail("first mixed drain changed first completion status");
+    if (first_drain[0U].status != TaskStatus::Rejected) {
+        return Fail("first mixed drain mutated caller storage");
     }
 
     const auto partial_snapshot = worker.Snapshot();
@@ -1440,11 +1470,19 @@ int ThreadWorkerMixedCompletionDrainPreservesFailureStatus() {
         return Fail("first mixed drain did not preserve failure status");
     }
 
-    if (partial_snapshot.completion_pending_count != 2U) {
+    if (partial_snapshot.completion_pending_count != 3U) {
         return Fail("first mixed drain changed remaining completion count");
     }
 
-    std::array<ThreadWorkerCompletion, 2U> second_drain{};
+    if (partial_snapshot.drained_completion_count != 0U) {
+        return Fail("first mixed drain changed drained count");
+    }
+
+    if (partial_snapshot.last_required_completion_count != 3U) {
+        return Fail("first mixed drain did not report required completion count");
+    }
+
+    std::array<ThreadWorkerCompletion, 3U> second_drain{};
     std::size_t second_written_count = 0U;
     const ThreadWorkerStatus second_drain_status = worker.DrainCompletions(
         second_drain.data(),
@@ -1458,11 +1496,15 @@ int ThreadWorkerMixedCompletionDrainPreservesFailureStatus() {
         return Fail("second mixed drain wrote wrong count");
     }
 
-    if (second_drain[0U].status != TaskStatus::Failed) {
+    if (second_drain[0U].status != TaskStatus::Completed) {
+        return Fail("second mixed drain changed first completion status");
+    }
+
+    if (second_drain[1U].status != TaskStatus::Failed) {
         return Fail("second mixed drain changed failed completion status");
     }
 
-    if (second_drain[1U].status != TaskStatus::Completed) {
+    if (second_drain[2U].status != TaskStatus::Completed) {
         return Fail("second mixed drain changed final completion status");
     }
 
@@ -1477,6 +1519,10 @@ int ThreadWorkerMixedCompletionDrainPreservesFailureStatus() {
 
     if (success_snapshot.completed_count != 2U) {
         return Fail("mixed drain completed count was wrong");
+    }
+
+    if (success_snapshot.last_required_completion_count != 3U) {
+        return Fail("mixed drain lost required completion count");
     }
 
     std::array<ThreadWorkerCompletion, 1U> empty_drain{};
