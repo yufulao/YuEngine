@@ -86,6 +86,17 @@ public:
      */
     ThreadWorkerCompletionLookupStatus LookupCompletion(TaskId task_id, ThreadWorkerCompletion* output_record) const;
     /**
+     * @comment 按 completion status 枚举 completion snapshot，不消费 completion records。
+     * @param status 输入 completion status。
+     * @param output_records 输出 completion snapshots。
+     * @param output_capacity 输出 completion capacity。
+     * @return 枚举结果和所需数量。
+     */
+    ThreadWorkerCompletionEnumerationResult EnumerateCompletionsByStatus(
+        TaskStatus status,
+        ThreadWorkerCompletion* output_records,
+        std::size_t output_capacity) const;
+    /**
      * @comment 返回 worker snapshot。
      * @return 快照值。
      */

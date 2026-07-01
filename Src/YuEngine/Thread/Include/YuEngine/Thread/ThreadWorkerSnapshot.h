@@ -24,6 +24,19 @@ enum class ThreadWorkerCompletionLookupStatus {
     NotFound
 };
 
+enum class ThreadWorkerCompletionEnumerationStatus {
+    Success,
+    InvalidArgument,
+    NotInitialized,
+    OutputCapacityExceeded
+};
+
+struct ThreadWorkerCompletionEnumerationResult {
+    ThreadWorkerCompletionEnumerationStatus status = ThreadWorkerCompletionEnumerationStatus::InvalidArgument;
+    std::size_t required_count = 0U;
+    std::size_t written_count = 0U;
+};
+
 struct ThreadWorkerSnapshot {
     std::size_t work_capacity = 0U;
     std::size_t completion_capacity = 0U;

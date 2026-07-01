@@ -209,6 +209,72 @@ bool FindCompletionSnapshotLocked(
     return false;
 }
 
+bool IsCompletionEnumerationStatus(TaskStatus status) {
+    if (status == TaskStatus::Completed) {
+        return true;
+    }
+
+    if (status == TaskStatus::Failed) {
+        return true;
+    }
+
+    if (status == TaskStatus::Canceled) {
+        return true;
+    }
+
+    return false;
+}
+
+std::size_t FirstCompletionSnapshotIndexLocked(const ThreadWorkerState& state) {
+    if (state.completion_snapshot_count < state.completion_snapshots.size()) {
+        return 0U;
+    }
+
+    return state.completion_snapshot_tail;
+}
+
+std::size_t CountCompletionSnapshotsByStatusLocked(const ThreadWorkerState& state, TaskStatus status) {
+    if (state.completion_snapshot_count == 0U) {
+        return 0U;
+    }
+
+    const std::size_t snapshot_capacity = state.completion_snapshots.size();
+    std::size_t result = 0U;
+    std::size_t record_index = FirstCompletionSnapshotIndexLocked(state);
+    for (std::size_t count = 0U; count < state.completion_snapshot_count; ++count) {
+        const ThreadWorkerCompletion& completion = state.completion_snapshots[record_index];
+        if (completion.status == status) {
+            ++result;
+        }
+
+        record_index = (record_index + 1U) % snapshot_capacity;
+    }
+
+    return result;
+}
+
+void WriteCompletionSnapshotsByStatusLocked(
+    const ThreadWorkerState& state,
+    TaskStatus status,
+    ThreadWorkerCompletion* output_records) {
+    if (state.completion_snapshot_count == 0U) {
+        return;
+    }
+
+    const std::size_t snapshot_capacity = state.completion_snapshots.size();
+    std::size_t output_index = 0U;
+    std::size_t record_index = FirstCompletionSnapshotIndexLocked(state);
+    for (std::size_t count = 0U; count < state.completion_snapshot_count; ++count) {
+        const ThreadWorkerCompletion& completion = state.completion_snapshots[record_index];
+        if (completion.status == status) {
+            output_records[output_index] = completion;
+            ++output_index;
+        }
+
+        record_index = (record_index + 1U) % snapshot_capacity;
+    }
+}
+
 TaskRecord PopWorkRecordLocked(ThreadWorkerState& state) {
     TaskRecord record = state.work_records[state.work_head];
     state.work_records[state.work_head] = TaskRecord{TaskId{INVALID_TASK_ID}, nullptr, nullptr, TaskStatus::Created};
@@ -622,6 +688,40 @@ ThreadWorkerCompletionLookupStatus ThreadWorker::LookupCompletion(
     }
 
     return ThreadWorkerCompletionLookupStatus::NotFound;
+}
+
+ThreadWorkerCompletionEnumerationResult ThreadWorker::EnumerateCompletionsByStatus(
+    TaskStatus status,
+    ThreadWorkerCompletion* output_records,
+    std::size_t output_capacity) const {
+    ThreadWorkerCompletionEnumerationResult result;
+    if (!IsCompletionEnumerationStatus(status)) {
+        result.status = ThreadWorkerCompletionEnumerationStatus::InvalidArgument;
+        return result;
+    }
+
+    if (output_capacity > 0U && output_records == nullptr) {
+        result.status = ThreadWorkerCompletionEnumerationStatus::InvalidArgument;
+        return result;
+    }
+
+    if (state_ == nullptr) {
+        result.status = ThreadWorkerCompletionEnumerationStatus::NotInitialized;
+        return result;
+    }
+
+    std::lock_guard<std::mutex> lock(state_->mutex);
+    const std::size_t required_count = CountCompletionSnapshotsByStatusLocked(*state_, status);
+    result.required_count = required_count;
+    if (required_count > output_capacity) {
+        result.status = ThreadWorkerCompletionEnumerationStatus::OutputCapacityExceeded;
+        return result;
+    }
+
+    WriteCompletionSnapshotsByStatusLocked(*state_, status, output_records);
+    result.written_count = required_count;
+    result.status = ThreadWorkerCompletionEnumerationStatus::Success;
+    return result;
 }
 
 ThreadWorkerSnapshot ThreadWorker::Snapshot() const {
