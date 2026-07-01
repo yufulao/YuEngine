@@ -7,6 +7,7 @@
 
 #include "YuEngine/UiRuntime/UiManagerPanelMapRecord.h"
 #include "YuEngine/UiRuntime/UiManagerPanelMapStatus.h"
+#include "YuEngine/UiRuntime/UiPanelId.h"
 #include "YuEngine/UiRuntime/UiPanelOpenArgsSnapshot.h"
 
 namespace yuengine::uiruntime {
@@ -21,6 +22,8 @@ struct UiManagerPanelMapResult final {
     bool already_inactive = false;
     bool released_loaded = false;
     bool released_active = false;
+    UiPanelId failed_panel_id{};
+    UiPanelOpenArgsSnapshot failed_open_args;
 
     /**
      * @comment 检查 panel map 操作是否成功。

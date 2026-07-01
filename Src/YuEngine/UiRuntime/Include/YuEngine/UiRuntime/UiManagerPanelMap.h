@@ -137,8 +137,15 @@ private:
         bool already_inactive,
         bool released_loaded=false,
         bool released_active=false) const;
+    UiManagerPanelMapResult MakeCapacityResult(
+        UiPanelId panel_id,
+        const UiPanelOpenArgsSnapshot &open_args_snapshot);
+    UiManagerPanelMapStatus RecordCapacityFailure(
+        UiPanelId panel_id,
+        const UiPanelOpenArgsSnapshot &open_args_snapshot);
     UiManagerPanelMapStatus RecordFailure(UiManagerPanelMapStatus status);
     void RecordOpenArgsAccepted(const UiPanelOpenArgsSnapshot &open_args_snapshot, bool reused_loaded);
+    void ClearCapacityEntry();
     void RecordSuccess();
 
     std::array<UiManagerPanelMapRecord, MAX_UI_MANAGER_PANEL_MAP_RECORD_COUNT> records_;

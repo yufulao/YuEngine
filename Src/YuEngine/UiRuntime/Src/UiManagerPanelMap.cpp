@@ -92,12 +92,12 @@ UiManagerPanelMapResult UiManagerPanelMap::OpenPanelWithArgs(
     }
 
     if (snapshot_.loaded_panel_count >= snapshot_.panel_capacity) {
-        return MakeResult(RecordFailure(UiManagerPanelMapStatus::CapacityExceeded), UiManagerPanelMapRecord{}, false, false, false);
+        return MakeCapacityResult(panel_id, open_args_snapshot);
     }
 
     const std::uint32_t record_index = FindFreeRecordIndex();
     if (record_index >= snapshot_.panel_capacity) {
-        return MakeResult(RecordFailure(UiManagerPanelMapStatus::CapacityExceeded), UiManagerPanelMapRecord{}, false, false, false);
+        return MakeCapacityResult(panel_id, open_args_snapshot);
     }
 
     const BaseUiLifecycleStatus lifecycle_status = controller->OpenWithArgs(open_args);
@@ -455,7 +455,29 @@ UiManagerPanelMapResult UiManagerPanelMap::MakeResult(
     return result;
 }
 
+UiManagerPanelMapResult UiManagerPanelMap::MakeCapacityResult(
+    UiPanelId panel_id,
+    const UiPanelOpenArgsSnapshot &open_args_snapshot) {
+    const UiManagerPanelMapStatus status = RecordCapacityFailure(panel_id, open_args_snapshot);
+    UiManagerPanelMapResult result = MakeResult(status, UiManagerPanelMapRecord{}, false, false, false);
+    result.failed_panel_id = panel_id;
+    result.failed_open_args = open_args_snapshot;
+    return result;
+}
+
+UiManagerPanelMapStatus UiManagerPanelMap::RecordCapacityFailure(
+    UiPanelId panel_id,
+    const UiPanelOpenArgsSnapshot &open_args_snapshot) {
+    ++snapshot_.rejected_operation_count;
+    ++snapshot_.failed_operation_count;
+    snapshot_.last_failed_panel_id = panel_id;
+    snapshot_.last_failed_open_args = open_args_snapshot;
+    snapshot_.last_status = UiManagerPanelMapStatus::CapacityExceeded;
+    return UiManagerPanelMapStatus::CapacityExceeded;
+}
+
 UiManagerPanelMapStatus UiManagerPanelMap::RecordFailure(UiManagerPanelMapStatus status) {
+    ClearCapacityEntry();
     ++snapshot_.rejected_operation_count;
     ++snapshot_.failed_operation_count;
     snapshot_.last_status = status;
@@ -477,7 +499,13 @@ void UiManagerPanelMap::RecordOpenArgsAccepted(const UiPanelOpenArgsSnapshot &op
     }
 }
 
+void UiManagerPanelMap::ClearCapacityEntry() {
+    snapshot_.last_failed_panel_id = UiPanelId{};
+    snapshot_.last_failed_open_args = UiPanelOpenArgsSnapshot{};
+}
+
 void UiManagerPanelMap::RecordSuccess() {
+    ClearCapacityEntry();
     ++snapshot_.accepted_operation_count;
     snapshot_.last_status = UiManagerPanelMapStatus::Success;
 }

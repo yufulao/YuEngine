@@ -67,6 +67,8 @@ constexpr const char *TEST_RELEASE_CLEARS =
     "UiRuntime_ManagerPanelMap_ReleaseClearsLoadedControllerAndArgs";
 constexpr const char *TEST_RELEASE_ACTIVE_REOPEN =
     "UiRuntime_ManagerPanelMap_ReleaseActiveAndReopenUsesNewLifecycle";
+constexpr const char *TEST_CAPACITY_ENTRY =
+    "UiRuntime_ManagerPanelMap_CapacityFailureReportsRejectedOpen";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 
@@ -238,6 +240,43 @@ int RequireEmptyOpenArgs(
     }
 
     return 0;
+}
+
+int RequireOpenArgsSnapshot(
+    const UiPanelOpenArgsSnapshot &snapshot,
+    std::uint32_t request_key,
+    std::span<const std::uint32_t> values,
+    std::string_view message) {
+    if (snapshot.request_key != request_key) {
+        return Fail(message);
+    }
+
+    const std::uint32_t value_count = static_cast<std::uint32_t>(values.size());
+    if (snapshot.value_count != value_count) {
+        return Fail(message);
+    }
+
+    if (!snapshot.has_args) {
+        return Fail(message);
+    }
+
+    for (std::uint32_t index = 0U; index < snapshot.value_count; ++index) {
+        if (snapshot.values[index] != values[index]) {
+            return Fail(message);
+        }
+    }
+
+    return 0;
+}
+
+int RequireCapacityEntryClear(
+    const UiManagerPanelMapSnapshot &snapshot,
+    std::string_view message) {
+    if (snapshot.last_failed_panel_id.value != 0U) {
+        return Fail(message);
+    }
+
+    return RequireEmptyOpenArgs(snapshot.last_failed_open_args, message);
 }
 
 int RunOpenCloseReopenRetainsLoadedControllerTest() {
@@ -605,6 +644,141 @@ int RunReleaseActiveAndReopenUsesNewLifecycleTest() {
     return 0;
 }
 
+int RunCapacityFailureReportsRejectedOpenTest() {
+    UiPanelRegistry registry;
+    UiManagerLayerModel layer_model;
+
+    const UiPanelRegistryResult first_panel_result =
+        registry.RegisterPanel(PanelRecord(821U, 100U, 200U, 300U));
+    if (!first_panel_result.Succeeded()) {
+        return Fail("first panel register failed");
+    }
+
+    const UiPanelRegistryResult rejected_panel_result =
+        registry.RegisterPanel(PanelRecord(822U, 101U, 201U, 301U));
+    if (!rejected_panel_result.Succeeded()) {
+        return Fail("rejected panel register failed");
+    }
+
+    std::array<UiManagerLayerRecord, 2U> layers{};
+    layers[0U] = LayerRecord(17U, UiManagerLayerType::Popup, 30, 907U);
+    layers[1U] = LayerRecord(18U, UiManagerLayerType::Debug, 31, 908U);
+    UiManagerLayerSet layer_set{};
+    layer_set.records = std::span<const UiManagerLayerRecord>(layers.data(), layers.size());
+    if (!layer_model.RegisterLayerSet(layer_set).Succeeded()) {
+        return Fail("layer register failed");
+    }
+
+    if (!layer_model.BindPanelToLayer(PanelBinding(821U, 17U)).Succeeded()) {
+        return Fail("first panel layer binding failed");
+    }
+
+    if (!layer_model.BindPanelToLayer(PanelBinding(822U, 18U)).Succeeded()) {
+        return Fail("rejected panel layer binding failed");
+    }
+
+    UiManagerPanelMapDesc desc{};
+    desc.panel_capacity = 1U;
+    UiManagerPanelMap panel_map(desc);
+    TestPanelController first_controller;
+    TestPanelController rejected_controller;
+    UiManagerPanelMapResult result =
+        panel_map.OpenPanel(PanelId(821U), registry, layer_model, &first_controller);
+    if (!result.Succeeded()) {
+        return Fail("capacity entry first open failed");
+    }
+
+    std::array<std::uint32_t, 2U> values{41U, 43U};
+    const std::span<const std::uint32_t> value_span(values.data(), values.size());
+    const UiPanelOpenArgs open_args = OpenArgs(9201U, value_span);
+    result = panel_map.OpenPanelWithArgs(PanelId(822U), registry, layer_model, &rejected_controller, open_args);
+    if (RequireStatus(result.status, UiManagerPanelMapStatus::CapacityExceeded, "capacity status mismatch") != 0) {
+        return 1;
+    }
+
+    if (result.failed_panel_id.value != 822U) {
+        return Fail("capacity result panel mismatch");
+    }
+
+    if (RequireOpenArgsSnapshot(result.failed_open_args, 9201U, value_span, "capacity result args mismatch") != 0) {
+        return 1;
+    }
+
+    if (rejected_controller.Snapshot().open_count != 0U) {
+        return Fail("capacity failure opened rejected controller");
+    }
+
+    UiManagerPanelMapSnapshot snapshot = panel_map.Snapshot();
+    if (snapshot.last_status != UiManagerPanelMapStatus::CapacityExceeded ||
+        snapshot.last_failed_panel_id.value != 822U ||
+        snapshot.loaded_panel_count != 1U ||
+        snapshot.active_panel_count != 1U) {
+        return Fail("capacity snapshot identity mismatch");
+    }
+
+    if (RequireOpenArgsSnapshot(snapshot.last_failed_open_args, 9201U, value_span, "capacity snapshot args mismatch") != 0) {
+        return 1;
+    }
+
+    TestPanelController unused_controller;
+    result = panel_map.OpenPanel(PanelId(821U), registry, layer_model, &unused_controller);
+    if (!result.Succeeded() || !result.already_active) {
+        return Fail("idempotent open after capacity failed");
+    }
+
+    snapshot = panel_map.Snapshot();
+    if (RequireCapacityEntryClear(snapshot, "idempotent open left stale capacity entry") != 0) {
+        return 1;
+    }
+
+    result = panel_map.OpenPanelWithArgs(PanelId(822U), registry, layer_model, &rejected_controller, open_args);
+    if (result.status != UiManagerPanelMapStatus::CapacityExceeded) {
+        return Fail("second capacity setup failed");
+    }
+
+    result = panel_map.ClosePanel(UiPanelId{});
+    if (result.status != UiManagerPanelMapStatus::InvalidPanelId) {
+        return Fail("invalid close status mismatch");
+    }
+
+    snapshot = panel_map.Snapshot();
+    if (RequireCapacityEntryClear(snapshot, "invalid close left stale capacity entry") != 0) {
+        return 1;
+    }
+
+    result = panel_map.OpenPanelWithArgs(PanelId(822U), registry, layer_model, &rejected_controller, open_args);
+    if (result.status != UiManagerPanelMapStatus::CapacityExceeded) {
+        return Fail("third capacity setup failed");
+    }
+
+    result = panel_map.ReleasePanel(PanelId(999U));
+    if (result.status != UiManagerPanelMapStatus::PanelNotLoaded) {
+        return Fail("missing release status mismatch");
+    }
+
+    snapshot = panel_map.Snapshot();
+    if (RequireCapacityEntryClear(snapshot, "missing release left stale capacity entry") != 0) {
+        return 1;
+    }
+
+    result = panel_map.OpenPanelWithArgs(PanelId(822U), registry, layer_model, &rejected_controller, open_args);
+    if (result.status != UiManagerPanelMapStatus::CapacityExceeded) {
+        return Fail("fourth capacity setup failed");
+    }
+
+    result = panel_map.ClosePanel(PanelId(821U));
+    if (!result.Succeeded()) {
+        return Fail("close after capacity failed");
+    }
+
+    snapshot = panel_map.Snapshot();
+    if (RequireCapacityEntryClear(snapshot, "success close left stale capacity entry") != 0) {
+        return 1;
+    }
+
+    return 0;
+}
+
 int RunNamedTest(std::string_view test_name) {
     if (test_name == TEST_OPEN_CLOSE_REOPEN) {
         return RunOpenCloseReopenRetainsLoadedControllerTest();
@@ -628,6 +802,10 @@ int RunNamedTest(std::string_view test_name) {
 
     if (test_name == TEST_RELEASE_ACTIVE_REOPEN) {
         return RunReleaseActiveAndReopenUsesNewLifecycleTest();
+    }
+
+    if (test_name == TEST_CAPACITY_ENTRY) {
+        return RunCapacityFailureReportsRejectedOpenTest();
     }
 
     return Fail(ERROR_UNKNOWN_TEST_NAME);
