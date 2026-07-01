@@ -702,22 +702,33 @@ UiManagerFullscreenStackResult UiManagerFullscreenStack::ReleaseFullscreenPanel(
         already_in_stack);
 }
 
-UiManagerFullscreenStackStatus UiManagerFullscreenStack::ExportFullscreenOrder(
+UiManagerFullscreenStackResult UiManagerFullscreenStack::ExportFullscreenOrder(
     UiPanelId *output_panel_ids,
-    std::uint32_t output_capacity) const {
+    std::uint32_t output_capacity) {
+    UiManagerFullscreenStackResult result{};
+    result.fullscreen_count = snapshot_.fullscreen_count;
+    result.required_fullscreen_order_count = snapshot_.fullscreen_count;
+    result.top_panel_id = snapshot_.top_panel_id;
+
     if (snapshot_.fullscreen_count > 0U && output_panel_ids == nullptr) {
-        return UiManagerFullscreenStackStatus::InvalidOutputBuffer;
+        snapshot_.last_required_fullscreen_order_count = snapshot_.fullscreen_count;
+        result.status = UiManagerFullscreenStackStatus::InvalidOutputBuffer;
+        return result;
     }
 
     if (output_capacity < snapshot_.fullscreen_count) {
-        return UiManagerFullscreenStackStatus::InvalidOutputBuffer;
+        snapshot_.last_required_fullscreen_order_count = snapshot_.fullscreen_count;
+        result.status = UiManagerFullscreenStackStatus::InvalidOutputBuffer;
+        return result;
     }
 
     for (std::uint32_t index = 0U; index < snapshot_.fullscreen_count; ++index) {
         output_panel_ids[index] = snapshot_.fullscreen_order[index];
     }
 
-    return UiManagerFullscreenStackStatus::Success;
+    snapshot_.last_required_fullscreen_order_count = 0U;
+    result.status = UiManagerFullscreenStackStatus::Success;
+    return result;
 }
 
 bool UiManagerFullscreenStack::IsFullscreenStacked(UiPanelId panel_id) const {
@@ -1096,6 +1107,7 @@ UiManagerFullscreenStackResult UiManagerFullscreenStack::MakeResult(
 }
 
 UiManagerFullscreenStackStatus UiManagerFullscreenStack::RecordFailure(UiManagerFullscreenStackStatus status) {
+    snapshot_.last_required_fullscreen_order_count = 0U;
     ++snapshot_.failed_operation_count;
     ++snapshot_.rejected_operation_count;
     snapshot_.last_status = status;
@@ -1103,6 +1115,7 @@ UiManagerFullscreenStackStatus UiManagerFullscreenStack::RecordFailure(UiManager
 }
 
 void UiManagerFullscreenStack::RecordSuccess() {
+    snapshot_.last_required_fullscreen_order_count = 0U;
     ++snapshot_.accepted_operation_count;
     snapshot_.last_status = UiManagerFullscreenStackStatus::Success;
 }

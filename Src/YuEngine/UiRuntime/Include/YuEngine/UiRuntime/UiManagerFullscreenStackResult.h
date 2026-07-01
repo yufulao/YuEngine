@@ -20,6 +20,7 @@ struct UiManagerFullscreenStackResult final {
     UiPanelId restored_panel_id;
     UiPanelId top_panel_id;
     std::uint32_t fullscreen_count = 0U;
+    std::uint32_t required_fullscreen_order_count = 0U;
     bool pushed = false;
     bool moved_to_top = false;
     bool navigated_back = false;

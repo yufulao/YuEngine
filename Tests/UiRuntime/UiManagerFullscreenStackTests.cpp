@@ -223,14 +223,18 @@ int RegisterPanelAndBind(
 }
 
 int RequireFullscreenOrder(
-    const UiManagerFullscreenStack &fullscreen_stack,
+    UiManagerFullscreenStack &fullscreen_stack,
     std::span<const std::uint32_t> expected_order,
     std::string_view message) {
     std::array<UiPanelId, MAX_UI_MANAGER_FULLSCREEN_STACK_COUNT> output_order{};
     const std::uint32_t expected_count = static_cast<std::uint32_t>(expected_order.size());
-    const UiManagerFullscreenStackStatus export_status =
+    const UiManagerFullscreenStackResult export_result =
         fullscreen_stack.ExportFullscreenOrder(output_order.data(), expected_count);
-    if (export_status != UiManagerFullscreenStackStatus::Success) {
+    if (export_result.status != UiManagerFullscreenStackStatus::Success) {
+        return Fail(message);
+    }
+
+    if (export_result.required_fullscreen_order_count != expected_count) {
         return Fail(message);
     }
 
@@ -378,9 +382,22 @@ int RunOpenPushesFullscreenOrderTest() {
     }
 
     std::array<UiPanelId, 2U> small_order{};
-    const UiManagerFullscreenStackStatus small_export =
+    const UiManagerFullscreenStackResult small_export =
         fullscreen_stack.ExportFullscreenOrder(small_order.data(), static_cast<std::uint32_t>(small_order.size()));
-    return RequireStatus(small_export, UiManagerFullscreenStackStatus::InvalidOutputBuffer, "small fullscreen export status mismatch");
+    if (RequireStatus(small_export.status, UiManagerFullscreenStackStatus::InvalidOutputBuffer, "small fullscreen export status mismatch") != 0) {
+        return 1;
+    }
+
+    if (small_export.required_fullscreen_order_count != 3U || small_export.fullscreen_count != 3U) {
+        return Fail("small fullscreen export required count mismatch");
+    }
+
+    const UiManagerFullscreenStackSnapshot failed_export_snapshot = fullscreen_stack.Snapshot();
+    if (failed_export_snapshot.last_required_fullscreen_order_count != 3U) {
+        return Fail("small fullscreen export snapshot required count mismatch");
+    }
+
+    return 0;
 }
 
 int RunNavigateBackRestoresPreviousFullscreenTest() {

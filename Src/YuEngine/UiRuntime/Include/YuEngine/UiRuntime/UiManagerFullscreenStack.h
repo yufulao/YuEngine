@@ -99,11 +99,11 @@ public:
      * @comment 导出 fullscreen 顺序，索引越大越靠近当前 fullscreen。
      * @param output_panel_ids 输出 panel id。
      * @param output_capacity 输出容量。
-     * @return 显式导出状态。
+     * @return 显式导出结果。
      */
-    UiManagerFullscreenStackStatus ExportFullscreenOrder(
+    UiManagerFullscreenStackResult ExportFullscreenOrder(
         UiPanelId *output_panel_ids,
-        std::uint32_t output_capacity) const;
+        std::uint32_t output_capacity);
 
     /**
      * @comment 查询 fullscreen 是否在 stack 中。

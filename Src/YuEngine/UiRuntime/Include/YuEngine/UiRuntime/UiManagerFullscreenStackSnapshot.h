@@ -16,6 +16,7 @@ struct UiManagerFullscreenStackSnapshot final {
     UiPanelId top_panel_id;
     std::uint32_t fullscreen_capacity = MAX_UI_MANAGER_FULLSCREEN_STACK_COUNT;
     std::uint32_t fullscreen_count = 0U;
+    std::uint32_t last_required_fullscreen_order_count = 0U;
     std::uint32_t open_operation_count = 0U;
     std::uint32_t back_navigation_operation_count = 0U;
     std::uint32_t close_operation_count = 0U;
