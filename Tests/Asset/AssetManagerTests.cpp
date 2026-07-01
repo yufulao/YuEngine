@@ -64,6 +64,8 @@ using yuengine::streaming::ResourceDecodedTextureBridgeStatus;
 
 namespace {
 constexpr const char *TEST_REGISTER = "Asset_RegisterRuntimeAsset_ReturnsStableHandleAndState";
+constexpr const char *TEST_REGISTRATION_CAPACITY_ENTRY =
+    "Asset_RegisterRuntimeAssetCapacityEntryPreservesRejectedIdentity";
 constexpr const char *TEST_DEPENDENCIES = "Asset_DependenciesTraverseBoundedAndRejectCycle";
 constexpr const char *TEST_TEXTURE_READY =
     "Asset_TextureReadyRecordUsesStreamingResultWithoutOwningDevice";
@@ -125,6 +127,22 @@ AssetRegistrationResult RegisterAsset(
     ResourceTypeId resource_type) {
     const AssetDescriptor descriptor = MakeAssetDescriptor(stable_id, asset_type, resource, resource_type);
     return manager.RegisterRuntimeAsset(&registry, descriptor);
+}
+
+bool DoResourceHandlesMatch(ResourceHandle left, ResourceHandle right) {
+    if (left.slot != right.slot) {
+        return false;
+    }
+
+    return left.generation == right.generation;
+}
+
+bool DoAssetHandlesMatch(AssetHandle left, AssetHandle right) {
+    if (left.slot != right.slot) {
+        return false;
+    }
+
+    return left.generation == right.generation;
 }
 
 ResourceDecodedPayloadRecord MakeDecodedPayloadRecord(
@@ -365,6 +383,287 @@ int AssetRegisterRuntimeAssetReturnsStableHandleAndState() {
         capacity_snapshot.last_required_type_count != 0U ||
         capacity_snapshot.last_required_dependency_edge_count != 0U) {
         return Fail("successful registration left stale required counts");
+    }
+
+    return 0;
+}
+
+int AssetRegisterRuntimeAssetCapacityEntryPreservesRejectedIdentity() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult first_asset_resource =
+        RegisterResource(registry, 21U, RESOURCE_TYPE_TEXTURE);
+    const ResourceRegistrationResult asset_capacity_resource =
+        RegisterResource(registry, 22U, RESOURCE_TYPE_AUDIO);
+    if (!first_asset_resource.Succeeded() || !asset_capacity_resource.Succeeded()) {
+        return Fail("registration capacity entry resource setup failed");
+    }
+
+    AssetManager asset_capacity_manager(AssetManagerDesc{1U, 2U, 3U});
+    const AssetRegistrationResult first_asset = RegisterAsset(
+        asset_capacity_manager,
+        registry,
+        9101U,
+        ASSET_TYPE_TEXTURE,
+        first_asset_resource.handle,
+        RESOURCE_TYPE_TEXTURE);
+    if (!first_asset.Succeeded()) {
+        return Fail("registration capacity entry setup asset failed");
+    }
+
+    const AssetRegistrationResult asset_capacity_result = RegisterAsset(
+        asset_capacity_manager,
+        registry,
+        9102U,
+        ASSET_TYPE_AUDIO,
+        asset_capacity_resource.handle,
+        RESOURCE_TYPE_AUDIO);
+    if (asset_capacity_result.status != AssetStatus::CapacityExceeded) {
+        return Fail("asset capacity entry did not return capacity status");
+    }
+
+    if (asset_capacity_result.required_asset_count != 2U ||
+        asset_capacity_result.required_type_count != 2U ||
+        asset_capacity_result.required_dependency_edge_count != 0U) {
+        return Fail("asset capacity entry did not preserve required counts");
+    }
+
+    if (asset_capacity_result.capacity_entry_asset_id != 9102U) {
+        return Fail("asset capacity entry did not preserve rejected asset id");
+    }
+
+    if (!DoResourceHandlesMatch(asset_capacity_result.capacity_entry_resource_handle, asset_capacity_resource.handle)) {
+        return Fail("asset capacity entry did not preserve rejected resource handle");
+    }
+
+    if (asset_capacity_result.capacity_entry_resource_type.value != RESOURCE_TYPE_AUDIO.value) {
+        return Fail("asset capacity entry did not preserve rejected resource type");
+    }
+
+    if (asset_capacity_result.capacity_entry_asset_type.value != ASSET_TYPE_AUDIO.value) {
+        return Fail("asset capacity entry did not preserve rejected asset type");
+    }
+
+    if (asset_capacity_result.capacity_entry_asset_capacity != 1U ||
+        asset_capacity_result.capacity_entry_type_capacity != 2U ||
+        asset_capacity_result.capacity_entry_dependency_edge_capacity != 3U) {
+        return Fail("asset capacity entry did not preserve capacities");
+    }
+
+    if (asset_capacity_result.capacity_entry_asset_count != 1U ||
+        asset_capacity_result.capacity_entry_type_count != 1U ||
+        asset_capacity_result.capacity_entry_dependency_edge_count != 0U) {
+        return Fail("asset capacity entry did not preserve current counts");
+    }
+
+    AssetSnapshot snapshot = asset_capacity_manager.Snapshot();
+    if (snapshot.active_asset_count != 1U || snapshot.type_count != 1U) {
+        return Fail("asset capacity entry mutated accepted counters");
+    }
+
+    if (snapshot.last_capacity_entry_asset_id != 9102U ||
+        !DoResourceHandlesMatch(snapshot.last_capacity_entry_resource_handle, asset_capacity_resource.handle) ||
+        snapshot.last_capacity_entry_resource_type.value != RESOURCE_TYPE_AUDIO.value ||
+        snapshot.last_capacity_entry_asset_type.value != ASSET_TYPE_AUDIO.value) {
+        return Fail("asset capacity snapshot did not preserve rejected identity");
+    }
+
+    if (snapshot.last_capacity_entry_asset_capacity != 1U ||
+        snapshot.last_capacity_entry_type_capacity != 2U ||
+        snapshot.last_capacity_entry_dependency_edge_capacity != 3U ||
+        snapshot.last_capacity_entry_asset_count != 1U ||
+        snapshot.last_capacity_entry_type_count != 1U ||
+        snapshot.last_capacity_entry_dependency_edge_count != 0U) {
+        return Fail("asset capacity snapshot did not preserve capacity entry counts");
+    }
+
+    const AssetRegistrationResult duplicate_result = RegisterAsset(
+        asset_capacity_manager,
+        registry,
+        9101U,
+        ASSET_TYPE_TEXTURE,
+        first_asset_resource.handle,
+        RESOURCE_TYPE_TEXTURE);
+    if (duplicate_result.status != AssetStatus::DuplicateAsset) {
+        return Fail("duplicate asset did not clear capacity entry through non-capacity status");
+    }
+
+    snapshot = asset_capacity_manager.Snapshot();
+    if (snapshot.last_capacity_entry_asset_id != 0U ||
+        snapshot.last_capacity_entry_resource_handle.IsValid() ||
+        snapshot.last_capacity_entry_resource_type.IsValid() ||
+        snapshot.last_capacity_entry_asset_type.IsValid()) {
+        return Fail("duplicate asset left stale registration capacity entry");
+    }
+
+    const ResourceRegistrationResult type_capacity_resource =
+        RegisterResource(registry, 23U, RESOURCE_TYPE_TEXTURE);
+    const ResourceRegistrationResult type_overflow_resource =
+        RegisterResource(registry, 24U, RESOURCE_TYPE_AUDIO);
+    const ResourceRegistrationResult recovery_resource =
+        RegisterResource(registry, 25U, RESOURCE_TYPE_TEXTURE);
+    if (!type_capacity_resource.Succeeded() ||
+        !type_overflow_resource.Succeeded() ||
+        !recovery_resource.Succeeded()) {
+        return Fail("type capacity entry resource setup failed");
+    }
+
+    AssetManager type_capacity_manager(AssetManagerDesc{3U, 1U, 4U});
+    const AssetRegistrationResult first_type_asset = RegisterAsset(
+        type_capacity_manager,
+        registry,
+        9201U,
+        ASSET_TYPE_TEXTURE,
+        type_capacity_resource.handle,
+        RESOURCE_TYPE_TEXTURE);
+    if (!first_type_asset.Succeeded()) {
+        return Fail("type capacity entry setup asset failed");
+    }
+
+    const AssetRegistrationResult type_capacity_result = RegisterAsset(
+        type_capacity_manager,
+        registry,
+        9202U,
+        ASSET_TYPE_AUDIO,
+        type_overflow_resource.handle,
+        RESOURCE_TYPE_AUDIO);
+    if (type_capacity_result.status != AssetStatus::CapacityExceeded) {
+        return Fail("type capacity entry did not return capacity status");
+    }
+
+    if (type_capacity_result.capacity_entry_asset_id != 9202U ||
+        !DoResourceHandlesMatch(type_capacity_result.capacity_entry_resource_handle, type_overflow_resource.handle) ||
+        type_capacity_result.capacity_entry_resource_type.value != RESOURCE_TYPE_AUDIO.value ||
+        type_capacity_result.capacity_entry_asset_type.value != ASSET_TYPE_AUDIO.value) {
+        return Fail("type capacity entry did not preserve rejected identity");
+    }
+
+    if (type_capacity_result.capacity_entry_asset_capacity != 3U ||
+        type_capacity_result.capacity_entry_type_capacity != 1U ||
+        type_capacity_result.capacity_entry_dependency_edge_capacity != 4U ||
+        type_capacity_result.capacity_entry_asset_count != 1U ||
+        type_capacity_result.capacity_entry_type_count != 1U ||
+        type_capacity_result.capacity_entry_dependency_edge_count != 0U) {
+        return Fail("type capacity entry did not preserve capacity counts");
+    }
+
+    const ResourceHandle invalid_resource{99U, 1U};
+    const AssetRegistrationResult invalid_resource_result = RegisterAsset(
+        type_capacity_manager,
+        registry,
+        9203U,
+        ASSET_TYPE_TEXTURE,
+        invalid_resource,
+        RESOURCE_TYPE_TEXTURE);
+    if (invalid_resource_result.status != AssetStatus::ResourceAcquireFailed) {
+        return Fail("invalid resource did not clear registration capacity entry");
+    }
+
+    snapshot = type_capacity_manager.Snapshot();
+    if (snapshot.last_capacity_entry_asset_id != 0U ||
+        snapshot.last_capacity_entry_resource_handle.IsValid() ||
+        snapshot.last_capacity_entry_resource_type.IsValid() ||
+        snapshot.last_capacity_entry_asset_type.IsValid()) {
+        return Fail("invalid resource left stale registration capacity entry");
+    }
+
+    const AssetRegistrationResult recovery_result = RegisterAsset(
+        type_capacity_manager,
+        registry,
+        9204U,
+        ASSET_TYPE_TEXTURE,
+        recovery_resource.handle,
+        RESOURCE_TYPE_TEXTURE);
+    if (!recovery_result.Succeeded()) {
+        return Fail("registration capacity entry recovery failed");
+    }
+
+    snapshot = type_capacity_manager.Snapshot();
+    if (snapshot.last_capacity_entry_asset_id != 0U ||
+        snapshot.last_capacity_entry_resource_handle.IsValid() ||
+        snapshot.last_capacity_entry_resource_type.IsValid() ||
+        snapshot.last_capacity_entry_asset_type.IsValid()) {
+        return Fail("successful registration left stale capacity entry");
+    }
+
+    const ResourceRegistrationResult dependency_resource_a =
+        RegisterResource(registry, 26U, RESOURCE_TYPE_TEXTURE);
+    const ResourceRegistrationResult dependency_resource_b =
+        RegisterResource(registry, 27U, RESOURCE_TYPE_TEXTURE);
+    const ResourceRegistrationResult dependency_resource_c =
+        RegisterResource(registry, 28U, RESOURCE_TYPE_TEXTURE);
+    if (!dependency_resource_a.Succeeded() ||
+        !dependency_resource_b.Succeeded() ||
+        !dependency_resource_c.Succeeded()) {
+        return Fail("dependency capacity entry resource setup failed");
+    }
+
+    AssetManager dependency_manager(AssetManagerDesc{3U, 1U, 1U});
+    const AssetRegistrationResult dependency_asset_a = RegisterAsset(
+        dependency_manager,
+        registry,
+        9301U,
+        ASSET_TYPE_TEXTURE,
+        dependency_resource_a.handle,
+        RESOURCE_TYPE_TEXTURE);
+    const AssetRegistrationResult dependency_asset_b = RegisterAsset(
+        dependency_manager,
+        registry,
+        9302U,
+        ASSET_TYPE_TEXTURE,
+        dependency_resource_b.handle,
+        RESOURCE_TYPE_TEXTURE);
+    const AssetRegistrationResult dependency_asset_c = RegisterAsset(
+        dependency_manager,
+        registry,
+        9303U,
+        ASSET_TYPE_TEXTURE,
+        dependency_resource_c.handle,
+        RESOURCE_TYPE_TEXTURE);
+    if (!dependency_asset_a.Succeeded() || !dependency_asset_b.Succeeded() || !dependency_asset_c.Succeeded()) {
+        return Fail("dependency capacity entry asset setup failed");
+    }
+
+    if (dependency_manager.AddDependency(dependency_asset_a.handle, dependency_asset_b.handle) !=
+        AssetStatus::Success) {
+        return Fail("dependency capacity entry setup edge failed");
+    }
+
+    if (dependency_manager.AddDependency(dependency_asset_a.handle, dependency_asset_c.handle) !=
+        AssetStatus::CapacityExceeded) {
+        return Fail("dependency capacity entry did not return capacity status");
+    }
+
+    snapshot = dependency_manager.Snapshot();
+    if (snapshot.last_required_dependency_edge_count != 2U ||
+        snapshot.active_dependency_edge_count != 1U) {
+        return Fail("dependency capacity entry did not preserve required count");
+    }
+
+    if (!DoAssetHandlesMatch(snapshot.last_capacity_entry_dependent_asset, dependency_asset_a.handle) ||
+        !DoAssetHandlesMatch(snapshot.last_capacity_entry_dependency_asset, dependency_asset_c.handle)) {
+        return Fail("dependency capacity snapshot did not preserve rejected handles");
+    }
+
+    if (snapshot.last_capacity_entry_asset_capacity != 3U ||
+        snapshot.last_capacity_entry_type_capacity != 1U ||
+        snapshot.last_capacity_entry_dependency_edge_capacity != 1U ||
+        snapshot.last_capacity_entry_asset_count != 3U ||
+        snapshot.last_capacity_entry_type_count != 1U ||
+        snapshot.last_capacity_entry_dependency_edge_count != 1U) {
+        return Fail("dependency capacity snapshot did not preserve capacity counts");
+    }
+
+    if (dependency_manager.AddDependency(dependency_asset_a.handle, AssetHandle{99U, 1U}) !=
+        AssetStatus::InvalidHandle) {
+        return Fail("invalid dependency did not clear capacity entry");
+    }
+
+    snapshot = dependency_manager.Snapshot();
+    if (snapshot.last_capacity_entry_dependent_asset.IsValid() ||
+        snapshot.last_capacity_entry_dependency_asset.IsValid() ||
+        snapshot.last_capacity_entry_asset_capacity != 0U ||
+        snapshot.last_capacity_entry_dependency_edge_count != 0U) {
+        return Fail("invalid dependency left stale capacity entry");
     }
 
     return 0;
@@ -1025,6 +1324,7 @@ int AssetNoWorldGameAdapterUiDependency() {
 
 const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_REGISTER, AssetRegisterRuntimeAssetReturnsStableHandleAndState},
+    {TEST_REGISTRATION_CAPACITY_ENTRY, AssetRegisterRuntimeAssetCapacityEntryPreservesRejectedIdentity},
     {TEST_DEPENDENCIES, AssetDependenciesTraverseBoundedAndRejectCycle},
     {TEST_TEXTURE_READY, AssetTextureReadyRecordUsesStreamingResultWithoutOwningDevice},
     {TEST_AUDIO_READY, AssetAudioReadyRecordUsesImportRecordWithoutOwningDevice},

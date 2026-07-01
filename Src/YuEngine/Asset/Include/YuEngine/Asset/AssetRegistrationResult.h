@@ -7,6 +7,9 @@
 
 #include "YuEngine/Asset/AssetHandle.h"
 #include "YuEngine/Asset/AssetStatus.h"
+#include "YuEngine/Asset/AssetTypeId.h"
+#include "YuEngine/Resource/ResourceHandle.h"
+#include "YuEngine/Resource/ResourceTypeId.h"
 
 namespace yuengine::asset {
 struct AssetRegistrationResult final {
@@ -15,6 +18,16 @@ struct AssetRegistrationResult final {
     std::uint32_t required_asset_count = 0U;
     std::uint32_t required_type_count = 0U;
     std::uint32_t required_dependency_edge_count = 0U;
+    std::uint64_t capacity_entry_asset_id = 0U;
+    yuengine::resource::ResourceHandle capacity_entry_resource_handle;
+    yuengine::resource::ResourceTypeId capacity_entry_resource_type;
+    AssetTypeId capacity_entry_asset_type;
+    std::uint32_t capacity_entry_asset_capacity = 0U;
+    std::uint32_t capacity_entry_type_capacity = 0U;
+    std::uint32_t capacity_entry_dependency_edge_capacity = 0U;
+    std::uint32_t capacity_entry_asset_count = 0U;
+    std::uint32_t capacity_entry_type_count = 0U;
+    std::uint32_t capacity_entry_dependency_edge_count = 0U;
 
     /**
      * @comment 创建成功结果。

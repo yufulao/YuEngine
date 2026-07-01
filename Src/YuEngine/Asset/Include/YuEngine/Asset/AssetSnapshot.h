@@ -5,12 +5,16 @@
 
 #include <cstdint>
 
+#include "YuEngine/Asset/AssetHandle.h"
 #include "YuEngine/Asset/AssetStatus.h"
+#include "YuEngine/Asset/AssetTypeId.h"
 #include "YuEngine/AudioResource/AudioResourcePcmPacketImportStatus.h"
 #include "YuEngine/Memory/MemoryAccountingStatus.h"
 #include "YuEngine/Resource/ResourceLoadCommitStatus.h"
+#include "YuEngine/Resource/ResourceHandle.h"
 #include "YuEngine/Resource/ResourceResidencyStatus.h"
 #include "YuEngine/Resource/ResourceStatus.h"
+#include "YuEngine/Resource/ResourceTypeId.h"
 #include "YuEngine/Streaming/ResourceDecodedTextureBridgeStatus.h"
 
 namespace yuengine::asset {
@@ -25,6 +29,18 @@ struct AssetSnapshot final {
     std::uint32_t last_required_asset_count = 0U;
     std::uint32_t last_required_type_count = 0U;
     std::uint32_t last_required_dependency_edge_count = 0U;
+    std::uint64_t last_capacity_entry_asset_id = 0U;
+    yuengine::resource::ResourceHandle last_capacity_entry_resource_handle;
+    yuengine::resource::ResourceTypeId last_capacity_entry_resource_type;
+    AssetTypeId last_capacity_entry_asset_type;
+    AssetHandle last_capacity_entry_dependent_asset;
+    AssetHandle last_capacity_entry_dependency_asset;
+    std::uint32_t last_capacity_entry_asset_capacity = 0U;
+    std::uint32_t last_capacity_entry_type_capacity = 0U;
+    std::uint32_t last_capacity_entry_dependency_edge_capacity = 0U;
+    std::uint32_t last_capacity_entry_asset_count = 0U;
+    std::uint32_t last_capacity_entry_type_count = 0U;
+    std::uint32_t last_capacity_entry_dependency_edge_count = 0U;
     std::uint32_t texture_ready_count = 0U;
     std::uint32_t audio_ready_count = 0U;
     std::uint64_t registered_asset_count = 0U;
