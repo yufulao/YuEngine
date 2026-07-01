@@ -411,8 +411,13 @@ int DiagnosticsBoundedChannelRecordsEventsAndCounters() {
         return Fail("bounded diagnostics channel did not report event id capacity");
     }
 
-    if (channel.Snapshot().last_status != DiagnosticsStatus::CapacityExceeded) {
+    const DiagnosticsSnapshot event_capacity_snapshot = channel.Snapshot();
+    if (event_capacity_snapshot.last_status != DiagnosticsStatus::CapacityExceeded) {
         return Fail("event id capacity status was not recorded");
+    }
+
+    if (event_capacity_snapshot.required_event_id_count != ID_CAPACITY + 1U) {
+        return Fail("event id capacity did not expose required count");
     }
 
     const auto counter_capacity_status = channel.RegisterCounterId(DiagnosticsCounterId{UNKNOWN_COUNTER_ID});
@@ -420,8 +425,28 @@ int DiagnosticsBoundedChannelRecordsEventsAndCounters() {
         return Fail("bounded diagnostics channel did not report counter id capacity");
     }
 
-    if (channel.Snapshot().last_status != DiagnosticsStatus::CapacityExceeded) {
+    const DiagnosticsSnapshot counter_capacity_snapshot = channel.Snapshot();
+    if (counter_capacity_snapshot.last_status != DiagnosticsStatus::CapacityExceeded) {
         return Fail("counter id capacity status was not recorded");
+    }
+
+    if (counter_capacity_snapshot.required_counter_id_count != ID_CAPACITY + 1U) {
+        return Fail("counter id capacity did not expose required count");
+    }
+
+    DiagnosticsChannelConfig counter_slot_config = TestChannelConfig();
+    counter_slot_config.counter_capacity = 1U;
+    BoundedDiagnosticsChannel counter_slot_channel(counter_slot_config);
+    counter_slot_channel.RegisterCounterId(DiagnosticsCounterId{COUNTER_ID});
+    const auto counter_slot_status =
+        counter_slot_channel.RegisterCounterId(DiagnosticsCounterId{SECOND_COUNTER_ID});
+    if (counter_slot_status != DiagnosticsStatus::CapacityExceeded) {
+        return Fail("bounded diagnostics channel did not report counter slot capacity");
+    }
+
+    const DiagnosticsSnapshot counter_slot_snapshot = counter_slot_channel.Snapshot();
+    if (counter_slot_snapshot.required_counter_slot_count != 2U) {
+        return Fail("counter slot capacity did not expose required count");
     }
 
     const auto event_status = channel.RecordEvent(DiagnosticsEventId{EVENT_ID}, EVENT_PAYLOAD);
@@ -482,6 +507,10 @@ int DiagnosticsBoundedChannelDropsWhenFull() {
 
     if (snapshot.dropped_event_count != 1U) {
         return Fail("full diagnostics channel did not count dropped event");
+    }
+
+    if (snapshot.required_event_record_count != EVENT_CAPACITY + 1U) {
+        return Fail("full diagnostics channel did not expose required event record count");
     }
 
     if (snapshot.last_status != DiagnosticsStatus::Dropped) {

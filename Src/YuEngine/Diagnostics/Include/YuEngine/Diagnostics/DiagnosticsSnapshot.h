@@ -27,5 +27,9 @@ struct DiagnosticsSnapshot {
     bool stopped;
     memory::MemoryAccountingStatus allocation_accounting_status;
     DiagnosticsStatus last_status = DiagnosticsStatus::Success;
+    std::size_t required_event_id_count = 0U;
+    std::size_t required_counter_id_count = 0U;
+    std::size_t required_counter_slot_count = 0U;
+    std::size_t required_event_record_count = 0U;
 };
 }

@@ -54,6 +54,7 @@ DiagnosticsStatus BoundedDiagnosticsChannel::RegisterEventId(DiagnosticsEventId 
     }
 
     if (accepted_event_id_count_ >= config_.accepted_event_id_capacity) {
+        snapshot_.required_event_id_count = accepted_event_id_count_ + 1U;
         snapshot_.last_status = DiagnosticsStatus::CapacityExceeded;
         return DiagnosticsStatus::CapacityExceeded;
     }
@@ -86,11 +87,13 @@ DiagnosticsStatus BoundedDiagnosticsChannel::RegisterCounterId(DiagnosticsCounte
     }
 
     if (accepted_counter_id_count_ >= config_.accepted_counter_id_capacity) {
+        snapshot_.required_counter_id_count = accepted_counter_id_count_ + 1U;
         snapshot_.last_status = DiagnosticsStatus::CapacityExceeded;
         return DiagnosticsStatus::CapacityExceeded;
     }
 
     if (snapshot_.counter_count >= config_.counter_capacity) {
+        snapshot_.required_counter_slot_count = snapshot_.counter_count + 1U;
         snapshot_.last_status = DiagnosticsStatus::CapacityExceeded;
         return DiagnosticsStatus::CapacityExceeded;
     }
@@ -121,6 +124,7 @@ DiagnosticsStatus BoundedDiagnosticsChannel::RecordEvent(DiagnosticsEventId even
 
     if (snapshot_.event_count >= config_.event_capacity) {
         ++snapshot_.dropped_event_count;
+        snapshot_.required_event_record_count = snapshot_.event_count + 1U;
         snapshot_.last_status = DiagnosticsStatus::Dropped;
         return DiagnosticsStatus::Dropped;
     }
