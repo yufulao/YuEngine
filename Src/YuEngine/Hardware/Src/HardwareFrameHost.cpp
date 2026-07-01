@@ -338,6 +338,8 @@ HardwareFrameHostStatus HardwareFrameHost::CreateRhiDevice() {
     const std::size_t required_size = rhi::RhiDeviceFactory::RequiredDeviceStorageSize(desc_.rhi_desc.backend_kind);
     const std::size_t required_alignment = rhi::RhiDeviceFactory::RequiredDeviceStorageAlignment(
         desc_.rhi_desc.backend_kind);
+    snapshot_.required_rhi_device_storage_bytes = required_size;
+    snapshot_.required_rhi_device_storage_alignment = required_alignment;
     if (required_size == 0U) {
         snapshot_.last_rhi_status = rhi::RhiStatus::UnsupportedBackend;
         return HardwareFrameHostStatus::RhiCreateFailed;

@@ -19,6 +19,8 @@
 #include "YuEngine/Input/InputStatus.h"
 #include "YuEngine/Platform/PlatformWindowEvent.h"
 #include "YuEngine/Platform/PlatformWindowEventType.h"
+#include "YuEngine/Rhi/RhiBackendKind.h"
+#include "YuEngine/Rhi/RhiDeviceFactory.h"
 
 using yuengine::hardware::HardwareFrameHost;
 using yuengine::hardware::HardwareFrameHostDesc;
@@ -33,6 +35,8 @@ using yuengine::input::InputStatus;
 using yuengine::input::MAX_GAMEPAD_DEVICES;
 using yuengine::platform::PlatformWindowEvent;
 using yuengine::platform::PlatformWindowEventType;
+using yuengine::rhi::RhiBackendKind;
+using yuengine::rhi::RhiDeviceFactory;
 
 namespace {
 constexpr const char *TEST_TRANSLATES_INPUT = "HardwareFrameHost_TranslatesInjectedPlatformInput";
@@ -42,6 +46,8 @@ constexpr const char *TEST_GAMEPAD_POLL_INVALID_INDEX = "HardwareFrameHost_Gamep
 constexpr const char *TEST_SHUTDOWN_IDEMPOTENT = "HardwareFrameHost_ShutdownAfterSuccessIsIdempotent";
 constexpr const char *TEST_INVALID_TICK_OUTPUT = "HardwareFrameHost_InvalidTickPreservesCallerOutput";
 constexpr const char *TEST_RESIZE_NO_RENDER = "HardwareFrameHost_ResizeEventWithoutRenderCompletesTick";
+constexpr const char *TEST_RHI_STORAGE_REQUIREMENTS =
+    "HardwareFrameHost_RenderInitializeTracksRhiStorageRequirements";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr std::uint32_t TEST_FRAME_ID = 1U;
@@ -376,6 +382,42 @@ int HardwareFrameHostResizeEventWithoutRenderCompletesTick() {
     return 0;
 }
 
+int HardwareFrameHostRenderInitializeTracksRhiStorageRequirements() {
+    HardwareFrameHost host;
+    HardwareFrameHostDesc desc = FastHostDesc();
+    desc.render_enabled = true;
+    desc.rhi_desc.backend_kind = RhiBackendKind::Null;
+
+    const std::size_t required_size = RhiDeviceFactory::RequiredDeviceStorageSize(desc.rhi_desc.backend_kind);
+    const std::size_t required_alignment = RhiDeviceFactory::RequiredDeviceStorageAlignment(desc.rhi_desc.backend_kind);
+    const HardwareFrameHostStatus init_status = host.Initialize(desc);
+    if (init_status != HardwareFrameHostStatus::Success) {
+        return Fail("hardware frame host render initialize failed");
+    }
+
+    const HardwareFrameHostSnapshot snapshot = host.Snapshot();
+    if (!snapshot.rhi_device_created) {
+        static_cast<void>(host.Shutdown());
+        return Fail("hardware frame host did not create RHI device");
+    }
+
+    if (snapshot.required_rhi_device_storage_bytes != required_size) {
+        static_cast<void>(host.Shutdown());
+        return Fail("hardware frame host missed required RHI storage size");
+    }
+
+    if (snapshot.required_rhi_device_storage_alignment != required_alignment) {
+        static_cast<void>(host.Shutdown());
+        return Fail("hardware frame host missed required RHI storage alignment");
+    }
+
+    if (host.Shutdown() != HardwareFrameHostStatus::Success) {
+        return Fail("hardware frame host shutdown failed");
+    }
+
+    return 0;
+}
+
 int RunNamedTest(std::string_view name) {
     if (name == TEST_TRANSLATES_INPUT) {
         return HardwareFrameHostTranslatesInjectedPlatformInput();
@@ -403,6 +445,10 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_RESIZE_NO_RENDER) {
         return HardwareFrameHostResizeEventWithoutRenderCompletesTick();
+    }
+
+    if (name == TEST_RHI_STORAGE_REQUIREMENTS) {
+        return HardwareFrameHostRenderInitializeTracksRhiStorageRequirements();
     }
 
     return Fail(ERROR_UNKNOWN_TEST_NAME);
