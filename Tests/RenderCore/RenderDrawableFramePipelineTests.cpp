@@ -42,6 +42,7 @@
 using RenderDrawableFramePipeline = yuengine::rendercore::RenderDrawableFramePipeline;
 using RenderDrawableFramePipelineDesc = yuengine::rendercore::RenderDrawableFramePipelineDesc;
 using RenderDrawableFramePipelineRequest = yuengine::rendercore::RenderDrawableFramePipelineRequest;
+using RenderDrawableFramePipelineResult = yuengine::rendercore::RenderDrawableFramePipelineResult;
 using RenderDrawableFramePipelineSnapshot = yuengine::rendercore::RenderDrawableFramePipelineSnapshot;
 using yuengine::rendercore::MaterialBindingFixtureStatus;
 using yuengine::rendercore::RenderDrawableFramePipelineStatus;
@@ -49,6 +50,7 @@ using yuengine::rendercore::RenderFixturePassStatus;
 using yuengine::rendercore::RenderFramePacketFixtureStatus;
 using yuengine::rendercore::RenderViewPacketStatus;
 using yuengine::rendercore::MAX_RENDER_MATERIAL_CONSTANT_BYTES;
+using yuengine::rendercore::RENDER_DRAWABLE_FRAME_PASS_COUNT;
 using yuengine::rhi::IRhiDevice;
 using yuengine::rhi::MAX_RHI_CONSTANT_BUFFER_SLOTS;
 using yuengine::rhi::RhiBackendKind;
@@ -104,6 +106,8 @@ constexpr const char *TEST_INVALID_MATERIAL = "RenderCore_DrawableFramePipeline_
 constexpr const char *TEST_INVALID_DRAW = "RenderCore_DrawableFramePipeline_RejectsInvalidDrawThroughViewPacket";
 constexpr const char *TEST_DUPLICATE_FRAME = "RenderCore_DrawableFramePipeline_RejectsDuplicateFrameThroughFramePacket";
 constexpr const char *TEST_COMMAND_CAPACITY = "RenderCore_DrawableFramePipeline_PropagatesFixtureCommandCapacityFailure";
+constexpr const char *TEST_FRAME_RECORD_CAPACITY =
+    "RenderCore_DrawableFramePipeline_RejectsFrameRecordCapacityWithEntryIdentity";
 constexpr const char *TEST_MATERIAL_CONSTANTS = "RenderCore_DrawableFramePipeline_PropagatesMaterialConstants";
 constexpr const char *TEST_MATERIAL_CONSTANT_REJECTS =
     "RenderCore_DrawableFramePipeline_RejectsOversizedMaterialConstantsWithoutMutation";
@@ -158,6 +162,10 @@ public:
         out_handle = RhiTextureHandle{};
         if (!snapshot_.swapchain.valid) {
             return RhiStatus::InvalidLifecycle;
+        }
+
+        if (swapchain_target_status_ != RhiStatus::Success) {
+            return swapchain_target_status_;
         }
 
         out_handle = target_;
@@ -588,6 +596,10 @@ public:
         snapshot_.swapchain.valid = value;
     }
 
+    void SetSwapchainTargetStatus(RhiStatus status) {
+        swapchain_target_status_ = status;
+    }
+
 private:
     void ResetSwapchain() {
         target_ = RhiTextureHandle{1U, 1U};
@@ -610,6 +622,7 @@ private:
         last_constant_buffer_binding_ = RhiConstantBufferBinding{};
         last_blend_state_ = RhiBlendStateDesc{};
         last_draw_index_count_ = 0U;
+        swapchain_target_status_ = RhiStatus::Success;
         constant_buffer_active_ = false;
         submitted_ = false;
         presented_ = false;
@@ -635,6 +648,7 @@ private:
     RhiConstantBufferBinding last_constant_buffer_binding_{};
     RhiBlendStateDesc last_blend_state_{};
     std::uint32_t last_draw_index_count_ = 0U;
+    RhiStatus swapchain_target_status_ = RhiStatus::Success;
     bool constant_buffer_active_ = false;
     bool submitted_ = false;
     bool presented_ = false;
@@ -672,6 +686,125 @@ bool CaptureWasWritten(const std::vector<std::uint8_t> &capture) {
     }
 
     return false;
+}
+
+bool FrameRecordCapacityFailureIsClear(const RenderDrawableFramePipelineSnapshot &snapshot) {
+    if (snapshot.last_failed_frame_record_frame_id != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_frame_record_pass_id != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_frame_record_material_id != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_frame_record_current_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_frame_record_index != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_frame_record_capacity != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_frame_record_required_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_pass_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_draw_count != 0U) {
+        return false;
+    }
+
+    return true;
+}
+
+bool FrameRecordCapacityFailureMatches(
+    const RenderDrawableFramePipelineResult &result,
+    const RenderDrawableFramePipelineSnapshot &snapshot,
+    std::uint32_t frame_id,
+    std::uint32_t pass_id,
+    std::uint32_t material_id,
+    std::size_t current_count,
+    std::size_t record_index,
+    std::size_t record_capacity,
+    std::size_t required_count,
+    std::size_t pass_count,
+    std::size_t draw_count) {
+    if (result.frame_id != frame_id || result.pass_id != pass_id || result.material_id != material_id) {
+        return false;
+    }
+
+    if (result.frame_record_index != record_index) {
+        return false;
+    }
+
+    if (result.current_frame_record_count != current_count) {
+        return false;
+    }
+
+    if (result.frame_record_capacity != record_capacity) {
+        return false;
+    }
+
+    if (result.required_frame_record_count != required_count) {
+        return false;
+    }
+
+    if (result.pass_count != pass_count) {
+        return false;
+    }
+
+    if (result.draw_count != draw_count) {
+        return false;
+    }
+
+    if (snapshot.last_failed_frame_record_frame_id != frame_id) {
+        return false;
+    }
+
+    if (snapshot.last_failed_frame_record_pass_id != pass_id) {
+        return false;
+    }
+
+    if (snapshot.last_failed_frame_record_material_id != material_id) {
+        return false;
+    }
+
+    if (snapshot.last_failed_frame_record_current_count != current_count) {
+        return false;
+    }
+
+    if (snapshot.last_failed_frame_record_index != record_index) {
+        return false;
+    }
+
+    if (snapshot.last_failed_frame_record_capacity != record_capacity) {
+        return false;
+    }
+
+    if (snapshot.last_failed_frame_record_required_count != required_count) {
+        return false;
+    }
+
+    if (snapshot.last_failed_pass_count != pass_count) {
+        return false;
+    }
+
+    if (snapshot.last_failed_draw_count != draw_count) {
+        return false;
+    }
+
+    return true;
 }
 
 std::array<std::uint8_t, MATERIAL_CONSTANT_BYTE_COUNT> MakeMaterialConstants() {
@@ -738,6 +871,10 @@ int RenderCoreDrawableFramePipelineExecutesMaterialFrameDrawCapture() {
     if (snapshot.last_capture_extent.width != DEFAULT_EXTENT ||
         snapshot.last_capture_extent.height != DEFAULT_EXTENT) {
         return Fail("drawable frame pipeline snapshot did not track capture extent");
+    }
+
+    if (!FrameRecordCapacityFailureIsClear(snapshot)) {
+        return Fail("drawable frame pipeline success did not clear frame record capacity identity");
     }
 
     return 0;
@@ -851,6 +988,10 @@ int RenderCoreDrawableFramePipelineRejectsOversizedMaterialConstantsWithoutMutat
         return Fail("oversized material constants updated wrong failure counters");
     }
 
+    if (!FrameRecordCapacityFailureIsClear(snapshot)) {
+        return Fail("material failure did not clear frame record capacity identity");
+    }
+
     return 0;
 }
 
@@ -867,6 +1008,26 @@ int RenderCoreDrawableFramePipelineRejectsInvalidSwapchainWithoutMutation() {
 
     if (device.Snapshot().submit_count != 0U || device.Snapshot().capture_count != 0U) {
         return Fail("invalid swapchain rejection mutated rhi state");
+    }
+
+    if (!FrameRecordCapacityFailureIsClear(pipeline.Snapshot())) {
+        return Fail("invalid swapchain did not clear frame record capacity identity");
+    }
+
+    FakeDrawableRhiDevice rhi_failure_device;
+    rhi_failure_device.SetSwapchainTargetStatus(RhiStatus::InvalidHandle);
+    std::vector<std::uint8_t> rhi_failure_capture(
+        CaptureByteCount(DEFAULT_EXTENT, DEFAULT_EXTENT),
+        SENTINEL_BYTE);
+    RenderDrawableFramePipeline rhi_failure_pipeline;
+    const auto rhi_failure_result = rhi_failure_pipeline.Execute(
+        MakeRequest(rhi_failure_device, rhi_failure_capture));
+    if (rhi_failure_result.status != RenderDrawableFramePipelineStatus::RhiFailure) {
+        return Fail("drawable frame pipeline did not expose swapchain target rhi failure");
+    }
+
+    if (!FrameRecordCapacityFailureIsClear(rhi_failure_pipeline.Snapshot())) {
+        return Fail("rhi failure did not clear frame record capacity identity");
     }
 
     return 0;
@@ -890,6 +1051,10 @@ int RenderCoreDrawableFramePipelineRejectsInvalidMaterialWithoutRhiMutation() {
 
     if (device.Snapshot().submit_count != 0U || device.Snapshot().recorded_command_count != 0U) {
         return Fail("invalid material rejection mutated rhi state");
+    }
+
+    if (!FrameRecordCapacityFailureIsClear(pipeline.Snapshot())) {
+        return Fail("invalid material did not clear frame record capacity identity");
     }
 
     return 0;
@@ -920,6 +1085,10 @@ int RenderCoreDrawableFramePipelineRejectsInvalidDrawThroughViewPacket() {
         return Fail("invalid draw packet updated wrong failure counters");
     }
 
+    if (!FrameRecordCapacityFailureIsClear(snapshot)) {
+        return Fail("invalid draw did not clear frame record capacity identity");
+    }
+
     return 0;
 }
 
@@ -946,6 +1115,10 @@ int RenderCoreDrawableFramePipelineRejectsDuplicateFrameThroughFramePacket() {
         return Fail("duplicate frame failure counters were wrong");
     }
 
+    if (!FrameRecordCapacityFailureIsClear(snapshot)) {
+        return Fail("duplicate frame did not clear frame record capacity identity");
+    }
+
     return 0;
 }
 
@@ -969,6 +1142,14 @@ int RenderCoreDrawableFramePipelinePropagatesFixtureCommandCapacityFailure() {
         return Fail("command capacity failure submitted rhi work");
     }
 
+    if (!FrameRecordCapacityFailureIsClear(pipeline.Snapshot())) {
+        return Fail("pass failure did not clear frame record capacity identity");
+    }
+
+    return 0;
+}
+
+int RenderCoreDrawableFramePipelineRejectsFrameRecordCapacityWithEntryIdentity() {
     FakeDrawableRhiDevice capacity_device;
     std::vector<std::uint8_t> first_capture(CaptureByteCount(DEFAULT_EXTENT, DEFAULT_EXTENT), SENTINEL_BYTE);
     std::vector<std::uint8_t> second_capture(CaptureByteCount(DEFAULT_EXTENT, DEFAULT_EXTENT), SENTINEL_BYTE);
@@ -993,6 +1174,10 @@ int RenderCoreDrawableFramePipelinePropagatesFixtureCommandCapacityFailure() {
         return Fail("drawable frame pipeline result did not expose required frame count");
     }
 
+    if (capacity_result.current_frame_record_count != 1U) {
+        return Fail("drawable frame pipeline result did not expose current frame count");
+    }
+
     const RhiDeviceSnapshot after = capacity_device.Snapshot();
     if (after.recorded_command_count != before.recorded_command_count ||
         after.submit_count != before.submit_count ||
@@ -1011,6 +1196,21 @@ int RenderCoreDrawableFramePipelinePropagatesFixtureCommandCapacityFailure() {
     if (capacity_snapshot.last_frame_id != NEXT_FRAME_ID ||
         capacity_snapshot.last_status != RenderDrawableFramePipelineStatus::FrameRecordCapacityExceeded) {
         return Fail("frame record capacity rejection did not update last diagnostics");
+    }
+
+    if (!FrameRecordCapacityFailureMatches(
+        capacity_result,
+        capacity_snapshot,
+        NEXT_FRAME_ID,
+        NEXT_PASS_ID,
+        NEXT_MATERIAL_ID,
+        1U,
+        1U,
+        1U,
+        2U,
+        RENDER_DRAWABLE_FRAME_PASS_COUNT,
+        1U)) {
+        return Fail("frame record capacity rejection did not expose rejected entry identity");
     }
 
     return 0;
@@ -1039,6 +1239,10 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_COMMAND_CAPACITY) {
         return RenderCoreDrawableFramePipelinePropagatesFixtureCommandCapacityFailure();
+    }
+
+    if (name == TEST_FRAME_RECORD_CAPACITY) {
+        return RenderCoreDrawableFramePipelineRejectsFrameRecordCapacityWithEntryIdentity();
     }
 
     if (name == TEST_MATERIAL_CONSTANTS) {

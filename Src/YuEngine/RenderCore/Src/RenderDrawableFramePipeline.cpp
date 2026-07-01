@@ -64,6 +64,32 @@ bool IsSwapchainValid(const yuengine::rhi::RhiSwapchainSnapshot &snapshot) {
     return snapshot.color_target.generation != 0U;
 }
 
+void ClearFrameRecordCapacityFailure(RenderDrawableFramePipelineSnapshot &snapshot) {
+    snapshot.last_failed_frame_record_frame_id = 0U;
+    snapshot.last_failed_frame_record_pass_id = 0U;
+    snapshot.last_failed_frame_record_material_id = 0U;
+    snapshot.last_failed_frame_record_current_count = 0U;
+    snapshot.last_failed_frame_record_index = 0U;
+    snapshot.last_failed_frame_record_capacity = 0U;
+    snapshot.last_failed_frame_record_required_count = 0U;
+    snapshot.last_failed_pass_count = 0U;
+    snapshot.last_failed_draw_count = 0U;
+}
+
+void StoreFrameRecordCapacityFailure(
+    RenderDrawableFramePipelineSnapshot &snapshot,
+    const RenderDrawableFramePipelineResult &result) {
+    snapshot.last_failed_frame_record_frame_id = result.frame_id;
+    snapshot.last_failed_frame_record_pass_id = result.pass_id;
+    snapshot.last_failed_frame_record_material_id = result.material_id;
+    snapshot.last_failed_frame_record_current_count = result.current_frame_record_count;
+    snapshot.last_failed_frame_record_index = result.frame_record_index;
+    snapshot.last_failed_frame_record_capacity = result.frame_record_capacity;
+    snapshot.last_failed_frame_record_required_count = result.required_frame_record_count;
+    snapshot.last_failed_pass_count = result.pass_count;
+    snapshot.last_failed_draw_count = result.draw_count;
+}
+
 std::size_t AlignConstantBufferByteCount(std::size_t byte_count) {
     const std::size_t remainder = byte_count % yuengine::rhi::RHI_CONSTANT_BUFFER_ALIGNMENT;
     if (remainder == 0U) {
@@ -152,9 +178,14 @@ RenderDrawableFramePipelineResult RenderDrawableFramePipeline::Execute(
         return result;
     }
 
-    result.required_frame_record_count = snapshot_.frame_record_count + 1U;
+    result.current_frame_record_count = snapshot_.frame_record_count;
+    result.required_frame_record_count = result.current_frame_record_count + 1U;
     if (!HasRecordCapacity()) {
         result.status = RenderDrawableFramePipelineStatus::FrameRecordCapacityExceeded;
+        result.frame_record_index = result.current_frame_record_count;
+        result.frame_record_capacity = desc_.frame_record_capacity;
+        result.pass_count = RENDER_DRAWABLE_FRAME_PASS_COUNT;
+        result.draw_count = 1U;
         RecordRejectedResult(result);
         return result;
     }
@@ -348,10 +379,12 @@ void RenderDrawableFramePipeline::RecordRejectedResult(
     StoreLastResult(result);
 
     if (result.status == RenderDrawableFramePipelineStatus::FrameRecordCapacityExceeded) {
+        StoreFrameRecordCapacityFailure(snapshot_, result);
         ++snapshot_.frame_record_capacity_rejected_count;
         return;
     }
 
+    ClearFrameRecordCapacityFailure(snapshot_);
     ++snapshot_.failed_validation_count;
 }
 
@@ -419,5 +452,8 @@ void RenderDrawableFramePipeline::StoreLastResult(
     snapshot_.last_status = result.status;
     snapshot_.last_rhi_status = result.rhi_status;
     snapshot_.last_swapchain_snapshot = result.swapchain_snapshot;
+    if (result.status != RenderDrawableFramePipelineStatus::FrameRecordCapacityExceeded) {
+        ClearFrameRecordCapacityFailure(snapshot_);
+    }
 }
 }
