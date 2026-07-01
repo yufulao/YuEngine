@@ -1700,6 +1700,11 @@ int RenderCoreSubmissionBatchRejectsBatchCapacityWithoutMutation() {
         return Fail("submission batch capacity overflow missed failed entry identifiers");
     }
 
+    constexpr std::size_t expected_required_submission_record_count = 2U;
+    if (result.required_submission_record_count != expected_required_submission_record_count) {
+        return Fail("submission batch capacity overflow missed required record count");
+    }
+
     if (!PassResultsUnchanged(results, sentinel)) {
         return Fail("submission batch capacity overflow mutated result storage");
     }
@@ -1712,6 +1717,10 @@ int RenderCoreSubmissionBatchRejectsBatchCapacityWithoutMutation() {
     const auto snapshot = batch.Snapshot();
     if (snapshot.batch_capacity_rejected_count != 1U || snapshot.submission_record_count != 0U) {
         return Fail("submission batch capacity counters were not updated");
+    }
+
+    if (snapshot.required_submission_record_count != expected_required_submission_record_count) {
+        return Fail("submission batch capacity snapshot missed required record count");
     }
 
     if (snapshot.last_entry_index != expected_failed_entry_index) {

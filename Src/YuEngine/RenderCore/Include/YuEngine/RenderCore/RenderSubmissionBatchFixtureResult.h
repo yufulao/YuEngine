@@ -20,6 +20,7 @@ struct RenderSubmissionBatchFixtureResult final {
     yuengine::rhi::RhiStatus rhi_status = yuengine::rhi::RhiStatus::InvalidLifecycle;
     std::size_t entry_count = 0U;
     std::size_t completed_entry_count = 0U;
+    std::size_t required_submission_record_count = 0U;
     std::size_t failed_entry_index = 0U;
     std::uint32_t pass_id = 0U;
     std::uint32_t material_id = 0U;

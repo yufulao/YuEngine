@@ -17,6 +17,7 @@ namespace yuengine::rendercore {
 struct RenderSubmissionBatchFixtureSnapshot final {
     std::size_t submission_record_capacity = 0U;
     std::size_t submission_record_count = 0U;
+    std::size_t required_submission_record_count = 0U;
     std::uint64_t accepted_entry_count = 0U;
     std::uint64_t executed_entry_count = 0U;
     std::uint64_t completed_entry_count = 0U;

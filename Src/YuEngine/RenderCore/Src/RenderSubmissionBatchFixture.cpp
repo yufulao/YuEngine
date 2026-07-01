@@ -154,6 +154,8 @@ RenderSubmissionBatchFixtureResult RenderSubmissionBatchFixture::Execute(
         return result;
     }
 
+    snapshot_.required_submission_record_count = result.required_submission_record_count;
+
     for (std::size_t index = 0U; index < request.pass_requests.size(); ++index) {
         const RenderFixturePassRequest &pass_request = request.pass_requests[index];
         const RenderFixturePassResult pass_result = request.pass->Execute(pass_request);
@@ -183,6 +185,7 @@ void RenderSubmissionBatchFixture::Reset() {
     records_ = {};
     snapshot_ = {};
     snapshot_.submission_record_capacity = desc_.submission_record_capacity;
+    snapshot_.required_submission_record_count = 1U;
 }
 
 RenderSubmissionBatchFixtureStatus RenderSubmissionBatchFixture::ValidateRequest(
@@ -211,6 +214,10 @@ RenderSubmissionBatchFixtureStatus RenderSubmissionBatchFixture::ValidateRequest
     if (request.pass_results.size() < request.pass_requests.size()) {
         return RenderSubmissionBatchFixtureStatus::InvalidResultStorage;
     }
+
+    const std::size_t required_submission_record_count =
+        snapshot_.submission_record_count + request.pass_requests.size();
+    result->required_submission_record_count = required_submission_record_count;
 
     const std::size_t remaining_record_capacity = desc_.submission_record_capacity - snapshot_.submission_record_count;
     if (request.pass_requests.size() > remaining_record_capacity) {
@@ -274,6 +281,9 @@ void RenderSubmissionBatchFixture::RecordRejectedBatch(const RenderSubmissionBat
     snapshot_.last_rhi_status = result.rhi_status;
     snapshot_.last_pass_id = result.pass_id;
     snapshot_.last_material_id = result.material_id;
+    if (result.required_submission_record_count > 0U) {
+        snapshot_.required_submission_record_count = result.required_submission_record_count;
+    }
 
     if (result.status == RenderSubmissionBatchFixtureStatus::DuplicatePassId) {
         ++snapshot_.duplicate_pass_id_count;
