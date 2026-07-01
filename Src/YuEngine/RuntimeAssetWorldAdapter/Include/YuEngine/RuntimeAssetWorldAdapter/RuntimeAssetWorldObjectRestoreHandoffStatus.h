@@ -9,7 +9,6 @@ enum class RuntimeAssetWorldObjectRestoreHandoffStatus {
     InvalidAdapterRequest,
     AdapterBuildFailed,
     GateFailed,
-    AssemblyFailed,
     RestoreFailed
 };
 }

@@ -204,14 +204,14 @@ RuntimeAssetWorldObjectRestoreHandoffResult RuntimeAssetWorldObjectRestoreHandof
 RuntimeAssetWorldObjectRestoreHandoffResult RuntimeAssetWorldObjectRestoreHandoffBridge::RecordAssemblyFailure(
     WorldSceneAssemblyStatus assembly_status) {
     ++snapshot_.failed_operation_count;
-    snapshot_.last_status = RuntimeAssetWorldObjectRestoreHandoffStatus::AssemblyFailed;
+    snapshot_.last_status = RuntimeAssetWorldObjectRestoreHandoffStatus::RestoreFailed;
     snapshot_.last_adapter_status = RuntimeAssetWorldObjectAdapterStatus::Success;
     snapshot_.last_gate_status = WorldSceneActiveRestoreGateStatus::Success;
     snapshot_.last_proof_status = WorldSceneApplyTimeRestoreProofStatus::Success;
     snapshot_.last_assembly_status = assembly_status;
     snapshot_.last_restore_status = WorldSceneObjectTransformRestoreStatus::Success;
     return RuntimeAssetWorldObjectRestoreHandoffResult::Failure(
-        RuntimeAssetWorldObjectRestoreHandoffStatus::AssemblyFailed,
+        RuntimeAssetWorldObjectRestoreHandoffStatus::RestoreFailed,
         RuntimeAssetWorldObjectAdapterStatus::Success,
         WorldSceneActiveRestoreGateStatus::Success,
         WorldSceneApplyTimeRestoreProofStatus::Success,
