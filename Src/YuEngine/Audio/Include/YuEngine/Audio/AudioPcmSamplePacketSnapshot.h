@@ -20,6 +20,7 @@ struct AudioPcmSamplePacketSnapshot final {
     std::uint64_t duplicate_packet_rejected_count = 0U;
     std::uint64_t stale_packet_rejected_count = 0U;
     std::uint64_t capacity_rejected_count = 0U;
+    std::size_t last_required_packet_count = 0U;
     AudioStatus last_status = AudioStatus::NotInitialized;
     AudioPcmSamplePacketOperation last_operation = AudioPcmSamplePacketOperation::None;
 };

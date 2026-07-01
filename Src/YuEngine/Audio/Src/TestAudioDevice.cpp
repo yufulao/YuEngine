@@ -10,6 +10,15 @@
 namespace yuengine::audio {
 namespace {
 constexpr std::uint32_t INVALID_GENERATION = 0U;
+
+void ClearPcmSamplePacketRequiredCounts(AudioPcmSamplePacketSnapshot &snapshot) {
+    snapshot.last_required_packet_count = 0U;
+}
+
+void ClearPcmStreamQueueRequiredCounts(AudioPcmStreamQueueSnapshot &snapshot) {
+    snapshot.last_required_queue_count = 0U;
+    snapshot.last_required_output_chunk_count = 0U;
+}
 }
 
 TestAudioDevice::TestAudioDevice()
@@ -179,7 +188,11 @@ AudioStatus TestAudioDevice::CreatePcmSamplePacket(const AudioPcmSamplePacketReq
     }
 
     ++pcm_sample_packet_snapshot_.capacity_rejected_count;
-    return RecordPcmSamplePacketFailure(AudioStatus::CapacityExceeded, AudioPcmSamplePacketOperation::Create);
+    const std::size_t required_packet_count = pcm_sample_packet_snapshot_.active_packet_count + 1U;
+    const AudioStatus status =
+        RecordPcmSamplePacketFailure(AudioStatus::CapacityExceeded, AudioPcmSamplePacketOperation::Create);
+    pcm_sample_packet_snapshot_.last_required_packet_count = required_packet_count;
+    return status;
 }
 
 AudioStatus TestAudioDevice::QueryPcmSamplePacket(AudioPcmSamplePacketHandle packet, AudioPcmSamplePacketRecord& out_record) {
@@ -340,7 +353,11 @@ AudioStatus TestAudioDevice::CreatePcmStreamQueue(const AudioPcmStreamQueueReque
     }
 
     ++pcm_stream_queue_snapshot_.capacity_rejected_count;
-    return RecordPcmStreamQueueFailure(AudioStatus::CapacityExceeded, AudioPcmStreamQueueOperation::Create);
+    const std::size_t required_queue_count = pcm_stream_queue_snapshot_.active_queue_count + 1U;
+    const AudioStatus status =
+        RecordPcmStreamQueueFailure(AudioStatus::CapacityExceeded, AudioPcmStreamQueueOperation::Create);
+    pcm_stream_queue_snapshot_.last_required_queue_count = required_queue_count;
+    return status;
 }
 
 AudioStatus TestAudioDevice::QueryPcmStreamQueue(AudioPcmStreamQueueHandle queue, AudioPcmStreamQueueRecord& out_record) {
@@ -390,7 +407,10 @@ AudioStatus TestAudioDevice::DrainPcmStreamQueue(AudioPcmStreamQueueHandle queue
     const std::size_t required_chunk_count = (record.remaining_frame_count + chunk_frame_count - 1U) / chunk_frame_count;
     if (out_chunks.size() < required_chunk_count) {
         ++pcm_stream_queue_snapshot_.output_capacity_rejected_count;
-        return RecordPcmStreamQueueFailure(AudioStatus::CapacityExceeded, AudioPcmStreamQueueOperation::Drain);
+        const AudioStatus status =
+            RecordPcmStreamQueueFailure(AudioStatus::CapacityExceeded, AudioPcmStreamQueueOperation::Drain);
+        pcm_stream_queue_snapshot_.last_required_output_chunk_count = required_chunk_count;
+        return status;
     }
 
     const std::size_t drain_start_frame = record.first_frame + record.drained_frame_count;
@@ -782,11 +802,13 @@ std::int16_t TestAudioDevice::SaturateToS16(std::int64_t sample) const {
 }
 
 void TestAudioDevice::SetPcmSamplePacketLastStatus(AudioStatus status, AudioPcmSamplePacketOperation operation) {
+    ClearPcmSamplePacketRequiredCounts(pcm_sample_packet_snapshot_);
     pcm_sample_packet_snapshot_.last_status = status;
     pcm_sample_packet_snapshot_.last_operation = operation;
 }
 
 void TestAudioDevice::SetPcmStreamQueueLastStatus(AudioStatus status, AudioPcmStreamQueueOperation operation) {
+    ClearPcmStreamQueueRequiredCounts(pcm_stream_queue_snapshot_);
     pcm_stream_queue_snapshot_.last_status = status;
     pcm_stream_queue_snapshot_.last_operation = operation;
 }

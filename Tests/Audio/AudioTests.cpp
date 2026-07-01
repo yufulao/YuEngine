@@ -1300,6 +1300,7 @@ int AudioPcmSamplePacketRejectsCapacityOverflowWithoutMutation() {
         }
     }
 
+    const AudioPcmSamplePacketSnapshot before_snapshot = device.PcmSamplePacketSnapshot();
     const AudioPcmSamplePacketRequest overflow_request = BasicPcmSamplePacketRequest(static_cast<std::uint32_t>(MAX_PCM_SAMPLE_PACKETS + 1U));
     if (!ExpectPcmCreateRejectedWithoutActiveMutation(device, overflow_request, AudioStatus::CapacityExceeded)) {
         return Fail("pcm packet capacity overflow was not rejected without active mutation");
@@ -1312,6 +1313,11 @@ int AudioPcmSamplePacketRejectsCapacityOverflowWithoutMutation() {
 
     if (snapshot.capacity_rejected_count != 1U) {
         return Fail("pcm packet capacity rejection counter was unexpected");
+    }
+
+    const std::size_t required_packet_count = before_snapshot.active_packet_count + 1U;
+    if (snapshot.last_required_packet_count != required_packet_count) {
+        return Fail("pcm packet capacity rejection missed required packet count");
     }
 
     return 0;
@@ -1717,6 +1723,14 @@ int AudioPcmStreamQueueRejectsInvalidChunkFrameCountWithoutMutation() {
         return Fail("stream queue chunk rejection counter changed");
     }
 
+    if (snapshot.last_required_queue_count != 0U) {
+        return Fail("stream queue chunk rejection reported required queue count");
+    }
+
+    if (snapshot.last_required_output_chunk_count != 0U) {
+        return Fail("stream queue chunk rejection reported required output count");
+    }
+
     return 0;
 }
 
@@ -1736,6 +1750,7 @@ int AudioPcmStreamQueueRejectsCapacityOverflowWithoutMutation() {
         }
     }
 
+    const AudioPcmStreamQueueSnapshot before_snapshot = device.PcmStreamQueueSnapshot();
     const AudioPcmStreamQueueRequest overflow_request = BasicPcmStreamQueueRequest(399U, packet, 112U);
     if (!ExpectPcmStreamQueueCreateRejectedWithoutActiveMutation(device, overflow_request, AudioStatus::CapacityExceeded)) {
         return Fail("stream queue capacity overflow was not rejected without queue mutation");
@@ -1748,6 +1763,15 @@ int AudioPcmStreamQueueRejectsCapacityOverflowWithoutMutation() {
 
     if (snapshot.capacity_rejected_count != 1U) {
         return Fail("stream queue capacity rejection counter changed");
+    }
+
+    const std::size_t required_queue_count = before_snapshot.active_queue_count + 1U;
+    if (snapshot.last_required_queue_count != required_queue_count) {
+        return Fail("stream queue capacity rejection missed required queue count");
+    }
+
+    if (snapshot.last_required_output_chunk_count != 0U) {
+        return Fail("stream queue capacity rejection reported output chunk count");
     }
 
     return 0;
@@ -1771,6 +1795,7 @@ int AudioPcmStreamQueueDrainRejectsSmallOutputWithoutMutation() {
         return Fail("stream queue small output was not rejected");
     }
 
+    const AudioPcmStreamQueueSnapshot failure_snapshot = device.PcmStreamQueueSnapshot();
     AudioPcmStreamQueueRecord after_record{};
     if (device.QueryPcmStreamQueue(queue, after_record) != AudioStatus::Success) {
         return Fail("stream queue small output post-query failed");
@@ -1788,9 +1813,19 @@ int AudioPcmStreamQueueDrainRejectsSmallOutputWithoutMutation() {
         return Fail("stream queue small output changed remaining frames");
     }
 
-    const AudioPcmStreamQueueSnapshot snapshot = device.PcmStreamQueueSnapshot();
-    if (snapshot.output_capacity_rejected_count != 1U) {
+    const AudioPcmStreamQueueSnapshot after_query_snapshot = device.PcmStreamQueueSnapshot();
+    if (after_query_snapshot.output_capacity_rejected_count != 1U) {
         return Fail("stream queue small output rejection counter changed");
+    }
+
+    const std::size_t expected_chunk_count =
+        (before_record.remaining_frame_count + before_record.chunk_frame_count - 1U) / before_record.chunk_frame_count;
+    if (failure_snapshot.last_required_output_chunk_count != expected_chunk_count) {
+        return Fail("stream queue small output missed required chunk count");
+    }
+
+    if (failure_snapshot.last_required_queue_count != 0U) {
+        return Fail("stream queue small output reported required queue count");
     }
 
     return 0;
