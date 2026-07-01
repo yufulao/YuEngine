@@ -113,6 +113,8 @@ constexpr const char *TEST_DESCRIPTOR_BATCH =
     "Resource_DescriptorBatchRegistrationSubmitsRowsAndStopsOnFirstFailure";
 constexpr const char *TEST_DESCRIPTOR_ENUMERATION =
     "Resource_DescriptorEnumerationReportsRegisteredSyntheticDescriptors";
+constexpr const char *TEST_DESCRIPTOR_EXACT_LOOKUP =
+    "Resource_DescriptorExactLookupFindsRegisteredSyntheticDescriptor";
 constexpr const char* TEST_INVALID_DESCRIPTOR =
     "Resource_RegisterRejectsInvalidDescriptorWithoutMutation";
 constexpr const char* TEST_DUPLICATE = "Resource_RegisterDuplicate_ReturnsExplicitStatus";
@@ -1661,6 +1663,126 @@ int ResourceDescriptorEnumerationReportsRegisteredSyntheticDescriptors() {
         after_invalid_snapshot.type_count != before_invalid_snapshot.type_count ||
         after_invalid_snapshot.dependency_validation_count != before_invalid_snapshot.dependency_validation_count) {
         return Fail("descriptor enumeration invalid output mutated counters");
+    }
+
+    return 0;
+}
+
+int ResourceDescriptorExactLookupFindsRegisteredSyntheticDescriptor() {
+    ResourceRegistry registry;
+    const std::array<ResourceDescriptor, 2U> descriptors{{
+        DescriptorWithReferenceCount(TYPE_TEXTURE, "lookup_texture", 2U),
+        DescriptorWithReferenceCount(TYPE_MATERIAL, "lookup_material", 1U)}};
+    const ResourceDescriptorBatchResult batch_result = registry.RegisterSyntheticDescriptors(
+        descriptors.data(),
+        static_cast<std::uint32_t>(descriptors.size()));
+    if (!batch_result.Succeeded()) {
+        return Fail("descriptor exact lookup fixture registration failed");
+    }
+
+    const ResourceDescriptor duplicate_descriptor =
+        DescriptorWithReferenceCount(TYPE_TEXTURE, "lookup_texture", 9U);
+    const ResourceRegistrationResult duplicate_result =
+        registry.RegisterSyntheticDescriptor(duplicate_descriptor);
+    if (duplicate_result.status != ResourceStatus::DuplicateResource) {
+        return Fail("descriptor exact lookup duplicate fixture did not fail");
+    }
+
+    const ResourceTypeId invalid_type{};
+    const ResourceDescriptor invalid_descriptor = Descriptor(invalid_type, "lookup_invalid");
+    const ResourceRegistrationResult invalid_result =
+        registry.RegisterSyntheticDescriptor(invalid_descriptor);
+    if (invalid_result.status != ResourceStatus::InvalidDescriptor) {
+        return Fail("descriptor exact lookup invalid fixture did not fail");
+    }
+
+    ResourceDescriptor output_descriptor{};
+    const ResourceLogicalKey lookup_texture_key("lookup_texture");
+    const ResourceSnapshot before_success_snapshot = registry.Snapshot();
+    const ResourceStatus success_status = registry.FindSyntheticDescriptor(
+        TYPE_TEXTURE,
+        lookup_texture_key,
+        &output_descriptor);
+    if (success_status != ResourceStatus::Success) {
+        return Fail("descriptor exact lookup did not find registered descriptor");
+    }
+
+    if (!DescriptorMatches(output_descriptor, TYPE_TEXTURE, "lookup_texture", 2U)) {
+        return Fail("descriptor exact lookup returned unexpected descriptor");
+    }
+
+    const ResourceSnapshot after_success_snapshot = registry.Snapshot();
+    if (after_success_snapshot.registered_resource_count != before_success_snapshot.registered_resource_count ||
+        after_success_snapshot.type_count != before_success_snapshot.type_count ||
+        after_success_snapshot.dependency_validation_count != before_success_snapshot.dependency_validation_count) {
+        return Fail("descriptor exact lookup success mutated counters");
+    }
+
+    ResourceDescriptor missing_output_descriptor = Descriptor(TYPE_AUDIO, "lookup_sentinel");
+    const ResourceLogicalKey missing_key("lookup_missing");
+    const ResourceSnapshot before_missing_snapshot = registry.Snapshot();
+    const ResourceStatus missing_status = registry.FindSyntheticDescriptor(
+        TYPE_TEXTURE,
+        missing_key,
+        &missing_output_descriptor);
+    if (missing_status != ResourceStatus::NotFound) {
+        return Fail("descriptor exact lookup missing key did not return NotFound");
+    }
+
+    if (!DescriptorMatches(missing_output_descriptor, TYPE_AUDIO, "lookup_sentinel", 0U)) {
+        return Fail("descriptor exact lookup missing key mutated output descriptor");
+    }
+
+    const ResourceSnapshot after_missing_snapshot = registry.Snapshot();
+    if (after_missing_snapshot.registered_resource_count != before_missing_snapshot.registered_resource_count ||
+        after_missing_snapshot.type_count != before_missing_snapshot.type_count ||
+        after_missing_snapshot.dependency_validation_count != before_missing_snapshot.dependency_validation_count) {
+        return Fail("descriptor exact lookup missing key mutated counters");
+    }
+
+    ResourceDescriptor invalid_output_descriptor = Descriptor(TYPE_AUDIO, "lookup_invalid_sentinel");
+    const ResourceStatus invalid_type_status = registry.FindSyntheticDescriptor(
+        invalid_type,
+        lookup_texture_key,
+        &invalid_output_descriptor);
+    if (invalid_type_status != ResourceStatus::InvalidDescriptor) {
+        return Fail("descriptor exact lookup invalid type did not fail explicitly");
+    }
+
+    if (!DescriptorMatches(invalid_output_descriptor, TYPE_AUDIO, "lookup_invalid_sentinel", 0U)) {
+        return Fail("descriptor exact lookup invalid type mutated output descriptor");
+    }
+
+    const ResourceLogicalKey empty_key("");
+    const ResourceStatus invalid_key_status = registry.FindSyntheticDescriptor(
+        TYPE_TEXTURE,
+        empty_key,
+        &invalid_output_descriptor);
+    if (invalid_key_status != ResourceStatus::InvalidDescriptor) {
+        return Fail("descriptor exact lookup invalid key did not fail explicitly");
+    }
+
+    const ResourceStatus invalid_output_status = registry.FindSyntheticDescriptor(
+        TYPE_TEXTURE,
+        lookup_texture_key,
+        nullptr);
+    if (invalid_output_status != ResourceStatus::InvalidHandle) {
+        return Fail("descriptor exact lookup null output did not fail explicitly");
+    }
+
+    std::array<ResourceDescriptor, 2U> enumerated_descriptors{};
+    std::uint32_t enumerated_descriptor_count = 0U;
+    const ResourceStatus enumerate_status = registry.EnumerateSyntheticDescriptors(
+        enumerated_descriptors.data(),
+        static_cast<std::uint32_t>(enumerated_descriptors.size()),
+        &enumerated_descriptor_count);
+    if (enumerate_status != ResourceStatus::Success || enumerated_descriptor_count != 2U) {
+        return Fail("descriptor exact lookup changed enumeration count");
+    }
+
+    if (!DescriptorMatches(enumerated_descriptors[0U], TYPE_TEXTURE, "lookup_texture", 2U) ||
+        !DescriptorMatches(enumerated_descriptors[1U], TYPE_MATERIAL, "lookup_material", 1U)) {
+        return Fail("descriptor exact lookup exposed failed descriptor rows");
     }
 
     return 0;
@@ -8589,6 +8711,7 @@ int main(int argc, char** argv) {
         {TEST_REGISTER, ResourceRegisterSyntheticDescriptorReturnsGenerationHandle},
         {TEST_DESCRIPTOR_BATCH, ResourceDescriptorBatchRegistrationSubmitsRowsAndStopsOnFirstFailure},
         {TEST_DESCRIPTOR_ENUMERATION, ResourceDescriptorEnumerationReportsRegisteredSyntheticDescriptors},
+        {TEST_DESCRIPTOR_EXACT_LOOKUP, ResourceDescriptorExactLookupFindsRegisteredSyntheticDescriptor},
         {TEST_INVALID_DESCRIPTOR, ResourceRegisterRejectsInvalidDescriptorWithoutMutation},
         {TEST_DUPLICATE, ResourceRegisterDuplicateReturnsExplicitStatus},
         {TEST_CAPACITY, ResourceRegistryRejectsCapacityOverflowWithoutMutation},

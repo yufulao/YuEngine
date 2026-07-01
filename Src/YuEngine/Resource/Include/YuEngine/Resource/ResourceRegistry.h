@@ -127,6 +127,17 @@ public:
         std::uint32_t output_descriptor_capacity,
         std::uint32_t *output_descriptor_count);
     /**
+     * @comment 按 type/key 精确查找当前 synthetic 描述。
+     * @param type 输入类型。
+     * @param logical_key 输入逻辑 key。
+     * @param output_descriptor 输出描述。
+     * @return 显式操作状态。
+     */
+    ResourceStatus FindSyntheticDescriptor(
+        ResourceTypeId type,
+        const ResourceLogicalKey &logical_key,
+        ResourceDescriptor *output_descriptor);
+    /**
      * @comment 添加依赖。
      * @param dependent 输入 dependent。
      * @param dependency 输入 dependency。

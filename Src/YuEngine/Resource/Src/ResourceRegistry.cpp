@@ -494,6 +494,59 @@ ResourceStatus ResourceRegistry::EnumerateSyntheticDescriptors(
     return ResourceStatus::Success;
 }
 
+ResourceStatus ResourceRegistry::FindSyntheticDescriptor(
+    ResourceTypeId type,
+    const ResourceLogicalKey &logical_key,
+    ResourceDescriptor *output_descriptor) {
+    if (output_descriptor == nullptr) {
+        return RecordFailure(ResourceStatus::InvalidHandle);
+    }
+
+    if (!type.IsValid()) {
+        return RecordFailure(ResourceStatus::InvalidDescriptor);
+    }
+
+    if (!logical_key.IsWithinBounds()) {
+        return RecordFailure(ResourceStatus::InvalidDescriptor);
+    }
+
+    if (!logical_key.IsValid()) {
+        return RecordFailure(ResourceStatus::InvalidDescriptor);
+    }
+
+    std::uint32_t slot_index = 0U;
+    for (const ResourceSlot &slot : slots_) {
+        if (slot_index >= snapshot_.resource_capacity) {
+            break;
+        }
+
+        if (!slot.is_active) {
+            ++slot_index;
+            continue;
+        }
+
+        if (slot.type.value != type.value) {
+            ++slot_index;
+            continue;
+        }
+
+        if (!slot.logical_key.Equals(logical_key)) {
+            ++slot_index;
+            continue;
+        }
+
+        ResourceDescriptor descriptor{};
+        descriptor.type = slot.type;
+        descriptor.logical_key = slot.logical_key;
+        descriptor.initial_reference_count = slot.reference_count;
+        *output_descriptor = descriptor;
+        RecordSuccess();
+        return ResourceStatus::Success;
+    }
+
+    return RecordFailure(ResourceStatus::NotFound);
+}
+
 ResourceStatus ResourceRegistry::AddDependency(ResourceHandle dependent, ResourceHandle dependency) {
     ++snapshot_.dependency_validation_count;
 
