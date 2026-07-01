@@ -18,6 +18,14 @@ struct UiImageComponentResult final {
     std::uint32_t texture_key = 0U;
     std::uint32_t draw_record_count = 0U;
     std::uint32_t required_draw_record_count = 0U;
+    std::uint32_t capacity_entry_output_capacity = 0U;
+    std::uint32_t capacity_entry_current_output_count = 0U;
+    std::uint32_t capacity_entry_required_output_count = 0U;
+    std::uint32_t failed_draw_record_index = 0U;
+    std::uint32_t failed_slice_index = 0U;
+    UiNodeId failed_node_id;
+    std::uint32_t failed_sprite_key = 0U;
+    std::uint32_t failed_texture_key = 0U;
     UiDirtyChangeType dirty_change_type = UiDirtyChangeType::PaintOnly;
     UiStaticAtlasNineSlice nine_slice;
 

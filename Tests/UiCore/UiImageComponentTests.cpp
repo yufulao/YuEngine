@@ -4,6 +4,7 @@
 #include <array>
 #include <cstdint>
 #include <cstdio>
+#include <span>
 #include <string_view>
 
 #include "YuEngine/UiCore/UiDirtyChangeType.h"
@@ -74,6 +75,10 @@ constexpr const char *TEST_MISSING_SPRITE =
     "UiCore_ImageComponent_ReportsMissingSpriteWithoutMutation";
 constexpr const char *TEST_SMALL_OUTPUT =
     "UiCore_ImageComponent_RejectsSmallOutputWithoutMutation";
+constexpr const char *TEST_INVALID_OUTPUT =
+    "UiCore_ImageComponent_RejectsInvalidOutputBufferWithoutCapacityEntry";
+constexpr const char *TEST_CAPACITY_CLEAR =
+    "UiCore_ImageComponent_ClearsCapacityEntryAfterSuccess";
 constexpr const char *TEST_PAINT_INVALIDATION =
     "UiCore_ImageComponent_PaintInvalidationDoesNotTriggerLayout";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
@@ -222,6 +227,38 @@ bool RecordMatchesSentinel(const UiImageDrawRecord &record) {
     return record.draw_element.texture_key == SENTINEL_SPRITE_KEY;
 }
 
+bool ResultHasCapacityEntry(const UiImageComponentResult &result) {
+    if (result.capacity_entry_output_capacity != 0U) {
+        return true;
+    }
+
+    if (result.capacity_entry_current_output_count != 0U) {
+        return true;
+    }
+
+    if (result.capacity_entry_required_output_count != 0U) {
+        return true;
+    }
+
+    if (result.failed_draw_record_index != 0U) {
+        return true;
+    }
+
+    if (result.failed_slice_index != 0U) {
+        return true;
+    }
+
+    if (result.failed_node_id.value != 0U) {
+        return true;
+    }
+
+    if (result.failed_sprite_key != 0U) {
+        return true;
+    }
+
+    return result.failed_texture_key != 0U;
+}
+
 int UiCoreImageComponentBuildsSpriteDrawRecord() {
     UiNodeTree tree(MakeTreeDesc());
     int ret_code = CreateNode(tree, UiRect{10.0F, 20.0F, 100.0F, 50.0F});
@@ -243,6 +280,10 @@ int UiCoreImageComponentBuildsSpriteDrawRecord() {
 
     if (result.draw_record_count != 1U || result.required_draw_record_count != 1U) {
         return Fail("sprite draw record count mismatch");
+    }
+
+    if (ResultHasCapacityEntry(result)) {
+        return Fail("sprite success leaked capacity entry");
     }
 
     const UiImageDrawRecord &record = records[0U];
@@ -353,6 +394,10 @@ int UiCoreImageComponentReportsMissingSpriteWithoutMutation() {
         return Fail("missing sprite mutated output");
     }
 
+    if (ResultHasCapacityEntry(result)) {
+        return Fail("missing sprite reported capacity entry");
+    }
+
     return 0;
 }
 
@@ -375,8 +420,84 @@ int UiCoreImageComponentRejectsSmallOutputWithoutMutation() {
         return Fail("small output was not rejected");
     }
 
-    if (result.required_draw_record_count != 9U || !RecordMatchesSentinel(records[0U])) {
+    if (result.required_draw_record_count != 9U ||
+        result.capacity_entry_output_capacity != 1U ||
+        result.capacity_entry_current_output_count != 1U ||
+        result.capacity_entry_required_output_count != 9U ||
+        !RecordMatchesSentinel(records[0U])) {
         return Fail("small output mutation or count mismatch");
+    }
+
+    if (result.failed_draw_record_index != 1U || result.failed_slice_index != 1U) {
+        return Fail("small output failed slice identity mismatch");
+    }
+
+    if (result.failed_node_id.value != 1U || result.failed_sprite_key != SPRITE_KEY) {
+        return Fail("small output failed node sprite mismatch");
+    }
+
+    if (result.failed_texture_key != TEXTURE_KEY) {
+        return Fail("small output failed texture mismatch");
+    }
+
+    return 0;
+}
+
+int UiCoreImageComponentRejectsInvalidOutputBufferWithoutCapacityEntry() {
+    UiNodeTree tree(MakeTreeDesc());
+    int ret_code = CreateNode(tree, UiRect{10.0F, 20.0F, 100.0F, 50.0F});
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    const std::array<UiStaticAtlasPageDesc, 1U> pages{MakePage()};
+    const std::array<UiStaticAtlasSpriteDesc, 1U> sprites{MakeSprite()};
+    const UiStaticAtlasMetadataDesc atlas_desc{pages, sprites};
+    std::span<UiImageDrawRecord> records(static_cast<UiImageDrawRecord *>(nullptr), 1U);
+    UiImageComponentResult result{};
+    UiImageComponent component{};
+    const UiImageComponentDesc desc = MakeImageDesc();
+    const UiImageComponentStatus status = component.Build(tree, atlas_desc, desc, records, &result);
+    if (status != UiImageComponentStatus::InvalidOutputBuffer) {
+        return Fail("invalid output buffer did not report explicit status");
+    }
+
+    if (ResultHasCapacityEntry(result)) {
+        return Fail("invalid output buffer reported capacity entry");
+    }
+
+    return 0;
+}
+
+int UiCoreImageComponentClearsCapacityEntryAfterSuccess() {
+    UiNodeTree tree(MakeTreeDesc());
+    int ret_code = CreateNode(tree, UiRect{10.0F, 20.0F, 100.0F, 80.0F});
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    const std::array<UiStaticAtlasPageDesc, 1U> pages{MakePage()};
+    const std::array<UiStaticAtlasSpriteDesc, 1U> nine_slice_sprites{MakeNineSliceSprite()};
+    const UiStaticAtlasMetadataDesc nine_slice_atlas_desc{pages, nine_slice_sprites};
+    std::array<UiImageDrawRecord, 1U> small_records{SentinelRecord()};
+    UiImageComponentResult result{};
+    UiImageComponent component{};
+    const UiImageComponentDesc desc = MakeImageDesc();
+    UiImageComponentStatus status = component.Build(tree, nine_slice_atlas_desc, desc, small_records, &result);
+    if (status != UiImageComponentStatus::OutputCapacityExceeded || !ResultHasCapacityEntry(result)) {
+        return Fail("capacity entry setup failed");
+    }
+
+    const std::array<UiStaticAtlasSpriteDesc, 1U> simple_sprites{MakeSprite()};
+    const UiStaticAtlasMetadataDesc simple_atlas_desc{pages, simple_sprites};
+    std::array<UiImageDrawRecord, 1U> records{};
+    status = component.Build(tree, simple_atlas_desc, desc, records, &result);
+    if (status != UiImageComponentStatus::Success || !result.Succeeded()) {
+        return Fail("success after capacity failure failed");
+    }
+
+    if (ResultHasCapacityEntry(result)) {
+        return Fail("success did not clear capacity entry");
     }
 
     return 0;
@@ -448,6 +569,14 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_SMALL_OUTPUT) {
         return UiCoreImageComponentRejectsSmallOutputWithoutMutation();
+    }
+
+    if (name == TEST_INVALID_OUTPUT) {
+        return UiCoreImageComponentRejectsInvalidOutputBufferWithoutCapacityEntry();
+    }
+
+    if (name == TEST_CAPACITY_CLEAR) {
+        return UiCoreImageComponentClearsCapacityEntryAfterSuccess();
     }
 
     if (name == TEST_PAINT_INVALIDATION) {

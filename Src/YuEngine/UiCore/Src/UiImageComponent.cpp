@@ -96,6 +96,24 @@ void SetResult(
     out_result->status = status;
     out_result->required_draw_record_count = required_record_count;
 }
+
+void SetOutputCapacityResult(
+    UiImageComponentResult *out_result,
+    std::uint32_t required_record_count,
+    std::uint32_t output_capacity,
+    const UiNodeRecord &node_record,
+    const UiStaticAtlasResolveResult &sprite) {
+    out_result->status = UiImageComponentStatus::OutputCapacityExceeded;
+    out_result->required_draw_record_count = required_record_count;
+    out_result->capacity_entry_output_capacity = output_capacity;
+    out_result->capacity_entry_current_output_count = output_capacity;
+    out_result->capacity_entry_required_output_count = required_record_count;
+    out_result->failed_draw_record_index = output_capacity;
+    out_result->failed_slice_index = output_capacity;
+    out_result->failed_node_id = node_record.node_id;
+    out_result->failed_sprite_key = sprite.sprite_key;
+    out_result->failed_texture_key = sprite.texture_key;
+}
 }
 
 UiImageComponentStatus UiImageComponent::Build(
@@ -214,6 +232,16 @@ UiImageComponentStatus UiImageComponent::WriteSimpleRecord(
     UiImageComponentResult *out_result) const {
     const UiImageComponentStatus storage_status = ValidateOutputStorage(out_records, SIMPLE_IMAGE_RECORD_COUNT);
     if (storage_status != UiImageComponentStatus::Success) {
+        if (storage_status == UiImageComponentStatus::OutputCapacityExceeded) {
+            SetOutputCapacityResult(
+                out_result,
+                SIMPLE_IMAGE_RECORD_COUNT,
+                static_cast<std::uint32_t>(out_records.size()),
+                node_record,
+                sprite);
+            return storage_status;
+        }
+
         SetResult(out_result, storage_status, SIMPLE_IMAGE_RECORD_COUNT);
         return storage_status;
     }
@@ -246,6 +274,16 @@ UiImageComponentStatus UiImageComponent::WriteNineSliceRecords(
 
     const UiImageComponentStatus storage_status = ValidateOutputStorage(out_records, NINE_SLICE_RECORD_COUNT);
     if (storage_status != UiImageComponentStatus::Success) {
+        if (storage_status == UiImageComponentStatus::OutputCapacityExceeded) {
+            SetOutputCapacityResult(
+                out_result,
+                NINE_SLICE_RECORD_COUNT,
+                static_cast<std::uint32_t>(out_records.size()),
+                node_record,
+                sprite);
+            return storage_status;
+        }
+
         SetResult(out_result, storage_status, NINE_SLICE_RECORD_COUNT);
         return storage_status;
     }
