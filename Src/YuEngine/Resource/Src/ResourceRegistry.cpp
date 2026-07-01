@@ -2101,6 +2101,16 @@ ResourceDecodePlanStatus ResourceRegistry::RecordDecodePlanRejected(
     ++decode_plan_snapshot_.rejected_plan_request_count;
     decode_plan_snapshot_.last_required_plan_count = 0U;
     decode_plan_snapshot_.last_required_decoded_byte_count = 0U;
+    decode_plan_snapshot_.last_failed_operation = ResourceDecodePlanOperation::None;
+    decode_plan_snapshot_.last_failed_resource = ResourceHandle{};
+    decode_plan_snapshot_.last_failed_expected_type = ResourceTypeId{};
+    decode_plan_snapshot_.last_failed_payload_id = 0U;
+    decode_plan_snapshot_.last_failed_decode_plan_id = 0U;
+    decode_plan_snapshot_.last_failed_asset_class = ResourceDecodePlanAssetClass::Unknown;
+    decode_plan_snapshot_.last_failed_plan_capacity = 0U;
+    decode_plan_snapshot_.last_failed_plan_count = 0U;
+    decode_plan_snapshot_.last_failed_source_byte_count = 0U;
+    decode_plan_snapshot_.last_failed_expected_decoded_byte_count = 0U;
     if (status == ResourceDecodePlanStatus::DuplicatePlanId) {
         ++decode_plan_snapshot_.duplicate_plan_rejected_count;
     }
@@ -2109,6 +2119,17 @@ ResourceDecodePlanStatus ResourceRegistry::RecordDecodePlanRejected(
         ++decode_plan_snapshot_.capacity_rejected_plan_count;
         decode_plan_snapshot_.last_required_plan_count =
             decode_plan_snapshot_.active_plan_count + 1U;
+        decode_plan_snapshot_.last_failed_operation = operation;
+        decode_plan_snapshot_.last_failed_resource = request.resource;
+        decode_plan_snapshot_.last_failed_expected_type = request.expected_type;
+        decode_plan_snapshot_.last_failed_payload_id = request.payload_id;
+        decode_plan_snapshot_.last_failed_decode_plan_id = request.decode_plan_id;
+        decode_plan_snapshot_.last_failed_asset_class = request.asset_class;
+        decode_plan_snapshot_.last_failed_plan_capacity = MAX_RESOURCE_DECODE_PLAN_RECORD_COUNT;
+        decode_plan_snapshot_.last_failed_plan_count = decode_plan_snapshot_.active_plan_count;
+        decode_plan_snapshot_.last_failed_source_byte_count = request.source_byte_count;
+        decode_plan_snapshot_.last_failed_expected_decoded_byte_count =
+            request.expected_decoded_byte_count;
     }
 
     if (status == ResourceDecodePlanStatus::BudgetExceeded) {
@@ -2172,6 +2193,16 @@ void ResourceRegistry::RecordDecodePlanSuccess(
     decode_plan_snapshot_.last_status = ResourceDecodePlanStatus::Success;
     decode_plan_snapshot_.last_required_plan_count = 0U;
     decode_plan_snapshot_.last_required_decoded_byte_count = 0U;
+    decode_plan_snapshot_.last_failed_operation = ResourceDecodePlanOperation::None;
+    decode_plan_snapshot_.last_failed_resource = ResourceHandle{};
+    decode_plan_snapshot_.last_failed_expected_type = ResourceTypeId{};
+    decode_plan_snapshot_.last_failed_payload_id = 0U;
+    decode_plan_snapshot_.last_failed_decode_plan_id = 0U;
+    decode_plan_snapshot_.last_failed_asset_class = ResourceDecodePlanAssetClass::Unknown;
+    decode_plan_snapshot_.last_failed_plan_capacity = 0U;
+    decode_plan_snapshot_.last_failed_plan_count = 0U;
+    decode_plan_snapshot_.last_failed_source_byte_count = 0U;
+    decode_plan_snapshot_.last_failed_expected_decoded_byte_count = 0U;
     decode_plan_snapshot_.last_resource = request.resource;
     decode_plan_snapshot_.last_payload_id = request.payload_id;
     decode_plan_snapshot_.last_decode_plan_id = request.decode_plan_id;

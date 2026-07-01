@@ -10,6 +10,7 @@
 #include "YuEngine/Resource/ResourceDecodePlanOperation.h"
 #include "YuEngine/Resource/ResourceDecodePlanStatus.h"
 #include "YuEngine/Resource/ResourceHandle.h"
+#include "YuEngine/Resource/ResourceTypeId.h"
 
 namespace yuengine::resource {
 struct ResourceDecodePlanSnapshot final {
@@ -37,5 +38,15 @@ struct ResourceDecodePlanSnapshot final {
     std::uint32_t last_source_byte_count = 0U;
     std::uint32_t last_expected_decoded_byte_count = 0U;
     std::uint32_t last_header_version = 0U;
+    ResourceDecodePlanOperation last_failed_operation = ResourceDecodePlanOperation::None;
+    ResourceHandle last_failed_resource;
+    ResourceTypeId last_failed_expected_type;
+    std::uint64_t last_failed_payload_id = 0U;
+    std::uint64_t last_failed_decode_plan_id = 0U;
+    ResourceDecodePlanAssetClass last_failed_asset_class = ResourceDecodePlanAssetClass::Unknown;
+    std::uint32_t last_failed_plan_capacity = 0U;
+    std::uint32_t last_failed_plan_count = 0U;
+    std::uint32_t last_failed_source_byte_count = 0U;
+    std::uint32_t last_failed_expected_decoded_byte_count = 0U;
 };
 }

@@ -784,6 +784,101 @@ bool StoreDecodePlanPayload(
     return registry.StoreCachePayload(request) == ResourceCachePayloadStatus::Success;
 }
 
+bool DecodePlanCapacityEntryMatches(
+    const ResourceDecodePlanSnapshot &snapshot,
+    ResourceDecodePlanOperation operation,
+    const ResourceDecodePlanRequest &request,
+    std::uint32_t expected_plan_capacity,
+    std::uint32_t expected_plan_count,
+    std::uint32_t expected_required_plan_count) {
+    if (snapshot.last_failed_operation != operation) {
+        return false;
+    }
+
+    if (snapshot.last_required_plan_count != expected_required_plan_count) {
+        return false;
+    }
+
+    if (snapshot.last_failed_resource.slot != request.resource.slot) {
+        return false;
+    }
+
+    if (snapshot.last_failed_resource.generation != request.resource.generation) {
+        return false;
+    }
+
+    if (snapshot.last_failed_expected_type.value != request.expected_type.value) {
+        return false;
+    }
+
+    if (snapshot.last_failed_payload_id != request.payload_id) {
+        return false;
+    }
+
+    if (snapshot.last_failed_decode_plan_id != request.decode_plan_id) {
+        return false;
+    }
+
+    if (snapshot.last_failed_asset_class != request.asset_class) {
+        return false;
+    }
+
+    if (snapshot.last_failed_plan_capacity != expected_plan_capacity) {
+        return false;
+    }
+
+    if (snapshot.last_failed_plan_count != expected_plan_count) {
+        return false;
+    }
+
+    if (snapshot.last_failed_source_byte_count != request.source_byte_count) {
+        return false;
+    }
+
+    return snapshot.last_failed_expected_decoded_byte_count ==
+        request.expected_decoded_byte_count;
+}
+
+bool DecodePlanCapacityEntryIsClear(const ResourceDecodePlanSnapshot &snapshot) {
+    if (snapshot.last_failed_operation != ResourceDecodePlanOperation::None) {
+        return false;
+    }
+
+    if (snapshot.last_failed_resource.IsValid()) {
+        return false;
+    }
+
+    if (snapshot.last_failed_expected_type.IsValid()) {
+        return false;
+    }
+
+    if (snapshot.last_failed_payload_id != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_decode_plan_id != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_asset_class != ResourceDecodePlanAssetClass::Unknown) {
+        return false;
+    }
+
+    if (snapshot.last_failed_plan_capacity != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_plan_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_source_byte_count != 0U) {
+        return false;
+    }
+
+    return snapshot.last_failed_expected_decoded_byte_count == 0U;
+}
+
 bool CreateDecodePlanMetadata(
     ResourceRegistry &registry,
     ResourceHandle resource,
@@ -4501,6 +4596,67 @@ int ResourceDecodePlanRejectsCapacityOverflow() {
 
     if (snapshot.last_required_decoded_byte_count != 0U) {
         return Fail("capacity decode plan reported decoded byte count");
+    }
+
+    const bool capacity_entry_matches = DecodePlanCapacityEntryMatches(
+        snapshot,
+        ResourceDecodePlanOperation::Create,
+        overflow_request,
+        MAX_RESOURCE_DECODE_PLAN_RECORD_COUNT,
+        MAX_RESOURCE_DECODE_PLAN_RECORD_COUNT,
+        REQUIRED_PLAN_COUNT);
+    if (!capacity_entry_matches) {
+        return Fail("capacity decode plan failed entry mismatch");
+    }
+
+    ResourceDecodePlanRequest invalid_request = overflow_request;
+    invalid_request.decode_plan_id = 0U;
+    const ResourceDecodePlanStatus invalid_status = registry.CreateDecodePlan(invalid_request);
+    if (invalid_status != ResourceDecodePlanStatus::InvalidArgument) {
+        return Fail("capacity decode plan invalid request returned wrong status");
+    }
+
+    const ResourceDecodePlanSnapshot invalid_snapshot = registry.DecodePlanSnapshot();
+    if (!DecodePlanCapacityEntryIsClear(invalid_snapshot)) {
+        return Fail("capacity decode plan invalid request left stale entry");
+    }
+
+    const ResourceDecodePlanStatus second_status = registry.CreateDecodePlan(overflow_request);
+    if (second_status != ResourceDecodePlanStatus::CapacityExceeded) {
+        return Fail("capacity decode plan second overflow returned wrong status");
+    }
+
+    ResourceDecodePlanRecord queried_record{};
+    const ResourceDecodePlanRequest query_request = DecodePlanRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        1U);
+    const ResourceDecodePlanStatus query_status = registry.QueryDecodePlan(query_request, &queried_record);
+    if (query_status != ResourceDecodePlanStatus::Success) {
+        return Fail("capacity decode plan query cleanup failed");
+    }
+
+    const ResourceDecodePlanSnapshot query_snapshot = registry.DecodePlanSnapshot();
+    if (!DecodePlanCapacityEntryIsClear(query_snapshot)) {
+        return Fail("capacity decode plan query success left stale entry");
+    }
+
+    const ResourceDecodePlanStatus third_status = registry.CreateDecodePlan(overflow_request);
+    if (third_status != ResourceDecodePlanStatus::CapacityExceeded) {
+        return Fail("capacity decode plan third overflow returned wrong status");
+    }
+
+    const ResourceDecodePlanStatus release_status = registry.ReleaseDecodePlan(query_request);
+    if (release_status != ResourceDecodePlanStatus::Success) {
+        return Fail("capacity decode plan release cleanup failed");
+    }
+
+    const ResourceDecodePlanSnapshot release_snapshot = registry.DecodePlanSnapshot();
+    if (!DecodePlanCapacityEntryIsClear(release_snapshot)) {
+        return Fail("capacity decode plan release success left stale entry");
     }
 
     return 0;
