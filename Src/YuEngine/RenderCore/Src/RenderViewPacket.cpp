@@ -272,6 +272,37 @@ bool IsCaptureOutputValid(const RenderViewPacketRequest &request) {
 
     return request.capture_output.size() >= request.capture_byte_budget;
 }
+
+void ClearCapacityEntryFailure(RenderViewPacketSnapshot &snapshot) {
+    snapshot.last_capacity_entry_view_record_capacity = 0U;
+    snapshot.last_capacity_entry_current_view_record_count = 0U;
+    snapshot.last_capacity_entry_required_view_record_count = 0U;
+    snapshot.last_capacity_entry_failed_entry_index = 0U;
+    snapshot.last_capacity_entry_view_id = 0U;
+    snapshot.last_capacity_entry_frame_id = 0U;
+    snapshot.last_capacity_entry_pass_id = 0U;
+    snapshot.last_capacity_entry_material_id = 0U;
+    snapshot.last_capacity_entry_draw_id = 0U;
+    snapshot.last_capacity_entry_status = RenderViewPacketStatus::Success;
+}
+
+void StoreCapacityEntryFailure(
+    RenderViewPacketSnapshot &snapshot,
+    const RenderViewPacketResult &result) {
+    snapshot.last_capacity_entry_view_record_capacity =
+        result.view_record_capacity;
+    snapshot.last_capacity_entry_current_view_record_count =
+        result.current_view_record_count;
+    snapshot.last_capacity_entry_required_view_record_count =
+        result.required_view_record_count;
+    snapshot.last_capacity_entry_failed_entry_index = result.failed_entry_index;
+    snapshot.last_capacity_entry_view_id = result.failed_view_id;
+    snapshot.last_capacity_entry_frame_id = result.failed_frame_id;
+    snapshot.last_capacity_entry_pass_id = result.failed_pass_id;
+    snapshot.last_capacity_entry_material_id = result.failed_material_id;
+    snapshot.last_capacity_entry_draw_id = result.failed_draw_id;
+    snapshot.last_capacity_entry_status = result.status;
+}
 }
 
 RenderViewPacket::RenderViewPacket(const RenderViewPacketDesc &desc)
@@ -310,9 +341,17 @@ RenderViewPacketResult RenderViewPacket::BuildPassRequest(
         return result;
     }
 
+    result.view_record_capacity = desc_.view_record_capacity;
+    result.current_view_record_count = snapshot_.view_record_count;
     result.required_view_record_count = snapshot_.view_record_count + 1U;
     if (!HasRecordCapacity()) {
         result.status = RenderViewPacketStatus::ViewCapacityExceeded;
+        result.failed_entry_index = snapshot_.view_record_count;
+        result.failed_view_id = result.view_id;
+        result.failed_frame_id = result.frame_id;
+        result.failed_pass_id = result.pass_id;
+        result.failed_material_id = result.material_id;
+        result.failed_draw_id = result.draw_id;
         RecordRejectedView(result);
         return result;
     }
@@ -332,6 +371,7 @@ void RenderViewPacket::Reset() {
     records_ = {};
     snapshot_ = {};
     snapshot_.view_record_capacity = desc_.view_record_capacity;
+    ClearCapacityEntryFailure(snapshot_);
 }
 
 RenderViewPacketStatus RenderViewPacket::ValidateRequest(
@@ -435,12 +475,19 @@ void RenderViewPacket::RecordAcceptedView(RenderViewPacketResult *result) {
     snapshot_.last_material_id = result->material_id;
     snapshot_.last_draw_id = result->draw_id;
     snapshot_.last_index_count = result->index_count;
+    snapshot_.last_failed_entry_index = 0U;
+    snapshot_.last_failed_view_id = 0U;
+    snapshot_.last_failed_frame_id = 0U;
+    snapshot_.last_failed_pass_id = 0U;
+    snapshot_.last_failed_material_id = 0U;
+    snapshot_.last_failed_draw_id = 0U;
     snapshot_.last_required_view_record_count = result->required_view_record_count;
     snapshot_.last_constant_byte_count = result->constant_byte_count;
     snapshot_.last_capture_byte_budget = result->capture_byte_budget;
     snapshot_.last_status = RenderViewPacketStatus::Success;
     snapshot_.last_material_status = result->material_status;
     snapshot_.last_draw_status = result->draw_status;
+    ClearCapacityEntryFailure(snapshot_);
 
     result->status = RenderViewPacketStatus::Success;
 }
@@ -452,6 +499,12 @@ void RenderViewPacket::RecordRejectedView(const RenderViewPacketResult &result) 
     snapshot_.last_material_id = result.material_id;
     snapshot_.last_draw_id = result.draw_id;
     snapshot_.last_index_count = result.index_count;
+    snapshot_.last_failed_entry_index = result.failed_entry_index;
+    snapshot_.last_failed_view_id = result.failed_view_id;
+    snapshot_.last_failed_frame_id = result.failed_frame_id;
+    snapshot_.last_failed_pass_id = result.failed_pass_id;
+    snapshot_.last_failed_material_id = result.failed_material_id;
+    snapshot_.last_failed_draw_id = result.failed_draw_id;
     snapshot_.last_required_view_record_count = result.required_view_record_count;
     snapshot_.last_constant_byte_count = result.constant_byte_count;
     snapshot_.last_capture_byte_budget = result.capture_byte_budget;
@@ -461,24 +514,29 @@ void RenderViewPacket::RecordRejectedView(const RenderViewPacketResult &result) 
 
     if (result.status == RenderViewPacketStatus::MaterialFailed) {
         ++snapshot_.material_failure_count;
+        ClearCapacityEntryFailure(snapshot_);
         return;
     }
 
     if (result.status == RenderViewPacketStatus::DrawFailed) {
         ++snapshot_.draw_failure_count;
+        ClearCapacityEntryFailure(snapshot_);
         return;
     }
 
     if (result.status == RenderViewPacketStatus::DuplicateViewId) {
         ++snapshot_.duplicate_view_id_count;
+        ClearCapacityEntryFailure(snapshot_);
         return;
     }
 
     if (result.status == RenderViewPacketStatus::ViewCapacityExceeded) {
         ++snapshot_.view_capacity_rejected_count;
+        StoreCapacityEntryFailure(snapshot_, result);
         return;
     }
 
+    ClearCapacityEntryFailure(snapshot_);
     ++snapshot_.failed_validation_count;
 }
 }

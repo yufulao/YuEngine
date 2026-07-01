@@ -209,6 +209,98 @@ bool PassRequestMatchesView(const RenderFixturePassRequest &request) {
     return request.draw.index_count == 3U;
 }
 
+bool ResultCapacityEntryIsClear(const yuengine::rendercore::RenderViewPacketResult &result) {
+    if (result.view_record_capacity != 0U ||
+        result.current_view_record_count != 0U ||
+        result.required_view_record_count != 0U) {
+        return false;
+    }
+
+    if (result.failed_entry_index != 0U) {
+        return false;
+    }
+
+    if (result.failed_view_id != 0U || result.failed_frame_id != 0U || result.failed_pass_id != 0U) {
+        return false;
+    }
+
+    return result.failed_material_id == 0U && result.failed_draw_id == 0U;
+}
+
+bool SnapshotCapacityEntryIsClear(const yuengine::rendercore::RenderViewPacketSnapshot &snapshot) {
+    if (snapshot.last_capacity_entry_view_record_capacity != 0U ||
+        snapshot.last_capacity_entry_current_view_record_count != 0U ||
+        snapshot.last_capacity_entry_required_view_record_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_failed_entry_index != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_view_id != 0U ||
+        snapshot.last_capacity_entry_frame_id != 0U ||
+        snapshot.last_capacity_entry_pass_id != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_material_id != 0U ||
+        snapshot.last_capacity_entry_draw_id != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_status != RenderViewPacketStatus::Success) {
+        return false;
+    }
+
+    if (snapshot.last_failed_entry_index != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_view_id != 0U ||
+        snapshot.last_failed_frame_id != 0U ||
+        snapshot.last_failed_pass_id != 0U) {
+        return false;
+    }
+
+    return snapshot.last_failed_material_id == 0U && snapshot.last_failed_draw_id == 0U;
+}
+
+bool CapacityEntrySnapshotMatchesResult(
+    const yuengine::rendercore::RenderViewPacketResult &result,
+    const yuengine::rendercore::RenderViewPacketSnapshot &snapshot) {
+    if (snapshot.last_capacity_entry_view_record_capacity != result.view_record_capacity) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_current_view_record_count !=
+        result.current_view_record_count) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_required_view_record_count !=
+        result.required_view_record_count) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_failed_entry_index != result.failed_entry_index) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_view_id != result.failed_view_id ||
+        snapshot.last_capacity_entry_frame_id != result.failed_frame_id ||
+        snapshot.last_capacity_entry_pass_id != result.failed_pass_id) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_material_id != result.failed_material_id ||
+        snapshot.last_capacity_entry_draw_id != result.failed_draw_id) {
+        return false;
+    }
+
+    return snapshot.last_capacity_entry_status == result.status;
+}
+
 int RenderCoreViewPacketBuildsCameraMaterialDrawPass() {
     const RenderCameraShaderConstants constants = CameraConstants();
     std::vector<std::uint8_t> capture(CAPTURE_BYTES, 0U);
@@ -247,6 +339,14 @@ int RenderCoreViewPacketRejectsPassMismatchWithoutOutputMutation() {
 
     if (!PassRequestMatchesSentinel(pass_request)) {
         return Fail("view packet mutated output after pass mismatch");
+    }
+
+    if (!ResultCapacityEntryIsClear(result)) {
+        return Fail("view packet pass mismatch reported capacity entry");
+    }
+
+    if (!SnapshotCapacityEntryIsClear(packet.Snapshot())) {
+        return Fail("view packet pass mismatch snapshot reported capacity entry");
     }
 
     return 0;
@@ -319,6 +419,14 @@ int RenderCoreViewPacketRejectsDuplicateViewId() {
         return Fail("view packet mutated output after duplicate view id");
     }
 
+    if (!ResultCapacityEntryIsClear(result)) {
+        return Fail("view packet duplicate reported capacity entry");
+    }
+
+    if (!SnapshotCapacityEntryIsClear(packet.Snapshot())) {
+        return Fail("view packet duplicate snapshot reported capacity entry");
+    }
+
     return 0;
 }
 
@@ -340,8 +448,20 @@ int RenderCoreViewPacketRejectsCapacityExceeded() {
         return Fail("view packet accepted capacity overflow");
     }
 
-    if (result.required_view_record_count != 2U) {
-        return Fail("view packet capacity required count mismatch");
+    if (result.view_record_capacity != 1U ||
+        result.current_view_record_count != 1U ||
+        result.required_view_record_count != 2U) {
+        return Fail("view packet capacity count mismatch");
+    }
+
+    constexpr std::size_t EXPECTED_FAILED_ENTRY_INDEX = 1U;
+    if (result.failed_entry_index != EXPECTED_FAILED_ENTRY_INDEX ||
+        result.failed_view_id != NEXT_VIEW_ID ||
+        result.failed_frame_id != FRAME_ID ||
+        result.failed_pass_id != PASS_ID ||
+        result.failed_material_id != MATERIAL_ID ||
+        result.failed_draw_id != DRAW_ID) {
+        return Fail("view packet capacity failed entry mismatch");
     }
 
     if (!PassRequestMatchesSentinel(rejected_request)) {
@@ -349,8 +469,29 @@ int RenderCoreViewPacketRejectsCapacityExceeded() {
     }
 
     const auto snapshot = packet.Snapshot();
-    if (snapshot.last_required_view_record_count != 2U) {
-        return Fail("view packet snapshot required count mismatch");
+    if (snapshot.view_record_capacity != 1U ||
+        snapshot.view_record_count != 1U ||
+        snapshot.last_required_view_record_count != 2U) {
+        return Fail("view packet snapshot count mismatch");
+    }
+
+    if (snapshot.last_failed_entry_index != EXPECTED_FAILED_ENTRY_INDEX ||
+        snapshot.last_failed_view_id != NEXT_VIEW_ID ||
+        snapshot.last_failed_frame_id != FRAME_ID ||
+        snapshot.last_failed_pass_id != PASS_ID ||
+        snapshot.last_failed_material_id != MATERIAL_ID ||
+        snapshot.last_failed_draw_id != DRAW_ID) {
+        return Fail("view packet snapshot failed entry mismatch");
+    }
+
+    if (snapshot.view_capacity_rejected_count != 1U ||
+        snapshot.failed_validation_count != 0U ||
+        snapshot.duplicate_view_id_count != 0U) {
+        return Fail("view packet capacity counter isolation mismatch");
+    }
+
+    if (!CapacityEntrySnapshotMatchesResult(result, snapshot)) {
+        return Fail("view packet snapshot missed capacity entry diagnostics");
     }
 
     return 0;
@@ -380,6 +521,10 @@ int RenderCoreViewPacketSnapshotTracksCounters() {
     const auto reset_snapshot = packet.Snapshot();
     if (reset_snapshot.view_record_count != 0U || reset_snapshot.accepted_view_count != 0U) {
         return Fail("view packet reset did not clear counters");
+    }
+
+    if (!SnapshotCapacityEntryIsClear(reset_snapshot)) {
+        return Fail("view packet reset did not clear capacity entry");
     }
 
     return 0;

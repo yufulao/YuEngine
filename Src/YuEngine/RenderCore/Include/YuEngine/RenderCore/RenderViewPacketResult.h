@@ -24,6 +24,14 @@ struct RenderViewPacketResult final {
     std::uint32_t material_id = 0U;
     std::uint32_t draw_id = 0U;
     std::uint32_t index_count = 0U;
+    std::size_t failed_entry_index = 0U;
+    std::uint32_t failed_view_id = 0U;
+    std::uint32_t failed_frame_id = 0U;
+    std::uint32_t failed_pass_id = 0U;
+    std::uint32_t failed_material_id = 0U;
+    std::uint32_t failed_draw_id = 0U;
+    std::size_t view_record_capacity = 0U;
+    std::size_t current_view_record_count = 0U;
     std::size_t required_view_record_count = 0U;
     std::size_t constant_byte_count = 0U;
     std::size_t capture_byte_budget = 0U;
