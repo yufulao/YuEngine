@@ -5,6 +5,7 @@
 
 #include <cstdint>
 
+#include "YuEngine/UiRuntime/UiPanelId.h"
 #include "YuEngine/UiRuntime/UiPanelRegistryStatus.h"
 
 namespace yuengine::uiruntime {
@@ -16,5 +17,8 @@ struct UiPanelRegistrySnapshot final {
     std::uint32_t failed_operation_count = 0U;
     std::uint32_t duplicate_panel_rejected_count = 0U;
     UiPanelRegistryStatus last_status = UiPanelRegistryStatus::Success;
+    std::uint32_t required_record_count = 0U;
+    UiPanelId failed_panel_id{};
+    std::uint32_t failed_record_index = 0U;
 };
 }

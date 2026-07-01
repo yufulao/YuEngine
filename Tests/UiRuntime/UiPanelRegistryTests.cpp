@@ -33,6 +33,8 @@ constexpr const char *TEST_DUPLICATE_MISSING =
     "UiRuntime_PanelRegistry_RejectsDuplicateAndMissingPanels";
 constexpr const char *TEST_TEST_MANIFEST =
     "UiRuntime_PanelRegistry_LoadsExplicitTestManifestAtomically";
+constexpr const char *TEST_CAPACITY_ENTRY =
+    "UiRuntime_PanelRegistry_CapacityFailureReportsEntry";
 constexpr const char *TEST_EXPORT_READ_ONLY =
     "UiRuntime_PanelRegistry_ExportsManifestAsReadOnlyCopy";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
@@ -240,6 +242,87 @@ int UiRuntimePanelRegistryLoadsExplicitTestManifestAtomically() {
     return 0;
 }
 
+int UiRuntimePanelRegistryCapacityFailureReportsEntry() {
+    UiPanelRegistryDesc desc{};
+    desc.panel_capacity = 1U;
+    UiPanelRegistry registry(desc);
+    const UiPanelManifestRecord first = MakePanelRecord(51U, 130U, 230U, 330U);
+    const UiPanelManifestRecord overflow = MakePanelRecord(52U, 131U, 231U, 331U);
+    if (!registry.RegisterPanel(first).Succeeded()) {
+        return Fail("capacity fixture register failed");
+    }
+
+    UiPanelRegistryResult result = registry.RegisterPanel(overflow);
+    if (result.status != UiPanelRegistryStatus::CapacityExceeded) {
+        return Fail("panel capacity status mismatch");
+    }
+
+    if (result.required_record_count != 2U ||
+        result.failed_panel_id.value != overflow.panel_id.value ||
+        result.failed_record_index != 1U) {
+        return Fail("panel capacity result entry mismatch");
+    }
+
+    UiPanelRegistrySnapshot snapshot = registry.Snapshot();
+    if (snapshot.required_record_count != 2U ||
+        snapshot.failed_panel_id.value != overflow.panel_id.value ||
+        snapshot.failed_record_index != 1U) {
+        return Fail("panel capacity snapshot entry mismatch");
+    }
+
+    result = registry.RegisterPanel(first);
+    if (result.status != UiPanelRegistryStatus::DuplicatePanelId) {
+        return Fail("duplicate did not clear capacity entry");
+    }
+
+    snapshot = registry.Snapshot();
+    if (snapshot.failed_panel_id.value != 0U || snapshot.required_record_count != 0U) {
+        return Fail("duplicate left stale capacity entry");
+    }
+
+    UiPanelRegistryDesc manifest_desc{};
+    manifest_desc.panel_capacity = 2U;
+    UiPanelRegistry manifest_registry(manifest_desc);
+    const UiPanelManifestRecord existing = MakePanelRecord(61U, 140U, 240U, 340U);
+    const UiPanelManifestRecord fit_record = MakePanelRecord(62U, 141U, 241U, 341U);
+    const UiPanelManifestRecord failed_record = MakePanelRecord(63U, 142U, 242U, 342U);
+    if (!manifest_registry.RegisterPanel(existing).Succeeded()) {
+        return Fail("manifest capacity fixture register failed");
+    }
+
+    std::array<UiPanelManifestRecord, 2U> manifest_records{fit_record, failed_record};
+    UiPanelTestManifest manifest{};
+    manifest.records = std::span<const UiPanelManifestRecord>(manifest_records.data(), manifest_records.size());
+    result = manifest_registry.RegisterManifest(manifest);
+    if (result.status != UiPanelRegistryStatus::CapacityExceeded) {
+        return Fail("manifest capacity status mismatch");
+    }
+
+    if (result.required_record_count != 3U ||
+        result.failed_panel_id.value != failed_record.panel_id.value ||
+        result.failed_record_index != 1U) {
+        return Fail("manifest capacity result entry mismatch");
+    }
+
+    UiPanelManifestRecord resolved{};
+    UiPanelRegistryStatus status = manifest_registry.ResolvePanel(fit_record.panel_id, &resolved);
+    if (status != UiPanelRegistryStatus::PanelNotFound) {
+        return Fail("manifest capacity mutated registry");
+    }
+
+    result = manifest_registry.RegisterPanel(fit_record);
+    if (!result.Succeeded()) {
+        return Fail("success after manifest capacity failed");
+    }
+
+    snapshot = manifest_registry.Snapshot();
+    if (snapshot.failed_panel_id.value != 0U || snapshot.required_record_count != 0U) {
+        return Fail("success left stale capacity entry");
+    }
+
+    return 0;
+}
+
 int UiRuntimePanelRegistryExportsManifestAsReadOnlyCopy() {
     UiPanelRegistryDesc desc{};
     desc.panel_capacity = 2U;
@@ -292,6 +375,10 @@ int RunNamedTest(std::string_view test_name) {
 
     if (test_name == TEST_TEST_MANIFEST) {
         return UiRuntimePanelRegistryLoadsExplicitTestManifestAtomically();
+    }
+
+    if (test_name == TEST_CAPACITY_ENTRY) {
+        return UiRuntimePanelRegistryCapacityFailureReportsEntry();
     }
 
     if (test_name == TEST_EXPORT_READ_ONLY) {

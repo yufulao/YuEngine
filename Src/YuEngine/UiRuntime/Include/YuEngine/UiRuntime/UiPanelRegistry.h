@@ -78,8 +78,17 @@ private:
         UiPanelRegistryStatus status,
         const UiPanelManifestRecord &record,
         std::uint32_t record_index) const;
+    UiPanelRegistryResult MakeCapacityResult(
+        const UiPanelManifestRecord &record,
+        std::uint32_t failed_record_index,
+        std::uint32_t required_record_count);
     UiPanelRegistryStatus RecordFailure(UiPanelRegistryStatus status);
     void RecordSuccess();
+    void ClearCapacityEntry();
+    void RecordCapacityEntry(
+        const UiPanelManifestRecord &record,
+        std::uint32_t failed_record_index,
+        std::uint32_t required_record_count);
 
     std::array<UiPanelManifestRecord, MAX_UI_PANEL_REGISTRY_RECORD_COUNT> records_;
     std::array<bool, MAX_UI_PANEL_REGISTRY_RECORD_COUNT> active_records_;

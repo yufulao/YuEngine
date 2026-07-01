@@ -29,7 +29,10 @@ UiPanelRegistry::UiPanelRegistry(UiPanelRegistryDesc desc)
                 0U,
                 0U,
                 0U,
-                UiPanelRegistryStatus::Success} {
+                UiPanelRegistryStatus::Success,
+                0U,
+                UiPanelId{},
+                0U} {
 }
 
 UiPanelRegistryResult UiPanelRegistry::RegisterPanel(const UiPanelManifestRecord &record) {
@@ -44,7 +47,9 @@ UiPanelRegistryResult UiPanelRegistry::RegisterPanel(const UiPanelManifestRecord
     }
 
     if (snapshot_.registered_panel_count >= snapshot_.panel_capacity) {
-        return MakeResult(RecordFailure(UiPanelRegistryStatus::CapacityExceeded), record, 0U);
+        const std::uint32_t required_record_count = snapshot_.registered_panel_count + 1U;
+        const std::uint32_t failed_record_index = snapshot_.registered_panel_count;
+        return MakeCapacityResult(record, failed_record_index, required_record_count);
     }
 
     UiPanelRegistryResult result = InsertRecord(record);
@@ -61,12 +66,22 @@ UiPanelRegistryResult UiPanelRegistry::RegisterManifest(const UiPanelTestManifes
             ++snapshot_.duplicate_panel_rejected_count;
         }
 
+        if (status == UiPanelRegistryStatus::CapacityExceeded) {
+            const auto failed_record_index = static_cast<std::uint32_t>(MAX_UI_PANEL_REGISTRY_RECORD_COUNT);
+            const auto required_record_count = static_cast<std::uint32_t>(manifest.records.size());
+            const UiPanelManifestRecord &failed_record = manifest.records[failed_record_index];
+            return MakeCapacityResult(failed_record, failed_record_index, required_record_count);
+        }
+
         return MakeResult(RecordFailure(status), UiPanelManifestRecord{}, 0U);
     }
 
     const std::uint32_t manifest_count = static_cast<std::uint32_t>(manifest.records.size());
-    if (snapshot_.registered_panel_count + manifest_count > snapshot_.panel_capacity) {
-        return MakeResult(RecordFailure(UiPanelRegistryStatus::CapacityExceeded), UiPanelManifestRecord{}, 0U);
+    const std::uint32_t required_record_count = snapshot_.registered_panel_count + manifest_count;
+    if (required_record_count > snapshot_.panel_capacity) {
+        const std::uint32_t failed_record_index = snapshot_.panel_capacity - snapshot_.registered_panel_count;
+        const UiPanelManifestRecord &failed_record = manifest.records[failed_record_index];
+        return MakeCapacityResult(failed_record, failed_record_index, required_record_count);
     }
 
     UiPanelRegistryResult result{};
@@ -259,7 +274,23 @@ UiPanelRegistryResult UiPanelRegistry::MakeResult(
     return result;
 }
 
+UiPanelRegistryResult UiPanelRegistry::MakeCapacityResult(
+    const UiPanelManifestRecord &record,
+    std::uint32_t failed_record_index,
+    std::uint32_t required_record_count) {
+    RecordCapacityEntry(record, failed_record_index, required_record_count);
+    UiPanelRegistryResult result = MakeResult(RecordFailure(UiPanelRegistryStatus::CapacityExceeded), record, failed_record_index);
+    result.required_record_count = required_record_count;
+    result.failed_panel_id = record.panel_id;
+    result.failed_record_index = failed_record_index;
+    return result;
+}
+
 UiPanelRegistryStatus UiPanelRegistry::RecordFailure(UiPanelRegistryStatus status) {
+    if (status != UiPanelRegistryStatus::CapacityExceeded) {
+        ClearCapacityEntry();
+    }
+
     ++snapshot_.rejected_operation_count;
     ++snapshot_.failed_operation_count;
     snapshot_.last_status = status;
@@ -267,7 +298,23 @@ UiPanelRegistryStatus UiPanelRegistry::RecordFailure(UiPanelRegistryStatus statu
 }
 
 void UiPanelRegistry::RecordSuccess() {
+    ClearCapacityEntry();
     ++snapshot_.accepted_operation_count;
     snapshot_.last_status = UiPanelRegistryStatus::Success;
+}
+
+void UiPanelRegistry::ClearCapacityEntry() {
+    snapshot_.required_record_count = 0U;
+    snapshot_.failed_panel_id = UiPanelId{};
+    snapshot_.failed_record_index = 0U;
+}
+
+void UiPanelRegistry::RecordCapacityEntry(
+    const UiPanelManifestRecord &record,
+    std::uint32_t failed_record_index,
+    std::uint32_t required_record_count) {
+    snapshot_.required_record_count = required_record_count;
+    snapshot_.failed_panel_id = record.panel_id;
+    snapshot_.failed_record_index = failed_record_index;
 }
 }

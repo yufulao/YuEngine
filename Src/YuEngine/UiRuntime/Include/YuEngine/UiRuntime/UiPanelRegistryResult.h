@@ -14,6 +14,8 @@ struct UiPanelRegistryResult final {
     UiPanelManifestRecord record;
     std::uint32_t record_index = 0U;
     std::uint32_t required_record_count = 0U;
+    UiPanelId failed_panel_id{};
+    std::uint32_t failed_record_index = 0U;
 
     /**
      * @comment 检查 panel registry 操作是否成功。
