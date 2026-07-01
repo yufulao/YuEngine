@@ -3,6 +3,7 @@
 
 #include "YuEngine/Streaming/PackageResourceStagingQueue.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -30,6 +31,81 @@ bool ByteCountExceedsCapacity(std::uint64_t byte_count, std::size_t capacity) {
 
 bool ByteCountExceedsUInt32(std::uint64_t byte_count) {
     return byte_count > static_cast<std::uint64_t>(std::numeric_limits<std::uint32_t>::max());
+}
+
+file::AsyncFileReadRequest BuildStagingFileRequest(const PackageResourceStagingRequest &request) {
+    file::AsyncFileReadRequest file_request = request.file_request;
+    file_request.read_request.use_range = true;
+    file_request.read_request.range_byte_offset = request.package_record.archive_byte_offset;
+    file_request.read_request.range_byte_size = request.package_record.archive_byte_size;
+    file_request.request_index = request.request_id;
+    return file_request;
+}
+
+bool HasEarlierBatchRequestId(
+    const PackageResourceStagingRequest *requests,
+    std::uint32_t request_index) {
+    for (std::uint32_t index = 0U; index < request_index; ++index) {
+        if (requests[index].request_id == requests[request_index].request_id) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool HasEarlierBatchFileQueue(
+    const PackageResourceStagingRequest *requests,
+    std::uint32_t request_index) {
+    for (std::uint32_t index = 0U; index < request_index; ++index) {
+        if (requests[index].file_queue == requests[request_index].file_queue) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+std::size_t CountBatchRequestsForFileQueue(
+    const PackageResourceStagingRequest *requests,
+    std::uint32_t request_count,
+    file::AsyncFileReadQueue *file_queue) {
+    std::size_t result = 0U;
+    for (std::uint32_t index = 0U; index < request_count; ++index) {
+        if (requests[index].file_queue == file_queue) {
+            ++result;
+        }
+    }
+
+    return result;
+}
+
+file::AsyncFileReadStatus SelectFileQueueReadinessStatus(
+    const file::AsyncFileReadQueueSnapshot &snapshot) {
+    if (!snapshot.is_initialized) {
+        return file::AsyncFileReadStatus::NotInitialized;
+    }
+
+    if (snapshot.is_shutdown) {
+        return file::AsyncFileReadStatus::ShutdownRequested;
+    }
+
+    if (!snapshot.is_started) {
+        return file::AsyncFileReadStatus::NotStarted;
+    }
+
+    return file::AsyncFileReadStatus::Success;
+}
+
+bool HasFileQueueCapacity(
+    const file::AsyncFileReadQueueSnapshot &snapshot,
+    std::size_t request_count) {
+    if (snapshot.pending_count > snapshot.work_capacity) {
+        return false;
+    }
+
+    const std::size_t available_count = snapshot.work_capacity - snapshot.pending_count;
+    return request_count <= available_count;
 }
 }
 
@@ -84,11 +160,7 @@ PackageResourceStagingStatus PackageResourceStagingQueue::Submit(
         return RecordRejected(PackageResourceStagingStatus::QueueFull);
     }
 
-    file::AsyncFileReadRequest file_request = request.file_request;
-    file_request.read_request.use_range = true;
-    file_request.read_request.range_byte_offset = request.package_record.archive_byte_offset;
-    file_request.read_request.range_byte_size = request.package_record.archive_byte_size;
-    file_request.request_index = request.request_id;
+    const file::AsyncFileReadRequest file_request = BuildStagingFileRequest(request);
     const file::AsyncFileReadStatus async_file_status = request.file_queue->Submit(file_request);
     if (async_file_status != file::AsyncFileReadStatus::Queued) {
         return RecordFileSubmitFailure(async_file_status);
@@ -101,6 +173,142 @@ PackageResourceStagingStatus PackageResourceStagingQueue::Submit(
     snapshot_.last_async_file_status = async_file_status;
     snapshot_.last_file_status = file::FileStatus::Success;
     return PackageResourceStagingStatus::Queued;
+}
+
+PackageResourceStagingBatchSubmitResult PackageResourceStagingQueue::SubmitBatch(
+    const PackageResourceStagingRequest *requests,
+    std::uint32_t request_count,
+    PackageResourceStagingSubmitResult *output_results,
+    std::uint32_t output_capacity) {
+    PackageResourceStagingBatchSubmitResult result;
+    result.request_count = request_count;
+    result.required_result_count = request_count;
+
+    if (request_count == 0U) {
+        result.status = PackageResourceStagingStatus::InvalidArgument;
+        return result;
+    }
+
+    if (requests == nullptr) {
+        result.status = PackageResourceStagingStatus::InvalidArgument;
+        return result;
+    }
+
+    if (output_results == nullptr) {
+        result.status = PackageResourceStagingStatus::InvalidArgument;
+        return result;
+    }
+
+    if (output_capacity < request_count) {
+        result.status = PackageResourceStagingStatus::OutputTooSmall;
+        return result;
+    }
+
+    for (std::uint32_t index = 0U; index < request_count; ++index) {
+        const PackageResourceStagingRequest &request = requests[index];
+        const PackageResourceStagingStatus request_status = ValidateRequest(request);
+        if (request_status != PackageResourceStagingStatus::Success) {
+            result.status = request_status;
+            result.failed_index = index;
+            result.failed_request_id = request.request_id;
+            return result;
+        }
+
+        const resource::ResourceStatus resource_status =
+            request.resource_registry->ValidateAcquire(request.resource, request.expected_type, 0U);
+        if (resource_status != resource::ResourceStatus::Success) {
+            result.status = PackageResourceStagingStatus::ResourceValidationFailed;
+            result.resource_status = resource_status;
+            result.failed_index = index;
+            result.failed_request_id = request.request_id;
+            return result;
+        }
+
+        if (HasRequestId(request.request_id)) {
+            result.status = PackageResourceStagingStatus::DuplicateRequestId;
+            result.failed_index = index;
+            result.failed_request_id = request.request_id;
+            return result;
+        }
+
+        if (HasEarlierBatchRequestId(requests, index)) {
+            result.status = PackageResourceStagingStatus::DuplicateRequestId;
+            result.failed_index = index;
+            result.failed_request_id = request.request_id;
+            return result;
+        }
+    }
+
+    if (snapshot_.pending_count > snapshot_.request_capacity) {
+        result.status = PackageResourceStagingStatus::QueueFull;
+        return result;
+    }
+
+    const std::uint32_t available_request_count = snapshot_.request_capacity - snapshot_.pending_count;
+    if (request_count > available_request_count) {
+        result.status = PackageResourceStagingStatus::QueueFull;
+        return result;
+    }
+
+    for (std::uint32_t index = 0U; index < request_count; ++index) {
+        if (HasEarlierBatchFileQueue(requests, index)) {
+            continue;
+        }
+
+        const PackageResourceStagingRequest &request = requests[index];
+        const file::AsyncFileReadQueueSnapshot file_snapshot = request.file_queue->Snapshot();
+        const file::AsyncFileReadStatus readiness_status = SelectFileQueueReadinessStatus(file_snapshot);
+        if (readiness_status != file::AsyncFileReadStatus::Success) {
+            result.status = PackageResourceStagingStatus::FileSubmitFailed;
+            result.async_file_status = readiness_status;
+            result.failed_index = index;
+            result.failed_request_id = request.request_id;
+            return result;
+        }
+
+        const std::size_t file_request_count =
+            CountBatchRequestsForFileQueue(requests, request_count, request.file_queue);
+        if (!HasFileQueueCapacity(file_snapshot, file_request_count)) {
+            result.status = PackageResourceStagingStatus::FileSubmitFailed;
+            result.async_file_status = file::AsyncFileReadStatus::QueueFull;
+            result.failed_index = index;
+            result.failed_request_id = request.request_id;
+            return result;
+        }
+    }
+
+    std::array<PackageResourceStagingSubmitResult, MAX_PACKAGE_RESOURCE_STAGING_REQUEST_COUNT> submit_results{};
+    for (std::uint32_t index = 0U; index < request_count; ++index) {
+        const PackageResourceStagingRequest &request = requests[index];
+        const file::AsyncFileReadRequest file_request = BuildStagingFileRequest(request);
+        const file::AsyncFileReadStatus async_file_status = request.file_queue->Submit(file_request);
+        if (async_file_status != file::AsyncFileReadStatus::Queued) {
+            result.status = PackageResourceStagingStatus::FileSubmitFailed;
+            result.async_file_status = async_file_status;
+            result.failed_index = index;
+            result.failed_request_id = request.request_id;
+            return result;
+        }
+
+        StorePendingRecord(request);
+        ++snapshot_.submitted_count;
+        submit_results[index].status = PackageResourceStagingStatus::Queued;
+        submit_results[index].async_file_status = async_file_status;
+        submit_results[index].request_id = request.request_id;
+        ++result.submitted_count;
+    }
+
+    for (std::uint32_t index = 0U; index < request_count; ++index) {
+        output_results[index] = submit_results[index];
+    }
+
+    snapshot_.last_status = PackageResourceStagingStatus::Queued;
+    snapshot_.last_resource_status = resource::ResourceStatus::Success;
+    snapshot_.last_async_file_status = file::AsyncFileReadStatus::Queued;
+    snapshot_.last_file_status = file::FileStatus::Success;
+    result.status = PackageResourceStagingStatus::Queued;
+    result.async_file_status = file::AsyncFileReadStatus::Queued;
+    return result;
 }
 
 PackageResourceStagingStatus PackageResourceStagingQueue::CompleteFileRead(

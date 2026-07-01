@@ -104,6 +104,8 @@ using yuengine::streaming::PackageResourceStagingQueueDesc;
 using yuengine::streaming::PackageResourceStagingRequest;
 using yuengine::streaming::PackageResourceStagingSnapshot;
 using yuengine::streaming::PackageResourceStagingStatus;
+using yuengine::streaming::PackageResourceStagingBatchSubmitResult;
+using yuengine::streaming::PackageResourceStagingSubmitResult;
 using yuengine::streaming::ResourceCachePayloadBridge;
 using yuengine::streaming::ResourceCachePayloadBridgeRequest;
 using yuengine::streaming::ResourceCachePayloadBridgeResult;
@@ -148,6 +150,8 @@ constexpr const char *TEST_STAGING_MULTI_DRAIN_MIXED_STATUS =
     "Streaming_PackageResourceStaging_MultiDrainPreservesMixedFinalStatus";
 constexpr const char *TEST_STAGING_DRAIN_OUTPUT_ATOMIC =
     "Streaming_PackageResourceStaging_DrainOutputFailureIsAtomic";
+constexpr const char *TEST_STAGING_BATCH_SUBMIT_OUTPUT_ATOMIC =
+    "Streaming_PackageResourceStaging_BatchSubmitOutputFailureIsAtomic";
 constexpr const char *TEST_MISSING_COMPLETION =
     "Streaming_PackageResourceStaging_ReportsMissingFileCompletion";
 constexpr const char *TEST_QUEUE_OVERFLOW =
@@ -1995,6 +1999,174 @@ int StreamingPackageResourceStagingDrainOutputFailureIsAtomic() {
 
     if (final_snapshot.last_async_file_status != AsyncFileReadStatus::ReadFailure) {
         return Fail("atomic staging final drain lost async failure status");
+    }
+
+    return 0;
+}
+
+int StreamingPackageResourceStagingBatchSubmitOutputFailureIsAtomic() {
+    MountTable table = CreateMountedTable();
+    ResourceRegistry resource_registry;
+    PackageLoadPlanRecord record;
+    if (!BuildPackageRecord(&record, 0U, FixtureByteCount())) {
+        return Fail("staging batch submit record setup failed");
+    }
+
+    const ResourceRegistrationResult first_resource =
+        RegisterResourceWithKey(resource_registry, TYPE_TEXTURE, RESOURCE_KEY);
+    if (!first_resource.Succeeded()) {
+        return Fail("staging batch submit first resource setup failed");
+    }
+
+    const ResourceRegistrationResult second_resource =
+        RegisterResourceWithKey(resource_registry, TYPE_TEXTURE, RESOURCE_KEY_ALT);
+    if (!second_resource.Succeeded()) {
+        return Fail("staging batch submit second resource setup failed");
+    }
+
+    AsyncFileReadQueue file_queue;
+    if (file_queue.Initialize(4U, 4U) != AsyncFileReadStatus::Success) {
+        return Fail("staging batch submit file queue init failed");
+    }
+
+    if (file_queue.Start() != AsyncFileReadStatus::Success) {
+        return Fail("staging batch submit file queue start failed");
+    }
+
+    std::array<std::uint8_t, OUTPUT_CAPACITY> first_output_bytes{};
+    std::array<std::uint8_t, OUTPUT_CAPACITY> second_output_bytes{};
+    std::array<PackageResourceStagingRequest, 2U> requests{
+        BuildStagingRequest(
+            resource_registry,
+            file_queue,
+            table,
+            record,
+            first_resource.handle,
+            REQUEST_ONE,
+            first_output_bytes.data(),
+            first_output_bytes.size()),
+        BuildStagingRequest(
+            resource_registry,
+            file_queue,
+            table,
+            record,
+            second_resource.handle,
+            REQUEST_TWO,
+            second_output_bytes.data(),
+            second_output_bytes.size())};
+    PackageResourceStagingQueue queue(PackageResourceStagingQueueDesc{4U, 4U});
+
+    std::array<PackageResourceStagingSubmitResult, 2U> caller_results{};
+    caller_results[0U].status = PackageResourceStagingStatus::DuplicateRequestId;
+    caller_results[0U].async_file_status = AsyncFileReadStatus::QueueFull;
+    caller_results[0U].request_id = UPLOAD_ONE;
+    caller_results[1U].status = PackageResourceStagingStatus::QueueFull;
+    caller_results[1U].async_file_status = AsyncFileReadStatus::NotInitialized;
+    caller_results[1U].request_id = UPLOAD_TWO;
+
+    const PackageResourceStagingBatchSubmitResult capacity_result = queue.SubmitBatch(
+        requests.data(),
+        static_cast<std::uint32_t>(requests.size()),
+        caller_results.data(),
+        1U);
+    if (capacity_result.status != PackageResourceStagingStatus::OutputTooSmall) {
+        return Fail("staging batch submit capacity status changed");
+    }
+
+    if (capacity_result.required_result_count != 2U) {
+        return Fail("staging batch submit required result count changed");
+    }
+
+    if (capacity_result.submitted_count != 0U) {
+        return Fail("staging batch submit capacity submitted count changed");
+    }
+
+    if (caller_results[0U].status != PackageResourceStagingStatus::DuplicateRequestId ||
+        caller_results[0U].request_id != UPLOAD_ONE ||
+        caller_results[1U].status != PackageResourceStagingStatus::QueueFull ||
+        caller_results[1U].request_id != UPLOAD_TWO) {
+        return Fail("staging batch submit capacity mutated caller results");
+    }
+
+    const PackageResourceStagingSnapshot capacity_snapshot = queue.Snapshot();
+    if (capacity_snapshot.pending_count != 0U || capacity_snapshot.submitted_count != 0U) {
+        return Fail("staging batch submit capacity mutated queue");
+    }
+
+    if (file_queue.Snapshot().submitted_count != 0U) {
+        return Fail("staging batch submit capacity mutated file queue");
+    }
+
+    std::array<PackageResourceStagingRequest, 2U> invalid_requests{PackageResourceStagingRequest{}, requests[0U]};
+    const PackageResourceStagingBatchSubmitResult invalid_result = queue.SubmitBatch(
+        invalid_requests.data(),
+        static_cast<std::uint32_t>(invalid_requests.size()),
+        caller_results.data(),
+        static_cast<std::uint32_t>(caller_results.size()));
+    if (invalid_result.status != PackageResourceStagingStatus::InvalidArgument) {
+        return Fail("staging batch submit invalid status changed");
+    }
+
+    if (invalid_result.failed_index != 0U) {
+        return Fail("staging batch submit invalid failed index changed");
+    }
+
+    if (queue.Snapshot().pending_count != 0U || file_queue.Snapshot().submitted_count != 0U) {
+        return Fail("staging batch submit invalid mutated queues");
+    }
+
+    const PackageResourceStagingBatchSubmitResult success_result = queue.SubmitBatch(
+        requests.data(),
+        static_cast<std::uint32_t>(requests.size()),
+        caller_results.data(),
+        static_cast<std::uint32_t>(caller_results.size()));
+    if (success_result.status != PackageResourceStagingStatus::Queued) {
+        return Fail("staging batch submit success status changed");
+    }
+
+    if (success_result.submitted_count != 2U || success_result.required_result_count != 2U) {
+        return Fail("staging batch submit success counts changed");
+    }
+
+    if (caller_results[0U].status != PackageResourceStagingStatus::Queued ||
+        caller_results[0U].request_id != REQUEST_ONE ||
+        caller_results[1U].status != PackageResourceStagingStatus::Queued ||
+        caller_results[1U].request_id != REQUEST_TWO) {
+        return Fail("staging batch submit success rows changed");
+    }
+
+    const PackageResourceStagingSnapshot success_snapshot = queue.Snapshot();
+    if (success_snapshot.pending_count != 2U || success_snapshot.submitted_count != 2U) {
+        return Fail("staging batch submit success snapshot changed");
+    }
+
+    const PackageResourceStagingBatchSubmitResult repeated_invalid_result = queue.SubmitBatch(
+        invalid_requests.data(),
+        static_cast<std::uint32_t>(invalid_requests.size()),
+        caller_results.data(),
+        static_cast<std::uint32_t>(caller_results.size()));
+    if (repeated_invalid_result.status != PackageResourceStagingStatus::InvalidArgument) {
+        return Fail("staging batch submit repeated invalid status changed");
+    }
+
+    if (repeated_invalid_result.failed_index != 0U) {
+        return Fail("staging batch submit repeated invalid failed index changed");
+    }
+
+    if (caller_results[0U].status != PackageResourceStagingStatus::Queued ||
+        caller_results[0U].request_id != REQUEST_ONE ||
+        caller_results[1U].status != PackageResourceStagingStatus::Queued ||
+        caller_results[1U].request_id != REQUEST_TWO) {
+        return Fail("staging batch submit repeated invalid mutated caller results");
+    }
+
+    const PackageResourceStagingSnapshot repeated_snapshot = queue.Snapshot();
+    if (repeated_snapshot.pending_count != 2U || repeated_snapshot.submitted_count != 2U) {
+        return Fail("staging batch submit repeated invalid mutated queue");
+    }
+
+    if (file_queue.Shutdown(true) != AsyncFileReadStatus::ShutdownComplete) {
+        return Fail("staging batch submit shutdown failed");
     }
 
     return 0;
@@ -5104,6 +5276,8 @@ int main(int argc, char **argv) {
         {TEST_STAGING_MULTI_DRAIN_MIXED_STATUS,
          StreamingPackageResourceStagingMultiDrainPreservesMixedFinalStatus},
         {TEST_STAGING_DRAIN_OUTPUT_ATOMIC, StreamingPackageResourceStagingDrainOutputFailureIsAtomic},
+        {TEST_STAGING_BATCH_SUBMIT_OUTPUT_ATOMIC,
+         StreamingPackageResourceStagingBatchSubmitOutputFailureIsAtomic},
         {TEST_MISSING_COMPLETION, StreamingPackageResourceStagingReportsMissingFileCompletion},
         {TEST_QUEUE_OVERFLOW, StreamingPackageResourceStagingRejectsQueueOverflowWithoutMutation},
         {TEST_COMPLETION_OVERFLOW, StreamingPackageResourceStagingReportsCompletionOverflowWithoutDroppingPending},

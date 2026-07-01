@@ -13,6 +13,7 @@
 #include "YuEngine/Streaming/PackageResourceStagingRequest.h"
 #include "YuEngine/Streaming/PackageResourceStagingSnapshot.h"
 #include "YuEngine/Streaming/PackageResourceStagingStatus.h"
+#include "YuEngine/Streaming/PackageResourceStagingSubmitResult.h"
 
 namespace yuengine::streaming {
 class PackageResourceStagingQueue final {
@@ -33,6 +34,19 @@ public:
      * @return 显式操作状态。
      */
     PackageResourceStagingStatus Submit(const PackageResourceStagingRequest &request);
+    /**
+     * @comment 原子式预检并提交 package-resource staging batch 请求。
+     * @param requests 输入请求数组。
+     * @param request_count 输入请求数量。
+     * @param output_results 输出 per-request submit 结果。
+     * @param output_capacity 输出结果容量。
+     * @return batch submit 结果。
+     */
+    PackageResourceStagingBatchSubmitResult SubmitBatch(
+        const PackageResourceStagingRequest *requests,
+        std::uint32_t request_count,
+        PackageResourceStagingSubmitResult *output_results,
+        std::uint32_t output_capacity);
     /**
      * @comment 接受调用方已排空的异步文件读取完成记录。
      * @param file_result 输入 file completion 值。
