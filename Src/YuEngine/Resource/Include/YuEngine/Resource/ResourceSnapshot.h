@@ -23,6 +23,9 @@ struct ResourceSnapshot final {
     std::uint32_t dependency_edge_count;
     std::uint32_t dependency_validation_count;
     std::uint32_t failed_operation_count;
+    std::uint32_t last_required_resource_count;
+    std::uint32_t last_required_type_count;
+    std::uint32_t last_required_dependency_edge_count;
     std::uint32_t load_commit_record_count;
     std::uint64_t load_commit_count;
     std::uint64_t loaded_resource_count;

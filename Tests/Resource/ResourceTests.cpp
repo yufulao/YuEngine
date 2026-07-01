@@ -918,9 +918,34 @@ int ResourceRegistryRejectsCapacityOverflowWithoutMutation() {
         return Fail("resource capacity overflow did not return explicit status");
     }
 
+    const std::uint32_t required_resource_count = before_snapshot.registered_resource_count + 1U;
+    if (overflow_result.required_resource_count != required_resource_count) {
+        return Fail("resource capacity overflow did not report required resource count");
+    }
+
+    if (overflow_result.required_type_count != 0U) {
+        return Fail("resource capacity overflow reported type count");
+    }
+
+    if (overflow_result.required_dependency_edge_count != 0U) {
+        return Fail("resource capacity overflow reported dependency count");
+    }
+
     const ResourceSnapshot after_snapshot = registry.Snapshot();
     if (after_snapshot.registered_resource_count != before_snapshot.registered_resource_count) {
         return Fail("resource capacity overflow changed registered count");
+    }
+
+    if (after_snapshot.last_required_resource_count != required_resource_count) {
+        return Fail("resource capacity overflow snapshot missed required resource count");
+    }
+
+    if (after_snapshot.last_required_type_count != 0U) {
+        return Fail("resource capacity overflow snapshot reported type count");
+    }
+
+    if (after_snapshot.last_required_dependency_edge_count != 0U) {
+        return Fail("resource capacity overflow snapshot reported dependency count");
     }
 
     if (after_snapshot.type_count != before_snapshot.type_count) {
@@ -947,9 +972,34 @@ int ResourceTypeCapacityOverflowDoesNotMutate() {
         return Fail(TYPE_CAPACITY_VALID_HANDLE_FAILED);
     }
 
+    const std::uint32_t required_type_count = before_snapshot.type_count + 1U;
+    if (overflow_result.required_type_count != required_type_count) {
+        return Fail("type capacity overflow did not report required type count");
+    }
+
+    if (overflow_result.required_resource_count != 0U) {
+        return Fail("type capacity overflow reported resource count");
+    }
+
+    if (overflow_result.required_dependency_edge_count != 0U) {
+        return Fail("type capacity overflow reported dependency count");
+    }
+
     const ResourceSnapshot after_snapshot = registry.Snapshot();
     if (after_snapshot.type_count != before_snapshot.type_count) {
         return Fail(TYPE_CAPACITY_TYPE_COUNT_FAILED);
+    }
+
+    if (after_snapshot.last_required_type_count != required_type_count) {
+        return Fail("type capacity overflow snapshot missed required type count");
+    }
+
+    if (after_snapshot.last_required_resource_count != 0U) {
+        return Fail("type capacity overflow snapshot reported resource count");
+    }
+
+    if (after_snapshot.last_required_dependency_edge_count != 0U) {
+        return Fail("type capacity overflow snapshot reported dependency count");
     }
 
     if (after_snapshot.registered_resource_count != before_snapshot.registered_resource_count) {
@@ -975,6 +1025,10 @@ int ResourceTypeCapacityOverflowDoesNotMutate() {
 
     if (registry.Snapshot().type_count != before_snapshot.type_count) {
         return Fail(TYPE_CAPACITY_RETRY_TYPE_COUNT_FAILED);
+    }
+
+    if (registry.Snapshot().last_required_type_count != 0U) {
+        return Fail("successful retry left required type count diagnostic");
     }
 
     return 0;
@@ -1280,6 +1334,63 @@ int ResourceDependencyValidationRejectsMissingDependency() {
 
     if (snapshot.dependency_validation_count != 1U) {
         return Fail("missing dependency validation was not counted");
+    }
+
+    ResourceRegistry capacity_registry(ResourceRegistryDesc{3U, 3U, 1U});
+    const ResourceRegistrationResult capacity_dependency =
+        Register(capacity_registry, TYPE_TEXTURE, "texture_capacity_dependency");
+    const ResourceRegistrationResult capacity_first_dependent =
+        Register(capacity_registry, TYPE_MATERIAL, "material_capacity_dependent");
+    const ResourceRegistrationResult capacity_second_dependent =
+        Register(capacity_registry, TYPE_EFFECT, "effect_capacity_dependent");
+    if (!capacity_dependency.Succeeded()) {
+        return Fail("dependency capacity dependency registration failed");
+    }
+
+    if (!capacity_first_dependent.Succeeded()) {
+        return Fail("dependency capacity first dependent registration failed");
+    }
+
+    if (!capacity_second_dependent.Succeeded()) {
+        return Fail("dependency capacity second dependent registration failed");
+    }
+
+    if (capacity_registry.AddDependency(
+        capacity_first_dependent.handle,
+        capacity_dependency.handle) != ResourceStatus::Success) {
+        return Fail("dependency capacity fixture edge failed");
+    }
+
+    const ResourceSnapshot capacity_before_snapshot = capacity_registry.Snapshot();
+    const ResourceStatus capacity_status = capacity_registry.AddDependency(
+        capacity_second_dependent.handle,
+        capacity_dependency.handle);
+    if (capacity_status != ResourceStatus::CapacityExceeded) {
+        return Fail("dependency capacity overflow did not return explicit status");
+    }
+
+    const ResourceSnapshot capacity_after_snapshot = capacity_registry.Snapshot();
+    if (capacity_after_snapshot.dependency_edge_count != capacity_before_snapshot.dependency_edge_count) {
+        return Fail("dependency capacity overflow changed edge count");
+    }
+
+    const std::uint32_t required_dependency_edge_count = capacity_before_snapshot.dependency_edge_count + 1U;
+    if (capacity_after_snapshot.last_required_dependency_edge_count != required_dependency_edge_count) {
+        return Fail("dependency capacity overflow missed required dependency count");
+    }
+
+    if (capacity_after_snapshot.last_required_resource_count != 0U) {
+        return Fail("dependency capacity overflow reported resource count");
+    }
+
+    if (capacity_after_snapshot.last_required_type_count != 0U) {
+        return Fail("dependency capacity overflow reported type count");
+    }
+
+    const std::uint32_t expected_dependency_validation_count =
+        capacity_before_snapshot.dependency_validation_count + 1U;
+    if (capacity_after_snapshot.dependency_validation_count != expected_dependency_validation_count) {
+        return Fail("dependency capacity overflow missed validation count");
     }
 
     return 0;

@@ -95,6 +95,12 @@ bool PayloadLogicalByteCountOutOfBounds(
     return payload_logical_byte_count < payload_window_end;
 }
 
+void ClearLastRequiredCounts(ResourceSnapshot &snapshot) {
+    snapshot.last_required_resource_count = 0U;
+    snapshot.last_required_type_count = 0U;
+    snapshot.last_required_dependency_edge_count = 0U;
+}
+
 std::uint64_t EffectivePayloadLogicalByteCount(
     std::uint64_t payload_logical_byte_count,
     std::uint64_t payload_window_byte_offset,
@@ -147,6 +153,9 @@ ResourceRegistry::ResourceRegistry(ResourceRegistryDesc desc)
           0U,
           0U,
           0U,
+          0U,
+          0U,
+          0U,
           MemoryAccountingStatus::ExplicitlyTrackedOnly,
           ResourceStatus::Success,
           ResourceLoadState::Unloaded,
@@ -176,7 +185,10 @@ ResourceRegistrationResult ResourceRegistry::RegisterSyntheticDescriptor(const R
     }
 
     if (snapshot_.registered_resource_count >= snapshot_.resource_capacity) {
-        return ResourceRegistrationResult::Failure(RecordFailure(ResourceStatus::CapacityExceeded));
+        const std::uint32_t required_resource_count = snapshot_.registered_resource_count + 1U;
+        const ResourceStatus status = RecordFailure(ResourceStatus::CapacityExceeded);
+        snapshot_.last_required_resource_count = required_resource_count;
+        return ResourceRegistrationResult::Failure(status, required_resource_count, 0U, 0U);
     }
 
     ResourceSlot* free_slot = nullptr;
@@ -198,12 +210,22 @@ ResourceRegistrationResult ResourceRegistry::RegisterSyntheticDescriptor(const R
     }
 
     if (free_slot == nullptr) {
-        return ResourceRegistrationResult::Failure(RecordFailure(ResourceStatus::CapacityExceeded));
+        const std::uint32_t required_resource_count = snapshot_.registered_resource_count + 1U;
+        const ResourceStatus status = RecordFailure(ResourceStatus::CapacityExceeded);
+        snapshot_.last_required_resource_count = required_resource_count;
+        return ResourceRegistrationResult::Failure(status, required_resource_count, 0U, 0U);
     }
 
     const ResourceStatus type_status = RegisterTypeIfNeeded(descriptor.type);
     if (type_status != ResourceStatus::Success) {
-        return ResourceRegistrationResult::Failure(RecordFailure(type_status));
+        std::uint32_t required_type_count = 0U;
+        if (type_status == ResourceStatus::CapacityExceeded) {
+            required_type_count = snapshot_.type_count + 1U;
+        }
+
+        const ResourceStatus status = RecordFailure(type_status);
+        snapshot_.last_required_type_count = required_type_count;
+        return ResourceRegistrationResult::Failure(status, 0U, required_type_count, 0U);
     }
 
     if (free_slot->generation == INVALID_RESOURCE_GENERATION) {
@@ -259,7 +281,10 @@ ResourceStatus ResourceRegistry::AddDependency(ResourceHandle dependent, Resourc
     }
 
     if (snapshot_.dependency_edge_count >= snapshot_.dependency_edge_capacity) {
-        return RecordFailure(ResourceStatus::CapacityExceeded);
+        const std::uint32_t required_dependency_edge_count = snapshot_.dependency_edge_count + 1U;
+        const ResourceStatus status = RecordFailure(ResourceStatus::CapacityExceeded);
+        snapshot_.last_required_dependency_edge_count = required_dependency_edge_count;
+        return status;
     }
 
     for (ResourceDependencyEdge& edge : dependency_edges_) {
@@ -275,7 +300,10 @@ ResourceStatus ResourceRegistry::AddDependency(ResourceHandle dependent, Resourc
         return ResourceStatus::Success;
     }
 
-    return RecordFailure(ResourceStatus::CapacityExceeded);
+    const std::uint32_t required_dependency_edge_count = snapshot_.dependency_edge_count + 1U;
+    const ResourceStatus status = RecordFailure(ResourceStatus::CapacityExceeded);
+    snapshot_.last_required_dependency_edge_count = required_dependency_edge_count;
+    return status;
 }
 
 ResourceStatus ResourceRegistry::Acquire(ResourceHandle handle, ResourceTypeId expected_type) {
@@ -1650,12 +1678,14 @@ ResourceSnapshot ResourceRegistry::Snapshot() const {
 }
 
 ResourceStatus ResourceRegistry::RecordFailure(ResourceStatus status) {
+    ClearLastRequiredCounts(snapshot_);
     ++snapshot_.failed_operation_count;
     snapshot_.last_status = status;
     return status;
 }
 
 void ResourceRegistry::RecordSuccess() {
+    ClearLastRequiredCounts(snapshot_);
     snapshot_.last_status = ResourceStatus::Success;
 }
 
