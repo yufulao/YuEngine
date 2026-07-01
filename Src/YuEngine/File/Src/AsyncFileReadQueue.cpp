@@ -33,9 +33,11 @@ struct AsyncFileReadSlot {
 
 struct AsyncFileReadQueueState final {
     std::vector<AsyncFileReadSlot> slots;
+    std::vector<AsyncFileReadResult> completed_results;
     std::vector<ThreadWorkerCompletion> completion_buffer;
     ThreadWorker worker;
     AsyncFileReadQueueSnapshot snapshot;
+    std::size_t completed_result_cursor = 0U;
 };
 
 namespace {
@@ -135,6 +137,18 @@ AsyncFileReadSlot* FindSlotByTaskId(AsyncFileReadQueueState& state, TaskId task_
     return nullptr;
 }
 
+const AsyncFileReadResult* FindCompletedResultByRequestIndex(
+    const AsyncFileReadQueueState& state,
+    std::uint64_t request_index) {
+    for (const AsyncFileReadResult& result : state.completed_results) {
+        if (result.request_index == request_index) {
+            return &result;
+        }
+    }
+
+    return nullptr;
+}
+
 std::size_t CountUsedSlots(const AsyncFileReadQueueState& state) {
     std::size_t result = 0U;
     for (const AsyncFileReadSlot& slot : state.slots) {
@@ -174,6 +188,30 @@ void RecordQueueCapacityFailure(
 
 void StoreReadResult(AsyncFileReadSlot& slot, AsyncFileReadResult result) {
     slot.result = result;
+}
+
+void StoreCompletedResult(AsyncFileReadQueueState& state, const AsyncFileReadResult& result) {
+    for (AsyncFileReadResult& completed_result : state.completed_results) {
+        if (completed_result.request_index == result.request_index) {
+            completed_result = result;
+            return;
+        }
+    }
+
+    if (state.completed_results.size() < state.slots.size()) {
+        state.completed_results.emplace_back(result);
+        return;
+    }
+
+    if (state.completed_results.empty()) {
+        return;
+    }
+
+    state.completed_results[state.completed_result_cursor] = result;
+    ++state.completed_result_cursor;
+    if (state.completed_result_cursor >= state.completed_results.size()) {
+        state.completed_result_cursor = 0U;
+    }
 }
 
 TaskStatus ExecuteAsyncFileRead(void* context) {
@@ -322,6 +360,7 @@ AsyncFileReadStatus AsyncFileReadQueue::Initialize(std::size_t work_capacity, st
     }
 
     state_->slots.resize(work_capacity);
+    state_->completed_results.reserve(work_capacity);
     state_->completion_buffer.resize(completion_capacity);
 
     ThreadWorkerDesc desc;
@@ -479,31 +518,36 @@ AsyncFileReadStatus AsyncFileReadQueue::DrainCompletions(
     }
 
     const ThreadWorkerSnapshot worker_snapshot = state_->worker.Snapshot();
-    if (worker_snapshot.completion_pending_count > 0U && output_capacity == 0U) {
+    if (worker_snapshot.completion_pending_count > output_capacity) {
         RecordCompletionQueueFull(*state_, worker_snapshot.completion_pending_count);
         return AsyncFileReadStatus::CompletionQueueFull;
     }
 
-    std::size_t worker_output_capacity = output_capacity - *written_count;
-    if (worker_output_capacity > state_->completion_buffer.size()) {
-        worker_output_capacity = state_->completion_buffer.size();
+    std::size_t worker_output_capacity = state_->completion_buffer.size();
+    if (worker_output_capacity > output_capacity) {
+        worker_output_capacity = output_capacity;
     }
 
     std::size_t worker_written_count = 0U;
     AsyncFileReadStatus drained_last_status = AsyncFileReadStatus::Success;
-    if (worker_output_capacity > 0U) {
-        const ThreadWorkerStatus worker_status = state_->worker.DrainCompletions(
-            state_->completion_buffer.data(),
-            worker_output_capacity,
-            &worker_written_count);
-        if (worker_status != ThreadWorkerStatus::Success && worker_written_count == 0U) {
-            SetLastStatus(*state_, MapWorkerStatus(worker_status));
-            return MapWorkerStatus(worker_status);
+    const ThreadWorkerStatus worker_status = state_->worker.DrainCompletions(
+        state_->completion_buffer.data(),
+        worker_output_capacity,
+        &worker_written_count);
+    if (worker_status != ThreadWorkerStatus::Success) {
+        if (worker_status == ThreadWorkerStatus::CompletionQueueFull) {
+            const ThreadWorkerSnapshot full_snapshot = state_->worker.Snapshot();
+            RecordCompletionQueueFull(*state_, full_snapshot.last_required_completion_count);
+            return AsyncFileReadStatus::CompletionQueueFull;
         }
+
+        SetLastStatus(*state_, MapWorkerStatus(worker_status));
+        return MapWorkerStatus(worker_status);
     }
 
     for (std::size_t index = 0U; index < worker_written_count; ++index) {
-        const ThreadWorkerCompletion& worker_completion = state_->completion_buffer[index];
+        const ThreadWorkerCompletion worker_completion = state_->completion_buffer[index];
+        state_->completion_buffer[index] = ThreadWorkerCompletion{};
         AsyncFileReadSlot* slot = FindSlotByTaskId(*state_, worker_completion.task_id);
         AsyncFileReadResult result = BuildWorkerFailureResult(worker_completion);
         if (slot != nullptr) {
@@ -515,6 +559,7 @@ AsyncFileReadStatus AsyncFileReadQueue::DrainCompletions(
             ClearSlot(*slot);
         }
 
+        StoreCompletedResult(*state_, result);
         output_results[*written_count] = result;
         ++(*written_count);
         RecordDrainedResult(*state_, result);
@@ -537,6 +582,28 @@ AsyncFileReadStatus AsyncFileReadQueue::DrainCompletions(
 
     SetLastStatus(*state_, drained_last_status);
     return AsyncFileReadStatus::Success;
+}
+
+AsyncFileReadStatus AsyncFileReadQueue::GetCompletedResult(
+    std::uint64_t request_index,
+    AsyncFileReadResult* output_result) const {
+    if (output_result == nullptr) {
+        return AsyncFileReadStatus::InvalidArgument;
+    }
+
+    *output_result = AsyncFileReadResult{};
+
+    if (state_ == nullptr) {
+        return AsyncFileReadStatus::NotInitialized;
+    }
+
+    const AsyncFileReadResult* completed_result = FindCompletedResultByRequestIndex(*state_, request_index);
+    if (completed_result == nullptr) {
+        return AsyncFileReadStatus::InvalidArgument;
+    }
+
+    *output_result = *completed_result;
+    return completed_result->status;
 }
 
 AsyncFileReadQueueSnapshot AsyncFileReadQueue::Snapshot() const {

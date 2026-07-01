@@ -104,6 +104,15 @@ public:
         std::size_t output_capacity,
         std::size_t* written_count);
     /**
+     * @comment 按 request_index 返回已排空 request 的最终结果。
+     * @param request_index 输入 request 标识。
+     * @param output_result 输出 request 最终结果。
+     * @return request 最终状态；未找到时返回 InvalidArgument。
+     */
+    AsyncFileReadStatus GetCompletedResult(
+        std::uint64_t request_index,
+        AsyncFileReadResult* output_result) const;
+    /**
      * @comment 返回 async file queue 快照。
      * @return 快照值。
      */

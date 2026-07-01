@@ -64,6 +64,7 @@ constexpr const char* TEST_ASYNC_INITIALIZED_FAILURE_LAST_STATUS =
     "File_AsyncReadQueue_InitializedFailuresUpdateLastStatus";
 constexpr const char* TEST_ASYNC_SHUTDOWN = "File_AsyncReadQueue_ShutdownRejectsSubmission";
 constexpr const char* TEST_ASYNC_SNAPSHOT = "File_AsyncReadQueue_SnapshotReportsBoundedCounters";
+constexpr const char* TEST_ASYNC_MULTI_REQUEST = "File_AsyncReadQueue_MultiRequestResultsRemainIsolated";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char* PRIMARY_MOUNT = "Primary";
@@ -1640,6 +1641,139 @@ int FileAsyncReadQueueSnapshotReportsBoundedCounters() {
 
     return 0;
 }
+
+int FileAsyncReadQueueMultiRequestResultsRemainIsolated() {
+    constexpr std::uint64_t SUCCESS_REQUEST_INDEX = 101ULL;
+    constexpr std::uint64_t MISSING_REQUEST_INDEX = 202ULL;
+
+    MountTable table = CreateMountedTable();
+    AsyncFileReadQueue queue;
+    queue.Initialize(2U, 2U);
+    queue.Start();
+
+    std::array<std::uint8_t, ASYNC_OUTPUT_CAPACITY> success_output{};
+    std::array<std::uint8_t, ASYNC_OUTPUT_CAPACITY> missing_output{};
+    AsyncFileReadRequest success_request = CreateAsyncRequest(
+        table,
+        SUCCESS_REQUEST_INDEX,
+        NORMALIZED_PATH,
+        success_output.data(),
+        success_output.size());
+    AsyncFileReadRequest missing_request = CreateAsyncRequest(
+        table,
+        MISSING_REQUEST_INDEX,
+        MISSING_PATH,
+        missing_output.data(),
+        missing_output.size());
+
+    const AsyncFileReadStatus success_submit_status = queue.Submit(success_request);
+    if (success_submit_status != AsyncFileReadStatus::Queued) {
+        return Fail("multi request success submit failed");
+    }
+
+    const AsyncFileReadStatus missing_submit_status = queue.Submit(missing_request);
+    if (missing_submit_status != AsyncFileReadStatus::Queued) {
+        return Fail("multi request missing submit failed");
+    }
+
+    queue.Shutdown(false);
+
+    std::array<AsyncFileReadResult, 2U> results{};
+    std::size_t written_count = 0U;
+    const AsyncFileReadStatus drain_status = queue.DrainCompletions(
+        results.data(),
+        results.size(),
+        &written_count);
+    if (drain_status != AsyncFileReadStatus::Success) {
+        return Fail("multi request drain failed");
+    }
+
+    if (written_count != results.size()) {
+        return Fail("multi request completion count was wrong");
+    }
+
+    const AsyncFileReadResult* success_completion = nullptr;
+    const AsyncFileReadResult* missing_completion = nullptr;
+    for (const AsyncFileReadResult& result : results) {
+        if (result.request_index == SUCCESS_REQUEST_INDEX) {
+            success_completion = &result;
+        }
+
+        if (result.request_index == MISSING_REQUEST_INDEX) {
+            missing_completion = &result;
+        }
+    }
+
+    if (success_completion == nullptr) {
+        return Fail("multi request success completion was missing");
+    }
+
+    if (missing_completion == nullptr) {
+        return Fail("multi request missing completion was missing");
+    }
+
+    if (success_completion->status != AsyncFileReadStatus::Success) {
+        return Fail("multi request success completion status was wrong");
+    }
+
+    if (missing_completion->status != AsyncFileReadStatus::ReadFailure) {
+        return Fail("multi request missing completion status was wrong");
+    }
+
+    AsyncFileReadResult success_query;
+    const AsyncFileReadStatus success_query_status = queue.GetCompletedResult(
+        SUCCESS_REQUEST_INDEX,
+        &success_query);
+    if (success_query_status != AsyncFileReadStatus::Success) {
+        return Fail("multi request success query status was wrong");
+    }
+
+    AsyncFileReadResult missing_query;
+    const AsyncFileReadStatus missing_query_status = queue.GetCompletedResult(
+        MISSING_REQUEST_INDEX,
+        &missing_query);
+    if (missing_query_status != AsyncFileReadStatus::ReadFailure) {
+        return Fail("multi request missing query status was wrong");
+    }
+
+    AsyncFileReadResult success_query_again;
+    queue.GetCompletedResult(SUCCESS_REQUEST_INDEX, &success_query_again);
+    if (success_query_again.status != success_query.status) {
+        return Fail("multi request success query was mutated");
+    }
+
+    if (success_query_again.byte_count != success_query.byte_count) {
+        return Fail("multi request success byte count was mutated");
+    }
+
+    const std::string text(success_output.begin(), success_output.begin() + success_query.byte_count);
+    if (text != FIXTURE_TEXT) {
+        return Fail("multi request success bytes did not match fixture");
+    }
+
+    if (missing_query.file_status != FileStatus::FileNotFound) {
+        return Fail("multi request missing file status was not preserved");
+    }
+
+    const auto snapshot = queue.Snapshot();
+    if (snapshot.completed_count != 1U) {
+        return Fail("multi request completed count was wrong");
+    }
+
+    if (snapshot.failed_count != 1U) {
+        return Fail("multi request failed count was wrong");
+    }
+
+    if (snapshot.drained_completion_count != 2U) {
+        return Fail("multi request drained count was wrong");
+    }
+
+    if (snapshot.last_status != AsyncFileReadStatus::ReadFailure) {
+        return Fail("multi request last status hid read failure");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv) {
@@ -1674,7 +1808,8 @@ int main(int argc, char** argv) {
         {TEST_ASYNC_RANGE_SMALL_OUTPUT, FileAsyncReadQueueRangedOutputTooSmallDoesNotCopyPartialBytes},
         {TEST_ASYNC_INITIALIZED_FAILURE_LAST_STATUS, FileAsyncReadQueueInitializedFailuresUpdateLastStatus},
         {TEST_ASYNC_SHUTDOWN, FileAsyncReadQueueShutdownRejectsSubmission},
-        {TEST_ASYNC_SNAPSHOT, FileAsyncReadQueueSnapshotReportsBoundedCounters}};
+        {TEST_ASYNC_SNAPSHOT, FileAsyncReadQueueSnapshotReportsBoundedCounters},
+        {TEST_ASYNC_MULTI_REQUEST, FileAsyncReadQueueMultiRequestResultsRemainIsolated}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);
