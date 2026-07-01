@@ -31,5 +31,15 @@ struct DiagnosticsSnapshot {
     std::size_t required_counter_id_count = 0U;
     std::size_t required_counter_slot_count = 0U;
     std::size_t required_event_record_count = 0U;
+    DiagnosticsEventId failed_event_id{};
+    DiagnosticsCounterId failed_counter_id{};
+    std::size_t failed_event_id_capacity = 0U;
+    std::size_t failed_event_id_count = 0U;
+    std::size_t failed_counter_id_capacity = 0U;
+    std::size_t failed_counter_id_count = 0U;
+    std::size_t failed_counter_slot_capacity = 0U;
+    std::size_t failed_counter_slot_count = 0U;
+    std::size_t failed_event_record_capacity = 0U;
+    std::size_t failed_event_record_count = 0U;
 };
 }

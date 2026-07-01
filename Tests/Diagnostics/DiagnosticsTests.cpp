@@ -158,6 +158,50 @@ int Fail(const std::string& message) {
     return 1;
 }
 
+bool DiagnosticsCapacityEntryIsClear(const DiagnosticsSnapshot &snapshot) {
+    if (snapshot.failed_event_id.value != 0U) {
+        return false;
+    }
+
+    if (snapshot.failed_counter_id.value != 0U) {
+        return false;
+    }
+
+    if (snapshot.failed_event_id_capacity != 0U) {
+        return false;
+    }
+
+    if (snapshot.failed_event_id_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.failed_counter_id_capacity != 0U) {
+        return false;
+    }
+
+    if (snapshot.failed_counter_id_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.failed_counter_slot_capacity != 0U) {
+        return false;
+    }
+
+    if (snapshot.failed_counter_slot_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.failed_event_record_capacity != 0U) {
+        return false;
+    }
+
+    if (snapshot.failed_event_record_count != 0U) {
+        return false;
+    }
+
+    return true;
+}
+
 DiagnosticsChannelConfig TestChannelConfig() {
     return DiagnosticsChannelConfig{EVENT_CAPACITY, COUNTER_CAPACITY, ID_CAPACITY, ID_CAPACITY, true};
 }
@@ -420,6 +464,26 @@ int DiagnosticsBoundedChannelRecordsEventsAndCounters() {
         return Fail("event id capacity did not expose required count");
     }
 
+    if (event_capacity_snapshot.failed_event_id.value != UNKNOWN_EVENT_ID) {
+        return Fail("event id capacity did not expose failed event id");
+    }
+
+    if (event_capacity_snapshot.failed_event_id_capacity != ID_CAPACITY) {
+        return Fail("event id capacity did not expose capacity");
+    }
+
+    if (event_capacity_snapshot.failed_event_id_count != ID_CAPACITY) {
+        return Fail("event id capacity did not expose current count");
+    }
+
+    if (event_capacity_snapshot.failed_counter_id.value != 0U) {
+        return Fail("event id capacity left stale failed counter id");
+    }
+
+    if (event_capacity_snapshot.event_count != 0U) {
+        return Fail("event id capacity mutated event records");
+    }
+
     const auto counter_capacity_status = channel.RegisterCounterId(DiagnosticsCounterId{UNKNOWN_COUNTER_ID});
     if (counter_capacity_status != DiagnosticsStatus::CapacityExceeded) {
         return Fail("bounded diagnostics channel did not report counter id capacity");
@@ -432,6 +496,26 @@ int DiagnosticsBoundedChannelRecordsEventsAndCounters() {
 
     if (counter_capacity_snapshot.required_counter_id_count != ID_CAPACITY + 1U) {
         return Fail("counter id capacity did not expose required count");
+    }
+
+    if (counter_capacity_snapshot.failed_counter_id.value != UNKNOWN_COUNTER_ID) {
+        return Fail("counter id capacity did not expose failed counter id");
+    }
+
+    if (counter_capacity_snapshot.failed_counter_id_capacity != ID_CAPACITY) {
+        return Fail("counter id capacity did not expose capacity");
+    }
+
+    if (counter_capacity_snapshot.failed_counter_id_count != ID_CAPACITY) {
+        return Fail("counter id capacity did not expose current count");
+    }
+
+    if (counter_capacity_snapshot.failed_event_id.value != 0U) {
+        return Fail("counter id capacity left stale failed event id");
+    }
+
+    if (counter_capacity_snapshot.counter_count != COUNTER_CAPACITY) {
+        return Fail("counter id capacity mutated counter slots");
     }
 
     DiagnosticsChannelConfig counter_slot_config = TestChannelConfig();
@@ -447,6 +531,22 @@ int DiagnosticsBoundedChannelRecordsEventsAndCounters() {
     const DiagnosticsSnapshot counter_slot_snapshot = counter_slot_channel.Snapshot();
     if (counter_slot_snapshot.required_counter_slot_count != 2U) {
         return Fail("counter slot capacity did not expose required count");
+    }
+
+    if (counter_slot_snapshot.failed_counter_id.value != SECOND_COUNTER_ID) {
+        return Fail("counter slot capacity did not expose failed counter id");
+    }
+
+    if (counter_slot_snapshot.failed_counter_slot_capacity != 1U) {
+        return Fail("counter slot capacity did not expose capacity");
+    }
+
+    if (counter_slot_snapshot.failed_counter_slot_count != 1U) {
+        return Fail("counter slot capacity did not expose current count");
+    }
+
+    if (counter_slot_snapshot.counter_count != 1U) {
+        return Fail("counter slot capacity mutated counter slot count");
     }
 
     const auto event_status = channel.RecordEvent(DiagnosticsEventId{EVENT_ID}, EVENT_PAYLOAD);
@@ -478,6 +578,10 @@ int DiagnosticsBoundedChannelRecordsEventsAndCounters() {
 
     if (snapshot.last_status != DiagnosticsStatus::Success) {
         return Fail("bounded diagnostics channel success status was not recorded");
+    }
+
+    if (!DiagnosticsCapacityEntryIsClear(snapshot)) {
+        return Fail("bounded diagnostics channel success left stale capacity entry");
     }
 
     return 0;
@@ -513,8 +617,33 @@ int DiagnosticsBoundedChannelDropsWhenFull() {
         return Fail("full diagnostics channel did not expose required event record count");
     }
 
+    if (snapshot.failed_event_id.value != EVENT_ID) {
+        return Fail("full diagnostics channel did not expose failed event id");
+    }
+
+    if (snapshot.failed_event_record_capacity != EVENT_CAPACITY) {
+        return Fail("full diagnostics channel did not expose event record capacity");
+    }
+
+    if (snapshot.failed_event_record_count != EVENT_CAPACITY) {
+        return Fail("full diagnostics channel did not expose event record count");
+    }
+
     if (snapshot.last_status != DiagnosticsStatus::Dropped) {
         return Fail("full diagnostics channel did not record dropped status");
+    }
+
+    if (channel.RecordEvent(DiagnosticsEventId{UNKNOWN_EVENT_ID}, EVENT_PAYLOAD) != DiagnosticsStatus::UnknownEventId) {
+        return Fail("unknown event did not clear stale drop identity");
+    }
+
+    const DiagnosticsSnapshot invalid_snapshot = channel.Snapshot();
+    if (!DiagnosticsCapacityEntryIsClear(invalid_snapshot)) {
+        return Fail("unknown event left stale capacity entry");
+    }
+
+    if (invalid_snapshot.event_count != EVENT_CAPACITY) {
+        return Fail("unknown event mutated full diagnostics storage");
     }
 
     return 0;

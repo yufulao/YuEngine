@@ -70,6 +70,7 @@ public:
 
 private:
     DiagnosticsStatus ValidateConfig(DiagnosticsChannelConfig config) const;
+    DiagnosticsStatus RecordStatus(DiagnosticsStatus status);
     bool HasAcceptedEventId(DiagnosticsEventId event_id) const;
     bool HasAcceptedCounterId(DiagnosticsCounterId counter_id) const;
     std::size_t CounterIndex(DiagnosticsCounterId counter_id) const;
