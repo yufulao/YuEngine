@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 #include "YuEngine/Package/PackageEntryId.h"
 #include "YuEngine/Package/PackageId.h"
 #include "YuEngine/Package/PackageStatus.h"
@@ -12,6 +14,8 @@ struct PackageRegistrationResult final {
     PackageStatus status;
     PackageId package;
     PackageEntryId entry;
+    std::uint32_t required_manifest_record_count = 0U;
+    std::uint32_t required_entry_record_count = 0U;
 
     /**
      * @comment 创建成功 manifest registration result。

@@ -19,6 +19,8 @@ struct PackageSnapshot final {
     std::uint64_t load_plan_archive_byte_budget;
     std::uint32_t manifest_count;
     std::uint32_t entry_count;
+    std::uint32_t required_manifest_record_count = 0U;
+    std::uint32_t required_entry_record_count = 0U;
     std::uint32_t dependency_edge_count;
     std::uint32_t dependency_validation_count;
     std::uint32_t load_plan_resolve_count;

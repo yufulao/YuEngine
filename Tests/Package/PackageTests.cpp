@@ -624,6 +624,8 @@ int PackageRegisterInvalidIdsOrTypeReturnsExplicitStatusWithoutMutation() {
 }
 
 int PackageManifestCapacityOverflowDoesNotMutate() {
+    constexpr std::uint32_t EXPECTED_REQUIRED_MANIFEST_COUNT = 2U;
+
     PackageRegistry registry(PackageRegistryDesc{1U, 4U, 4U, 4U});
     RegisterManifest(registry, PACKAGE_A);
 
@@ -637,10 +639,21 @@ int PackageManifestCapacityOverflowDoesNotMutate() {
         return Fail("manifest capacity overflow changed manifest count");
     }
 
+    const PackageSnapshot after_snapshot = registry.Snapshot();
+    if (overflow.required_manifest_record_count != EXPECTED_REQUIRED_MANIFEST_COUNT) {
+        return Fail("manifest capacity overflow did not report required manifest count");
+    }
+
+    if (after_snapshot.required_manifest_record_count != EXPECTED_REQUIRED_MANIFEST_COUNT) {
+        return Fail("manifest capacity overflow did not snapshot required manifest count");
+    }
+
     return 0;
 }
 
 int PackageEntryCapacityOverflowDoesNotMutate() {
+    constexpr std::uint32_t EXPECTED_REQUIRED_ENTRY_COUNT = 2U;
+
     PackageRegistry registry(PackageRegistryDesc{1U, 1U, 4U, 4U});
     RegisterManifest(registry);
     RegisterEntry(registry, ENTRY_TEXTURE, TYPE_TEXTURE, "texture_a", "textures/texture_a.bin");
@@ -654,6 +667,15 @@ int PackageEntryCapacityOverflowDoesNotMutate() {
 
     if (registry.Snapshot().entry_count != before_snapshot.entry_count) {
         return Fail("entry capacity overflow changed entry count");
+    }
+
+    const PackageSnapshot after_snapshot = registry.Snapshot();
+    if (overflow.required_entry_record_count != EXPECTED_REQUIRED_ENTRY_COUNT) {
+        return Fail("entry capacity overflow did not report required entry count");
+    }
+
+    if (after_snapshot.required_entry_record_count != EXPECTED_REQUIRED_ENTRY_COUNT) {
+        return Fail("entry capacity overflow did not snapshot required entry count");
     }
 
     return 0;

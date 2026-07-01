@@ -312,6 +312,8 @@ PackageRegistry::PackageRegistry(PackageRegistryDesc desc)
           0U,
           0U,
           0U,
+          0U,
+          0U,
           0ULL,
           0U,
           0U,
@@ -332,13 +334,21 @@ PackageRegistrationResult PackageRegistry::RegisterSyntheticManifest(const Packa
     }
 
     if (snapshot_.manifest_count >= snapshot_.manifest_capacity) {
-        return PackageRegistrationResult::Failure(RecordFailure(PackageStatus::ManifestCapacityExceeded));
+        PackageRegistrationResult result =
+            PackageRegistrationResult::Failure(RecordFailure(PackageStatus::ManifestCapacityExceeded));
+        result.required_manifest_record_count = snapshot_.manifest_count + 1U;
+        snapshot_.required_manifest_record_count = result.required_manifest_record_count;
+        return result;
     }
 
     std::uint32_t index = 0U;
     for (ManifestSlot& manifest : manifests_) {
         if (index >= snapshot_.manifest_capacity) {
-            return PackageRegistrationResult::Failure(RecordFailure(PackageStatus::ManifestCapacityExceeded));
+            PackageRegistrationResult result =
+                PackageRegistrationResult::Failure(RecordFailure(PackageStatus::ManifestCapacityExceeded));
+            result.required_manifest_record_count = index + 1U;
+            snapshot_.required_manifest_record_count = result.required_manifest_record_count;
+            return result;
         }
 
         if (manifest.is_active) {
@@ -349,11 +359,18 @@ PackageRegistrationResult PackageRegistry::RegisterSyntheticManifest(const Packa
         manifest.id = descriptor.id;
         manifest.is_active = true;
         ++snapshot_.manifest_count;
+        snapshot_.required_manifest_record_count = snapshot_.manifest_count;
         RecordSuccess();
-        return PackageRegistrationResult::ManifestSuccess(descriptor.id);
+        PackageRegistrationResult result = PackageRegistrationResult::ManifestSuccess(descriptor.id);
+        result.required_manifest_record_count = snapshot_.manifest_count;
+        return result;
     }
 
-    return PackageRegistrationResult::Failure(RecordFailure(PackageStatus::ManifestCapacityExceeded));
+    PackageRegistrationResult result =
+        PackageRegistrationResult::Failure(RecordFailure(PackageStatus::ManifestCapacityExceeded));
+    result.required_manifest_record_count = snapshot_.manifest_count + 1U;
+    snapshot_.required_manifest_record_count = result.required_manifest_record_count;
+    return result;
 }
 
 PackageRegistrationResult PackageRegistry::RegisterEntry(const PackageEntryDescriptor& descriptor) {
@@ -375,13 +392,21 @@ PackageRegistrationResult PackageRegistry::RegisterEntry(const PackageEntryDescr
     }
 
     if (snapshot_.entry_count >= snapshot_.entry_capacity) {
-        return PackageRegistrationResult::Failure(RecordFailure(PackageStatus::EntryCapacityExceeded));
+        PackageRegistrationResult result =
+            PackageRegistrationResult::Failure(RecordFailure(PackageStatus::EntryCapacityExceeded));
+        result.required_entry_record_count = snapshot_.entry_count + 1U;
+        snapshot_.required_entry_record_count = result.required_entry_record_count;
+        return result;
     }
 
     std::uint32_t index = 0U;
     for (EntrySlot& entry : entries_) {
         if (index >= snapshot_.entry_capacity) {
-            return PackageRegistrationResult::Failure(RecordFailure(PackageStatus::EntryCapacityExceeded));
+            PackageRegistrationResult result =
+                PackageRegistrationResult::Failure(RecordFailure(PackageStatus::EntryCapacityExceeded));
+            result.required_entry_record_count = index + 1U;
+            snapshot_.required_entry_record_count = result.required_entry_record_count;
+            return result;
         }
 
         if (entry.is_active) {
@@ -396,11 +421,19 @@ PackageRegistrationResult PackageRegistry::RegisterEntry(const PackageEntryDescr
         AddResourceIndex(stored_descriptor.package, stored_descriptor.type, stored_descriptor.logical_key, index);
         AddResourceKeyIndex(stored_descriptor.package, stored_descriptor.logical_key, index);
         ++snapshot_.entry_count;
+        snapshot_.required_entry_record_count = snapshot_.entry_count;
         RecordSuccess();
-        return PackageRegistrationResult::EntrySuccess(stored_descriptor.package, stored_descriptor.entry);
+        PackageRegistrationResult result =
+            PackageRegistrationResult::EntrySuccess(stored_descriptor.package, stored_descriptor.entry);
+        result.required_entry_record_count = snapshot_.entry_count;
+        return result;
     }
 
-    return PackageRegistrationResult::Failure(RecordFailure(PackageStatus::EntryCapacityExceeded));
+    PackageRegistrationResult result =
+        PackageRegistrationResult::Failure(RecordFailure(PackageStatus::EntryCapacityExceeded));
+    result.required_entry_record_count = snapshot_.entry_count + 1U;
+    snapshot_.required_entry_record_count = result.required_entry_record_count;
+    return result;
 }
 
 PackageStatus PackageRegistry::AddDependency(PackageId package, PackageEntryId dependent, PackageEntryId dependency) {
