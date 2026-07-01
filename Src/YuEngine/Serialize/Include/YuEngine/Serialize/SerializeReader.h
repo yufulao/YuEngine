@@ -80,7 +80,10 @@ public:
     SerializeSnapshot Snapshot() const;
 
 private:
-    SerializeStatus ValidateStream(std::uint32_t& out_committed_byte_count, std::uint32_t& out_record_count, std::uint32_t& out_field_count) const;
+    SerializeStatus ValidateStream(
+        std::uint32_t &out_committed_byte_count,
+        std::uint32_t &out_record_count,
+        std::uint32_t &out_field_count);
     SerializeStatus FindField(SerializeRecordId record, SerializeFieldId field, FieldLocation& out_location) const;
     SerializeStatus RecordFailure(SerializeStatus status);
     void RecordSuccess();

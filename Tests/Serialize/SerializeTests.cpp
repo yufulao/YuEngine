@@ -60,6 +60,8 @@ constexpr const char* TEST_FIELD_CAPACITY = "Serialize_FieldCapacityOverflow_Doe
 constexpr const char* TEST_FIXED_BYTES_LIMIT = "Serialize_FixedBytesPayloadLimit_ReturnsExplicitStatus";
 constexpr const char* TEST_FIXED_BYTES_FAILURE_COUNT = "Serialize_ReadFixedBytesFailures_ClearOutputCount";
 constexpr const char* TEST_TRUNCATED = "Serialize_ReaderRejectsTruncatedStream";
+constexpr const char* TEST_READER_CAPACITY_ENTRY =
+    "Serialize_ReaderCapacityOverflow_RecordsEntryIdentity";
 constexpr const char* TEST_INVALID_IDS = "Serialize_ReaderRejectsInvalidRecordOrFieldId";
 constexpr const char* TEST_MALFORMED_LENGTH = "Serialize_ReaderRejectsMalformedFieldLength";
 constexpr const char* TEST_UNKNOWN_TYPE = "Serialize_ReaderRejectsUnknownTypeTag";
@@ -215,6 +217,10 @@ bool SnapshotsMatch(const SerializeSnapshot& left, const SerializeSnapshot& righ
         return false;
     }
 
+    if (left.last_failed_record_id.value != right.last_failed_record_id.value) {
+        return false;
+    }
+
     if (left.last_failed_field_record_id.value != right.last_failed_field_record_id.value) {
         return false;
     }
@@ -224,6 +230,10 @@ bool SnapshotsMatch(const SerializeSnapshot& left, const SerializeSnapshot& righ
     }
 
     if (left.last_failed_field_type != right.last_failed_field_type) {
+        return false;
+    }
+
+    if (left.last_failed_entry_index != right.last_failed_entry_index) {
         return false;
     }
 
@@ -620,6 +630,35 @@ int SerializeRecordCapacityOverflowDoesNotMutate() {
         return Fail("record overflow changed required field count");
     }
 
+    if (after_snapshot.last_failed_record_id.value != 100U) {
+        return Fail("record overflow did not report failed record id");
+    }
+
+    if (after_snapshot.last_failed_field_id.value != 0U) {
+        return Fail("record overflow reported failed field id");
+    }
+
+    if (after_snapshot.last_failed_entry_index != before_snapshot.record_count) {
+        return Fail("record overflow reported wrong failed entry index");
+    }
+
+    if (writer.BeginRecord(SerializeRecordId{0U}) != SerializeStatus::InvalidHeader) {
+        return Fail("invalid record after record capacity did not fail");
+    }
+
+    const SerializeSnapshot invalid_snapshot = writer.Snapshot();
+    if (invalid_snapshot.last_failed_record_id.value != 0U) {
+        return Fail("invalid record kept stale capacity record id");
+    }
+
+    if (invalid_snapshot.last_failed_field_id.value != 0U) {
+        return Fail("invalid record kept stale capacity field id");
+    }
+
+    if (invalid_snapshot.last_failed_entry_index != 0U) {
+        return Fail("invalid record kept stale capacity entry index");
+    }
+
     return 0;
 }
 
@@ -665,10 +704,18 @@ int SerializeFieldCapacityOverflowDoesNotMutate() {
         return Fail("field overflow changed required record count");
     }
 
+    if (after_snapshot.last_failed_record_id.value != RECORD_MAIN.value) {
+        return Fail("field overflow did not report failed record id");
+    }
+
     if (after_snapshot.last_failed_field_record_id.value != RECORD_MAIN.value ||
         after_snapshot.last_failed_field_id.value != 100U ||
         after_snapshot.last_failed_field_type != SerializeTypeTag::UInt32) {
         return Fail("field overflow did not record failed field identity");
+    }
+
+    if (after_snapshot.last_failed_entry_index != before_snapshot.field_count) {
+        return Fail("field overflow reported wrong failed entry index");
     }
 
     if (after_snapshot.last_failed_field_capacity != MAX_FIELDS_PER_RECORD ||
@@ -685,8 +732,10 @@ int SerializeFieldCapacityOverflowDoesNotMutate() {
     }
 
     after_snapshot = record_writer.Snapshot();
-    if (after_snapshot.last_failed_field_record_id.IsValid() ||
+    if (after_snapshot.last_failed_record_id.IsValid() ||
+        after_snapshot.last_failed_field_record_id.IsValid() ||
         after_snapshot.last_failed_field_id.IsValid() ||
+        after_snapshot.last_failed_entry_index != 0U ||
         after_snapshot.last_failed_field_capacity != 0U ||
         after_snapshot.last_failed_field_count != 0U ||
         after_snapshot.last_required_field_count != 0U) {
@@ -702,8 +751,10 @@ int SerializeFieldCapacityOverflowDoesNotMutate() {
     }
 
     after_snapshot = record_writer.Snapshot();
-    if (after_snapshot.last_failed_field_record_id.IsValid() ||
+    if (after_snapshot.last_failed_record_id.IsValid() ||
+        after_snapshot.last_failed_field_record_id.IsValid() ||
         after_snapshot.last_failed_field_id.IsValid() ||
+        after_snapshot.last_failed_entry_index != 0U ||
         after_snapshot.last_failed_field_capacity != 0U ||
         after_snapshot.last_failed_field_count != 0U ||
         after_snapshot.last_required_field_count != 0U) {
@@ -748,12 +799,14 @@ int SerializeFieldCapacityOverflowDoesNotMutate() {
     }
 
     if (after_stream_overflow.last_required_field_count != MAX_FIELDS_PER_STREAM + 1U ||
+        after_stream_overflow.last_failed_entry_index != MAX_FIELDS_PER_STREAM ||
         after_stream_overflow.last_failed_field_capacity != MAX_FIELDS_PER_STREAM ||
         after_stream_overflow.last_failed_field_count != MAX_FIELDS_PER_STREAM) {
         return Fail("stream field overflow did not record stream capacity");
     }
 
-    if (after_stream_overflow.last_failed_field_record_id.value != record_index ||
+    if (after_stream_overflow.last_failed_record_id.value != record_index ||
+        after_stream_overflow.last_failed_field_record_id.value != record_index ||
         after_stream_overflow.last_failed_field_id.value != 200U ||
         after_stream_overflow.last_failed_field_type != SerializeTypeTag::Int64) {
         return Fail("stream field overflow did not record rejected field identity");
@@ -891,6 +944,135 @@ int SerializeReaderRejectsTruncatedStream() {
     SerializeReader reader(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
     if (reader.OpenStream() != SerializeStatus::TruncatedStream) {
         return Fail("truncated stream did not return explicit status");
+    }
+
+    return 0;
+}
+
+int SerializeReaderCapacityOverflowRecordsEntryIdentity() {
+    std::array<std::uint8_t, STREAM_HEADER_BYTE_COUNT> record_capacity_buffer{};
+    WriteValidHeader(record_capacity_buffer.data(), MAX_RECORDS_PER_STREAM + 1U);
+    SerializeReader record_capacity_reader(
+        record_capacity_buffer.data(),
+        static_cast<std::uint32_t>(record_capacity_buffer.size()));
+    if (record_capacity_reader.OpenStream() != SerializeStatus::RecordCapacityExceeded) {
+        return Fail("reader record capacity did not fail");
+    }
+
+    SerializeSnapshot record_capacity_snapshot = record_capacity_reader.Snapshot();
+    if (record_capacity_snapshot.last_required_record_count != MAX_RECORDS_PER_STREAM + 1U) {
+        return Fail("reader record capacity reported wrong required count");
+    }
+
+    if (record_capacity_snapshot.last_required_field_count != 0U) {
+        return Fail("reader record capacity changed required field count");
+    }
+
+    if (record_capacity_snapshot.last_failed_entry_index != MAX_RECORDS_PER_STREAM) {
+        return Fail("reader record capacity reported wrong failed entry index");
+    }
+
+    if (record_capacity_snapshot.last_failed_record_id.value != 0U) {
+        return Fail("reader record capacity reported unexpected record id");
+    }
+
+    WriteUInt32At(record_capacity_buffer.data(), STREAM_MAGIC_OFFSET, 0U);
+    if (record_capacity_reader.OpenStream() != SerializeStatus::InvalidHeader) {
+        return Fail("reader invalid header after record capacity did not fail");
+    }
+
+    record_capacity_snapshot = record_capacity_reader.Snapshot();
+    if (record_capacity_snapshot.last_failed_entry_index != 0U) {
+        return Fail("reader invalid header kept stale record capacity entry");
+    }
+
+    std::array<std::uint8_t, STREAM_HEADER_BYTE_COUNT + RECORD_HEADER_BYTE_COUNT> field_capacity_buffer{};
+    WriteValidHeader(field_capacity_buffer.data(), 1U);
+    WriteRecordHeader(
+        field_capacity_buffer.data(),
+        STREAM_HEADER_BYTE_COUNT,
+        RECORD_MAIN,
+        MAX_FIELDS_PER_RECORD + 1U);
+    SerializeReader field_capacity_reader(
+        field_capacity_buffer.data(),
+        static_cast<std::uint32_t>(field_capacity_buffer.size()));
+    if (field_capacity_reader.OpenStream() != SerializeStatus::FieldCapacityExceeded) {
+        return Fail("reader record field capacity did not fail");
+    }
+
+    const SerializeSnapshot field_capacity_snapshot = field_capacity_reader.Snapshot();
+    if (field_capacity_snapshot.last_required_field_count != MAX_FIELDS_PER_RECORD + 1U) {
+        return Fail("reader record field capacity reported wrong required count");
+    }
+
+    if (field_capacity_snapshot.last_failed_record_id.value != RECORD_MAIN.value) {
+        return Fail("reader record field capacity reported wrong record id");
+    }
+
+    if (field_capacity_snapshot.last_failed_field_id.value != 0U) {
+        return Fail("reader record field capacity reported unexpected field id");
+    }
+
+    if (field_capacity_snapshot.last_failed_entry_index != MAX_FIELDS_PER_RECORD) {
+        return Fail("reader record field capacity reported wrong entry index");
+    }
+
+    std::array<std::uint8_t, MAX_STREAM_BYTE_COUNT> stream_field_capacity_buffer{};
+    WriteValidHeader(stream_field_capacity_buffer.data(), 5U);
+    std::uint32_t offset = STREAM_HEADER_BYTE_COUNT;
+    std::uint32_t record_index = 0U;
+    while (record_index < 4U) {
+        const SerializeRecordId record{record_index + 1U};
+        offset = WriteRecordHeader(
+            stream_field_capacity_buffer.data(),
+            offset,
+            record,
+            MAX_FIELDS_PER_RECORD);
+
+        std::uint32_t field_index = 0U;
+        while (field_index < MAX_FIELDS_PER_RECORD) {
+            const SerializeFieldId field{field_index + 1U};
+            offset = WriteFieldHeader(
+                stream_field_capacity_buffer.data(),
+                offset,
+                field,
+                static_cast<std::uint32_t>(SerializeTypeTag::UInt32),
+                UINT32_PAYLOAD_BYTE_COUNT);
+            WriteUInt32At(stream_field_capacity_buffer.data(), offset, field_index);
+            offset += UINT32_PAYLOAD_BYTE_COUNT;
+            ++field_index;
+        }
+
+        ++record_index;
+    }
+
+    offset = WriteRecordHeader(
+        stream_field_capacity_buffer.data(),
+        offset,
+        RECORD_SECONDARY,
+        1U);
+    SerializeReader stream_field_capacity_reader(
+        stream_field_capacity_buffer.data(),
+        offset);
+    if (stream_field_capacity_reader.OpenStream() != SerializeStatus::FieldCapacityExceeded) {
+        return Fail("reader stream field capacity did not fail");
+    }
+
+    const SerializeSnapshot stream_field_capacity_snapshot = stream_field_capacity_reader.Snapshot();
+    if (stream_field_capacity_snapshot.last_required_field_count != MAX_FIELDS_PER_STREAM + 1U) {
+        return Fail("reader stream field capacity reported wrong required count");
+    }
+
+    if (stream_field_capacity_snapshot.last_failed_record_id.value != RECORD_SECONDARY.value) {
+        return Fail("reader stream field capacity reported wrong record id");
+    }
+
+    if (stream_field_capacity_snapshot.last_failed_field_id.value != 0U) {
+        return Fail("reader stream field capacity reported unexpected field id");
+    }
+
+    if (stream_field_capacity_snapshot.last_failed_entry_index != MAX_FIELDS_PER_STREAM) {
+        return Fail("reader stream field capacity reported wrong entry index");
     }
 
     return 0;
@@ -1435,6 +1617,7 @@ int main(int argc, char** argv) {
         {TEST_FIXED_BYTES_LIMIT, SerializeFixedBytesPayloadLimitReturnsExplicitStatus},
         {TEST_FIXED_BYTES_FAILURE_COUNT, SerializeReadFixedBytesFailuresClearOutputCount},
         {TEST_TRUNCATED, SerializeReaderRejectsTruncatedStream},
+        {TEST_READER_CAPACITY_ENTRY, SerializeReaderCapacityOverflowRecordsEntryIdentity},
         {TEST_INVALID_IDS, SerializeReaderRejectsInvalidRecordOrFieldId},
         {TEST_MALFORMED_LENGTH, SerializeReaderRejectsMalformedFieldLength},
         {TEST_UNKNOWN_TYPE, SerializeReaderRejectsUnknownTypeTag},

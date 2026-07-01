@@ -39,6 +39,34 @@ std::uint32_t ExpectedPayloadByteCount(SerializeTypeTag type) {
 
     return TYPE_TAG_PAYLOAD_BYTE_COUNTS[type_value];
 }
+
+bool IsCapacityFailure(SerializeStatus status) {
+    if (status == SerializeStatus::RecordCapacityExceeded) {
+        return true;
+    }
+
+    if (status == SerializeStatus::FieldCapacityExceeded) {
+        return true;
+    }
+
+    return false;
+}
+
+void ClearCapacityEntry(SerializeSnapshot &snapshot) {
+    snapshot.last_failed_record_id = SerializeRecordId{};
+    snapshot.last_failed_field_id = SerializeFieldId{};
+    snapshot.last_failed_entry_index = 0U;
+}
+
+void SetCapacityEntry(
+    SerializeSnapshot &snapshot,
+    SerializeRecordId record,
+    SerializeFieldId field,
+    std::uint32_t entry_index) {
+    snapshot.last_failed_record_id = record;
+    snapshot.last_failed_field_id = field;
+    snapshot.last_failed_entry_index = entry_index;
+}
 }
 
 SerializeReader::SerializeReader(const std::uint8_t* buffer, std::uint32_t byte_count)
@@ -221,11 +249,18 @@ SerializeSnapshot SerializeReader::Snapshot() const {
 }
 
 SerializeStatus SerializeReader::ValidateStream(
-    std::uint32_t& out_committed_byte_count,
-    std::uint32_t& out_record_count,
-    std::uint32_t& out_field_count) const {
+    std::uint32_t &out_committed_byte_count,
+    std::uint32_t &out_record_count,
+    std::uint32_t &out_field_count) {
     const std::uint32_t record_count = ReadUInt32At(STREAM_RECORD_COUNT_OFFSET);
     if (record_count > MAX_RECORDS_PER_STREAM) {
+        snapshot_.last_required_record_count = record_count;
+        snapshot_.last_required_field_count = 0U;
+        SetCapacityEntry(
+            snapshot_,
+            SerializeRecordId{0U},
+            SerializeFieldId{0U},
+            MAX_RECORDS_PER_STREAM);
         return SerializeStatus::RecordCapacityExceeded;
     }
 
@@ -244,10 +279,26 @@ SerializeStatus SerializeReader::ValidateStream(
 
         const std::uint32_t field_count = ReadUInt32At(offset + sizeof(std::uint32_t));
         if (field_count > MAX_FIELDS_PER_RECORD) {
+            snapshot_.last_required_record_count = 0U;
+            snapshot_.last_required_field_count = field_count;
+            SetCapacityEntry(
+                snapshot_,
+                record,
+                SerializeFieldId{0U},
+                MAX_FIELDS_PER_RECORD);
             return SerializeStatus::FieldCapacityExceeded;
         }
 
-        if (total_field_count + field_count > MAX_FIELDS_PER_STREAM) {
+        const std::uint32_t remaining_field_capacity = MAX_FIELDS_PER_STREAM - total_field_count;
+        if (field_count > remaining_field_capacity) {
+            const std::uint32_t required_field_count = total_field_count + field_count;
+            snapshot_.last_required_record_count = 0U;
+            snapshot_.last_required_field_count = required_field_count;
+            SetCapacityEntry(
+                snapshot_,
+                record,
+                SerializeFieldId{0U},
+                MAX_FIELDS_PER_STREAM);
             return SerializeStatus::FieldCapacityExceeded;
         }
 
@@ -348,12 +399,19 @@ SerializeStatus SerializeReader::FindField(SerializeRecordId record, SerializeFi
 
 SerializeStatus SerializeReader::RecordFailure(SerializeStatus status) {
     ++snapshot_.failed_operation_count;
+    if (!IsCapacityFailure(status)) {
+        ClearCapacityEntry(snapshot_);
+    }
+
     snapshot_.last_status = status;
     return status;
 }
 
 void SerializeReader::RecordSuccess() {
     ++snapshot_.accepted_operation_count;
+    snapshot_.last_required_record_count = 0U;
+    snapshot_.last_required_field_count = 0U;
+    ClearCapacityEntry(snapshot_);
     snapshot_.last_status = SerializeStatus::Success;
 }
 

@@ -34,9 +34,25 @@ void EncodeUInt64(std::uint8_t* bytes, std::uint64_t value) {
     bytes[6U] = static_cast<std::uint8_t>((value >> 48U) & 0xFFU);
     bytes[7U] = static_cast<std::uint8_t>((value >> 56U) & 0xFFU);
 }
+
+void ClearCapacityEntry(SerializeSnapshot &snapshot) {
+    snapshot.last_failed_record_id = SerializeRecordId{};
+    snapshot.last_failed_field_id = SerializeFieldId{};
+    snapshot.last_failed_entry_index = 0U;
 }
 
-static_assert(sizeof(SerializeSnapshot) == 60U);
+void SetCapacityEntry(
+    SerializeSnapshot &snapshot,
+    SerializeRecordId record,
+    SerializeFieldId field,
+    std::uint32_t entry_index) {
+    snapshot.last_failed_record_id = record;
+    snapshot.last_failed_field_id = field;
+    snapshot.last_failed_entry_index = entry_index;
+}
+
+static_assert(sizeof(SerializeSnapshot) == 68U);
+}
 
 SerializeWriter::SerializeWriter(std::uint8_t* buffer, std::uint32_t capacity)
     : buffer_(buffer),
@@ -102,6 +118,7 @@ SerializeStatus SerializeWriter::BeginRecord(SerializeRecordId record) {
     if (snapshot_.record_count >= MAX_RECORDS_PER_STREAM) {
         snapshot_.last_required_record_count = snapshot_.record_count + 1U;
         snapshot_.last_required_field_count = 0U;
+        SetCapacityEntry(snapshot_, record, SerializeFieldId{0U}, snapshot_.record_count);
         return RecordFailure(SerializeStatus::RecordCapacityExceeded);
     }
 
@@ -198,6 +215,7 @@ SerializeStatus SerializeWriter::CommitField(
     if (snapshot_.field_count >= MAX_FIELDS_PER_STREAM) {
         snapshot_.last_required_record_count = 0U;
         snapshot_.last_required_field_count = snapshot_.field_count + 1U;
+        SetCapacityEntry(snapshot_, current_record_id_, field, snapshot_.field_count);
         RecordFieldCapacityFailure(
             field,
             type,
@@ -210,6 +228,7 @@ SerializeStatus SerializeWriter::CommitField(
     if (current_record_field_count_ >= MAX_FIELDS_PER_RECORD) {
         snapshot_.last_required_record_count = 0U;
         snapshot_.last_required_field_count = current_record_field_count_ + 1U;
+        SetCapacityEntry(snapshot_, current_record_id_, field, current_record_field_count_);
         RecordFieldCapacityFailure(
             field,
             type,
@@ -257,8 +276,10 @@ SerializeStatus SerializeWriter::RecordFailure(SerializeStatus status) {
 
     snapshot_.last_required_record_count = 0U;
     snapshot_.last_required_field_count = 0U;
+    ClearCapacityEntry(snapshot_);
     ClearFieldCapacityFailure();
     ++snapshot_.failed_operation_count;
+
     snapshot_.last_status = status;
     return status;
 }
@@ -267,6 +288,7 @@ void SerializeWriter::RecordSuccess() {
     ++snapshot_.accepted_operation_count;
     snapshot_.last_required_record_count = 0U;
     snapshot_.last_required_field_count = 0U;
+    ClearCapacityEntry(snapshot_);
     ClearFieldCapacityFailure();
     snapshot_.last_status = SerializeStatus::Success;
 }

@@ -26,9 +26,11 @@ struct SerializeSnapshot final {
     SerializeStatus last_status;
     std::uint32_t last_required_record_count = 0U;
     std::uint32_t last_required_field_count = 0U;
-    SerializeRecordId last_failed_field_record_id;
-    SerializeFieldId last_failed_field_id;
+    SerializeRecordId last_failed_record_id{};
+    SerializeRecordId last_failed_field_record_id{};
+    SerializeFieldId last_failed_field_id{};
     SerializeTypeTag last_failed_field_type = SerializeTypeTag::UInt32;
+    std::uint32_t last_failed_entry_index = 0U;
     std::uint32_t last_failed_field_capacity = 0U;
     std::uint32_t last_failed_field_count = 0U;
 };
