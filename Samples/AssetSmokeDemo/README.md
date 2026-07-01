@@ -16,7 +16,7 @@
 
 ## 第三方依赖
 
-本示例不在仓库中 vendored Ogg/Vorbis 二进制。CMake 期望本机 Unreal Engine 安装目录提供 Ogg 和 Vorbis 的头文件、导入库和运行时 DLL：
+本示例不在仓库中 vendored Ogg/Vorbis 二进制。CMake 默认检查同级 UE 源码仓库的 Engine 根目录 `C:\Steam\steamapps\common\TouhouNewWorld\ue\Engine`，并期望该目录下存在 Ogg 和 Vorbis 的头文件、导入库和运行时 DLL：
 
 - `Source/ThirdParty/Ogg/libogg-1.2.2`
 - `Source/ThirdParty/Vorbis/libvorbis-1.3.2`
@@ -30,6 +30,8 @@
 3. 本仓库相邻的 `ue/Engine`，例如 `C:\Steam\steamapps\common\TouhouNewWorld\ue\Engine`，该目录存在 `Source` 时自动使用。
 
 其他本机安装位置需要显式设置上述变量；旧的个人机器路径不作为 canonical fallback。
+
+若本机只有 UE 源码而缺少 import library 或 runtime DLL，示例必须报告显式依赖缺口，不能记为 pass。
 
 仓库内的音乐、网格、贴图和材质文件是示例输入，来源记录为提交 `a3c7ede` 引入的现有样例资源。本次清理不新增第三方资源，也不扩展这些资源的许可证声明。
 

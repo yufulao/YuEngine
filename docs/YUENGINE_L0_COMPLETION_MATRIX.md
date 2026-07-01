@@ -61,14 +61,17 @@ ctest --preset windows-release-gate --output-on-failure
 Sample validation:
 
 ```powershell
-$env:UE_ENGINE_ROOT = '<local Unreal Engine root>'
+$env:UE_ENGINE_ROOT = 'C:\Steam\steamapps\common\TouhouNewWorld\ue\Engine'
 powershell -ExecutionPolicy Bypass -File Samples/AssetSmokeDemo/RunAssetSmokeDemo.ps1 -Configuration Debug
 powershell -ExecutionPolicy Bypass -File Samples/AssetSmokeDemo/RunAssetSmokeDemo.ps1 -Configuration Release
 ```
 
 The sample commands require local Ogg/Vorbis dependencies from the configured
-Unreal Engine root. Missing local codec dependencies must be reported as an
-environment skip, not as a pass.
+Unreal Engine root. On this workspace, the canonical UE source tree is
+`C:\Steam\steamapps\common\TouhouNewWorld\ue\Engine\Source`; the sample still
+requires Ogg/Vorbis import libraries and runtime DLLs to exist under the
+configured Engine root or an explicit override. Missing local codec dependencies
+must be reported as an environment skip, not as a pass.
 
 ## 3. Hardware Skip Grading
 

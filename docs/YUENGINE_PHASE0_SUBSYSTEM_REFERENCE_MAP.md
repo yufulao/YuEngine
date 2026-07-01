@@ -30,7 +30,11 @@ Required subsystem scope from the task thread:
 
 UE5 local source root:
 
-- `D:\app\Epic Games\UE_5.5\Engine\Source`
+- `C:\Steam\steamapps\common\TouhouNewWorld\ue\Engine\Source`
+
+Current local UE source repository snapshot:
+
+- `7deeb413d3dc1fc034f48d1aacc0861301829d32` (`5.8.0 release`)
 
 UE5 source areas sampled for boundary shape:
 
