@@ -3,6 +3,9 @@
 
 #pragma once
 
+#include <cstdint>
+
+#include "YuEngine/UiCore/UiNodeId.h"
 #include "YuEngine/UiCore/UiNodeRecord.h"
 #include "YuEngine/UiCore/UiNodeTreeStatus.h"
 
@@ -10,6 +13,12 @@ namespace yuengine::uicore {
 struct UiNodeTreeResult final {
     UiNodeTreeStatus status = UiNodeTreeStatus::Success;
     UiNodeRecord record;
+    UiNodeId capacity_entry_node_id;
+    UiNodeId capacity_entry_parent_id;
+    std::uint32_t capacity_entry_sibling_order = 0U;
+    std::uint32_t capacity_entry_node_capacity = 0U;
+    std::uint32_t capacity_entry_active_node_count = 0U;
+    std::uint32_t required_node_count = 0U;
 
     /**
      * @comment 创建成功 result。
