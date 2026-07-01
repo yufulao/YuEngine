@@ -13,6 +13,10 @@ struct ScriptNativeRegistrationResult final {
     ScriptStatus status = ScriptStatus::Success;
     ScriptCallId call_id{};
     std::uint32_t required_binding_count = 0U;
+    std::uint32_t binding_capacity = 0U;
+    std::uint32_t binding_count = 0U;
+    std::uint32_t failed_binding_index = 0U;
+    ScriptCallId failed_call_id{};
 
     /**
      * @comment 创建成功 result。

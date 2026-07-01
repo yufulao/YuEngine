@@ -48,6 +48,8 @@ constexpr const char *TEST_REGISTER_STABLE_ID = "Script_RegisterNativeCall_Retur
 constexpr const char *TEST_DUPLICATE = "Script_RegisterDuplicateCall_ReturnsExplicitStatus";
 constexpr const char *TEST_NULL_FUNCTION = "Script_RegisterRejectsNullFunction";
 constexpr const char *TEST_CAPACITY = "Script_RegistryCapacityOverflow_DoesNotMutate";
+constexpr const char *TEST_CAPACITY_IDENTITY_CLEAR =
+    "Script_RegistryCapacityFailureIdentityClearsForNonCapacityFailures";
 constexpr const char *TEST_INVOKE_RESULT = "Script_InvokeNativeCall_WritesResultDeterministically";
 constexpr const char *TEST_UNKNOWN_CALL = "Script_InvokeRejectsUnknownCallId";
 constexpr const char *TEST_ARGUMENT_COUNT = "Script_InvokeRejectsArgumentCountMismatch";
@@ -355,6 +357,11 @@ int ScriptRegisterRejectsNullFunction() {
 }
 
 int ScriptRegistryCapacityOverflowDoesNotMutate() {
+    constexpr std::uint32_t EXPECTED_BINDING_CAPACITY = 1U;
+    constexpr std::uint32_t EXPECTED_BINDING_COUNT = 1U;
+    constexpr std::uint32_t EXPECTED_REQUIRED_BINDING_COUNT = 2U;
+    constexpr std::uint32_t EXPECTED_FAILED_BINDING_INDEX = 1U;
+
     ScriptNativeRegistryDesc desc{};
     desc.binding_capacity = 1U;
     ScriptNativeRegistry registry(desc);
@@ -372,8 +379,24 @@ int ScriptRegistryCapacityOverflowDoesNotMutate() {
         return Fail("capacity overflow did not return explicit status");
     }
 
-    if (second_result.required_binding_count != 2U) {
+    if (second_result.required_binding_count != EXPECTED_REQUIRED_BINDING_COUNT) {
         return Fail("capacity overflow did not return required binding count");
+    }
+
+    if (second_result.binding_capacity != EXPECTED_BINDING_CAPACITY) {
+        return Fail("capacity overflow did not return binding capacity");
+    }
+
+    if (second_result.binding_count != EXPECTED_BINDING_COUNT) {
+        return Fail("capacity overflow did not return binding count");
+    }
+
+    if (second_result.failed_binding_index != EXPECTED_FAILED_BINDING_INDEX) {
+        return Fail("capacity overflow did not return failed binding index");
+    }
+
+    if (second_result.failed_call_id.value != CALL_SECOND.value) {
+        return Fail("capacity overflow did not return failed call id");
     }
 
     const ScriptSnapshot after_snapshot = registry.Snapshot();
@@ -385,8 +408,168 @@ int ScriptRegistryCapacityOverflowDoesNotMutate() {
         return Fail("capacity overflow mutated binding capacity");
     }
 
-    if (after_snapshot.last_required_binding_count != 2U) {
+    if (after_snapshot.last_required_binding_count != EXPECTED_REQUIRED_BINDING_COUNT) {
         return Fail("capacity overflow snapshot missed required binding count");
+    }
+
+    if (after_snapshot.last_failed_binding_capacity != EXPECTED_BINDING_CAPACITY) {
+        return Fail("capacity overflow snapshot missed binding capacity");
+    }
+
+    if (after_snapshot.last_failed_binding_count != EXPECTED_BINDING_COUNT) {
+        return Fail("capacity overflow snapshot missed binding count");
+    }
+
+    if (after_snapshot.last_failed_binding_index != EXPECTED_FAILED_BINDING_INDEX) {
+        return Fail("capacity overflow snapshot missed failed binding index");
+    }
+
+    if (after_snapshot.last_failed_call_id.value != CALL_SECOND.value) {
+        return Fail("capacity overflow snapshot missed failed call id");
+    }
+
+    return 0;
+}
+
+int ScriptRegistryCapacityFailureIdentityClearsForNonCapacityFailures() {
+    ScriptNativeRegistryDesc desc{};
+    desc.binding_capacity = 1U;
+    ScriptNativeRegistry registry(desc);
+
+    const ScriptNativeBinding first_binding = MakeAddBinding(CALL_ADD);
+    const ScriptNativeRegistrationResult first_result = registry.RegisterNativeCall(first_binding);
+    if (!first_result.Succeeded()) {
+        return Fail("first clear fixture registration failed");
+    }
+
+    const ScriptNativeBinding overflow_binding = MakeAddBinding(CALL_SECOND);
+    registry.RegisterNativeCall(overflow_binding);
+
+    const ScriptNativeBinding duplicate_binding = MakeAddBinding(CALL_ADD);
+    const ScriptNativeRegistrationResult duplicate_result = registry.RegisterNativeCall(duplicate_binding);
+    if (duplicate_result.status != ScriptStatus::DuplicateCallId) {
+        return Fail("duplicate registration did not return duplicate status after capacity failure");
+    }
+
+    if (duplicate_result.failed_binding_index != 0U) {
+        return Fail("duplicate registration reported stale failed binding index");
+    }
+
+    if (duplicate_result.binding_capacity != 0U) {
+        return Fail("duplicate registration reported stale binding capacity");
+    }
+
+    if (duplicate_result.binding_count != 0U) {
+        return Fail("duplicate registration reported stale binding count");
+    }
+
+    if (duplicate_result.failed_call_id.IsValid()) {
+        return Fail("duplicate registration reported stale failed call id");
+    }
+
+    const ScriptSnapshot duplicate_snapshot = registry.Snapshot();
+    if (duplicate_snapshot.last_failed_binding_capacity != 0U) {
+        return Fail("duplicate registration snapshot kept stale binding capacity");
+    }
+
+    if (duplicate_snapshot.last_failed_binding_count != 0U) {
+        return Fail("duplicate registration snapshot kept stale binding count");
+    }
+
+    if (duplicate_snapshot.last_failed_binding_index != 0U) {
+        return Fail("duplicate registration snapshot kept stale failed binding index");
+    }
+
+    if (duplicate_snapshot.last_failed_call_id.IsValid()) {
+        return Fail("duplicate registration snapshot kept stale failed call id");
+    }
+
+    registry.RegisterNativeCall(overflow_binding);
+    const ScriptNativeBinding null_binding = MakeNullBinding(CALL_FAILING);
+    const ScriptNativeRegistrationResult null_result = registry.RegisterNativeCall(null_binding);
+    if (null_result.status != ScriptStatus::NullNativeFunction) {
+        return Fail("null native function did not return null status after capacity failure");
+    }
+
+    if (null_result.failed_binding_index != 0U) {
+        return Fail("null native function reported stale failed binding index");
+    }
+
+    if (null_result.binding_capacity != 0U) {
+        return Fail("null native function reported stale binding capacity");
+    }
+
+    if (null_result.binding_count != 0U) {
+        return Fail("null native function reported stale binding count");
+    }
+
+    if (null_result.failed_call_id.IsValid()) {
+        return Fail("null native function reported stale failed call id");
+    }
+
+    const ScriptSnapshot null_snapshot = registry.Snapshot();
+    if (null_snapshot.last_failed_binding_capacity != 0U) {
+        return Fail("null native function snapshot kept stale binding capacity");
+    }
+
+    if (null_snapshot.last_failed_binding_count != 0U) {
+        return Fail("null native function snapshot kept stale binding count");
+    }
+
+    if (null_snapshot.last_failed_binding_index != 0U) {
+        return Fail("null native function snapshot kept stale failed binding index");
+    }
+
+    if (null_snapshot.last_failed_call_id.IsValid()) {
+        return Fail("null native function snapshot kept stale failed call id");
+    }
+
+    registry.RegisterNativeCall(overflow_binding);
+    const ScriptStatus unknown_call_status = registry.Invoke(CALL_UNKNOWN, nullptr, 0U, nullptr, 0U);
+    if (unknown_call_status != ScriptStatus::InvalidCallId) {
+        return Fail("unknown invoke did not return invalid call id after capacity failure");
+    }
+
+    const ScriptSnapshot unknown_call_snapshot = registry.Snapshot();
+    if (unknown_call_snapshot.last_failed_binding_capacity != 0U) {
+        return Fail("unknown invoke snapshot kept stale binding capacity");
+    }
+
+    if (unknown_call_snapshot.last_failed_binding_count != 0U) {
+        return Fail("unknown invoke snapshot kept stale binding count");
+    }
+
+    if (unknown_call_snapshot.last_failed_binding_index != 0U) {
+        return Fail("unknown invoke snapshot kept stale failed binding index");
+    }
+
+    if (unknown_call_snapshot.last_failed_call_id.IsValid()) {
+        return Fail("unknown invoke snapshot kept stale failed call id");
+    }
+
+    registry.RegisterNativeCall(overflow_binding);
+    std::array<ScriptValue, 2> arguments = MakeAddArguments(1, 2);
+    std::array<ScriptValue, 1> results = MakeSingleIntResult(0);
+    const ScriptStatus success_status = registry.Invoke(CALL_ADD, arguments.data(), 2U, results.data(), 1U);
+    if (success_status != ScriptStatus::Success) {
+        return Fail("successful invoke failed after capacity failure");
+    }
+
+    const ScriptSnapshot success_snapshot = registry.Snapshot();
+    if (success_snapshot.last_failed_binding_capacity != 0U) {
+        return Fail("successful invoke snapshot kept stale binding capacity");
+    }
+
+    if (success_snapshot.last_failed_binding_count != 0U) {
+        return Fail("successful invoke snapshot kept stale binding count");
+    }
+
+    if (success_snapshot.last_failed_binding_index != 0U) {
+        return Fail("successful invoke snapshot kept stale failed binding index");
+    }
+
+    if (success_snapshot.last_failed_call_id.IsValid()) {
+        return Fail("successful invoke snapshot kept stale failed call id");
     }
 
     return 0;
@@ -1103,6 +1286,7 @@ int main(int argc, char** argv) {
         {TEST_DUPLICATE, ScriptRegisterDuplicateCallReturnsExplicitStatus},
         {TEST_NULL_FUNCTION, ScriptRegisterRejectsNullFunction},
         {TEST_CAPACITY, ScriptRegistryCapacityOverflowDoesNotMutate},
+        {TEST_CAPACITY_IDENTITY_CLEAR, ScriptRegistryCapacityFailureIdentityClearsForNonCapacityFailures},
         {TEST_INVOKE_RESULT, ScriptInvokeNativeCallWritesResultDeterministically},
         {TEST_UNKNOWN_CALL, ScriptInvokeRejectsUnknownCallId},
         {TEST_ARGUMENT_COUNT, ScriptInvokeRejectsArgumentCountMismatch},
