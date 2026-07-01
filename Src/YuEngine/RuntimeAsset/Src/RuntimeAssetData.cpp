@@ -9733,6 +9733,73 @@ RuntimeAssetDataStatus CommitRuntimeAssetDataWorldSceneAuthoringAssetDependencyB
         out_result);
 }
 
+RuntimeAssetDataStatus TraverseRuntimeAssetDataAssetDependencies(
+    yuengine::asset::AssetManager *asset_manager,
+    yuengine::asset::AssetHandle root_asset,
+    yuengine::asset::AssetHandle *output_assets,
+    std::uint32_t output_asset_capacity,
+    std::uint32_t *output_asset_count,
+    RuntimeAssetDataAssetDependencyTraverseResult *out_result) {
+    if (out_result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    RuntimeAssetDataAssetDependencyTraverseResult result{};
+    *out_result = result;
+    if (asset_manager == nullptr) {
+        result.asset_status = yuengine::asset::AssetStatus::InvalidArgument;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (output_asset_count == nullptr) {
+        result.asset_status = yuengine::asset::AssetStatus::InvalidArgument;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (output_asset_capacity > 0U && output_assets == nullptr) {
+        result.asset_status = yuengine::asset::AssetStatus::InvalidArgument;
+        *out_result = result;
+        return result.status;
+    }
+
+    std::array<yuengine::asset::AssetHandle, yuengine::asset::MAX_ASSET_COUNT> staged_assets{};
+    std::uint32_t staged_asset_count = 0U;
+    const yuengine::asset::AssetStatus asset_status =
+        asset_manager->TraverseDependencies(
+            root_asset,
+            staged_assets.data(),
+            yuengine::asset::MAX_ASSET_COUNT,
+            &staged_asset_count);
+    result.asset_status = asset_status;
+    result.required_dependency_count = staged_asset_count;
+    if (asset_status != yuengine::asset::AssetStatus::Success) {
+        result.status = RuntimeAssetDataStatus::AssetDependencyFailed;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (output_asset_capacity < staged_asset_count) {
+        result.status = RuntimeAssetDataStatus::CapacityExceeded;
+        result.asset_status = yuengine::asset::AssetStatus::OutputBufferTooSmall;
+        *out_result = result;
+        return result.status;
+    }
+
+    for (std::uint32_t index = 0U; index < staged_asset_count; ++index) {
+        output_assets[index] = staged_assets[index];
+    }
+
+    *output_asset_count = staged_asset_count;
+    result.status = RuntimeAssetDataStatus::Success;
+    result.asset_status = yuengine::asset::AssetStatus::Success;
+    result.copied_dependency_count = staged_asset_count;
+    result.required_dependency_count = staged_asset_count;
+    *out_result = result;
+    return result.status;
+}
+
 RuntimeAssetDataStatus LoadRuntimeAssetDataGraph(
     const RuntimeAssetGraphLoadRequest &request,
     RuntimeAssetGraphLoadResult *out_result) {

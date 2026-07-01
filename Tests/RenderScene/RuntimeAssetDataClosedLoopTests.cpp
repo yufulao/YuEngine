@@ -281,6 +281,7 @@ using yuengine::runtimeasset::RuntimeAssetAnimationTargetProperty;
 using yuengine::runtimeasset::RuntimeAssetAnimationTrackTargetBindingRecord;
 using yuengine::runtimeasset::RuntimeAssetDataAssetDependencyBatchResult;
 using yuengine::runtimeasset::RuntimeAssetDataAssetDependencyRecord;
+using yuengine::runtimeasset::RuntimeAssetDataAssetDependencyTraverseResult;
 using yuengine::runtimeasset::RuntimeAssetDataWorldSceneAuthoringAssetDependencyBatchRequest;
 using yuengine::runtimeasset::RuntimeAssetRuntimeInstanceMappingRecord;
 using yuengine::runtimeasset::RuntimeAssetLoadedFile;
@@ -317,6 +318,7 @@ using yuengine::runtimeasset::RuntimeAssetVisualProofRequest;
 using yuengine::runtimeasset::RuntimeAssetVisualProofResult;
 using yuengine::runtimeasset::RunRuntimeAssetPackagedEntryPoint;
 using yuengine::runtimeasset::RunRuntimeAssetPackageArtifactProductCommand;
+using yuengine::runtimeasset::TraverseRuntimeAssetDataAssetDependencies;
 using yuengine::runtimeasset::ValidateRuntimeAssetDataBytes;
 using yuengine::streaming::ResourceDecodedTextureBridge;
 using yuengine::streaming::ResourceDecodedTextureBridgeRequest;
@@ -621,6 +623,8 @@ constexpr const char *TEST_RUNTIME_ASSET_DEPENDENCY_BATCH =
     "RuntimeAssetData_AssetDependencyBatchUsesExplicitRowsAndReportsFailedIndex";
 constexpr const char *TEST_RUNTIME_AUTHORING_DEPENDENCY_BATCH =
     "RuntimeAssetData_WorldSceneAuthoringAssetDependencyBatchUsesExportRows";
+constexpr const char *TEST_RUNTIME_DEPENDENCY_TRAVERSE_ATOMIC =
+    "RuntimeAssetData_AssetDependencyTraverseOutputIsAtomic";
 constexpr const char *TEST_RUNTIME_DEPENDENCIES =
     "RuntimeAssetData_LoadRegistersResourceAndAssetDependencyEdges";
 constexpr const char *TEST_LOAD_RENDER =
@@ -13829,6 +13833,235 @@ int RuntimeAssetDataWorldSceneAuthoringAssetDependencyBatchUsesExportRows() {
     return 0;
 }
 
+int RuntimeAssetDataAssetDependencyTraverseOutputIsAtomic() {
+    ResourceRegistry registry;
+    ResourceDescriptor document_resource_desc{};
+    document_resource_desc.type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    document_resource_desc.logical_key = ResourceLogicalKey("runtime_asset_traverse_document");
+    const ResourceRegistrationResult document_resource =
+        registry.RegisterSyntheticDescriptor(document_resource_desc);
+
+    ResourceDescriptor dependency_a_resource_desc{};
+    dependency_a_resource_desc.type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    dependency_a_resource_desc.logical_key = ResourceLogicalKey("runtime_asset_traverse_dependency_a");
+    const ResourceRegistrationResult dependency_a_resource =
+        registry.RegisterSyntheticDescriptor(dependency_a_resource_desc);
+
+    ResourceDescriptor dependency_b_resource_desc{};
+    dependency_b_resource_desc.type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    dependency_b_resource_desc.logical_key = ResourceLogicalKey("runtime_asset_traverse_dependency_b");
+    const ResourceRegistrationResult dependency_b_resource =
+        registry.RegisterSyntheticDescriptor(dependency_b_resource_desc);
+
+    ResourceDescriptor dependency_c_resource_desc{};
+    dependency_c_resource_desc.type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    dependency_c_resource_desc.logical_key = ResourceLogicalKey("runtime_asset_traverse_dependency_c");
+    const ResourceRegistrationResult dependency_c_resource =
+        registry.RegisterSyntheticDescriptor(dependency_c_resource_desc);
+    if (!document_resource.Succeeded() ||
+        !dependency_a_resource.Succeeded() ||
+        !dependency_b_resource.Succeeded() ||
+        !dependency_c_resource.Succeeded()) {
+        return Fail("runtime asset traverse resource registration failed");
+    }
+
+    AssetManager manager;
+    AssetDescriptor document_asset_desc{};
+    document_asset_desc.stable_id = 8701U;
+    document_asset_desc.asset_type = AssetTypeId{ASSET_TYPE_TEXTURE};
+    document_asset_desc.resource = document_resource.handle;
+    document_asset_desc.resource_type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    const AssetRegistrationResult document_asset =
+        manager.RegisterRuntimeAsset(&registry, document_asset_desc);
+
+    AssetDescriptor dependency_a_asset_desc{};
+    dependency_a_asset_desc.stable_id = 8702U;
+    dependency_a_asset_desc.asset_type = AssetTypeId{ASSET_TYPE_TEXTURE};
+    dependency_a_asset_desc.resource = dependency_a_resource.handle;
+    dependency_a_asset_desc.resource_type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    const AssetRegistrationResult dependency_a_asset =
+        manager.RegisterRuntimeAsset(&registry, dependency_a_asset_desc);
+
+    AssetDescriptor dependency_b_asset_desc{};
+    dependency_b_asset_desc.stable_id = 8703U;
+    dependency_b_asset_desc.asset_type = AssetTypeId{ASSET_TYPE_TEXTURE};
+    dependency_b_asset_desc.resource = dependency_b_resource.handle;
+    dependency_b_asset_desc.resource_type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    const AssetRegistrationResult dependency_b_asset =
+        manager.RegisterRuntimeAsset(&registry, dependency_b_asset_desc);
+
+    AssetDescriptor dependency_c_asset_desc{};
+    dependency_c_asset_desc.stable_id = 8704U;
+    dependency_c_asset_desc.asset_type = AssetTypeId{ASSET_TYPE_TEXTURE};
+    dependency_c_asset_desc.resource = dependency_c_resource.handle;
+    dependency_c_asset_desc.resource_type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    const AssetRegistrationResult dependency_c_asset =
+        manager.RegisterRuntimeAsset(&registry, dependency_c_asset_desc);
+    if (!document_asset.Succeeded() ||
+        !dependency_a_asset.Succeeded() ||
+        !dependency_b_asset.Succeeded() ||
+        !dependency_c_asset.Succeeded()) {
+        return Fail("runtime asset traverse asset registration failed");
+    }
+
+    std::array<WorldSceneAuthoringDependencyRecord, 3U> authoring_dependencies{};
+    authoring_dependencies[0U].stable_resource_id = 8702U;
+    authoring_dependencies[0U].resource_handle = dependency_a_resource.handle;
+    authoring_dependencies[0U].expected_resource_type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    authoring_dependencies[1U].stable_resource_id = 8703U;
+    authoring_dependencies[1U].resource_handle = dependency_b_resource.handle;
+    authoring_dependencies[1U].expected_resource_type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    authoring_dependencies[2U].stable_resource_id = 8704U;
+    authoring_dependencies[2U].resource_handle = dependency_c_resource.handle;
+    authoring_dependencies[2U].expected_resource_type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+
+    std::uint32_t dependency_count = static_cast<std::uint32_t>(authoring_dependencies.size());
+    WorldSceneAuthoringRuntimeExport runtime_export{};
+    runtime_export.dependency_records = authoring_dependencies.data();
+    runtime_export.dependency_capacity = dependency_count;
+    runtime_export.dependency_count = &dependency_count;
+
+    std::array<AssetHandle, 3U> dependency_assets{
+        dependency_a_asset.handle,
+        dependency_b_asset.handle,
+        dependency_c_asset.handle};
+
+    RuntimeAssetDataWorldSceneAuthoringAssetDependencyBatchRequest request{};
+    request.asset_manager = &manager;
+    request.runtime_export = &runtime_export;
+    request.dependent_asset = document_asset.handle;
+    request.dependency_assets = dependency_assets.data();
+    request.dependency_asset_count = static_cast<std::uint32_t>(dependency_assets.size());
+
+    RuntimeAssetDataAssetDependencyBatchResult batch_result{};
+    const RuntimeAssetDataStatus batch_status =
+        CommitRuntimeAssetDataWorldSceneAuthoringAssetDependencyBatch(
+            request,
+            &batch_result);
+    if (batch_status != RuntimeAssetDataStatus::Success ||
+        batch_result.status != RuntimeAssetDataStatus::Success ||
+        batch_result.asset_status != AssetStatus::Success ||
+        batch_result.committed_dependency_edge_count != 3U) {
+        return Fail("runtime asset traverse batch commit failed");
+    }
+
+    const AssetHandle sentinel_a{111U, 111U};
+    const AssetHandle sentinel_b{112U, 112U};
+    const AssetHandle sentinel_c{113U, 113U};
+    std::array<AssetHandle, 3U> output_assets{sentinel_a, sentinel_b, sentinel_c};
+    std::uint32_t output_count = 77U;
+    RuntimeAssetDataAssetDependencyTraverseResult traverse_result{};
+    RuntimeAssetDataStatus traverse_status =
+        TraverseRuntimeAssetDataAssetDependencies(
+            &manager,
+            document_asset.handle,
+            output_assets.data(),
+            2U,
+            &output_count,
+            &traverse_result);
+    if (traverse_status != RuntimeAssetDataStatus::CapacityExceeded ||
+        traverse_result.status != RuntimeAssetDataStatus::CapacityExceeded ||
+        traverse_result.asset_status != AssetStatus::OutputBufferTooSmall ||
+        traverse_result.required_dependency_count != 3U ||
+        traverse_result.copied_dependency_count != 0U) {
+        return Fail("runtime asset traverse capacity status mismatch");
+    }
+
+    if (output_count != 77U ||
+        output_assets[0U].slot != sentinel_a.slot ||
+        output_assets[1U].slot != sentinel_b.slot ||
+        output_assets[2U].slot != sentinel_c.slot ||
+        output_assets[0U].generation != sentinel_a.generation ||
+        output_assets[1U].generation != sentinel_b.generation ||
+        output_assets[2U].generation != sentinel_c.generation) {
+        return Fail("runtime asset traverse capacity failure mutated output");
+    }
+
+    RuntimeAssetDataAssetDependencyTraverseResult invalid_result{};
+    traverse_status =
+        TraverseRuntimeAssetDataAssetDependencies(
+            &manager,
+            AssetHandle{},
+            output_assets.data(),
+            static_cast<std::uint32_t>(output_assets.size()),
+            &output_count,
+            &invalid_result);
+    if (traverse_status != RuntimeAssetDataStatus::AssetDependencyFailed ||
+        invalid_result.status != RuntimeAssetDataStatus::AssetDependencyFailed ||
+        invalid_result.asset_status != AssetStatus::InvalidHandle ||
+        invalid_result.required_dependency_count != 0U ||
+        invalid_result.copied_dependency_count != 0U) {
+        return Fail("runtime asset traverse invalid handle status mismatch");
+    }
+
+    if (output_count != 77U ||
+        output_assets[0U].slot != sentinel_a.slot ||
+        output_assets[1U].slot != sentinel_b.slot ||
+        output_assets[2U].slot != sentinel_c.slot ||
+        output_assets[0U].generation != sentinel_a.generation ||
+        output_assets[1U].generation != sentinel_b.generation ||
+        output_assets[2U].generation != sentinel_c.generation) {
+        return Fail("runtime asset traverse invalid handle mutated output");
+    }
+
+    RuntimeAssetDataAssetDependencyTraverseResult success_result{};
+    traverse_status =
+        TraverseRuntimeAssetDataAssetDependencies(
+            &manager,
+            document_asset.handle,
+            output_assets.data(),
+            static_cast<std::uint32_t>(output_assets.size()),
+            &output_count,
+            &success_result);
+    if (traverse_status != RuntimeAssetDataStatus::Success ||
+        success_result.status != RuntimeAssetDataStatus::Success ||
+        success_result.asset_status != AssetStatus::Success ||
+        success_result.required_dependency_count != 3U ||
+        success_result.copied_dependency_count != 3U ||
+        output_count != 3U) {
+        return Fail("runtime asset traverse success status mismatch");
+    }
+
+    if (output_assets[0U].slot != dependency_a_asset.handle.slot ||
+        output_assets[1U].slot != dependency_b_asset.handle.slot ||
+        output_assets[2U].slot != dependency_c_asset.handle.slot ||
+        output_assets[0U].generation != dependency_a_asset.handle.generation ||
+        output_assets[1U].generation != dependency_b_asset.handle.generation ||
+        output_assets[2U].generation != dependency_c_asset.handle.generation) {
+        return Fail("runtime asset traverse success order mismatch");
+    }
+
+    output_assets = {sentinel_c, sentinel_b, sentinel_a};
+    output_count = 91U;
+    RuntimeAssetDataAssetDependencyTraverseResult repeat_result{};
+    traverse_status =
+        TraverseRuntimeAssetDataAssetDependencies(
+            &manager,
+            document_asset.handle,
+            output_assets.data(),
+            static_cast<std::uint32_t>(output_assets.size()),
+            &output_count,
+            &repeat_result);
+    if (traverse_status != RuntimeAssetDataStatus::Success ||
+        repeat_result.status != RuntimeAssetDataStatus::Success ||
+        repeat_result.required_dependency_count != 3U ||
+        repeat_result.copied_dependency_count != 3U ||
+        output_count != 3U) {
+        return Fail("runtime asset traverse repeat status mismatch");
+    }
+
+    if (output_assets[0U].slot != dependency_a_asset.handle.slot ||
+        output_assets[1U].slot != dependency_b_asset.handle.slot ||
+        output_assets[2U].slot != dependency_c_asset.handle.slot ||
+        output_assets[0U].generation != dependency_a_asset.handle.generation ||
+        output_assets[1U].generation != dependency_b_asset.handle.generation ||
+        output_assets[2U].generation != dependency_c_asset.handle.generation) {
+        return Fail("runtime asset traverse repeat order mismatch");
+    }
+
+    return 0;
+}
+
 int RuntimeAssetDataLoadRegistersResourceAndAssetDependencyEdges() {
     MountTable table;
     if (!CreateMountedTable(TestRoot("DependencyEdges"), &table)) {
@@ -15675,6 +15908,8 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
      RuntimeAssetDataAssetDependencyBatchUsesExplicitRowsAndReportsFailedIndex},
     {TEST_RUNTIME_AUTHORING_DEPENDENCY_BATCH,
      RuntimeAssetDataWorldSceneAuthoringAssetDependencyBatchUsesExportRows},
+    {TEST_RUNTIME_DEPENDENCY_TRAVERSE_ATOMIC,
+     RuntimeAssetDataAssetDependencyTraverseOutputIsAtomic},
     {TEST_RUNTIME_DEPENDENCIES, RuntimeAssetDataLoadRegistersResourceAndAssetDependencyEdges},
     {TEST_LOAD_RENDER, RuntimeAssetDataRenderClosedLoopCapturesCubeCylinderConeThroughRhi},
     {TEST_CPU_ORACLE, RuntimeAssetDataCpuPpmOracleDoesNotBypassRhiRenderCore},

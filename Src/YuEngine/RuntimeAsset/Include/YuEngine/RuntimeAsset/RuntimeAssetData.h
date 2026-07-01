@@ -429,6 +429,16 @@ struct RuntimeAssetDataAssetDependencyBatchResult final {
 };
 
 /**
+ * @brief Atomic traversal diagnostics for RuntimeAsset asset dependencies.
+ */
+struct RuntimeAssetDataAssetDependencyTraverseResult final {
+    RuntimeAssetDataStatus status = RuntimeAssetDataStatus::InvalidArgument;
+    yuengine::asset::AssetStatus asset_status = yuengine::asset::AssetStatus::Success;
+    std::uint32_t copied_dependency_count = 0U;
+    std::uint32_t required_dependency_count = 0U;
+};
+
+/**
  * @brief Caller-owned asset handles paired with WorldSceneAuthoring runtime export rows.
  */
 struct RuntimeAssetDataWorldSceneAuthoringAssetDependencyBatchRequest final {
@@ -1325,6 +1335,23 @@ RuntimeAssetDataStatus CommitRuntimeAssetDataAssetDependencyBatch(
 RuntimeAssetDataStatus CommitRuntimeAssetDataWorldSceneAuthoringAssetDependencyBatch(
     const RuntimeAssetDataWorldSceneAuthoringAssetDependencyBatchRequest &request,
     RuntimeAssetDataAssetDependencyBatchResult *out_result);
+/**
+ * @brief Traverses RuntimeAsset asset dependencies without partial caller output mutation.
+ * @param asset_manager Target Asset manager.
+ * @param root_asset Root asset handle.
+ * @param output_assets Caller-owned output asset handle rows.
+ * @param output_asset_capacity Caller-owned output asset row capacity.
+ * @param output_asset_count Caller-owned output asset row count.
+ * @param out_result Output traversal diagnostics.
+ * @return Explicit RuntimeAssetData status.
+ */
+RuntimeAssetDataStatus TraverseRuntimeAssetDataAssetDependencies(
+    yuengine::asset::AssetManager *asset_manager,
+    yuengine::asset::AssetHandle root_asset,
+    yuengine::asset::AssetHandle *output_assets,
+    std::uint32_t output_asset_capacity,
+    std::uint32_t *output_asset_count,
+    RuntimeAssetDataAssetDependencyTraverseResult *out_result);
 /**
  * @brief Loads a runtime asset graph from File/VFS into Resource and Asset records.
  * @param request Input graph load request.
