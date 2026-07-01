@@ -32,6 +32,7 @@ struct RenderDrawableFramePipelineResult final {
     std::uint32_t frame_id = 0U;
     std::uint32_t pass_id = 0U;
     std::uint32_t material_id = 0U;
+    std::size_t required_frame_record_count = 0U;
     std::size_t recorded_command_count = 0U;
     std::size_t capture_bytes_written = 0U;
     yuengine::rhi::RhiExtent2D capture_extent{};

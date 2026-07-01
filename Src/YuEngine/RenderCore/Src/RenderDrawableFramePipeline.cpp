@@ -152,6 +152,7 @@ RenderDrawableFramePipelineResult RenderDrawableFramePipeline::Execute(
         return result;
     }
 
+    result.required_frame_record_count = snapshot_.frame_record_count + 1U;
     if (!HasRecordCapacity()) {
         result.status = RenderDrawableFramePipelineStatus::FrameRecordCapacityExceeded;
         RecordRejectedResult(result);
@@ -411,6 +412,7 @@ void RenderDrawableFramePipeline::StoreLastResult(
     snapshot_.last_frame_id = result.frame_id;
     snapshot_.last_pass_id = result.pass_id;
     snapshot_.last_material_id = result.material_id;
+    snapshot_.last_required_frame_record_count = result.required_frame_record_count;
     snapshot_.last_recorded_command_count = result.recorded_command_count;
     snapshot_.last_capture_bytes_written = result.capture_bytes_written;
     snapshot_.last_capture_extent = result.capture_extent;

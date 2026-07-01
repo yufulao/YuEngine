@@ -30,6 +30,7 @@ struct RenderDrawableFramePipelineSnapshot final {
     std::uint32_t last_frame_id = 0U;
     std::uint32_t last_pass_id = 0U;
     std::uint32_t last_material_id = 0U;
+    std::size_t last_required_frame_record_count = 0U;
     std::size_t last_recorded_command_count = 0U;
     std::size_t last_capture_bytes_written = 0U;
     yuengine::rhi::RhiExtent2D last_capture_extent{};

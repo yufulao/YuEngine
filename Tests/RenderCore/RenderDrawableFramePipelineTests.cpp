@@ -969,6 +969,50 @@ int RenderCoreDrawableFramePipelinePropagatesFixtureCommandCapacityFailure() {
         return Fail("command capacity failure submitted rhi work");
     }
 
+    FakeDrawableRhiDevice capacity_device;
+    std::vector<std::uint8_t> first_capture(CaptureByteCount(DEFAULT_EXTENT, DEFAULT_EXTENT), SENTINEL_BYTE);
+    std::vector<std::uint8_t> second_capture(CaptureByteCount(DEFAULT_EXTENT, DEFAULT_EXTENT), SENTINEL_BYTE);
+    RenderDrawableFramePipelineDesc capacity_desc{};
+    capacity_desc.frame_record_capacity = 1U;
+    RenderDrawableFramePipeline capacity_pipeline(capacity_desc);
+
+    const auto first_result = capacity_pipeline.Execute(MakeRequest(capacity_device, first_capture));
+    if (first_result.status != RenderDrawableFramePipelineStatus::Success) {
+        return Fail("frame record capacity setup frame failed");
+    }
+
+    const RhiDeviceSnapshot before = capacity_device.Snapshot();
+    const RenderDrawableFramePipelineRequest second_request =
+        MakeRequest(capacity_device, second_capture, NEXT_FRAME_ID, NEXT_PASS_ID, NEXT_MATERIAL_ID);
+    const auto capacity_result = capacity_pipeline.Execute(second_request);
+    if (capacity_result.status != RenderDrawableFramePipelineStatus::FrameRecordCapacityExceeded) {
+        return Fail("drawable frame pipeline accepted full frame record storage");
+    }
+
+    if (capacity_result.required_frame_record_count != 2U) {
+        return Fail("drawable frame pipeline result did not expose required frame count");
+    }
+
+    const RhiDeviceSnapshot after = capacity_device.Snapshot();
+    if (after.recorded_command_count != before.recorded_command_count ||
+        after.submit_count != before.submit_count ||
+        after.capture_count != before.capture_count ||
+        CaptureWasWritten(second_capture)) {
+        return Fail("frame record capacity rejection mutated rhi state");
+    }
+
+    const RenderDrawableFramePipelineSnapshot capacity_snapshot = capacity_pipeline.Snapshot();
+    if (capacity_snapshot.frame_record_count != 1U ||
+        capacity_snapshot.frame_record_capacity_rejected_count != 1U ||
+        capacity_snapshot.last_required_frame_record_count != 2U) {
+        return Fail("frame record capacity rejection did not expose required count");
+    }
+
+    if (capacity_snapshot.last_frame_id != NEXT_FRAME_ID ||
+        capacity_snapshot.last_status != RenderDrawableFramePipelineStatus::FrameRecordCapacityExceeded) {
+        return Fail("frame record capacity rejection did not update last diagnostics");
+    }
+
     return 0;
 }
 
