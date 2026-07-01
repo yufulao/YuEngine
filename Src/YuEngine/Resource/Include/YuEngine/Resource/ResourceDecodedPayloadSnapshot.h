@@ -24,6 +24,8 @@ struct ResourceDecodedPayloadSnapshot {
     std::uint32_t stored_decoded_byte_count = 0U;
     std::uint32_t active_payload_count = 0U;
     std::uint32_t decoded_payload_record_count = 0U;
+    std::uint32_t last_required_decoded_byte_count = 0U;
+    std::uint32_t last_required_payload_reference_count = 0U;
     std::uint32_t stored_payload_count = 0U;
     std::uint32_t queried_payload_count = 0U;
     std::uint32_t read_payload_count = 0U;

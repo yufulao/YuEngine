@@ -2052,20 +2052,48 @@ ResourceDecodedPayloadStatus ResourceRegistry::RecordDecodedPayloadRejected(
     const ResourceDecodedPayloadRequest &request,
     ResourceDecodedPayloadStatus status) {
     ++decoded_payload_snapshot_.rejected_payload_request_count;
+    decoded_payload_snapshot_.last_required_decoded_byte_count = 0U;
+    decoded_payload_snapshot_.last_required_payload_reference_count = 0U;
     if (status == ResourceDecodedPayloadStatus::DuplicateDecodedPayloadId) {
         ++decoded_payload_snapshot_.duplicate_payload_rejected_count;
     }
 
     if (status == ResourceDecodedPayloadStatus::CapacityExceeded) {
         ++decoded_payload_snapshot_.capacity_rejected_payload_count;
+        if (request.decoded_byte_count > MAX_RESOURCE_DECODED_PAYLOAD_BYTES_PER_RECORD) {
+            decoded_payload_snapshot_.last_required_decoded_byte_count = request.decoded_byte_count;
+        }
+
+        if (request.decoded_byte_count <= MAX_RESOURCE_DECODED_PAYLOAD_BYTES_PER_RECORD) {
+            decoded_payload_snapshot_.last_required_payload_reference_count =
+                decoded_payload_snapshot_.active_payload_count + 1U;
+        }
     }
 
     if (status == ResourceDecodedPayloadStatus::BudgetExceeded) {
         ++decoded_payload_snapshot_.budget_rejected_payload_count;
+        if (operation == ResourceDecodedPayloadOperation::Store) {
+            decoded_payload_snapshot_.last_required_decoded_byte_count =
+                decoded_payload_snapshot_.stored_decoded_byte_count + request.decoded_byte_count;
+        }
+
+        if (operation == ResourceDecodedPayloadOperation::ConfigureBudget) {
+            decoded_payload_snapshot_.last_required_decoded_byte_count =
+                decoded_payload_snapshot_.stored_decoded_byte_count;
+        }
     }
 
     if (status == ResourceDecodedPayloadStatus::ReferenceBudgetExceeded) {
         ++decoded_payload_snapshot_.reference_budget_rejected_payload_count;
+        if (operation == ResourceDecodedPayloadOperation::Store) {
+            decoded_payload_snapshot_.last_required_payload_reference_count =
+                decoded_payload_snapshot_.active_payload_count + 1U;
+        }
+
+        if (operation == ResourceDecodedPayloadOperation::ConfigureBudget) {
+            decoded_payload_snapshot_.last_required_payload_reference_count =
+                decoded_payload_snapshot_.active_payload_count;
+        }
     }
 
     if (status == ResourceDecodedPayloadStatus::PayloadWindowOutOfBounds) {
@@ -2123,6 +2151,8 @@ void ResourceRegistry::RecordDecodedPayloadSuccess(
 
     decoded_payload_snapshot_.last_operation = operation;
     decoded_payload_snapshot_.last_status = ResourceDecodedPayloadStatus::Success;
+    decoded_payload_snapshot_.last_required_decoded_byte_count = 0U;
+    decoded_payload_snapshot_.last_required_payload_reference_count = 0U;
     decoded_payload_snapshot_.last_resource = request.resource;
     decoded_payload_snapshot_.last_payload_id = request.payload_id;
     decoded_payload_snapshot_.last_decode_plan_id = request.decode_plan_id;

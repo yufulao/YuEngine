@@ -5369,6 +5369,15 @@ int ResourceDecodedPayloadRejectsReferenceBudgetWithoutMutation() {
         return Fail("reference budget decoded payload was not counted");
     }
 
+    const std::uint32_t required_payload_reference_count = before_snapshot.active_payload_count + 1U;
+    if (after_snapshot.last_required_payload_reference_count != required_payload_reference_count) {
+        return Fail("reference budget decoded payload required references were not reported");
+    }
+
+    if (after_snapshot.last_required_decoded_byte_count != 0U) {
+        return Fail("reference budget decoded payload reported decoded bytes");
+    }
+
     return 0;
 }
 
@@ -5473,6 +5482,15 @@ int ResourceDecodedPayloadRejectsCapacityOverflow() {
         return Fail("capacity decoded payload was not counted");
     }
 
+    constexpr std::uint32_t REQUIRED_PAYLOAD_REFERENCE_COUNT = MAX_RESOURCE_DECODED_PAYLOAD_RECORD_COUNT + 1U;
+    if (snapshot.last_required_payload_reference_count != REQUIRED_PAYLOAD_REFERENCE_COUNT) {
+        return Fail("capacity decoded payload required reference count was not reported");
+    }
+
+    if (snapshot.last_required_decoded_byte_count != 0U) {
+        return Fail("capacity decoded payload reported decoded bytes");
+    }
+
     return 0;
 }
 
@@ -5515,6 +5533,14 @@ int ResourceDecodedPayloadRejectsBudgetOverflow() {
 
     if (snapshot.budget_rejected_payload_count != 1U) {
         return Fail("budget decoded payload was not counted");
+    }
+
+    if (snapshot.last_required_decoded_byte_count != 2U) {
+        return Fail("budget decoded payload required decoded bytes were not reported");
+    }
+
+    if (snapshot.last_required_payload_reference_count != 0U) {
+        return Fail("budget decoded payload reported reference count");
     }
 
     return 0;
