@@ -744,6 +744,50 @@ ThreadWorkerCompletionEnumerationStatus ThreadWorker::CountCompletionsByStatus(
     return ThreadWorkerCompletionEnumerationStatus::Success;
 }
 
+ThreadWorkerCompletionEnumerationResult ThreadWorker::CountCompletionsByStatusBatch(
+    const TaskStatus* statuses,
+    std::size_t status_count,
+    std::size_t* output_counts,
+    std::size_t output_capacity) const {
+    ThreadWorkerCompletionEnumerationResult result;
+    if (status_count > 0U && statuses == nullptr) {
+        result.status = ThreadWorkerCompletionEnumerationStatus::InvalidArgument;
+        return result;
+    }
+
+    if (output_capacity > 0U && output_counts == nullptr) {
+        result.status = ThreadWorkerCompletionEnumerationStatus::InvalidArgument;
+        return result;
+    }
+
+    for (std::size_t index = 0U; index < status_count; ++index) {
+        if (!IsCompletionEnumerationStatus(statuses[index])) {
+            result.status = ThreadWorkerCompletionEnumerationStatus::InvalidArgument;
+            return result;
+        }
+    }
+
+    result.required_count = status_count;
+    if (status_count > output_capacity) {
+        result.status = ThreadWorkerCompletionEnumerationStatus::OutputCapacityExceeded;
+        return result;
+    }
+
+    if (state_ == nullptr) {
+        result.status = ThreadWorkerCompletionEnumerationStatus::NotInitialized;
+        return result;
+    }
+
+    std::lock_guard<std::mutex> lock(state_->mutex);
+    for (std::size_t index = 0U; index < status_count; ++index) {
+        output_counts[index] = CountCompletionSnapshotsByStatusLocked(*state_, statuses[index]);
+    }
+
+    result.written_count = status_count;
+    result.status = ThreadWorkerCompletionEnumerationStatus::Success;
+    return result;
+}
+
 ThreadWorkerSnapshot ThreadWorker::Snapshot() const {
     if (state_ == nullptr) {
         return ThreadWorkerSnapshot{};

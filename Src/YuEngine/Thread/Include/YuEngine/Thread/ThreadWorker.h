@@ -106,6 +106,19 @@ public:
         TaskStatus status,
         std::size_t* output_count) const;
     /**
+     * @comment 按 completion status 批量统计 completion snapshot，不消费 completion records。
+     * @param statuses 输入 completion status 数组。
+     * @param status_count 输入 completion status 数量。
+     * @param output_counts 输出匹配数量数组。
+     * @param output_capacity 输出匹配数量 capacity。
+     * @return 批量统计结果和所需数量。
+     */
+    ThreadWorkerCompletionEnumerationResult CountCompletionsByStatusBatch(
+        const TaskStatus* statuses,
+        std::size_t status_count,
+        std::size_t* output_counts,
+        std::size_t output_capacity) const;
+    /**
      * @comment 返回 worker snapshot。
      * @return 快照值。
      */
