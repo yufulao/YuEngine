@@ -58,6 +58,7 @@ using yuengine::resource::ResourceDescriptorBatchResult;
 using yuengine::resource::ResourceDescriptor;
 using yuengine::resource::ResourceDescriptorLookupQuery;
 using yuengine::resource::ResourceDescriptorLookupRecord;
+using yuengine::resource::ResourceDescriptorTypeEnumerationResult;
 using yuengine::resource::ResourceDecodedPayloadBudgetDesc;
 using yuengine::resource::ResourceDecodedPayloadOperation;
 using yuengine::resource::ResourceDecodedPayloadRecord;
@@ -120,6 +121,8 @@ constexpr const char *TEST_DESCRIPTOR_EXACT_LOOKUP =
     "Resource_DescriptorExactLookupFindsRegisteredSyntheticDescriptor";
 constexpr const char *TEST_DESCRIPTOR_BATCH_EXACT_LOOKUP =
     "Resource_DescriptorBatchExactLookupReturnsAtomicRows";
+constexpr const char *TEST_DESCRIPTOR_TYPE_ENUMERATION =
+    "Resource_DescriptorTypeEnumerationReturnsMatchingDescriptors";
 constexpr const char* TEST_INVALID_DESCRIPTOR =
     "Resource_RegisterRejectsInvalidDescriptorWithoutMutation";
 constexpr const char* TEST_DUPLICATE = "Resource_RegisterDuplicate_ReturnsExplicitStatus";
@@ -1974,6 +1977,157 @@ int ResourceDescriptorBatchExactLookupReturnsAtomicRows() {
         &empty_output_count);
     if (!empty_result.Succeeded() || empty_output_count != 0U) {
         return Fail("descriptor batch lookup empty query did not succeed");
+    }
+
+    return 0;
+}
+
+int ResourceDescriptorTypeEnumerationReturnsMatchingDescriptors() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult first_texture_result = registry.RegisterSyntheticDescriptor(
+        DescriptorWithReferenceCount(TYPE_TEXTURE, "type_enum_texture_a", 2U));
+    if (!first_texture_result.Succeeded()) {
+        return Fail("descriptor type enumeration first texture registration failed");
+    }
+
+    const ResourceRegistrationResult material_result = registry.RegisterSyntheticDescriptor(
+        DescriptorWithReferenceCount(TYPE_MATERIAL, "type_enum_material", 1U));
+    if (!material_result.Succeeded()) {
+        return Fail("descriptor type enumeration material registration failed");
+    }
+
+    const ResourceRegistrationResult second_texture_result = registry.RegisterSyntheticDescriptor(
+        DescriptorWithReferenceCount(TYPE_TEXTURE, "type_enum_texture_b", 4U));
+    if (!second_texture_result.Succeeded()) {
+        return Fail("descriptor type enumeration second texture registration failed");
+    }
+
+    const ResourceRegistrationResult audio_result = registry.RegisterSyntheticDescriptor(
+        DescriptorWithReferenceCount(TYPE_AUDIO, "type_enum_audio", 3U));
+    if (!audio_result.Succeeded()) {
+        return Fail("descriptor type enumeration audio registration failed");
+    }
+
+    const ResourceRegistrationResult third_texture_result = registry.RegisterSyntheticDescriptor(
+        DescriptorWithReferenceCount(TYPE_TEXTURE, "type_enum_texture_c", 6U));
+    if (!third_texture_result.Succeeded()) {
+        return Fail("descriptor type enumeration third texture registration failed");
+    }
+
+    std::array<ResourceDescriptorLookupRecord, 3U> output_records{};
+    std::uint32_t output_record_count = 99U;
+    const ResourceSnapshot before_success_snapshot = registry.Snapshot();
+    const ResourceDescriptorTypeEnumerationResult success_result =
+        registry.EnumerateSyntheticDescriptorsByType(
+            TYPE_TEXTURE,
+            output_records.data(),
+            static_cast<std::uint32_t>(output_records.size()),
+            &output_record_count);
+    if (!success_result.Succeeded() ||
+        success_result.matched_descriptor_count != 3U ||
+        output_record_count != 3U) {
+        return Fail("descriptor type enumeration success returned wrong counts");
+    }
+
+    const bool first_record_matches = LookupRecordMatches(
+        output_records[0U],
+        first_texture_result.handle,
+        TYPE_TEXTURE,
+        "type_enum_texture_a",
+        2U);
+    const bool second_record_matches = LookupRecordMatches(
+        output_records[1U],
+        second_texture_result.handle,
+        TYPE_TEXTURE,
+        "type_enum_texture_b",
+        4U);
+    const bool third_record_matches = LookupRecordMatches(
+        output_records[2U],
+        third_texture_result.handle,
+        TYPE_TEXTURE,
+        "type_enum_texture_c",
+        6U);
+    if (!first_record_matches || !second_record_matches || !third_record_matches) {
+        return Fail("descriptor type enumeration did not preserve type registration order");
+    }
+
+    const ResourceSnapshot after_success_snapshot = registry.Snapshot();
+    if (after_success_snapshot.registered_resource_count != before_success_snapshot.registered_resource_count ||
+        after_success_snapshot.type_count != before_success_snapshot.type_count ||
+        after_success_snapshot.dependency_validation_count != before_success_snapshot.dependency_validation_count) {
+        return Fail("descriptor type enumeration success mutated counters");
+    }
+
+    const std::array<ResourceDescriptorLookupRecord, 3U> stable_records = output_records;
+    const std::uint32_t stable_output_record_count = output_record_count;
+    const ResourceDescriptorTypeEnumerationResult capacity_result =
+        registry.EnumerateSyntheticDescriptorsByType(
+            TYPE_TEXTURE,
+            output_records.data(),
+            2U,
+            &output_record_count);
+    if (capacity_result.status != ResourceStatus::CapacityExceeded ||
+        capacity_result.required_descriptor_count != 3U ||
+        output_record_count != stable_output_record_count) {
+        return Fail("descriptor type enumeration capacity failure missed atomic count or required count");
+    }
+
+    const bool capacity_first_preserved = LookupRecordEquals(output_records[0U], stable_records[0U]);
+    const bool capacity_second_preserved = LookupRecordEquals(output_records[1U], stable_records[1U]);
+    const bool capacity_third_preserved = LookupRecordEquals(output_records[2U], stable_records[2U]);
+    if (!capacity_first_preserved || !capacity_second_preserved || !capacity_third_preserved) {
+        return Fail("descriptor type enumeration capacity failure mutated output rows");
+    }
+
+    const ResourceSnapshot after_capacity_snapshot = registry.Snapshot();
+    if (after_capacity_snapshot.registered_resource_count != after_success_snapshot.registered_resource_count ||
+        after_capacity_snapshot.type_count != after_success_snapshot.type_count ||
+        after_capacity_snapshot.dependency_validation_count != after_success_snapshot.dependency_validation_count ||
+        after_capacity_snapshot.last_required_resource_count != 3U) {
+        return Fail("descriptor type enumeration capacity failure mutated counters or missed snapshot count");
+    }
+
+    const ResourceTypeId invalid_type{};
+    const ResourceDescriptorTypeEnumerationResult invalid_type_result =
+        registry.EnumerateSyntheticDescriptorsByType(
+            invalid_type,
+            output_records.data(),
+            static_cast<std::uint32_t>(output_records.size()),
+            &output_record_count);
+    if (invalid_type_result.status != ResourceStatus::InvalidDescriptor ||
+        output_record_count != stable_output_record_count) {
+        return Fail("descriptor type enumeration invalid type mutated count");
+    }
+
+    const bool invalid_first_preserved = LookupRecordEquals(output_records[0U], stable_records[0U]);
+    const bool invalid_second_preserved = LookupRecordEquals(output_records[1U], stable_records[1U]);
+    const bool invalid_third_preserved = LookupRecordEquals(output_records[2U], stable_records[2U]);
+    if (!invalid_first_preserved || !invalid_second_preserved || !invalid_third_preserved) {
+        return Fail("descriptor type enumeration invalid type mutated output rows");
+    }
+
+    const ResourceDescriptorTypeEnumerationResult null_output_result =
+        registry.EnumerateSyntheticDescriptorsByType(
+            TYPE_TEXTURE,
+            nullptr,
+            static_cast<std::uint32_t>(output_records.size()),
+            &output_record_count);
+    if (null_output_result.status != ResourceStatus::InvalidHandle ||
+        output_record_count != stable_output_record_count) {
+        return Fail("descriptor type enumeration null output missed invalid handle or mutated count");
+    }
+
+    std::uint32_t missing_type_count = 77U;
+    const ResourceDescriptorTypeEnumerationResult missing_type_result =
+        registry.EnumerateSyntheticDescriptorsByType(
+            TYPE_EFFECT,
+            nullptr,
+            0U,
+            &missing_type_count);
+    if (!missing_type_result.Succeeded() ||
+        missing_type_result.matched_descriptor_count != 0U ||
+        missing_type_count != 0U) {
+        return Fail("descriptor type enumeration missing type did not return empty success");
     }
 
     return 0;
@@ -8904,6 +9058,7 @@ int main(int argc, char** argv) {
         {TEST_DESCRIPTOR_ENUMERATION, ResourceDescriptorEnumerationReportsRegisteredSyntheticDescriptors},
         {TEST_DESCRIPTOR_EXACT_LOOKUP, ResourceDescriptorExactLookupFindsRegisteredSyntheticDescriptor},
         {TEST_DESCRIPTOR_BATCH_EXACT_LOOKUP, ResourceDescriptorBatchExactLookupReturnsAtomicRows},
+        {TEST_DESCRIPTOR_TYPE_ENUMERATION, ResourceDescriptorTypeEnumerationReturnsMatchingDescriptors},
         {TEST_INVALID_DESCRIPTOR, ResourceRegisterRejectsInvalidDescriptorWithoutMutation},
         {TEST_DUPLICATE, ResourceRegisterDuplicateReturnsExplicitStatus},
         {TEST_CAPACITY, ResourceRegistryRejectsCapacityOverflowWithoutMutation},

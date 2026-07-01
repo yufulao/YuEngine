@@ -494,6 +494,83 @@ ResourceStatus ResourceRegistry::EnumerateSyntheticDescriptors(
     return ResourceStatus::Success;
 }
 
+ResourceDescriptorTypeEnumerationResult ResourceRegistry::EnumerateSyntheticDescriptorsByType(
+    ResourceTypeId type,
+    ResourceDescriptorLookupRecord *output_records,
+    std::uint32_t output_record_capacity,
+    std::uint32_t *output_record_count) {
+    ResourceDescriptorTypeEnumerationResult result{};
+    result.status = ResourceStatus::Success;
+
+    if (output_record_count == nullptr) {
+        result.status = RecordFailure(ResourceStatus::InvalidHandle);
+        return result;
+    }
+
+    if (!type.IsValid()) {
+        result.status = RecordFailure(ResourceStatus::InvalidDescriptor);
+        return result;
+    }
+
+    std::uint32_t required_descriptor_count = 0U;
+    std::uint32_t slot_index = 0U;
+    for (const ResourceSlot &slot : slots_) {
+        if (slot_index >= snapshot_.resource_capacity) {
+            break;
+        }
+
+        if (slot.is_active && slot.type.value == type.value) {
+            ++required_descriptor_count;
+        }
+
+        ++slot_index;
+    }
+
+    if (required_descriptor_count > output_record_capacity) {
+        result.status = RecordFailure(ResourceStatus::CapacityExceeded);
+        result.required_descriptor_count = required_descriptor_count;
+        snapshot_.last_required_resource_count = required_descriptor_count;
+        return result;
+    }
+
+    if (required_descriptor_count > 0U && output_records == nullptr) {
+        result.status = RecordFailure(ResourceStatus::InvalidHandle);
+        return result;
+    }
+
+    std::uint32_t output_index = 0U;
+    slot_index = 0U;
+    for (const ResourceSlot &slot : slots_) {
+        if (slot_index >= snapshot_.resource_capacity) {
+            break;
+        }
+
+        if (!slot.is_active) {
+            ++slot_index;
+            continue;
+        }
+
+        if (slot.type.value != type.value) {
+            ++slot_index;
+            continue;
+        }
+
+        ResourceDescriptorLookupRecord record{};
+        record.handle = ResourceHandle{slot_index, slot.generation};
+        record.descriptor.type = slot.type;
+        record.descriptor.logical_key = slot.logical_key;
+        record.descriptor.initial_reference_count = slot.reference_count;
+        output_records[output_index] = record;
+        ++output_index;
+        ++slot_index;
+    }
+
+    *output_record_count = required_descriptor_count;
+    result.matched_descriptor_count = required_descriptor_count;
+    RecordSuccess();
+    return result;
+}
+
 ResourceStatus ResourceRegistry::FindSyntheticDescriptor(
     ResourceTypeId type,
     const ResourceLogicalKey &logical_key,

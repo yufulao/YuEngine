@@ -94,6 +94,20 @@ struct ResourceDescriptorBatchLookupResult final {
     }
 };
 
+struct ResourceDescriptorTypeEnumerationResult final {
+    ResourceStatus status = ResourceStatus::InvalidHandle;
+    std::uint32_t matched_descriptor_count = 0U;
+    std::uint32_t required_descriptor_count = 0U;
+
+    /**
+     * @comment 检查 type enumeration 结果是否成功。
+     * @return 条件满足时返回 true，否则返回 false。
+     */
+    bool Succeeded() const {
+        return status == ResourceStatus::Success;
+    }
+};
+
 struct ResourceDependencyRequest final {
     ResourceHandle dependent{};
     ResourceHandle dependency{};
@@ -151,6 +165,19 @@ public:
         ResourceDescriptor *output_descriptors,
         std::uint32_t output_descriptor_capacity,
         std::uint32_t *output_descriptor_count);
+    /**
+     * @comment 按注册顺序枚举指定 type 的 synthetic 描述。
+     * @param type 输入类型。
+     * @param output_records 输出记录存储。
+     * @param output_record_capacity 输出记录容量。
+     * @param output_record_count 输出记录数量。
+     * @return 显式 type enumeration 结果。
+     */
+    ResourceDescriptorTypeEnumerationResult EnumerateSyntheticDescriptorsByType(
+        ResourceTypeId type,
+        ResourceDescriptorLookupRecord *output_records,
+        std::uint32_t output_record_capacity,
+        std::uint32_t *output_record_count);
     /**
      * @comment 按 type/key 精确查找当前 synthetic 描述。
      * @param type 输入类型。
