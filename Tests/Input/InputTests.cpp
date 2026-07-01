@@ -1616,6 +1616,11 @@ int InputBridgeFocusLostRejectsInputAndTracksCounters() {
         return Fail("bridge did not reject input while unfocused");
     }
 
+    const auto focus_rejected_snapshot = bridge.Snapshot();
+    if (focus_rejected_snapshot.failed_output_event_type != InputBridgeEventType::None) {
+        return Fail("focus rejection recorded output drain failure type");
+    }
+
     if (bridge.SetFocus(true) != InputStatus::Success) {
         return Fail("bridge focus gained update failed");
     }
@@ -1673,6 +1678,10 @@ int InputBridgeCapacityOverflowDoesNotGrow() {
         return Fail("bridge accepted count changed after overflow");
     }
 
+    if (snapshot.failed_output_event_type != InputBridgeEventType::None) {
+        return Fail("bridge capacity overflow recorded output drain failure type");
+    }
+
     return 0;
 }
 
@@ -1687,14 +1696,22 @@ int InputBridgeDrainRejectsSmallOutputWithoutMutation() {
     bridge.SubmitEvent(BridgeKey(InputBridgeEventType::KeyPressed, 65U));
     bridge.SubmitEvent(BridgeKey(InputBridgeEventType::KeyReleased, 65U));
 
-    std::array<InputBridgeEvent, 1U> small_events{};
-    std::size_t small_count = 0U;
+    std::array<InputBridgeEvent, 1U> small_events{BridgeMouseWheel(120)};
+    std::size_t small_count = 99U;
     if (bridge.DrainEvents(small_events.data(), small_events.size(), small_count) != InputStatus::OutputBufferFull) {
         return Fail("bridge did not reject undersized drain buffer");
     }
 
-    if (small_count != 0U) {
-        return Fail("undersized drain wrote event count");
+    if (small_count != 99U) {
+        return Fail("undersized drain mutated event count");
+    }
+
+    if (small_events[0].type != InputBridgeEventType::MouseWheel) {
+        return Fail("undersized drain mutated output event type");
+    }
+
+    if (small_events[0].wheel_delta != 120) {
+        return Fail("undersized drain mutated output event payload");
     }
 
     const auto rejected_snapshot = bridge.Snapshot();
@@ -1710,6 +1727,39 @@ int InputBridgeDrainRejectsSmallOutputWithoutMutation() {
         return Fail("undersized drain did not record last status");
     }
 
+    if (rejected_snapshot.failed_output_event_index != 1U) {
+        return Fail("undersized drain did not record failed output index");
+    }
+
+    if (rejected_snapshot.failed_output_event_type != InputBridgeEventType::KeyReleased) {
+        return Fail("undersized drain did not record failed output type");
+    }
+
+    if (rejected_snapshot.failed_output_device_kind != InputDeviceKind::Keyboard) {
+        return Fail("undersized drain did not record failed output device kind");
+    }
+
+    if (rejected_snapshot.failed_output_device.value != DEVICE_A.value) {
+        return Fail("undersized drain did not record failed output device");
+    }
+
+    if (rejected_snapshot.failed_output_control.value != 65U) {
+        return Fail("undersized drain did not record failed output control");
+    }
+
+    if (bridge.SubmitEvent(BridgeKey(static_cast<InputBridgeEventType>(99), 65U)) != InputStatus::InvalidEvent) {
+        return Fail("bridge invalid event did not return invalid event");
+    }
+
+    const auto invalid_snapshot = bridge.Snapshot();
+    if (invalid_snapshot.failed_output_event_type != InputBridgeEventType::None) {
+        return Fail("invalid event left stale output drain failure type");
+    }
+
+    if (invalid_snapshot.queued_event_count != 2U) {
+        return Fail("invalid event mutated queue after output drain failure");
+    }
+
     std::array<InputBridgeEvent, 2U> events{};
     std::size_t event_count = 0U;
     if (bridge.DrainEvents(events.data(), events.size(), event_count) != InputStatus::Success) {
@@ -1723,6 +1773,18 @@ int InputBridgeDrainRejectsSmallOutputWithoutMutation() {
     const auto drained_snapshot = bridge.Snapshot();
     if (drained_snapshot.required_output_event_count != 0U) {
         return Fail("full drain did not clear required output count");
+    }
+
+    if (drained_snapshot.failed_output_event_type != InputBridgeEventType::None) {
+        return Fail("full drain did not clear failed output type");
+    }
+
+    if (drained_snapshot.failed_output_device_kind != InputDeviceKind::Unknown) {
+        return Fail("full drain did not clear failed output device kind");
+    }
+
+    if (drained_snapshot.failed_output_event_index != 0U) {
+        return Fail("full drain did not clear failed output index");
     }
 
     return 0;

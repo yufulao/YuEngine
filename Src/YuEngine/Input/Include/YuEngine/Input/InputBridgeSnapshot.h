@@ -7,7 +7,7 @@
 #include <cstdint>
 
 #include "YuEngine/Input/InputBackendKind.h"
-#include "YuEngine/Input/InputDeviceId.h"
+#include "YuEngine/Input/InputBridgeEvent.h"
 #include "YuEngine/Input/InputGamepadConnection.h"
 #include "YuEngine/Input/InputStatus.h"
 
@@ -17,6 +17,11 @@ struct InputBridgeSnapshot final {
     std::size_t event_capacity = 0U;
     std::size_t queued_event_count = 0U;
     std::size_t required_output_event_count = 0U;
+    std::size_t failed_output_event_index = 0U;
+    InputBridgeEventType failed_output_event_type = InputBridgeEventType::None;
+    InputDeviceKind failed_output_device_kind = InputDeviceKind::Unknown;
+    InputDeviceId failed_output_device{};
+    InputControlId failed_output_control{};
     std::size_t accepted_event_count = 0U;
     std::size_t rejected_event_count = 0U;
     std::size_t drained_event_count = 0U;

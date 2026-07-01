@@ -67,6 +67,22 @@ InputBridgeEvent MakeGamepadAxisEvent(InputDeviceId device, std::uint32_t contro
     event.axis_value = value;
     return event;
 }
+
+void ClearOutputDrainFailure(InputBridgeSnapshot &snapshot) {
+    snapshot.failed_output_event_index = 0U;
+    snapshot.failed_output_event_type = InputBridgeEventType::None;
+    snapshot.failed_output_device_kind = InputDeviceKind::Unknown;
+    snapshot.failed_output_device = InputDeviceId{};
+    snapshot.failed_output_control = InputControlId{};
+}
+
+void RecordOutputDrainFailure(InputBridgeSnapshot &snapshot, std::size_t failed_event_index, const InputBridgeEvent &event) {
+    snapshot.failed_output_event_index = failed_event_index;
+    snapshot.failed_output_event_type = event.type;
+    snapshot.failed_output_device_kind = event.device_kind;
+    snapshot.failed_output_device = event.device;
+    snapshot.failed_output_control = event.control;
+}
 }
 
 InputBridge::InputBridge()
@@ -203,8 +219,6 @@ InputStatus InputBridge::SubmitGamepadState(const InputGamepadState &state) {
 }
 
 InputStatus InputBridge::DrainEvents(InputBridgeEvent *events, std::size_t event_capacity, std::size_t &out_event_count) {
-    out_event_count = 0U;
-
     if (!initialized_) {
         return RecordStatus(InputStatus::NotInitialized);
     }
@@ -216,7 +230,11 @@ InputStatus InputBridge::DrainEvents(InputBridgeEvent *events, std::size_t event
     }
 
     if (event_capacity < event_count_) {
+        const std::size_t failed_event_index = event_capacity;
+        const std::size_t failed_event_storage_index = (read_index_ + failed_event_index) % desc_.event_capacity;
+        const InputBridgeEvent &failed_event = events_[failed_event_storage_index];
         snapshot_.required_output_event_count = event_count_;
+        RecordOutputDrainFailure(snapshot_, failed_event_index, failed_event);
         return RecordStatus(InputStatus::OutputBufferFull);
     }
 
@@ -370,6 +388,10 @@ InputStatus InputBridge::ValidateEvent(const InputBridgeEvent &event) const {
 
 InputStatus InputBridge::RecordStatus(InputStatus status) {
     ClearGamepadCapacityFailure();
+    if (status != InputStatus::OutputBufferFull) {
+        ClearOutputDrainFailure(snapshot_);
+    }
+
     snapshot_.last_status = status;
     if (status == InputStatus::Success) {
         return status;
@@ -514,6 +536,7 @@ void InputBridge::ClearQueuedEvents() {
     event_count_ = 0U;
     snapshot_.queued_event_count = 0U;
     snapshot_.required_output_event_count = 0U;
+    ClearOutputDrainFailure(snapshot_);
 }
 
 std::size_t InputBridge::CountGamepadStateEvents(const InputGamepadState &state) const {
