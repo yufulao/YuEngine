@@ -31,6 +31,12 @@ struct RenderGraphExecutionPlanResult final {
     std::uint32_t frame_id = 0U;
     std::size_t pass_count = 0U;
     std::size_t record_slot = 0U;
+    std::size_t plan_record_capacity = 0U;
+    std::size_t frame_packet_record_capacity = 0U;
+    std::size_t submission_record_capacity = 0U;
+    std::size_t current_plan_record_count = 0U;
+    std::size_t current_frame_packet_record_count = 0U;
+    std::size_t current_submission_record_count = 0U;
     std::size_t required_plan_record_count = 0U;
     std::size_t required_frame_packet_record_count = 0U;
     std::size_t required_submission_record_count = 0U;

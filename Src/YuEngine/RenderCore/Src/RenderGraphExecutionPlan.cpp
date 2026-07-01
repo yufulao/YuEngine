@@ -157,6 +157,74 @@ std::size_t RemainingSubmissionRecordCapacity(const RenderSubmissionBatchFixture
 
     return snapshot.submission_record_capacity - snapshot.submission_record_count;
 }
+
+bool IsCapacityEntryFailure(RenderGraphExecutionPlanStatus status) {
+    if (status == RenderGraphExecutionPlanStatus::PlanCapacityExceeded) {
+        return true;
+    }
+
+    if (status == RenderGraphExecutionPlanStatus::FramePacketCapacityExceeded) {
+        return true;
+    }
+
+    return status == RenderGraphExecutionPlanStatus::SubmissionBatchCapacityExceeded;
+}
+
+void ClearCapacityEntryFailure(RenderGraphExecutionPlanSnapshot &snapshot) {
+    snapshot.last_capacity_entry_plan_id = 0U;
+    snapshot.last_capacity_entry_graph_id = 0U;
+    snapshot.last_capacity_entry_frame_id = 0U;
+    snapshot.last_capacity_entry_pass_id = 0U;
+    snapshot.last_capacity_entry_material_id = 0U;
+    snapshot.last_capacity_entry_pass_count = 0U;
+    snapshot.last_capacity_entry_record_slot = 0U;
+    snapshot.last_capacity_entry_plan_record_capacity = 0U;
+    snapshot.last_capacity_entry_frame_packet_record_capacity = 0U;
+    snapshot.last_capacity_entry_submission_record_capacity = 0U;
+    snapshot.last_capacity_entry_current_plan_record_count = 0U;
+    snapshot.last_capacity_entry_current_frame_packet_record_count = 0U;
+    snapshot.last_capacity_entry_current_submission_record_count = 0U;
+    snapshot.last_capacity_entry_required_plan_record_count = 0U;
+    snapshot.last_capacity_entry_required_frame_packet_record_count = 0U;
+    snapshot.last_capacity_entry_required_submission_record_count = 0U;
+    snapshot.last_capacity_entry_completed_entry_count = 0U;
+    snapshot.last_capacity_entry_failed_entry_count = 0U;
+    snapshot.last_capacity_entry_failed_entry_index = 0U;
+    snapshot.last_capacity_entry_status = RenderGraphExecutionPlanStatus::InvalidArgument;
+}
+
+void StoreCapacityEntryFailure(
+    RenderGraphExecutionPlanSnapshot &snapshot,
+    const RenderGraphExecutionPlanResult &result) {
+    snapshot.last_capacity_entry_plan_id = result.plan_id;
+    snapshot.last_capacity_entry_graph_id = result.graph_id;
+    snapshot.last_capacity_entry_frame_id = result.frame_id;
+    snapshot.last_capacity_entry_pass_id = result.pass_id;
+    snapshot.last_capacity_entry_material_id = result.material_id;
+    snapshot.last_capacity_entry_pass_count = result.pass_count;
+    snapshot.last_capacity_entry_record_slot = result.record_slot;
+    snapshot.last_capacity_entry_plan_record_capacity = result.plan_record_capacity;
+    snapshot.last_capacity_entry_frame_packet_record_capacity =
+        result.frame_packet_record_capacity;
+    snapshot.last_capacity_entry_submission_record_capacity =
+        result.submission_record_capacity;
+    snapshot.last_capacity_entry_current_plan_record_count =
+        result.current_plan_record_count;
+    snapshot.last_capacity_entry_current_frame_packet_record_count =
+        result.current_frame_packet_record_count;
+    snapshot.last_capacity_entry_current_submission_record_count =
+        result.current_submission_record_count;
+    snapshot.last_capacity_entry_required_plan_record_count =
+        result.required_plan_record_count;
+    snapshot.last_capacity_entry_required_frame_packet_record_count =
+        result.required_frame_packet_record_count;
+    snapshot.last_capacity_entry_required_submission_record_count =
+        result.required_submission_record_count;
+    snapshot.last_capacity_entry_completed_entry_count = result.completed_entry_count;
+    snapshot.last_capacity_entry_failed_entry_count = result.failed_entry_count;
+    snapshot.last_capacity_entry_failed_entry_index = result.failed_entry_index;
+    snapshot.last_capacity_entry_status = result.status;
+}
 }
 
 RenderGraphExecutionPlan::RenderGraphExecutionPlan(const RenderGraphExecutionPlanDesc &desc)
@@ -221,9 +289,16 @@ std::size_t RenderGraphExecutionPlan::QueryRecords(std::span<RenderGraphExecutio
     ++snapshot_.query_count;
     snapshot_.last_operation = RenderGraphExecutionPlanOperation::Query;
     snapshot_.last_status = RenderGraphExecutionPlanStatus::Success;
+    snapshot_.last_plan_record_capacity = 0U;
+    snapshot_.last_frame_packet_record_capacity = 0U;
+    snapshot_.last_submission_record_capacity = 0U;
+    snapshot_.last_current_plan_record_count = 0U;
+    snapshot_.last_current_frame_packet_record_count = 0U;
+    snapshot_.last_current_submission_record_count = 0U;
     snapshot_.last_required_plan_record_count = 0U;
     snapshot_.last_required_frame_packet_record_count = 0U;
     snapshot_.last_required_submission_record_count = 0U;
+    ClearCapacityEntryFailure(snapshot_);
     return copied_count;
 }
 
@@ -263,6 +338,7 @@ void RenderGraphExecutionPlan::Reset() {
     snapshot_.reset_count = 1U;
     snapshot_.last_operation = RenderGraphExecutionPlanOperation::Reset;
     snapshot_.last_status = RenderGraphExecutionPlanStatus::Success;
+    ClearCapacityEntryFailure(snapshot_);
 }
 
 RenderGraphExecutionPlanStatus RenderGraphExecutionPlan::ValidateRequest(
@@ -312,6 +388,9 @@ RenderGraphExecutionPlanStatus RenderGraphExecutionPlan::ValidateRequest(
     }
 
     result->required_plan_record_count = snapshot_.plan_record_count + 1U;
+    result->current_plan_record_count = snapshot_.plan_record_count;
+    result->record_slot = snapshot_.plan_record_count;
+    result->plan_record_capacity = desc_.plan_record_capacity;
     if (!HasRecordCapacity()) {
         return RenderGraphExecutionPlanStatus::PlanCapacityExceeded;
     }
@@ -346,6 +425,10 @@ RenderGraphExecutionPlanStatus RenderGraphExecutionPlan::ValidateRequest(
 
     const RenderFramePacketFixtureSnapshot frame_snapshot =
         request.frame_packet->Snapshot();
+    result->frame_packet_record_capacity =
+        frame_snapshot.frame_packet_record_capacity;
+    result->current_frame_packet_record_count =
+        frame_snapshot.frame_packet_record_count;
     result->required_frame_packet_record_count =
         RequiredFramePacketRecordCount(*request.frame_packet);
     if (result->required_frame_packet_record_count >
@@ -356,6 +439,10 @@ RenderGraphExecutionPlanStatus RenderGraphExecutionPlan::ValidateRequest(
 
     const RenderSubmissionBatchFixtureSnapshot submission_snapshot =
         request.submission_batch->Snapshot();
+    result->submission_record_capacity =
+        submission_snapshot.submission_record_capacity;
+    result->current_submission_record_count =
+        submission_snapshot.submission_record_count;
     result->required_submission_record_count =
         RequiredSubmissionRecordCount(*request.submission_batch, pass_count);
     if (result->required_submission_record_count >
@@ -486,6 +573,12 @@ void RenderGraphExecutionPlan::RecordReleaseResult(
     snapshot_.last_frame_id = 0U;
     snapshot_.last_pass_count = 0U;
     snapshot_.last_record_slot = 0U;
+    snapshot_.last_plan_record_capacity = 0U;
+    snapshot_.last_frame_packet_record_capacity = 0U;
+    snapshot_.last_submission_record_capacity = 0U;
+    snapshot_.last_current_plan_record_count = 0U;
+    snapshot_.last_current_frame_packet_record_count = 0U;
+    snapshot_.last_current_submission_record_count = 0U;
     snapshot_.last_required_plan_record_count = 0U;
     snapshot_.last_required_frame_packet_record_count = 0U;
     snapshot_.last_required_submission_record_count = 0U;
@@ -501,6 +594,7 @@ void RenderGraphExecutionPlan::RecordReleaseResult(
     snapshot_.last_batch_status = RenderSubmissionBatchFixtureStatus::InvalidArgument;
     snapshot_.last_pass_status = RenderFixturePassStatus::InvalidArgument;
     snapshot_.last_rhi_status = yuengine::rhi::RhiStatus::InvalidLifecycle;
+    ClearCapacityEntryFailure(snapshot_);
 }
 
 void RenderGraphExecutionPlan::StoreRecord(const RenderGraphExecutionPlanResult &result) {
@@ -533,6 +627,14 @@ void RenderGraphExecutionPlan::StoreLastResult(const RenderGraphExecutionPlanRes
     snapshot_.last_frame_id = result.frame_id;
     snapshot_.last_pass_count = result.pass_count;
     snapshot_.last_record_slot = result.record_slot;
+    snapshot_.last_plan_record_capacity = result.plan_record_capacity;
+    snapshot_.last_frame_packet_record_capacity = result.frame_packet_record_capacity;
+    snapshot_.last_submission_record_capacity = result.submission_record_capacity;
+    snapshot_.last_current_plan_record_count = result.current_plan_record_count;
+    snapshot_.last_current_frame_packet_record_count =
+        result.current_frame_packet_record_count;
+    snapshot_.last_current_submission_record_count =
+        result.current_submission_record_count;
     snapshot_.last_required_plan_record_count = result.required_plan_record_count;
     snapshot_.last_required_frame_packet_record_count =
         result.required_frame_packet_record_count;
@@ -550,5 +652,11 @@ void RenderGraphExecutionPlan::StoreLastResult(const RenderGraphExecutionPlanRes
     snapshot_.last_batch_status = result.batch_status;
     snapshot_.last_pass_status = result.pass_status;
     snapshot_.last_rhi_status = result.rhi_status;
+    if (IsCapacityEntryFailure(result.status)) {
+        StoreCapacityEntryFailure(snapshot_, result);
+        return;
+    }
+
+    ClearCapacityEntryFailure(snapshot_);
 }
 }
