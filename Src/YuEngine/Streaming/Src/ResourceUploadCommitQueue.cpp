@@ -143,7 +143,6 @@ ResourceUploadCommitStatus ResourceUploadCommitQueue::DrainCompletions(
 
     *written_count = 0U;
     if (snapshot_.completion_count == 0U) {
-        snapshot_.last_status = ResourceUploadCommitStatus::Success;
         ClearUploadCommitCapacityEntry(snapshot_);
         return ResourceUploadCommitStatus::Success;
     }

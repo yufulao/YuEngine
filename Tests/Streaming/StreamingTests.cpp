@@ -232,6 +232,8 @@ constexpr const char *TEST_UPLOAD_COMMIT_FAILED_UPLOAD =
     "Streaming_ResourceUploadCommit_CommitsFailedUpload";
 constexpr const char *TEST_UPLOAD_COMMIT_DRAIN_FAILED_STATUS =
     "Streaming_ResourceUploadCommit_DrainPreservesResourceCommitFailedStatus";
+constexpr const char *TEST_UPLOAD_COMMIT_MULTI_DRAIN_STATUS =
+    "Streaming_ResourceUploadCommit_DrainPreservesMixedCompletionStatuses";
 constexpr const char *TEST_UPLOAD_COMMIT_INVALID_HANDLE =
     "Streaming_ResourceUploadCommit_RejectsInvalidResourceHandleWithoutMutation";
 constexpr const char *TEST_UPLOAD_COMMIT_TYPE_MISMATCH =
@@ -4788,6 +4790,132 @@ int StreamingResourceUploadCommitDrainPreservesResourceCommitFailedStatus() {
     return 0;
 }
 
+int StreamingResourceUploadCommitDrainPreservesMixedCompletionStatuses() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("resource registration failed");
+    }
+
+    const ResourceUploadCompletion first_completion = BuildUploadCompletion(
+        resource_result.handle,
+        TYPE_TEXTURE,
+        ResourceUploadStatus::Success,
+        UPLOAD_ONE,
+        REQUEST_ONE,
+        4U);
+    const ResourceUploadCompletion second_completion = BuildUploadCompletion(
+        ResourceHandle{},
+        TYPE_TEXTURE,
+        ResourceUploadStatus::Success,
+        UPLOAD_TWO,
+        REQUEST_TWO,
+        4U);
+    const ResourceUploadCommitRequest first_request =
+        BuildUploadCommitRequest(resource_registry, first_completion, COMMIT_ONE);
+    const ResourceUploadCommitRequest second_request =
+        BuildUploadCommitRequest(resource_registry, second_completion, COMMIT_TWO);
+    ResourceUploadCommitQueue queue(ResourceUploadCommitQueueDesc{2U, 2U});
+    if (queue.Submit(first_request) != ResourceUploadCommitStatus::Queued) {
+        return Fail("first mixed upload commit request was not queued");
+    }
+
+    if (queue.Submit(second_request) != ResourceUploadCommitStatus::Queued) {
+        return Fail("second mixed upload commit request was not queued");
+    }
+
+    if (queue.ProcessNext() != ResourceUploadCommitStatus::Success) {
+        return Fail("first mixed upload commit request did not succeed");
+    }
+
+    if (queue.ProcessNext() != ResourceUploadCommitStatus::ResourceCommitFailed) {
+        return Fail("second mixed upload commit request did not preserve failure");
+    }
+
+    std::array<ResourceUploadCommitCompletion, 2U> completions{};
+    std::uint32_t written_count = 0U;
+    const ResourceUploadCommitStatus drain_status = queue.DrainCompletions(
+        completions.data(),
+        static_cast<std::uint32_t>(completions.size()),
+        &written_count);
+    if (drain_status != ResourceUploadCommitStatus::Success) {
+        return Fail("mixed upload commit drain failed");
+    }
+
+    if (written_count != 2U) {
+        return Fail("mixed upload commit drain count changed");
+    }
+
+    if (completions[0U].commit_id != COMMIT_ONE) {
+        return Fail("mixed upload commit first completion id changed");
+    }
+
+    if (completions[0U].status != ResourceUploadCommitStatus::Success) {
+        return Fail("mixed upload commit success status changed");
+    }
+
+    if (completions[0U].resource_commit_status != ResourceLoadCommitStatus::Success) {
+        return Fail("mixed upload commit resource success status changed");
+    }
+
+    if (completions[1U].commit_id != COMMIT_TWO) {
+        return Fail("mixed upload commit second completion id changed");
+    }
+
+    if (completions[1U].status != ResourceUploadCommitStatus::ResourceCommitFailed) {
+        return Fail("mixed upload commit failure status changed");
+    }
+
+    if (completions[1U].resource_commit_status != ResourceLoadCommitStatus::InvalidHandle) {
+        return Fail("mixed upload commit resource failure status changed");
+    }
+
+    if (!ResourceLoadStateMatches(
+            resource_registry,
+            resource_result.handle,
+            TYPE_TEXTURE,
+            ResourceLoadState::Uploaded)) {
+        return Fail("mixed upload commit success resource was not committed");
+    }
+
+    ResourceUploadCommitSnapshot snapshot = queue.Snapshot();
+    if (snapshot.completion_count != 0U) {
+        return Fail("mixed upload commit left completions queued");
+    }
+
+    if (snapshot.committed_count != 1U) {
+        return Fail("mixed upload commit success count changed");
+    }
+
+    if (snapshot.resource_commit_failed_count != 1U) {
+        return Fail("mixed upload commit failure count changed");
+    }
+
+    if (snapshot.last_status != ResourceUploadCommitStatus::ResourceCommitFailed) {
+        return Fail("mixed upload commit drain overwrote failure status");
+    }
+
+    written_count = 7U;
+    const ResourceUploadCommitStatus empty_drain_status = queue.DrainCompletions(
+        completions.data(),
+        static_cast<std::uint32_t>(completions.size()),
+        &written_count);
+    if (empty_drain_status != ResourceUploadCommitStatus::Success) {
+        return Fail("mixed upload commit empty drain failed");
+    }
+
+    if (written_count != 0U) {
+        return Fail("mixed upload commit empty drain wrote completions");
+    }
+
+    snapshot = queue.Snapshot();
+    if (snapshot.last_status != ResourceUploadCommitStatus::ResourceCommitFailed) {
+        return Fail("mixed upload commit empty drain hid failure status");
+    }
+
+    return 0;
+}
+
 int StreamingResourceUploadCommitRejectsDuplicateCommitId() {
     ResourceRegistry resource_registry;
     const ResourceRegistrationResult first_resource = RegisterResource(resource_registry);
@@ -6133,6 +6261,8 @@ int main(int argc, char **argv) {
         {TEST_UPLOAD_COMMIT_FAILED_UPLOAD, StreamingResourceUploadCommitCommitsFailedUpload},
         {TEST_UPLOAD_COMMIT_DRAIN_FAILED_STATUS,
          StreamingResourceUploadCommitDrainPreservesResourceCommitFailedStatus},
+        {TEST_UPLOAD_COMMIT_MULTI_DRAIN_STATUS,
+         StreamingResourceUploadCommitDrainPreservesMixedCompletionStatuses},
         {TEST_UPLOAD_COMMIT_INVALID_HANDLE, StreamingResourceUploadCommitRejectsInvalidResourceHandleWithoutMutation},
         {TEST_UPLOAD_COMMIT_TYPE_MISMATCH, StreamingResourceUploadCommitRejectsTypeMismatchWithoutMutation},
         {TEST_UPLOAD_COMMIT_DUPLICATE_ID, StreamingResourceUploadCommitRejectsDuplicateCommitId},
