@@ -312,10 +312,17 @@ int RenderSceneOutputCapacityFailureDoesNotMutateOutput() {
     std::array<std::uint8_t, CAPTURE_BYTES> capture{};
     std::array<std::uint8_t, 4U> constants{1U, 2U, 3U, 4U};
     const std::array<RenderSceneCameraRecord, 1U> cameras{CameraRecord()};
-    const std::array<RenderSceneEntityRecord, 2U> entities{
+    std::array<RenderSceneEntityRecord, 4U> entities{
         EntityRecord(constants, DRAW_ID),
         EntityRecord(constants, DRAW_ID + 1U),
+        EntityRecord(constants, DRAW_ID + 2U),
+        EntityRecord(constants, DRAW_ID + 3U),
     };
+    entities[0].world_object_id = WorldObjectId{21U};
+    entities[1].world_object_id = WorldObjectId{22U};
+    entities[1].is_visible = false;
+    entities[2].world_object_id = WorldObjectId{23U};
+    entities[3].world_object_id = WorldObjectId{24U};
     std::array<RenderViewPacketRequest, 1U> packets{};
     packets[0].view_id = 77U;
     RenderSceneSubmitResult result{};
@@ -331,28 +338,118 @@ int RenderSceneOutputCapacityFailureDoesNotMutateOutput() {
         return Fail("render scene capacity result status mismatch");
     }
 
-    if (result.visible_entity_count != 2U) {
+    if (result.visible_entity_count != 3U) {
         return Fail("render scene capacity visible count mismatch");
     }
 
-    if (result.required_output_packet_count != 2U) {
+    if (result.required_output_packet_count != 3U) {
         return Fail("render scene capacity required count mismatch");
+    }
+
+    constexpr std::size_t EXPECTED_FAILED_ENTRY_INDEX = 2U;
+    if (result.failed_entry_index != EXPECTED_FAILED_ENTRY_INDEX) {
+        return Fail("render scene capacity failed entry index mismatch");
+    }
+
+    if (result.failed_entity_id.value != entities[2].world_object_id.value) {
+        return Fail("render scene capacity failed entity id mismatch");
+    }
+
+    if (result.failed_camera_id != CAMERA_ID) {
+        return Fail("render scene capacity failed camera id mismatch");
+    }
+
+    if (result.failed_draw_id != DRAW_ID + 2U) {
+        return Fail("render scene capacity failed draw id mismatch");
     }
 
     if (packets[0].view_id != 77U) {
         return Fail("render scene mutated output on capacity failure");
     }
 
-    if (queue.Snapshot().last_status != RenderSceneStatus::OutputCapacityExceeded) {
+    const auto capacity_snapshot = queue.Snapshot();
+    if (capacity_snapshot.last_status != RenderSceneStatus::OutputCapacityExceeded) {
         return Fail("render scene capacity snapshot status mismatch");
     }
 
-    if (queue.Snapshot().last_visible_entity_count != 2U) {
+    if (capacity_snapshot.last_visible_entity_count != 3U) {
         return Fail("render scene capacity snapshot visible count mismatch");
     }
 
-    if (queue.Snapshot().last_required_output_packet_count != 2U) {
+    if (capacity_snapshot.last_required_output_packet_count != 3U) {
         return Fail("render scene capacity snapshot required count mismatch");
+    }
+
+    if (capacity_snapshot.last_failed_entry_index != EXPECTED_FAILED_ENTRY_INDEX) {
+        return Fail("render scene capacity snapshot failed entry index mismatch");
+    }
+
+    if (capacity_snapshot.last_failed_entity_id.value != entities[2].world_object_id.value) {
+        return Fail("render scene capacity snapshot failed entity id mismatch");
+    }
+
+    if (capacity_snapshot.last_failed_camera_id != CAMERA_ID) {
+        return Fail("render scene capacity snapshot failed camera id mismatch");
+    }
+
+    if (capacity_snapshot.last_failed_draw_id != DRAW_ID + 2U) {
+        return Fail("render scene capacity snapshot failed draw id mismatch");
+    }
+
+    std::array<RenderSceneEntityRecord, 1U> invalid_entities{
+        EntityRecord(constants, DRAW_ID + 4U),
+    };
+    invalid_entities[0].mesh_asset = AssetHandle{};
+    std::array<RenderViewPacketRequest, 1U> validation_packets{};
+    validation_packets[0].view_id = 88U;
+    RenderSceneSubmitResult validation_result{};
+    const RenderSceneStatus validation_status = queue.BuildRenderCorePackets(
+        SubmitRequest(cameras, invalid_entities, capture),
+        validation_packets,
+        &validation_result);
+    if (validation_status != RenderSceneStatus::MissingMeshAsset) {
+        return Fail("render scene validation failure status mismatch");
+    }
+
+    if (validation_result.failed_entry_index != 0U) {
+        return Fail("render scene validation failure entry index was not cleared");
+    }
+
+    if (validation_result.failed_entity_id.IsValid()) {
+        return Fail("render scene validation failure entity id was not cleared");
+    }
+
+    if (validation_result.failed_camera_id != 0U) {
+        return Fail("render scene validation failure camera id was not cleared");
+    }
+
+    if (validation_result.failed_draw_id != 0U) {
+        return Fail("render scene validation failure draw id was not cleared");
+    }
+
+    if (validation_packets[0].view_id != 88U) {
+        return Fail("render scene mutated output on validation failure");
+    }
+
+    const auto validation_snapshot = queue.Snapshot();
+    if (validation_snapshot.last_status != RenderSceneStatus::MissingMeshAsset) {
+        return Fail("render scene validation snapshot status mismatch");
+    }
+
+    if (validation_snapshot.last_failed_entry_index != 0U) {
+        return Fail("render scene validation snapshot entry index was not cleared");
+    }
+
+    if (validation_snapshot.last_failed_entity_id.IsValid()) {
+        return Fail("render scene validation snapshot entity id was not cleared");
+    }
+
+    if (validation_snapshot.last_failed_camera_id != 0U) {
+        return Fail("render scene validation snapshot camera id was not cleared");
+    }
+
+    if (validation_snapshot.last_failed_draw_id != 0U) {
+        return Fail("render scene validation snapshot draw id was not cleared");
     }
 
     return 0;

@@ -4,6 +4,45 @@
 #include "YuEngine/RenderScene/RenderSceneContractQueue.h"
 
 namespace yuengine::renderscene {
+namespace {
+void RecordOutputCapacityFailureEntry(
+    const RenderSceneSubmitRequest &request,
+    const RenderSceneCameraRecord *camera,
+    std::size_t output_packet_capacity,
+    RenderSceneSubmitResult *out_result) {
+    if (out_result == nullptr) {
+        return;
+    }
+
+    if (camera == nullptr) {
+        return;
+    }
+
+    std::size_t visible_entry_index = 0U;
+    for (std::size_t entry_index = 0U; entry_index < request.entities.size(); ++entry_index) {
+        const RenderSceneEntityRecord &entity = request.entities[entry_index];
+        if (!entity.is_active) {
+            continue;
+        }
+
+        if (!entity.is_visible) {
+            continue;
+        }
+
+        if (visible_entry_index < output_packet_capacity) {
+            ++visible_entry_index;
+            continue;
+        }
+
+        out_result->failed_entry_index = entry_index;
+        out_result->failed_entity_id = entity.world_object_id;
+        out_result->failed_camera_id = camera->camera_id;
+        out_result->failed_draw_id = entity.draw.draw_id;
+        return;
+    }
+}
+}
+
 RenderSceneStatus RenderSceneContractQueue::BuildRenderCorePackets(
     const RenderSceneSubmitRequest &request,
     std::span<yuengine::rendercore::RenderViewPacketRequest> out_packets,
@@ -25,6 +64,11 @@ RenderSceneStatus RenderSceneContractQueue::BuildRenderCorePackets(
 
     result.visible_entity_count = visible_entity_count;
     result.required_output_packet_count = visible_entity_count;
+    if (validate_status == RenderSceneStatus::OutputCapacityExceeded) {
+        const std::size_t output_packet_capacity = out_packets.size();
+        RecordOutputCapacityFailureEntry(request, camera, output_packet_capacity, &result);
+    }
+
     if (validate_status != RenderSceneStatus::Success) {
         result.status = validate_status;
         *out_result = result;
@@ -203,6 +247,10 @@ RenderSceneStatus RenderSceneContractQueue::RecordSuccess(const RenderSceneSubmi
     snapshot_.last_output_packet_count = result.output_packet_count;
     snapshot_.last_visible_entity_count = result.visible_entity_count;
     snapshot_.last_required_output_packet_count = result.required_output_packet_count;
+    snapshot_.last_failed_entry_index = result.failed_entry_index;
+    snapshot_.last_failed_entity_id = result.failed_entity_id;
+    snapshot_.last_failed_camera_id = result.failed_camera_id;
+    snapshot_.last_failed_draw_id = result.failed_draw_id;
     snapshot_.last_skipped_entity_count = result.skipped_entity_count;
     snapshot_.last_status = RenderSceneStatus::Success;
     return RenderSceneStatus::Success;
@@ -217,6 +265,10 @@ RenderSceneStatus RenderSceneContractQueue::RecordFailure(
     snapshot_.last_output_packet_count = result.output_packet_count;
     snapshot_.last_visible_entity_count = result.visible_entity_count;
     snapshot_.last_required_output_packet_count = result.required_output_packet_count;
+    snapshot_.last_failed_entry_index = result.failed_entry_index;
+    snapshot_.last_failed_entity_id = result.failed_entity_id;
+    snapshot_.last_failed_camera_id = result.failed_camera_id;
+    snapshot_.last_failed_draw_id = result.failed_draw_id;
     snapshot_.last_skipped_entity_count = result.skipped_entity_count;
     snapshot_.last_status = status;
     return status;
