@@ -980,7 +980,9 @@ int EditorHostSessionCapacityRejectionsReportRequiredCounts() {
         &panel_result);
     if (panel_status != EditorHostSessionStatus::PanelOutputCapacityExceeded ||
         panel_result.blocked_layer != EditorHostSessionBlockedLayer::PanelOutput ||
-        panel_result.panel_count != 4U) {
+        panel_result.panel_count != 4U ||
+        panel_result.failed_panel_index != 3U ||
+        panel_result.failed_persisted_panel_index != 0U) {
         return Fail("editor host panel capacity count mismatch");
     }
 
@@ -1012,7 +1014,9 @@ int EditorHostSessionCapacityRejectionsReportRequiredCounts() {
     if (persistence_status != EditorHostSessionStatus::PersistenceOutputCapacityExceeded ||
         persistence_result.blocked_layer != EditorHostSessionBlockedLayer::PersistenceStore ||
         persistence_result.panel_count != 3U ||
-        persistence_result.persisted_panel_count != 3U) {
+        persistence_result.persisted_panel_count != 3U ||
+        persistence_result.failed_panel_index != 0U ||
+        persistence_result.failed_persisted_panel_index != 2U) {
         return Fail("editor host persistence capacity count mismatch");
     }
 
@@ -1047,7 +1051,8 @@ int EditorHostSessionCapacityRejectionsReportRequiredCounts() {
         RestoreEditorHostSessionShell(restore_request, &restore_result);
     if (restore_status != EditorHostSessionStatus::PanelOutputCapacityExceeded ||
         restore_result.blocked_layer != EditorHostSessionBlockedLayer::PanelOutput ||
-        restore_result.restored_panel_count != 3U) {
+        restore_result.restored_panel_count != 3U ||
+        restore_result.failed_restored_panel_index != 2U) {
         return Fail("editor host restore capacity count mismatch");
     }
 
@@ -1089,7 +1094,8 @@ int EditorHostSessionCapacityRejectionsReportRequiredCounts() {
         &lifecycle_result);
     if (lifecycle_status != EditorHostSessionStatus::IntegrationOutputCapacityExceeded ||
         lifecycle_result.blocked_layer != EditorHostSessionBlockedLayer::IntegrationOutput ||
-        lifecycle_result.integration_row_count != 5U) {
+        lifecycle_result.integration_row_count != 5U ||
+        lifecycle_result.failed_integration_index != 4U) {
         return Fail("editor host lifecycle capacity count mismatch");
     }
 
@@ -1122,6 +1128,7 @@ int EditorHostSessionRejectsInvalidPersistedSessionWithoutMutation() {
 
     if (status != EditorHostSessionStatus::InvalidPersistedSession ||
         result.blocked_layer != EditorHostSessionBlockedLayer::PersistenceStore ||
+        result.failed_restored_panel_index != 0U ||
         result.restored_shell_state) {
         return Fail("invalid persisted session status mismatch");
     }

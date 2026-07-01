@@ -163,6 +163,8 @@ struct EditorHostSessionShellResult final {
     std::size_t panel_count = 0U;
     std::size_t persisted_panel_count = 0U;
     std::size_t restored_panel_count = 0U;
+    std::size_t failed_panel_index = 0U;
+    std::size_t failed_persisted_panel_index = 0U;
     bool consumed_scene_editor_workflow = false;
     bool consumed_animation_editor_workflow = false;
     bool consumed_ui_editor_workflow = false;
@@ -196,6 +198,7 @@ struct EditorHostSessionRestoreResult final {
     std::uint64_t session_id = INVALID_EDITOR_HOST_SESSION_ID;
     std::uint32_t layout_revision = 0U;
     std::size_t restored_panel_count = 0U;
+    std::size_t failed_restored_panel_index = 0U;
     bool restored_shell_state = false;
     bool requires_runtime_refresh = false;
     bool opened_native_window = false;
@@ -264,6 +267,7 @@ struct EditorHostApplicationLifecycleResult final {
     std::size_t integration_row_count = 0U;
     std::size_t persisted_panel_count = 0U;
     std::size_t restored_panel_count = 0U;
+    std::size_t failed_integration_index = 0U;
     bool opened_session = false;
     bool restored_session = false;
     bool refreshed_runtime_truth = false;

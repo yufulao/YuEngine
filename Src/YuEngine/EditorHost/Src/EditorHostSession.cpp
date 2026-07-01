@@ -709,6 +709,7 @@ EditorHostSessionStatus BuildEditorHostSessionShell(
     const std::size_t panel_count = package_run_ready ? 4U : 3U;
     if (request.panel_output.size() < panel_count) {
         result.panel_count = panel_count;
+        result.failed_panel_index = request.panel_output.size();
         result.status = EditorHostSessionStatus::PanelOutputCapacityExceeded;
         result.blocked_layer = EditorHostSessionBlockedLayer::PanelOutput;
         *out_result = result;
@@ -719,6 +720,8 @@ EditorHostSessionStatus BuildEditorHostSessionShell(
         request.persisted_panel_output.size() < panel_count) {
         result.panel_count = panel_count;
         result.persisted_panel_count = panel_count;
+        result.failed_persisted_panel_index =
+            request.persisted_panel_output.size();
         result.status = EditorHostSessionStatus::PersistenceOutputCapacityExceeded;
         result.blocked_layer = EditorHostSessionBlockedLayer::PersistenceStore;
         *out_result = result;
@@ -789,6 +792,7 @@ EditorHostSessionStatus RestoreEditorHostSessionShell(
 
     if (request.panel_output.size() < request.persisted_panels.size()) {
         result.restored_panel_count = request.persisted_panels.size();
+        result.failed_restored_panel_index = request.panel_output.size();
         result.status = EditorHostSessionStatus::PanelOutputCapacityExceeded;
         result.blocked_layer = EditorHostSessionBlockedLayer::PanelOutput;
         *out_result = result;
@@ -860,6 +864,7 @@ EditorHostSessionStatus BuildEditorHostApplicationLifecycle(
 
     if (request.integration_output.size() < EDITOR_HOST_APPLICATION_INTEGRATION_COUNT) {
         result.integration_row_count = EDITOR_HOST_APPLICATION_INTEGRATION_COUNT;
+        result.failed_integration_index = request.integration_output.size();
         result.status = EditorHostSessionStatus::IntegrationOutputCapacityExceeded;
         result.blocked_layer = EditorHostSessionBlockedLayer::IntegrationOutput;
         *out_result = result;
