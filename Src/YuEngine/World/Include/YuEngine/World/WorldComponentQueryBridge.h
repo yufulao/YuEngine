@@ -40,8 +40,13 @@ private:
         std::uint32_t written_record_count);
     WorldComponentQueryResult RecordFailureResult(WorldComponentQueryStatus status);
     WorldComponentQueryResult RecordOverflowResult(
+        WorldComponentQueryKind query_kind,
+        WorldObjectId world_object_id,
+        WorldComponentTypeId component_type_id,
+        std::uint32_t output_capacity,
         std::uint32_t matched_record_count,
         std::uint32_t written_record_count);
+    void ClearCapacityEntry();
     WorldComponentQueryStatus ValidateTypeDesc(const WorldComponentQueryTypeDesc &desc) const;
     WorldComponentQueryStatus ValidateObjectDesc(const WorldComponentQueryObjectDesc &desc) const;
 

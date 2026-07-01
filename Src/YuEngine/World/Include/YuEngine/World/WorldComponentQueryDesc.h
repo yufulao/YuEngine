@@ -11,6 +11,12 @@
 namespace yuengine::world {
 class WorldComponentAttachmentBridge;
 
+enum class WorldComponentQueryKind {
+    None,
+    Type,
+    Object
+};
+
 struct WorldComponentQueryTypeDesc final {
     const WorldComponentAttachmentBridge *source_bridge = nullptr;
     WorldComponentTypeId component_type_id{};

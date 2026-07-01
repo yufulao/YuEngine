@@ -19,6 +19,11 @@ WorldComponentQueryBridge::WorldComponentQueryBridge()
           0U,
           0U,
           MemoryAccountingStatus::ExplicitlyTrackedOnly,
+          WorldComponentQueryKind::None,
+          WorldObjectId{},
+          WorldComponentTypeId{},
+          0U,
+          0U,
           WorldComponentQueryStatus::Success} {
 }
 
@@ -43,7 +48,13 @@ WorldComponentQueryResult WorldComponentQueryBridge::QueryType(const WorldCompon
     }
 
     if (matched_record_count > desc.output_capacity) {
-        return RecordOverflowResult(matched_record_count, 0U);
+        return RecordOverflowResult(
+            WorldComponentQueryKind::Type,
+            WorldObjectId{},
+            desc.component_type_id,
+            desc.output_capacity,
+            matched_record_count,
+            0U);
     }
 
     std::uint32_t written_record_count = 0U;
@@ -81,7 +92,13 @@ WorldComponentQueryResult WorldComponentQueryBridge::QueryObject(const WorldComp
     }
 
     if (matched_record_count > desc.output_capacity) {
-        return RecordOverflowResult(matched_record_count, 0U);
+        return RecordOverflowResult(
+            WorldComponentQueryKind::Object,
+            desc.world_object_id,
+            WorldComponentTypeId{},
+            desc.output_capacity,
+            matched_record_count,
+            0U);
     }
 
     std::uint32_t written_record_count = 0U;
@@ -105,6 +122,7 @@ WorldComponentQuerySnapshot WorldComponentQueryBridge::Snapshot() const {
 WorldComponentQueryResult WorldComponentQueryBridge::RecordSuccessResult(
     std::uint32_t matched_record_count,
     std::uint32_t written_record_count) {
+    ClearCapacityEntry();
     ++snapshot_.query_count;
     snapshot_.matched_record_count += matched_record_count;
     snapshot_.last_status = WorldComponentQueryStatus::Success;
@@ -112,23 +130,47 @@ WorldComponentQueryResult WorldComponentQueryBridge::RecordSuccessResult(
 }
 
 WorldComponentQueryResult WorldComponentQueryBridge::RecordFailureResult(WorldComponentQueryStatus status) {
+    ClearCapacityEntry();
     ++snapshot_.failed_operation_count;
     snapshot_.last_status = status;
     return WorldComponentQueryResult::Failure(status);
 }
 
 WorldComponentQueryResult WorldComponentQueryBridge::RecordOverflowResult(
+    WorldComponentQueryKind query_kind,
+    WorldObjectId world_object_id,
+    WorldComponentTypeId component_type_id,
+    std::uint32_t output_capacity,
     std::uint32_t matched_record_count,
     std::uint32_t written_record_count) {
     ++snapshot_.query_count;
     snapshot_.matched_record_count += matched_record_count;
     ++snapshot_.overflow_rejection_count;
     ++snapshot_.failed_operation_count;
+    snapshot_.last_failed_query_kind = query_kind;
+    snapshot_.last_failed_world_object_id = world_object_id;
+    snapshot_.last_failed_component_type_id = component_type_id;
+    snapshot_.last_failed_output_capacity = output_capacity;
+    snapshot_.last_required_output_count = matched_record_count;
     snapshot_.last_status = WorldComponentQueryStatus::OutputCapacityExceeded;
-    return WorldComponentQueryResult::Failure(
+    WorldComponentQueryResult result = WorldComponentQueryResult::Failure(
         WorldComponentQueryStatus::OutputCapacityExceeded,
         matched_record_count,
         written_record_count);
+    result.failed_query_kind = query_kind;
+    result.failed_world_object_id = world_object_id;
+    result.failed_component_type_id = component_type_id;
+    result.output_capacity = output_capacity;
+    result.required_output_count = matched_record_count;
+    return result;
+}
+
+void WorldComponentQueryBridge::ClearCapacityEntry() {
+    snapshot_.last_failed_query_kind = WorldComponentQueryKind::None;
+    snapshot_.last_failed_world_object_id = WorldObjectId{};
+    snapshot_.last_failed_component_type_id = WorldComponentTypeId{};
+    snapshot_.last_failed_output_capacity = 0U;
+    snapshot_.last_required_output_count = 0U;
 }
 
 WorldComponentQueryStatus WorldComponentQueryBridge::ValidateTypeDesc(

@@ -5,6 +5,7 @@
 
 #include <cstdint>
 
+#include "YuEngine/World/WorldComponentQueryDesc.h"
 #include "YuEngine/World/WorldComponentQueryStatus.h"
 
 namespace yuengine::world {
@@ -12,6 +13,11 @@ struct WorldComponentQueryResult final {
     WorldComponentQueryStatus status = WorldComponentQueryStatus::Success;
     std::uint32_t matched_record_count = 0U;
     std::uint32_t written_record_count = 0U;
+    WorldComponentQueryKind failed_query_kind = WorldComponentQueryKind::None;
+    WorldObjectId failed_world_object_id{};
+    WorldComponentTypeId failed_component_type_id{};
+    std::uint32_t output_capacity = 0U;
+    std::uint32_t required_output_count = 0U;
 
     /**
      * @comment 创建成功 query result。
