@@ -28,6 +28,7 @@
 #include "YuEngine/RenderCore/RenderSubmissionBatchFixtureDesc.h"
 #include "YuEngine/RenderCore/RenderSubmissionBatchFixtureRequest.h"
 #include "YuEngine/RenderCore/RenderSubmissionBatchFixtureResult.h"
+#include "YuEngine/RenderCore/RenderSubmissionBatchFixtureSnapshot.h"
 #include "YuEngine/RenderCore/RenderSubmissionBatchFixtureStatus.h"
 #include "YuEngine/Rhi/IRhiDevice.h"
 #include "YuEngine/Rhi/NullRhiDevice.h"
@@ -83,6 +84,7 @@ using RenderSubmissionBatchFixture = yuengine::rendercore::RenderSubmissionBatch
 using RenderSubmissionBatchFixtureDesc = yuengine::rendercore::RenderSubmissionBatchFixtureDesc;
 using RenderSubmissionBatchFixtureRequest = yuengine::rendercore::RenderSubmissionBatchFixtureRequest;
 using RenderSubmissionBatchFixtureResult = yuengine::rendercore::RenderSubmissionBatchFixtureResult;
+using RenderSubmissionBatchFixtureSnapshot = yuengine::rendercore::RenderSubmissionBatchFixtureSnapshot;
 using yuengine::rendercore::RenderSubmissionBatchFixtureStatus;
 using IRhiDevice = yuengine::rhi::IRhiDevice;
 using NullRhiDevice = yuengine::rhi::NullRhiDevice;
@@ -745,6 +747,71 @@ RenderSubmissionBatchFixtureRequest NullPassBatchRequestFrom(
     request.pass_requests = pass_requests;
     request.pass_results = pass_results;
     return request;
+}
+
+bool SubmissionBatchCapacityFailureIsClear(const RenderSubmissionBatchFixtureSnapshot &snapshot) {
+    if (snapshot.last_capacity_entry_submission_record_capacity != 0U ||
+        snapshot.last_capacity_entry_current_submission_record_count != 0U ||
+        snapshot.last_capacity_entry_required_submission_record_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_failed_entry_index != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_pass_id != 0U ||
+        snapshot.last_capacity_entry_material_id != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_status != RenderSubmissionBatchFixtureStatus::InvalidArgument) {
+        return false;
+    }
+
+    if (snapshot.last_failed_entry_index != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_pass_id != 0U) {
+        return false;
+    }
+
+    return snapshot.last_failed_material_id == 0U;
+}
+
+bool SubmissionBatchCapacityFailureMatches(
+    const RenderSubmissionBatchFixtureSnapshot &snapshot,
+    std::size_t expected_entry_index,
+    const RenderFixturePassRequest &request,
+    std::size_t expected_capacity,
+    std::size_t expected_current_count,
+    std::size_t expected_required_count) {
+    if (snapshot.last_capacity_entry_submission_record_capacity != expected_capacity ||
+        snapshot.last_capacity_entry_current_submission_record_count != expected_current_count ||
+        snapshot.last_capacity_entry_required_submission_record_count != expected_required_count) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_failed_entry_index != expected_entry_index) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_pass_id != request.pass_id ||
+        snapshot.last_capacity_entry_material_id != request.material_id ||
+        snapshot.last_capacity_entry_status != RenderSubmissionBatchFixtureStatus::BatchCapacityExceeded) {
+        return false;
+    }
+
+    if (snapshot.last_failed_entry_index != expected_entry_index) {
+        return false;
+    }
+
+    if (snapshot.last_failed_pass_id != request.pass_id) {
+        return false;
+    }
+
+    return snapshot.last_failed_material_id == request.material_id;
 }
 
 RenderFramePacketFixtureRequest FramePacketRequestFrom(
@@ -1816,6 +1883,10 @@ int RenderCoreSubmissionBatchExecutesMaterialPreparedRequests() {
         return Fail("submission batch fixture did not track completed entries");
     }
 
+    if (!SubmissionBatchCapacityFailureIsClear(snapshot)) {
+        return Fail("successful submission batch left capacity failure entry");
+    }
+
     const RhiDeviceSnapshot rhi_snapshot = device.Snapshot();
     if (rhi_snapshot.submit_count != 2U || rhi_snapshot.present_count != 2U || rhi_snapshot.capture_count != 2U) {
         return Fail("submission batch fixture did not submit present and capture twice");
@@ -1850,6 +1921,10 @@ int RenderCoreSubmissionBatchRejectsEmptyBatchWithoutMutation() {
     const auto batch_snapshot = batch.Snapshot();
     if (batch_snapshot.failed_validation_count != 1U || batch_snapshot.submission_record_count != 0U) {
         return Fail("empty submission batch counters were not updated");
+    }
+
+    if (!SubmissionBatchCapacityFailureIsClear(batch_snapshot)) {
+        return Fail("empty submission batch wrote capacity failure entry");
     }
 
     return 0;
@@ -1929,6 +2004,11 @@ int RenderCoreSubmissionBatchRejectsInvalidPassRequestWithoutMutation() {
         return Fail("invalid pass request mutated fixture pass");
     }
 
+    const auto batch_snapshot = batch.Snapshot();
+    if (!SubmissionBatchCapacityFailureIsClear(batch_snapshot)) {
+        return Fail("invalid pass request wrote capacity failure entry");
+    }
+
     return 0;
 }
 
@@ -1986,6 +2066,10 @@ int RenderCoreSubmissionBatchRejectsDuplicatePassIdWithoutMutation() {
         return Fail("duplicate pass id counters were not updated");
     }
 
+    if (!SubmissionBatchCapacityFailureIsClear(snapshot)) {
+        return Fail("duplicate pass id wrote capacity failure entry");
+    }
+
     return 0;
 }
 
@@ -2041,6 +2125,7 @@ int RenderCoreSubmissionBatchRejectsBatchCapacityWithoutMutation() {
     }
 
     constexpr std::size_t expected_required_submission_record_count = 2U;
+    constexpr std::size_t expected_current_submission_record_count = 0U;
     if (result.required_submission_record_count != expected_required_submission_record_count) {
         return Fail("submission batch capacity overflow missed required record count");
     }
@@ -2055,7 +2140,9 @@ int RenderCoreSubmissionBatchRejectsBatchCapacityWithoutMutation() {
     }
 
     const auto snapshot = batch.Snapshot();
-    if (snapshot.batch_capacity_rejected_count != 1U || snapshot.submission_record_count != 0U) {
+    if (snapshot.submission_record_capacity != desc.submission_record_capacity ||
+        snapshot.batch_capacity_rejected_count != 1U ||
+        snapshot.submission_record_count != expected_current_submission_record_count) {
         return Fail("submission batch capacity counters were not updated");
     }
 
@@ -2065,6 +2152,29 @@ int RenderCoreSubmissionBatchRejectsBatchCapacityWithoutMutation() {
 
     if (snapshot.last_entry_index != expected_failed_entry_index) {
         return Fail("submission batch capacity snapshot missed failed entry");
+    }
+
+    if (!SubmissionBatchCapacityFailureMatches(
+        snapshot,
+        expected_failed_entry_index,
+        requests[1U],
+        desc.submission_record_capacity,
+        expected_current_submission_record_count,
+        expected_required_submission_record_count)) {
+        return Fail("submission batch capacity snapshot missed failed entry identity");
+    }
+
+    results.fill(sentinel);
+    const std::span<const RenderFixturePassRequest> clear_request_span(requests.data(), 1U);
+    const RenderSubmissionBatchFixtureRequest clear_batch_request = BatchRequestFrom(pass, clear_request_span, result_span);
+    const auto clear_result = batch.Execute(clear_batch_request);
+    if (clear_result.status != RenderSubmissionBatchFixtureStatus::Success) {
+        return Fail("submission batch capacity stale clear request failed");
+    }
+
+    const auto clear_snapshot = batch.Snapshot();
+    if (!SubmissionBatchCapacityFailureIsClear(clear_snapshot)) {
+        return Fail("successful submission batch did not clear capacity failure entry");
     }
 
     return 0;
@@ -2112,6 +2222,10 @@ int RenderCoreSubmissionBatchPropagatesRenderFixturePassFailure() {
     const auto snapshot = batch.Snapshot();
     if (snapshot.render_pass_failure_count != 1U || snapshot.submission_record_count != 1U) {
         return Fail("submission batch pass failure counters were not updated");
+    }
+
+    if (!SubmissionBatchCapacityFailureIsClear(snapshot)) {
+        return Fail("submission batch pass failure wrote capacity failure entry");
     }
 
     return 0;
@@ -2178,6 +2292,10 @@ int RenderCoreSubmissionBatchSnapshotTracksBoundedCounters() {
 
     if (after.last_recorded_command_count != RENDER_FIXTURE_PASS_COMMAND_COUNT) {
         return Fail("submission batch fixture snapshot missed command count");
+    }
+
+    if (!SubmissionBatchCapacityFailureIsClear(after)) {
+        return Fail("submission batch fixture snapshot retained capacity failure entry");
     }
 
     return 0;

@@ -136,6 +136,37 @@ RenderFixturePassStatus ValidatePassRequest(const RenderFixturePassRequest &requ
 
     return RenderFixturePassStatus::Success;
 }
+
+void ClearBatchCapacityFailure(RenderSubmissionBatchFixtureSnapshot &snapshot) {
+    snapshot.last_capacity_entry_submission_record_capacity = 0U;
+    snapshot.last_capacity_entry_current_submission_record_count = 0U;
+    snapshot.last_capacity_entry_required_submission_record_count = 0U;
+    snapshot.last_capacity_entry_failed_entry_index = 0U;
+    snapshot.last_capacity_entry_pass_id = 0U;
+    snapshot.last_capacity_entry_material_id = 0U;
+    snapshot.last_capacity_entry_status = RenderSubmissionBatchFixtureStatus::InvalidArgument;
+    snapshot.last_failed_entry_index = 0U;
+    snapshot.last_failed_pass_id = 0U;
+    snapshot.last_failed_material_id = 0U;
+}
+
+void RecordBatchCapacityFailure(
+    RenderSubmissionBatchFixtureSnapshot &snapshot,
+    const RenderSubmissionBatchFixtureResult &result) {
+    snapshot.last_capacity_entry_submission_record_capacity =
+        snapshot.submission_record_capacity;
+    snapshot.last_capacity_entry_current_submission_record_count =
+        snapshot.submission_record_count;
+    snapshot.last_capacity_entry_required_submission_record_count =
+        result.required_submission_record_count;
+    snapshot.last_capacity_entry_failed_entry_index = result.failed_entry_index;
+    snapshot.last_capacity_entry_pass_id = result.pass_id;
+    snapshot.last_capacity_entry_material_id = result.material_id;
+    snapshot.last_capacity_entry_status = result.status;
+    snapshot.last_failed_entry_index = result.failed_entry_index;
+    snapshot.last_failed_pass_id = result.pass_id;
+    snapshot.last_failed_material_id = result.material_id;
+}
 }
 
 RenderSubmissionBatchFixture::RenderSubmissionBatchFixture(const RenderSubmissionBatchFixtureDesc &desc)
@@ -275,6 +306,7 @@ bool RenderSubmissionBatchFixture::HasPassId(std::uint32_t pass_id) const {
 }
 
 void RenderSubmissionBatchFixture::RecordRejectedBatch(const RenderSubmissionBatchFixtureResult &result) {
+    ClearBatchCapacityFailure(snapshot_);
     snapshot_.last_entry_index = result.failed_entry_index;
     snapshot_.last_status = result.status;
     snapshot_.last_pass_status = result.pass_status;
@@ -291,6 +323,7 @@ void RenderSubmissionBatchFixture::RecordRejectedBatch(const RenderSubmissionBat
     }
 
     if (result.status == RenderSubmissionBatchFixtureStatus::BatchCapacityExceeded) {
+        RecordBatchCapacityFailure(snapshot_, result);
         ++snapshot_.batch_capacity_rejected_count;
         return;
     }
@@ -302,6 +335,7 @@ void RenderSubmissionBatchFixture::RecordRenderSuccess(
     const RenderFixturePassRequest &request,
     const RenderFixturePassResult &pass_result,
     std::size_t entry_index) {
+    ClearBatchCapacityFailure(snapshot_);
     if (snapshot_.submission_record_count < records_.size()) {
         records_[snapshot_.submission_record_count].pass_result = pass_result;
         records_[snapshot_.submission_record_count].material_id = request.material_id;
@@ -326,6 +360,7 @@ void RenderSubmissionBatchFixture::RecordRenderFailure(
     const RenderFixturePassResult &pass_result,
     std::size_t entry_index,
     RenderSubmissionBatchFixtureResult *result) {
+    ClearBatchCapacityFailure(snapshot_);
     if (result == nullptr) {
         return;
     }
