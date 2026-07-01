@@ -46,7 +46,7 @@ bool CopyFixedText(std::string_view source, std::array<char, Capacity> &destinat
 }
 
 template <std::size_t Capacity>
-bool FixedTextEquals(const std::array<char, Capacity>& stored, std::size_t stored_length, std::string_view candidate) {
+bool FixedTextEquals(const std::array<char, Capacity> &stored, std::size_t stored_length, std::string_view candidate) {
     if (candidate.size() != stored_length) {
         return false;
     }
@@ -60,50 +60,112 @@ bool FixedTextEquals(const std::array<char, Capacity>& stored, std::size_t store
     return true;
 }
 
-void ClearAllocationCapacityEntry(MemorySnapshot &snapshot) {
-    snapshot.last_allocation_capacity_entry_requested_bytes = 0U;
-    ClearFixedText(
-        snapshot.last_allocation_capacity_entry_owner,
-        snapshot.last_allocation_capacity_entry_owner_length);
-    ClearFixedText(
-        snapshot.last_allocation_capacity_entry_tag,
-        snapshot.last_allocation_capacity_entry_tag_length);
-    snapshot.last_allocation_capacity_entry_budget_class = MemoryBudgetClass::Setup;
-    snapshot.last_allocation_capacity_entry_capacity = 0U;
-    snapshot.last_allocation_capacity_entry_active_count = 0U;
-    snapshot.last_allocation_capacity_entry_retained_bytes = 0U;
+std::size_t RequiredBytesWhenOverCapacity(std::string_view value, std::size_t capacity) {
+    if (value.size() <= capacity) {
+        return 0U;
+    }
+
+    return value.size();
 }
 
-void StoreAllocationCapacityEntry(
+template <std::size_t Capacity>
+void StoreCapacityText(std::string_view source, std::array<char, Capacity> &destination, std::size_t &length) {
+    ClearFixedText(destination, length);
+    if (source.size() > Capacity) {
+        return;
+    }
+
+    CopyFixedTextUnchecked(source, destination, length);
+}
+
+void ClearCapacityEntry(MemorySnapshot &snapshot) {
+    snapshot.last_capacity_entry_status = MemoryAccountingStatus::Success;
+    snapshot.last_capacity_entry_requested_bytes = 0U;
+    ClearFixedText(
+        snapshot.last_capacity_entry_owner,
+        snapshot.last_capacity_entry_owner_length);
+    snapshot.last_capacity_entry_owner_capacity = 0U;
+    snapshot.last_capacity_entry_owner_required_bytes = 0U;
+    ClearFixedText(
+        snapshot.last_capacity_entry_tag,
+        snapshot.last_capacity_entry_tag_length);
+    snapshot.last_capacity_entry_tag_capacity = 0U;
+    snapshot.last_capacity_entry_tag_required_bytes = 0U;
+    snapshot.last_capacity_entry_budget_class = MemoryBudgetClass::Setup;
+    snapshot.last_capacity_entry_allocation_capacity = 0U;
+    snapshot.last_capacity_entry_active_allocation_count = 0U;
+    snapshot.last_capacity_entry_retained_bytes = 0U;
+}
+
+MemoryAccountingResult RejectAllocation(MemorySnapshot &snapshot, MemoryAccountingStatus status) {
+    ClearCapacityEntry(snapshot);
+    snapshot.last_status = status;
+    return MemoryAccountingResult::Failure(status);
+}
+
+MemoryAccountingStatus RejectFree(MemorySnapshot &snapshot, MemoryAccountingStatus status) {
+    ClearCapacityEntry(snapshot);
+    snapshot.last_status = status;
+    return status;
+}
+
+void StoreCapacityEntry(
     MemorySnapshot &snapshot,
     MemoryAccountingResult &result,
     MemoryOwnerId owner,
     MemoryTag tag,
     MemoryBudgetClass budget_class,
     std::size_t bytes,
-    std::size_t active_allocation_count) {
+    std::size_t active_allocation_count,
+    std::size_t owner_required_bytes,
+    std::size_t tag_required_bytes) {
+    ClearCapacityEntry(snapshot);
+    snapshot.last_status = result.status;
+
     result.required_allocation_count = snapshot.required_allocation_count;
+    result.capacity_entry_status = result.status;
     result.capacity_entry_requested_bytes = bytes;
-    CopyFixedTextUnchecked(owner.value, result.capacity_entry_owner, result.capacity_entry_owner_length);
-    CopyFixedTextUnchecked(tag.value, result.capacity_entry_tag, result.capacity_entry_tag_length);
+    StoreCapacityText(owner.value, result.capacity_entry_owner, result.capacity_entry_owner_length);
+    if (owner_required_bytes != 0U) {
+        result.capacity_entry_owner_capacity = MAX_MEMORY_OWNER_ID_BYTES;
+    }
+
+    result.capacity_entry_owner_required_bytes = owner_required_bytes;
+    StoreCapacityText(tag.value, result.capacity_entry_tag, result.capacity_entry_tag_length);
+    if (tag_required_bytes != 0U) {
+        result.capacity_entry_tag_capacity = MAX_MEMORY_TAG_BYTES;
+    }
+
+    result.capacity_entry_tag_required_bytes = tag_required_bytes;
     result.capacity_entry_budget_class = budget_class;
     result.capacity_entry_allocation_capacity = snapshot.allocation_capacity;
     result.capacity_entry_active_allocation_count = active_allocation_count;
     result.capacity_entry_retained_bytes = snapshot.retained_bytes;
 
-    snapshot.last_allocation_capacity_entry_requested_bytes = bytes;
-    CopyFixedTextUnchecked(
+    snapshot.last_capacity_entry_status = result.status;
+    snapshot.last_capacity_entry_requested_bytes = bytes;
+    StoreCapacityText(
         owner.value,
-        snapshot.last_allocation_capacity_entry_owner,
-        snapshot.last_allocation_capacity_entry_owner_length);
-    CopyFixedTextUnchecked(
+        snapshot.last_capacity_entry_owner,
+        snapshot.last_capacity_entry_owner_length);
+    if (owner_required_bytes != 0U) {
+        snapshot.last_capacity_entry_owner_capacity = MAX_MEMORY_OWNER_ID_BYTES;
+    }
+
+    snapshot.last_capacity_entry_owner_required_bytes = owner_required_bytes;
+    StoreCapacityText(
         tag.value,
-        snapshot.last_allocation_capacity_entry_tag,
-        snapshot.last_allocation_capacity_entry_tag_length);
-    snapshot.last_allocation_capacity_entry_budget_class = budget_class;
-    snapshot.last_allocation_capacity_entry_capacity = snapshot.allocation_capacity;
-    snapshot.last_allocation_capacity_entry_active_count = active_allocation_count;
-    snapshot.last_allocation_capacity_entry_retained_bytes = snapshot.retained_bytes;
+        snapshot.last_capacity_entry_tag,
+        snapshot.last_capacity_entry_tag_length);
+    if (tag_required_bytes != 0U) {
+        snapshot.last_capacity_entry_tag_capacity = MAX_MEMORY_TAG_BYTES;
+    }
+
+    snapshot.last_capacity_entry_tag_required_bytes = tag_required_bytes;
+    snapshot.last_capacity_entry_budget_class = budget_class;
+    snapshot.last_capacity_entry_allocation_capacity = snapshot.allocation_capacity;
+    snapshot.last_capacity_entry_active_allocation_count = active_allocation_count;
+    snapshot.last_capacity_entry_retained_bytes = snapshot.retained_bytes;
 }
 }
 
@@ -124,59 +186,74 @@ MemoryAccountingResult CountingMemoryTracker::RecordAllocation(
     std::size_t bytes,
     std::size_t alignment) {
     if (!owner.IsValid()) {
-        ClearAllocationCapacityEntry(snapshot_);
-        snapshot_.last_status = MemoryAccountingStatus::InvalidOwner;
-        return MemoryAccountingResult::Failure(MemoryAccountingStatus::InvalidOwner);
+        return RejectAllocation(snapshot_, MemoryAccountingStatus::InvalidOwner);
     }
 
     if (!tag.IsValid()) {
-        ClearAllocationCapacityEntry(snapshot_);
-        snapshot_.last_status = MemoryAccountingStatus::InvalidTag;
-        return MemoryAccountingResult::Failure(MemoryAccountingStatus::InvalidTag);
+        return RejectAllocation(snapshot_, MemoryAccountingStatus::InvalidTag);
     }
 
     if (bytes == 0U) {
-        ClearAllocationCapacityEntry(snapshot_);
-        snapshot_.last_status = MemoryAccountingStatus::InvalidSize;
-        return MemoryAccountingResult::Failure(MemoryAccountingStatus::InvalidSize);
+        return RejectAllocation(snapshot_, MemoryAccountingStatus::InvalidSize);
     }
 
     if (!IsPowerOfTwo(alignment)) {
-        ClearAllocationCapacityEntry(snapshot_);
-        snapshot_.last_status = MemoryAccountingStatus::InvalidAlignment;
-        return MemoryAccountingResult::Failure(MemoryAccountingStatus::InvalidAlignment);
+        return RejectAllocation(snapshot_, MemoryAccountingStatus::InvalidAlignment);
     }
 
     if (!IsValidMemoryBudgetClass(budget_class)) {
-        ClearAllocationCapacityEntry(snapshot_);
-        snapshot_.last_status = MemoryAccountingStatus::InvalidBudgetClass;
-        return MemoryAccountingResult::Failure(MemoryAccountingStatus::InvalidBudgetClass);
-    }
-
-    if (owner.value.size() > MAX_MEMORY_OWNER_ID_BYTES) {
-        ClearAllocationCapacityEntry(snapshot_);
-        snapshot_.last_status = MemoryAccountingStatus::InvalidOwner;
-        return MemoryAccountingResult::Failure(MemoryAccountingStatus::InvalidOwner);
-    }
-
-    if (tag.value.size() > MAX_MEMORY_TAG_BYTES) {
-        ClearAllocationCapacityEntry(snapshot_);
-        snapshot_.last_status = MemoryAccountingStatus::InvalidTag;
-        return MemoryAccountingResult::Failure(MemoryAccountingStatus::InvalidTag);
+        return RejectAllocation(snapshot_, MemoryAccountingStatus::InvalidBudgetClass);
     }
 
     if (IsHotMemoryBudgetClass(budget_class)) {
-        ClearAllocationCapacityEntry(snapshot_);
-        snapshot_.last_status = MemoryAccountingStatus::BudgetExceeded;
-        return MemoryAccountingResult::Failure(MemoryAccountingStatus::BudgetExceeded);
+        return RejectAllocation(snapshot_, MemoryAccountingStatus::BudgetExceeded);
     }
 
     snapshot_.required_allocation_count = active_allocation_count_ + 1U;
-    ActiveAllocationRecord* record = FindFreeAllocationRecord();
+    if (owner.value.size() > MAX_MEMORY_OWNER_ID_BYTES) {
+        MemoryAccountingResult result = MemoryAccountingResult::Failure(MemoryAccountingStatus::InvalidOwner);
+        const std::size_t tag_required_bytes = RequiredBytesWhenOverCapacity(tag.value, MAX_MEMORY_TAG_BYTES);
+        StoreCapacityEntry(
+            snapshot_,
+            result,
+            owner,
+            tag,
+            budget_class,
+            bytes,
+            active_allocation_count_,
+            owner.value.size(),
+            tag_required_bytes);
+        return result;
+    }
+
+    if (tag.value.size() > MAX_MEMORY_TAG_BYTES) {
+        MemoryAccountingResult result = MemoryAccountingResult::Failure(MemoryAccountingStatus::InvalidTag);
+        StoreCapacityEntry(
+            snapshot_,
+            result,
+            owner,
+            tag,
+            budget_class,
+            bytes,
+            active_allocation_count_,
+            0U,
+            tag.value.size());
+        return result;
+    }
+
+    ActiveAllocationRecord *record = FindFreeAllocationRecord();
     if (record == nullptr) {
-        snapshot_.last_status = MemoryAccountingStatus::CapacityExceeded;
         MemoryAccountingResult result = MemoryAccountingResult::Failure(MemoryAccountingStatus::CapacityExceeded);
-        StoreAllocationCapacityEntry(snapshot_, result, owner, tag, budget_class, bytes, active_allocation_count_);
+        StoreCapacityEntry(
+            snapshot_,
+            result,
+            owner,
+            tag,
+            budget_class,
+            bytes,
+            active_allocation_count_,
+            0U,
+            0U);
         return result;
     }
 
@@ -184,16 +261,12 @@ MemoryAccountingResult CountingMemoryTracker::RecordAllocation(
     ++next_allocation_id_;
 
     if (!CopyFixedText(owner.value, record->owner, record->owner_length)) {
-        ClearAllocationCapacityEntry(snapshot_);
-        snapshot_.last_status = MemoryAccountingStatus::InvalidOwner;
-        return MemoryAccountingResult::Failure(MemoryAccountingStatus::InvalidOwner);
+        return RejectAllocation(snapshot_, MemoryAccountingStatus::InvalidOwner);
     }
 
     if (!CopyFixedText(tag.value, record->tag, record->tag_length)) {
         ResetAllocationRecord(*record);
-        ClearAllocationCapacityEntry(snapshot_);
-        snapshot_.last_status = MemoryAccountingStatus::InvalidTag;
-        return MemoryAccountingResult::Failure(MemoryAccountingStatus::InvalidTag);
+        return RejectAllocation(snapshot_, MemoryAccountingStatus::InvalidTag);
     }
 
     record->is_active = true;
@@ -209,36 +282,28 @@ MemoryAccountingResult CountingMemoryTracker::RecordAllocation(
 
     snapshot_.leak_count = active_allocation_count_;
     ++budget_allocation_counts_[MemoryBudgetClassIndex(budget_class)];
-    ClearAllocationCapacityEntry(snapshot_);
+    ClearCapacityEntry(snapshot_);
     snapshot_.last_status = MemoryAccountingStatus::Success;
     return MemoryAccountingResult::Success(allocation_id);
 }
 
 MemoryAccountingStatus CountingMemoryTracker::RecordFree(MemoryAllocationId allocation_id, MemoryOwnerId owner, MemoryTag tag) {
-    ActiveAllocationRecord* record = FindActiveAllocation(allocation_id);
+    ActiveAllocationRecord *record = FindActiveAllocation(allocation_id);
     if (record == nullptr) {
-        ClearAllocationCapacityEntry(snapshot_);
-        snapshot_.last_status = MemoryAccountingStatus::UnmatchedFree;
-        return MemoryAccountingStatus::UnmatchedFree;
+        return RejectFree(snapshot_, MemoryAccountingStatus::UnmatchedFree);
     }
 
     if (!FixedTextEquals(record->owner, record->owner_length, owner.value)) {
-        ClearAllocationCapacityEntry(snapshot_);
-        snapshot_.last_status = MemoryAccountingStatus::OwnerTagMismatch;
-        return MemoryAccountingStatus::OwnerTagMismatch;
+        return RejectFree(snapshot_, MemoryAccountingStatus::OwnerTagMismatch);
     }
 
     if (!FixedTextEquals(record->tag, record->tag_length, tag.value)) {
-        ClearAllocationCapacityEntry(snapshot_);
-        snapshot_.last_status = MemoryAccountingStatus::OwnerTagMismatch;
-        return MemoryAccountingStatus::OwnerTagMismatch;
+        return RejectFree(snapshot_, MemoryAccountingStatus::OwnerTagMismatch);
     }
 
     const std::size_t bytes = record->bytes;
     if (bytes > snapshot_.retained_bytes) {
-        ClearAllocationCapacityEntry(snapshot_);
-        snapshot_.last_status = MemoryAccountingStatus::UnmatchedFree;
-        return MemoryAccountingStatus::UnmatchedFree;
+        return RejectFree(snapshot_, MemoryAccountingStatus::UnmatchedFree);
     }
 
     snapshot_.retained_bytes -= bytes;
@@ -247,7 +312,7 @@ MemoryAccountingStatus CountingMemoryTracker::RecordFree(MemoryAllocationId allo
     ResetAllocationRecord(*record);
     --active_allocation_count_;
     snapshot_.leak_count = active_allocation_count_;
-    ClearAllocationCapacityEntry(snapshot_);
+    ClearCapacityEntry(snapshot_);
     snapshot_.last_status = MemoryAccountingStatus::Success;
     return MemoryAccountingStatus::Success;
 }
@@ -264,8 +329,8 @@ std::uint64_t CountingMemoryTracker::AllocationCountForBudget(MemoryBudgetClass 
     return budget_allocation_counts_[MemoryBudgetClassIndex(budget_class)];
 }
 
-ActiveAllocationRecord* CountingMemoryTracker::FindActiveAllocation(MemoryAllocationId allocation_id) {
-    for (ActiveAllocationRecord& record : active_allocations_) {
+ActiveAllocationRecord *CountingMemoryTracker::FindActiveAllocation(MemoryAllocationId allocation_id) {
+    for (ActiveAllocationRecord &record : active_allocations_) {
         if (record.is_active && record.allocation_id.value == allocation_id.value) {
             return &record;
         }
@@ -274,8 +339,8 @@ ActiveAllocationRecord* CountingMemoryTracker::FindActiveAllocation(MemoryAlloca
     return nullptr;
 }
 
-ActiveAllocationRecord* CountingMemoryTracker::FindFreeAllocationRecord() {
-    for (ActiveAllocationRecord& record : active_allocations_) {
+ActiveAllocationRecord *CountingMemoryTracker::FindFreeAllocationRecord() {
+    for (ActiveAllocationRecord &record : active_allocations_) {
         if (!record.is_active) {
             return &record;
         }
@@ -284,7 +349,7 @@ ActiveAllocationRecord* CountingMemoryTracker::FindFreeAllocationRecord() {
     return nullptr;
 }
 
-void CountingMemoryTracker::ResetAllocationRecord(ActiveAllocationRecord& record) {
+void CountingMemoryTracker::ResetAllocationRecord(ActiveAllocationRecord &record) {
     record = ActiveAllocationRecord{};
 }
 }

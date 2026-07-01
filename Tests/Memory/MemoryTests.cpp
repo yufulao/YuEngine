@@ -33,6 +33,7 @@ constexpr const char* TEST_DISABLED = "Memory_DisabledTracker_DoesNotChangeBehav
 constexpr const char* TEST_HOT_PATH = "Memory_HotPathBudget_FailsOnTrackedAllocation";
 constexpr const char* TEST_FIXED_CAPACITY = "Memory_TrackerRejectsBeyondFixedCapacityWithoutMutation";
 constexpr const char *TEST_CAPACITY_ENTRY = "Memory_TrackerCapacityEntry_RecordsRejectedAllocationIdentity";
+constexpr const char *TEST_OWNER_TAG_CAPACITY_ENTRY = "Memory_TrackerCapacityEntry_RecordsOwnerAndTagByteCaps";
 constexpr const char* TEST_OWNER_TAG_BYTE_CAPS = "Memory_TrackerEnforcesOwnerAndTagByteCapsWithoutMutation";
 constexpr const char *TEST_LAST_STATUS = "Memory_TrackerRecordsLastStatusForAllocationAndFree";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
@@ -49,9 +50,14 @@ constexpr std::size_t TRACKED_TEXT_OVER_CAP_BYTES = TRACKED_TEXT_CAP_BYTES + 1U;
 using TestFunction = int (*)();
 
 struct MemoryCapacityEntryExpectation final {
+    MemoryAccountingStatus status = MemoryAccountingStatus::Success;
     std::size_t requested_bytes = 0U;
     std::string_view owner{};
+    std::size_t owner_capacity = 0U;
+    std::size_t owner_required_bytes = 0U;
     std::string_view tag{};
+    std::size_t tag_capacity = 0U;
+    std::size_t tag_required_bytes = 0U;
     MemoryBudgetClass budget_class = MemoryBudgetClass::Setup;
     std::size_t allocation_capacity = 0U;
     std::size_t active_allocation_count = 0U;
@@ -85,6 +91,10 @@ bool ResultCapacityEntryIsClear(const MemoryAccountingResult &result) {
         return false;
     }
 
+    if (result.capacity_entry_status != MemoryAccountingStatus::Success) {
+        return false;
+    }
+
     if (result.capacity_entry_requested_bytes != 0U) {
         return false;
     }
@@ -93,7 +103,23 @@ bool ResultCapacityEntryIsClear(const MemoryAccountingResult &result) {
         return false;
     }
 
+    if (result.capacity_entry_owner_capacity != 0U) {
+        return false;
+    }
+
+    if (result.capacity_entry_owner_required_bytes != 0U) {
+        return false;
+    }
+
     if (result.capacity_entry_tag_length != 0U) {
+        return false;
+    }
+
+    if (result.capacity_entry_tag_capacity != 0U) {
+        return false;
+    }
+
+    if (result.capacity_entry_tag_required_bytes != 0U) {
         return false;
     }
 
@@ -113,31 +139,51 @@ bool ResultCapacityEntryIsClear(const MemoryAccountingResult &result) {
 }
 
 bool SnapshotCapacityEntryIsClear(const MemorySnapshot &snapshot) {
-    if (snapshot.last_allocation_capacity_entry_requested_bytes != 0U) {
+    if (snapshot.last_capacity_entry_status != MemoryAccountingStatus::Success) {
         return false;
     }
 
-    if (snapshot.last_allocation_capacity_entry_owner_length != 0U) {
+    if (snapshot.last_capacity_entry_requested_bytes != 0U) {
         return false;
     }
 
-    if (snapshot.last_allocation_capacity_entry_tag_length != 0U) {
+    if (snapshot.last_capacity_entry_owner_length != 0U) {
         return false;
     }
 
-    if (snapshot.last_allocation_capacity_entry_budget_class != MemoryBudgetClass::Setup) {
+    if (snapshot.last_capacity_entry_owner_capacity != 0U) {
         return false;
     }
 
-    if (snapshot.last_allocation_capacity_entry_capacity != 0U) {
+    if (snapshot.last_capacity_entry_owner_required_bytes != 0U) {
         return false;
     }
 
-    if (snapshot.last_allocation_capacity_entry_active_count != 0U) {
+    if (snapshot.last_capacity_entry_tag_length != 0U) {
         return false;
     }
 
-    return snapshot.last_allocation_capacity_entry_retained_bytes == 0U;
+    if (snapshot.last_capacity_entry_tag_capacity != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_tag_required_bytes != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_budget_class != MemoryBudgetClass::Setup) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_allocation_capacity != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_active_allocation_count != 0U) {
+        return false;
+    }
+
+    return snapshot.last_capacity_entry_retained_bytes == 0U;
 }
 
 int ExpectResultCapacityEntry(
@@ -145,6 +191,10 @@ int ExpectResultCapacityEntry(
     const MemoryCapacityEntryExpectation &expected) {
     if (result.required_allocation_count != expected.required_allocation_count) {
         return Fail("capacity entry result required allocation count wrong");
+    }
+
+    if (result.capacity_entry_status != expected.status) {
+        return Fail("capacity entry result status wrong");
     }
 
     if (result.capacity_entry_requested_bytes != expected.requested_bytes) {
@@ -155,8 +205,24 @@ int ExpectResultCapacityEntry(
         return Fail("capacity entry result owner wrong");
     }
 
+    if (result.capacity_entry_owner_capacity != expected.owner_capacity) {
+        return Fail("capacity entry result owner capacity wrong");
+    }
+
+    if (result.capacity_entry_owner_required_bytes != expected.owner_required_bytes) {
+        return Fail("capacity entry result owner required bytes wrong");
+    }
+
     if (!StoredTextEquals(result.capacity_entry_tag, result.capacity_entry_tag_length, expected.tag)) {
         return Fail("capacity entry result tag wrong");
+    }
+
+    if (result.capacity_entry_tag_capacity != expected.tag_capacity) {
+        return Fail("capacity entry result tag capacity wrong");
+    }
+
+    if (result.capacity_entry_tag_required_bytes != expected.tag_required_bytes) {
+        return Fail("capacity entry result tag required bytes wrong");
     }
 
     if (result.capacity_entry_budget_class != expected.budget_class) {
@@ -185,37 +251,57 @@ int ExpectSnapshotCapacityEntry(
         return Fail("capacity entry snapshot required allocation count wrong");
     }
 
-    if (snapshot.last_allocation_capacity_entry_requested_bytes != expected.requested_bytes) {
+    if (snapshot.last_capacity_entry_status != expected.status) {
+        return Fail("capacity entry snapshot status wrong");
+    }
+
+    if (snapshot.last_capacity_entry_requested_bytes != expected.requested_bytes) {
         return Fail("capacity entry snapshot requested bytes wrong");
     }
 
     if (!StoredTextEquals(
-            snapshot.last_allocation_capacity_entry_owner,
-            snapshot.last_allocation_capacity_entry_owner_length,
+            snapshot.last_capacity_entry_owner,
+            snapshot.last_capacity_entry_owner_length,
             expected.owner)) {
         return Fail("capacity entry snapshot owner wrong");
     }
 
+    if (snapshot.last_capacity_entry_owner_capacity != expected.owner_capacity) {
+        return Fail("capacity entry snapshot owner capacity wrong");
+    }
+
+    if (snapshot.last_capacity_entry_owner_required_bytes != expected.owner_required_bytes) {
+        return Fail("capacity entry snapshot owner required bytes wrong");
+    }
+
     if (!StoredTextEquals(
-            snapshot.last_allocation_capacity_entry_tag,
-            snapshot.last_allocation_capacity_entry_tag_length,
+            snapshot.last_capacity_entry_tag,
+            snapshot.last_capacity_entry_tag_length,
             expected.tag)) {
         return Fail("capacity entry snapshot tag wrong");
     }
 
-    if (snapshot.last_allocation_capacity_entry_budget_class != expected.budget_class) {
+    if (snapshot.last_capacity_entry_tag_capacity != expected.tag_capacity) {
+        return Fail("capacity entry snapshot tag capacity wrong");
+    }
+
+    if (snapshot.last_capacity_entry_tag_required_bytes != expected.tag_required_bytes) {
+        return Fail("capacity entry snapshot tag required bytes wrong");
+    }
+
+    if (snapshot.last_capacity_entry_budget_class != expected.budget_class) {
         return Fail("capacity entry snapshot budget class wrong");
     }
 
-    if (snapshot.last_allocation_capacity_entry_capacity != expected.allocation_capacity) {
+    if (snapshot.last_capacity_entry_allocation_capacity != expected.allocation_capacity) {
         return Fail("capacity entry snapshot allocation capacity wrong");
     }
 
-    if (snapshot.last_allocation_capacity_entry_active_count != expected.active_allocation_count) {
+    if (snapshot.last_capacity_entry_active_allocation_count != expected.active_allocation_count) {
         return Fail("capacity entry snapshot active allocation count wrong");
     }
 
-    if (snapshot.last_allocation_capacity_entry_retained_bytes != expected.retained_bytes) {
+    if (snapshot.last_capacity_entry_retained_bytes != expected.retained_bytes) {
         return Fail("capacity entry snapshot retained bytes wrong");
     }
 
@@ -545,8 +631,7 @@ int MemoryTrackerCapacityEntryRecordsRejectedAllocationIdentity() {
     constexpr const char *OVERFLOW_TAG_TEXT = "OverflowTag";
     const MemoryOwnerId overflow_owner{OVERFLOW_OWNER_TEXT};
     const MemoryTag overflow_tag{OVERFLOW_TAG_TEXT};
-    const std::string oversized_owner_text(TRACKED_TEXT_OVER_CAP_BYTES, 'O');
-    const MemoryOwnerId oversized_owner{oversized_owner_text};
+    const MemoryOwnerId invalid_owner{};
     std::array<MemoryAllocationId, MAX_COUNTING_MEMORY_TRACKER_ACTIVE_ALLOCATIONS> allocations{};
 
     for (std::size_t index = 0U; index < allocations.size(); ++index) {
@@ -570,6 +655,7 @@ int MemoryTrackerCapacityEntryRecordsRejectedAllocationIdentity() {
     }
 
     MemoryCapacityEntryExpectation expected{};
+    expected.status = MemoryAccountingStatus::CapacityExceeded;
     expected.requested_bytes = MEDIUM_BYTES;
     expected.owner = OVERFLOW_OWNER_TEXT;
     expected.tag = OVERFLOW_TAG_TEXT;
@@ -604,22 +690,22 @@ int MemoryTrackerCapacityEntryRecordsRejectedAllocationIdentity() {
     }
 
     const auto owner_reject = tracker.RecordAllocation(
-        oversized_owner,
+        invalid_owner,
         overflow_tag,
         MemoryBudgetClass::Load,
         MEDIUM_BYTES,
         ALIGNMENT);
     if (owner_reject.status != MemoryAccountingStatus::InvalidOwner) {
-        return Fail("capacity entry oversized owner status wrong");
+        return Fail("capacity entry invalid owner status wrong");
     }
 
     if (!ResultCapacityEntryIsClear(owner_reject)) {
-        return Fail("capacity entry oversized owner result kept stale entry");
+        return Fail("capacity entry invalid owner result kept stale entry");
     }
 
     const auto after_owner_reject = tracker.Snapshot();
     if (!SnapshotCapacityEntryIsClear(after_owner_reject)) {
-        return Fail("capacity entry oversized owner snapshot kept stale entry");
+        return Fail("capacity entry invalid owner snapshot kept stale entry");
     }
 
     const auto second_overflow = tracker.RecordAllocation(
@@ -695,6 +781,112 @@ int MemoryTrackerCapacityEntryRecordsRejectedAllocationIdentity() {
     const auto after_cleanup = tracker.Snapshot();
     if (after_cleanup.HasLeaks()) {
         return Fail("capacity entry cleanup left leaks");
+    }
+
+    return 0;
+}
+
+int MemoryTrackerCapacityEntryRecordsOwnerAndTagByteCaps() {
+    CountingMemoryTracker tracker;
+    const std::string max_owner(TRACKED_TEXT_CAP_BYTES, 'O');
+    const std::string max_tag(TRACKED_TEXT_CAP_BYTES, 'T');
+    const std::string oversized_owner(TRACKED_TEXT_OVER_CAP_BYTES, 'O');
+    const std::string oversized_tag(TRACKED_TEXT_OVER_CAP_BYTES, 'T');
+    const MemoryOwnerId owner{max_owner};
+    const MemoryTag tag{max_tag};
+
+    const auto owner_reject = tracker.RecordAllocation(
+        MemoryOwnerId{oversized_owner},
+        tag,
+        MemoryBudgetClass::Load,
+        MEDIUM_BYTES,
+        ALIGNMENT);
+    if (owner_reject.status != MemoryAccountingStatus::InvalidOwner) {
+        return Fail("owner byte cap entry status wrong");
+    }
+
+    MemoryCapacityEntryExpectation owner_expected{};
+    owner_expected.status = MemoryAccountingStatus::InvalidOwner;
+    owner_expected.requested_bytes = MEDIUM_BYTES;
+    owner_expected.owner_capacity = TRACKED_TEXT_CAP_BYTES;
+    owner_expected.owner_required_bytes = TRACKED_TEXT_OVER_CAP_BYTES;
+    owner_expected.tag = max_tag;
+    owner_expected.budget_class = MemoryBudgetClass::Load;
+    owner_expected.allocation_capacity = MAX_COUNTING_MEMORY_TRACKER_ACTIVE_ALLOCATIONS;
+    owner_expected.active_allocation_count = 0U;
+    owner_expected.retained_bytes = 0U;
+    owner_expected.required_allocation_count = 1U;
+    if (ExpectResultCapacityEntry(owner_reject, owner_expected) != 0) {
+        return 1;
+    }
+
+    const auto owner_snapshot = tracker.Snapshot();
+    if (ExpectSnapshotCapacityEntry(owner_snapshot, owner_expected) != 0) {
+        return 1;
+    }
+
+    if (owner_snapshot.allocation_count != 0U) {
+        return Fail("owner byte cap entry changed allocation count");
+    }
+
+    if (owner_snapshot.retained_bytes != 0U) {
+        return Fail("owner byte cap entry changed retained bytes");
+    }
+
+    const auto tag_reject = tracker.RecordAllocation(
+        owner,
+        MemoryTag{oversized_tag},
+        MemoryBudgetClass::Tool,
+        LARGE_BYTES,
+        ALIGNMENT);
+    if (tag_reject.status != MemoryAccountingStatus::InvalidTag) {
+        return Fail("tag byte cap entry status wrong");
+    }
+
+    MemoryCapacityEntryExpectation tag_expected{};
+    tag_expected.status = MemoryAccountingStatus::InvalidTag;
+    tag_expected.requested_bytes = LARGE_BYTES;
+    tag_expected.owner = max_owner;
+    tag_expected.tag_capacity = TRACKED_TEXT_CAP_BYTES;
+    tag_expected.tag_required_bytes = TRACKED_TEXT_OVER_CAP_BYTES;
+    tag_expected.budget_class = MemoryBudgetClass::Tool;
+    tag_expected.allocation_capacity = MAX_COUNTING_MEMORY_TRACKER_ACTIVE_ALLOCATIONS;
+    tag_expected.active_allocation_count = 0U;
+    tag_expected.retained_bytes = 0U;
+    tag_expected.required_allocation_count = 1U;
+    if (ExpectResultCapacityEntry(tag_reject, tag_expected) != 0) {
+        return 1;
+    }
+
+    const auto tag_snapshot = tracker.Snapshot();
+    if (ExpectSnapshotCapacityEntry(tag_snapshot, tag_expected) != 0) {
+        return 1;
+    }
+
+    if (tag_snapshot.allocation_count != 0U) {
+        return Fail("tag byte cap entry changed allocation count");
+    }
+
+    if (tag_snapshot.retained_bytes != 0U) {
+        return Fail("tag byte cap entry changed retained bytes");
+    }
+
+    const auto accepted = tracker.RecordAllocation(
+        owner,
+        tag,
+        MemoryBudgetClass::Setup,
+        SMALL_BYTES,
+        ALIGNMENT);
+    if (!accepted.Succeeded()) {
+        return Fail("capacity byte cap cleanup allocation failed");
+    }
+
+    if (!SnapshotCapacityEntryIsClear(tracker.Snapshot())) {
+        return Fail("capacity byte cap success kept stale entry");
+    }
+
+    if (tracker.RecordFree(accepted.allocation_id, owner, tag) != MemoryAccountingStatus::Success) {
+        return Fail("capacity byte cap cleanup free failed");
     }
 
     return 0;
@@ -864,6 +1056,7 @@ int main(int argc, char** argv) {
         {TEST_HOT_PATH, MemoryHotPathBudgetFailsOnTrackedAllocation},
         {TEST_FIXED_CAPACITY, MemoryTrackerRejectsBeyondFixedCapacityWithoutMutation},
         {TEST_CAPACITY_ENTRY, MemoryTrackerCapacityEntryRecordsRejectedAllocationIdentity},
+        {TEST_OWNER_TAG_CAPACITY_ENTRY, MemoryTrackerCapacityEntryRecordsOwnerAndTagByteCaps},
         {TEST_OWNER_TAG_BYTE_CAPS, MemoryTrackerEnforcesOwnerAndTagByteCapsWithoutMutation},
         {TEST_LAST_STATUS, MemoryTrackerRecordsLastStatusForAllocationAndFree}};
 

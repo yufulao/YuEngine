@@ -21,15 +21,20 @@ struct MemorySnapshot {
     MemoryAccountingStatus last_status = MemoryAccountingStatus::Success;
     std::size_t allocation_capacity = 0U;
     std::size_t required_allocation_count = 0U;
-    std::size_t last_allocation_capacity_entry_requested_bytes = 0U;
-    std::array<char, MAX_MEMORY_OWNER_ID_BYTES> last_allocation_capacity_entry_owner{};
-    std::size_t last_allocation_capacity_entry_owner_length = 0U;
-    std::array<char, MAX_MEMORY_TAG_BYTES> last_allocation_capacity_entry_tag{};
-    std::size_t last_allocation_capacity_entry_tag_length = 0U;
-    MemoryBudgetClass last_allocation_capacity_entry_budget_class = MemoryBudgetClass::Setup;
-    std::size_t last_allocation_capacity_entry_capacity = 0U;
-    std::size_t last_allocation_capacity_entry_active_count = 0U;
-    std::size_t last_allocation_capacity_entry_retained_bytes = 0U;
+    MemoryAccountingStatus last_capacity_entry_status = MemoryAccountingStatus::Success;
+    std::size_t last_capacity_entry_requested_bytes = 0U;
+    std::array<char, MAX_MEMORY_OWNER_ID_BYTES> last_capacity_entry_owner{};
+    std::size_t last_capacity_entry_owner_length = 0U;
+    std::size_t last_capacity_entry_owner_capacity = 0U;
+    std::size_t last_capacity_entry_owner_required_bytes = 0U;
+    std::array<char, MAX_MEMORY_TAG_BYTES> last_capacity_entry_tag{};
+    std::size_t last_capacity_entry_tag_length = 0U;
+    std::size_t last_capacity_entry_tag_capacity = 0U;
+    std::size_t last_capacity_entry_tag_required_bytes = 0U;
+    MemoryBudgetClass last_capacity_entry_budget_class = MemoryBudgetClass::Setup;
+    std::size_t last_capacity_entry_allocation_capacity = 0U;
+    std::size_t last_capacity_entry_active_allocation_count = 0U;
+    std::size_t last_capacity_entry_retained_bytes = 0U;
 
     /**
      * @comment 检查 保留的 allocations 保留.

@@ -26,7 +26,9 @@ MemoryAccountingStatus DisabledMemoryTracker::RecordFree(MemoryAllocationId allo
 }
 
 MemorySnapshot DisabledMemoryTracker::Snapshot() const {
-    return MemorySnapshot{0U, 0U, 0U, 0U, 0U, MemoryAccountingStatus::Success};
+    MemorySnapshot result{};
+    result.last_status = MemoryAccountingStatus::Success;
+    return result;
 }
 
 std::uint64_t DisabledMemoryTracker::AllocationCountForBudget(MemoryBudgetClass budget_class) const {

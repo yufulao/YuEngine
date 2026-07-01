@@ -56,9 +56,9 @@ public:
     std::uint64_t AllocationCountForBudget(MemoryBudgetClass budget_class) const override;
 
 private:
-    ActiveAllocationRecord* FindActiveAllocation(MemoryAllocationId allocation_id);
-    ActiveAllocationRecord* FindFreeAllocationRecord();
-    static void ResetAllocationRecord(ActiveAllocationRecord& record);
+    ActiveAllocationRecord *FindActiveAllocation(MemoryAllocationId allocation_id);
+    ActiveAllocationRecord *FindFreeAllocationRecord();
+    static void ResetAllocationRecord(ActiveAllocationRecord &record);
 
     std::array<ActiveAllocationRecord, MAX_COUNTING_MEMORY_TRACKER_ACTIVE_ALLOCATIONS> active_allocations_;
     std::array<std::uint64_t, MEMORY_BUDGET_CLASS_COUNT> budget_allocation_counts_;

@@ -16,11 +16,16 @@ struct MemoryAccountingResult {
     MemoryAccountingStatus status = MemoryAccountingStatus::Success;
     MemoryAllocationId allocation_id{0U};
     std::size_t required_allocation_count = 0U;
+    MemoryAccountingStatus capacity_entry_status = MemoryAccountingStatus::Success;
     std::size_t capacity_entry_requested_bytes = 0U;
     std::array<char, MAX_MEMORY_OWNER_ID_BYTES> capacity_entry_owner{};
     std::size_t capacity_entry_owner_length = 0U;
+    std::size_t capacity_entry_owner_capacity = 0U;
+    std::size_t capacity_entry_owner_required_bytes = 0U;
     std::array<char, MAX_MEMORY_TAG_BYTES> capacity_entry_tag{};
     std::size_t capacity_entry_tag_length = 0U;
+    std::size_t capacity_entry_tag_capacity = 0U;
+    std::size_t capacity_entry_tag_required_bytes = 0U;
     MemoryBudgetClass capacity_entry_budget_class = MemoryBudgetClass::Setup;
     std::size_t capacity_entry_allocation_capacity = 0U;
     std::size_t capacity_entry_active_allocation_count = 0U;
