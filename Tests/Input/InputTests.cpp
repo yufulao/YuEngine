@@ -102,6 +102,7 @@ constexpr const char* TEST_BRIDGE_GAMEPAD_UNAVAILABLE = "Input_BridgeGamepadUnav
 constexpr const char* TEST_BRIDGE_GAMEPAD_CONNECTED = "Input_BridgeGamepadConnectedState_QueuesButtonAndAxisEvents";
 constexpr const char* TEST_BRIDGE_GAMEPAD_REPEAT = "Input_BridgeGamepadRepeatedPacket_DoesNotQueueDuplicateEvents";
 constexpr const char* TEST_BRIDGE_GAMEPAD_CAPACITY = "Input_BridgeGamepadCapacityOverflow_DoesNotQueuePartialEvents";
+constexpr const char *TEST_BRIDGE_XINPUT_GAMEPAD_CAPACITY = "Input_BridgeXInputPollGamepadCapacityOverflow_RecordsRejectedState";
 constexpr const char *TEST_BRIDGE_XINPUT_UNAVAILABLE = "Input_BridgeXInputPollUnavailable_ReturnsDeviceUnavailable";
 constexpr const char *TEST_BRIDGE_XINPUT_CONNECTED = "Input_BridgeXInputPollConnected_QueuesButtonAxisAndPacket";
 constexpr const char *TEST_BRIDGE_XINPUT_BACKEND_ERROR = "Input_BridgeXInputPollBackendError_ReturnsExplicitStatus";
@@ -224,6 +225,24 @@ InputNativeGamepadPollStatus PollNativeConnected(std::uint32_t user_index, Input
     return InputNativeGamepadPollStatus::Success;
 }
 
+InputNativeGamepadPollStatus PollNativeCapacityState(std::uint32_t user_index, InputNativeGamepadState *state) {
+    if (user_index != 0U) {
+        return InputNativeGamepadPollStatus::BackendError;
+    }
+
+    if (state == nullptr) {
+        return InputNativeGamepadPollStatus::BackendError;
+    }
+
+    state->packet_number = 44U;
+    state->buttons = static_cast<std::uint16_t>(GAMEPAD_BUTTON_A | GAMEPAD_BUTTON_B);
+    state->left_trigger = 9U;
+    state->right_trigger = 10U;
+    state->left_thumb_x = 111;
+    state->left_thumb_y = -112;
+    return InputNativeGamepadPollStatus::Success;
+}
+
 InputNativeGamepadPollStatus PollNativeBackendError(std::uint32_t user_index, InputNativeGamepadState *state) {
     static_cast<void>(user_index);
     if (state != nullptr) {
@@ -256,6 +275,115 @@ bool RegisterPrimaryBinding(InputReplay& replay) {
 
 bool RegisterSecondaryBinding(InputReplay& replay) {
     return replay.RegisterActionBinding(DEVICE_B, CONTROL_B, ACTION_A).status == InputStatus::Success;
+}
+
+bool GamepadCapacityIdentityMatches(
+    const InputBridgeSnapshot &snapshot,
+    const InputGamepadState &state,
+    std::size_t event_capacity,
+    std::size_t event_count,
+    std::size_t required_event_count) {
+    if (snapshot.last_failed_gamepad_event_capacity != event_capacity) {
+        return false;
+    }
+
+    if (snapshot.last_failed_gamepad_event_count != event_count) {
+        return false;
+    }
+
+    if (snapshot.last_required_gamepad_event_count != required_event_count) {
+        return false;
+    }
+
+    if (snapshot.last_failed_gamepad_device.value != state.device.value) {
+        return false;
+    }
+
+    if (snapshot.last_failed_gamepad_connection != state.connection) {
+        return false;
+    }
+
+    if (snapshot.last_failed_gamepad_packet_number != state.packet_number) {
+        return false;
+    }
+
+    if (snapshot.last_failed_gamepad_button_bits != state.buttons) {
+        return false;
+    }
+
+    if (snapshot.last_failed_gamepad_left_trigger != state.left_trigger) {
+        return false;
+    }
+
+    if (snapshot.last_failed_gamepad_right_trigger != state.right_trigger) {
+        return false;
+    }
+
+    if (snapshot.last_failed_gamepad_left_thumb_x != state.left_thumb_x) {
+        return false;
+    }
+
+    if (snapshot.last_failed_gamepad_left_thumb_y != state.left_thumb_y) {
+        return false;
+    }
+
+    if (snapshot.last_failed_gamepad_right_thumb_x != state.right_thumb_x) {
+        return false;
+    }
+
+    return snapshot.last_failed_gamepad_right_thumb_y == state.right_thumb_y;
+}
+
+bool GamepadCapacityIdentityIsClear(const InputBridgeSnapshot &snapshot) {
+    if (snapshot.last_failed_gamepad_event_capacity != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_gamepad_event_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_required_gamepad_event_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_gamepad_device.value != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_gamepad_connection != InputGamepadConnection::Unavailable) {
+        return false;
+    }
+
+    if (snapshot.last_failed_gamepad_packet_number != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_gamepad_button_bits != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_gamepad_left_trigger != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_gamepad_right_trigger != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_gamepad_left_thumb_x != 0) {
+        return false;
+    }
+
+    if (snapshot.last_failed_gamepad_left_thumb_y != 0) {
+        return false;
+    }
+
+    if (snapshot.last_failed_gamepad_right_thumb_x != 0) {
+        return false;
+    }
+
+    return snapshot.last_failed_gamepad_right_thumb_y == 0;
 }
 
 bool RegisterSecondActionBinding(InputReplay& replay) {
@@ -1733,34 +1861,100 @@ int InputBridgeGamepadRepeatedPacketDoesNotQueueDuplicateEvents() {
 int InputBridgeGamepadCapacityOverflowDoesNotQueuePartialEvents() {
     InputBridge bridge;
     InputBridgeDesc desc{};
-    desc.event_capacity = 1U;
+    desc.event_capacity = 2U;
     if (bridge.Initialize(desc) != InputStatus::Success) {
         return Fail("bridge initialize failed");
     }
 
+    if (bridge.SubmitEvent(BridgeKey(InputBridgeEventType::KeyPressed, 65U)) != InputStatus::Success) {
+        return Fail("bridge initial key submit failed");
+    }
+
     InputGamepadState state = GamepadState(desc.gamepad_device, 2U);
     state.buttons = static_cast<std::uint16_t>(GAMEPAD_BUTTON_A | GAMEPAD_BUTTON_B);
+    state.right_trigger = 64U;
     if (bridge.SubmitGamepadState(state) != InputStatus::CapacityExceeded) {
         return Fail("gamepad capacity overflow did not reject");
     }
 
-    std::array<InputBridgeEvent, 1U> events{};
-    std::size_t event_count = 0U;
-    if (bridge.DrainEvents(events.data(), events.size(), event_count) != InputStatus::Success) {
-        return Fail("gamepad overflow drain failed");
-    }
-
-    if (event_count != 0U) {
-        return Fail("gamepad overflow queued partial events");
-    }
-
     const auto snapshot = bridge.Snapshot();
+    if (!GamepadCapacityIdentityMatches(snapshot, state, 2U, 1U, 4U)) {
+        return Fail("gamepad overflow did not record rejected state identity");
+    }
+
+    if (snapshot.queued_event_count != 1U) {
+        return Fail("gamepad overflow mutated queued event count");
+    }
+
     if (snapshot.overflow_count != 1U) {
         return Fail("gamepad overflow counter mismatch");
     }
 
     if (snapshot.gamepad_event_count != 0U) {
         return Fail("gamepad overflow mutated event counter");
+    }
+
+    InputBridgeEvent invalid_event{};
+    if (bridge.SubmitEvent(invalid_event) != InputStatus::InvalidEvent) {
+        return Fail("invalid bridge event did not return invalid status");
+    }
+
+    if (!GamepadCapacityIdentityIsClear(bridge.Snapshot())) {
+        return Fail("invalid event did not clear gamepad capacity identity");
+    }
+
+    std::array<InputBridgeEvent, 2U> events{};
+    std::size_t event_count = 0U;
+    if (bridge.DrainEvents(events.data(), events.size(), event_count) != InputStatus::Success) {
+        return Fail("gamepad overflow drain failed");
+    }
+
+    if (event_count != 1U) {
+        return Fail("gamepad overflow drain count mismatch");
+    }
+
+    if (events[0U].type != InputBridgeEventType::KeyPressed) {
+        return Fail("gamepad overflow replaced existing queued event");
+    }
+
+    if (!GamepadCapacityIdentityIsClear(bridge.Snapshot())) {
+        return Fail("drain did not clear gamepad capacity identity");
+    }
+
+    return 0;
+}
+
+int InputBridgeXInputPollGamepadCapacityOverflowRecordsRejectedState() {
+    ScopedNativeGamepadPollFunction poll_function(PollNativeCapacityState);
+    InputBridge bridge;
+    InputBridgeDesc desc{};
+    desc.event_capacity = 2U;
+    if (bridge.Initialize(desc) != InputStatus::Success) {
+        return Fail("bridge initialize failed");
+    }
+
+    const InputStatus poll_status = bridge.PollGamepad(0U);
+    if (poll_status != InputStatus::CapacityExceeded) {
+        return Fail("xinput gamepad capacity did not reject");
+    }
+
+    InputGamepadState expected_state = GamepadState(desc.gamepad_device, 44U);
+    expected_state.buttons = static_cast<std::uint16_t>(GAMEPAD_BUTTON_A | GAMEPAD_BUTTON_B);
+    expected_state.left_trigger = 9U;
+    expected_state.right_trigger = 10U;
+    expected_state.left_thumb_x = 111;
+    expected_state.left_thumb_y = -112;
+    const auto snapshot = bridge.Snapshot();
+    if (!GamepadCapacityIdentityMatches(snapshot, expected_state, 2U, 0U, 6U)) {
+        return Fail("xinput gamepad capacity did not record rejected state");
+    }
+
+    if (snapshot.gamepad_connected_poll_count != 1U) {
+        return Fail("xinput gamepad capacity connected poll counter mismatch");
+    }
+
+    if (snapshot.gamepad_event_count != 0U) {
+        return Fail("xinput gamepad capacity queued partial events");
     }
 
     return 0;
@@ -2425,6 +2619,7 @@ int main(int argc, char** argv) {
         {TEST_BRIDGE_GAMEPAD_CONNECTED, InputBridgeGamepadConnectedStateQueuesButtonAndAxisEvents},
         {TEST_BRIDGE_GAMEPAD_REPEAT, InputBridgeGamepadRepeatedPacketDoesNotQueueDuplicateEvents},
         {TEST_BRIDGE_GAMEPAD_CAPACITY, InputBridgeGamepadCapacityOverflowDoesNotQueuePartialEvents},
+        {TEST_BRIDGE_XINPUT_GAMEPAD_CAPACITY, InputBridgeXInputPollGamepadCapacityOverflowRecordsRejectedState},
         {TEST_BRIDGE_XINPUT_UNAVAILABLE, InputBridgeXInputPollUnavailableReturnsDeviceUnavailable},
         {TEST_BRIDGE_XINPUT_CONNECTED, InputBridgeXInputPollConnectedQueuesButtonAxisAndPacket},
         {TEST_BRIDGE_XINPUT_BACKEND_ERROR, InputBridgeXInputPollBackendErrorReturnsExplicitStatus},

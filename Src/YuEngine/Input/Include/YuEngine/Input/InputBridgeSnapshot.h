@@ -7,6 +7,7 @@
 #include <cstdint>
 
 #include "YuEngine/Input/InputBackendKind.h"
+#include "YuEngine/Input/InputDeviceId.h"
 #include "YuEngine/Input/InputGamepadConnection.h"
 #include "YuEngine/Input/InputStatus.h"
 
@@ -31,6 +32,19 @@ struct InputBridgeSnapshot final {
     std::size_t gamepad_unavailable_poll_count = 0U;
     std::size_t gamepad_event_count = 0U;
     std::uint32_t last_gamepad_packet_number = 0U;
+    std::size_t last_failed_gamepad_event_capacity = 0U;
+    std::size_t last_failed_gamepad_event_count = 0U;
+    std::size_t last_required_gamepad_event_count = 0U;
+    InputDeviceId last_failed_gamepad_device{};
+    InputGamepadConnection last_failed_gamepad_connection = InputGamepadConnection::Unavailable;
+    std::uint32_t last_failed_gamepad_packet_number = 0U;
+    std::uint16_t last_failed_gamepad_button_bits = 0U;
+    std::uint8_t last_failed_gamepad_left_trigger = 0U;
+    std::uint8_t last_failed_gamepad_right_trigger = 0U;
+    std::int32_t last_failed_gamepad_left_thumb_x = 0;
+    std::int32_t last_failed_gamepad_left_thumb_y = 0;
+    std::int32_t last_failed_gamepad_right_thumb_x = 0;
+    std::int32_t last_failed_gamepad_right_thumb_y = 0;
     InputGamepadConnection gamepad_connection = InputGamepadConnection::Unavailable;
     InputStatus last_status = InputStatus::NotInitialized;
     bool initialized = false;

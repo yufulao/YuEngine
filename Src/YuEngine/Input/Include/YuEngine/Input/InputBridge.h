@@ -100,8 +100,14 @@ private:
     InputStatus ValidateEvent(const InputBridgeEvent &event) const;
     InputStatus RecordStatus(InputStatus status);
     InputStatus RejectEvent(InputStatus status);
+    InputStatus RejectGamepadCapacity(
+        const InputGamepadState &state,
+        std::size_t event_capacity,
+        std::size_t event_count,
+        std::size_t required_event_count);
     InputStatus AcceptEvent(const InputBridgeEvent &event);
     InputStatus AcceptGamepadState(const InputGamepadState &state);
+    void ClearGamepadCapacityFailure();
     void ClearQueuedEvents();
     std::size_t CountGamepadStateEvents(const InputGamepadState &state) const;
     void SubmitGamepadStateEvents(const InputGamepadState &state);

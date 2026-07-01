@@ -123,6 +123,7 @@ InputStatus InputBridge::Shutdown() {
     snapshot_.initialized = false;
     snapshot_.focused = false;
     snapshot_.gamepad_connection = InputGamepadConnection::Unavailable;
+    ClearGamepadCapacityFailure();
     snapshot_.last_status = InputStatus::Success;
     gamepad_state_ = InputGamepadState{};
     return InputStatus::Success;
@@ -368,6 +369,7 @@ InputStatus InputBridge::ValidateEvent(const InputBridgeEvent &event) const {
 }
 
 InputStatus InputBridge::RecordStatus(InputStatus status) {
+    ClearGamepadCapacityFailure();
     snapshot_.last_status = status;
     if (status == InputStatus::Success) {
         return status;
@@ -395,6 +397,31 @@ InputStatus InputBridge::RecordStatus(InputStatus status) {
 InputStatus InputBridge::RejectEvent(InputStatus status) {
     ++snapshot_.rejected_event_count;
     return RecordStatus(status);
+}
+
+InputStatus InputBridge::RejectGamepadCapacity(
+    const InputGamepadState &state,
+    std::size_t event_capacity,
+    std::size_t event_count,
+    std::size_t required_event_count) {
+    ++snapshot_.rejected_event_count;
+    ++snapshot_.failed_operation_count;
+    ++snapshot_.overflow_count;
+    snapshot_.last_status = InputStatus::CapacityExceeded;
+    snapshot_.last_failed_gamepad_event_capacity = event_capacity;
+    snapshot_.last_failed_gamepad_event_count = event_count;
+    snapshot_.last_required_gamepad_event_count = required_event_count;
+    snapshot_.last_failed_gamepad_device = state.device;
+    snapshot_.last_failed_gamepad_connection = state.connection;
+    snapshot_.last_failed_gamepad_packet_number = state.packet_number;
+    snapshot_.last_failed_gamepad_button_bits = state.buttons;
+    snapshot_.last_failed_gamepad_left_trigger = state.left_trigger;
+    snapshot_.last_failed_gamepad_right_trigger = state.right_trigger;
+    snapshot_.last_failed_gamepad_left_thumb_x = state.left_thumb_x;
+    snapshot_.last_failed_gamepad_left_thumb_y = state.left_thumb_y;
+    snapshot_.last_failed_gamepad_right_thumb_x = state.right_thumb_x;
+    snapshot_.last_failed_gamepad_right_thumb_y = state.right_thumb_y;
+    return InputStatus::CapacityExceeded;
 }
 
 InputStatus InputBridge::AcceptEvent(const InputBridgeEvent &event) {
@@ -449,14 +476,32 @@ InputStatus InputBridge::AcceptGamepadState(const InputGamepadState &state) {
     }
 
     const std::size_t state_event_count = CountGamepadStateEvents(state);
-    if (event_count_ + state_event_count > desc_.event_capacity) {
-        return RejectEvent(InputStatus::CapacityExceeded);
+    const std::size_t event_count = event_count_;
+    const std::size_t required_event_count = event_count + state_event_count;
+    if (required_event_count > desc_.event_capacity) {
+        return RejectGamepadCapacity(state, desc_.event_capacity, event_count, required_event_count);
     }
 
     SubmitGamepadStateEvents(state);
     gamepad_state_ = state;
     snapshot_.gamepad_event_count += state_event_count;
     return RecordStatus(InputStatus::Success);
+}
+
+void InputBridge::ClearGamepadCapacityFailure() {
+    snapshot_.last_failed_gamepad_event_capacity = 0U;
+    snapshot_.last_failed_gamepad_event_count = 0U;
+    snapshot_.last_required_gamepad_event_count = 0U;
+    snapshot_.last_failed_gamepad_device = InputDeviceId{};
+    snapshot_.last_failed_gamepad_connection = InputGamepadConnection::Unavailable;
+    snapshot_.last_failed_gamepad_packet_number = 0U;
+    snapshot_.last_failed_gamepad_button_bits = 0U;
+    snapshot_.last_failed_gamepad_left_trigger = 0U;
+    snapshot_.last_failed_gamepad_right_trigger = 0U;
+    snapshot_.last_failed_gamepad_left_thumb_x = 0;
+    snapshot_.last_failed_gamepad_left_thumb_y = 0;
+    snapshot_.last_failed_gamepad_right_thumb_x = 0;
+    snapshot_.last_failed_gamepad_right_thumb_y = 0;
 }
 
 void InputBridge::ClearQueuedEvents() {
