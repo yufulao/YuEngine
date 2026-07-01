@@ -18,6 +18,7 @@ namespace yuengine::rendercore {
 struct RenderFramePacketFixtureSnapshot final {
     std::size_t frame_packet_record_capacity = 0U;
     std::size_t frame_packet_record_count = 0U;
+    std::size_t required_frame_packet_record_count = 0U;
     std::uint64_t accepted_packet_count = 0U;
     std::uint64_t completed_packet_count = 0U;
     std::uint64_t failed_packet_count = 0U;

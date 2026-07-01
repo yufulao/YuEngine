@@ -2345,6 +2345,11 @@ int RenderCoreFramePacketRejectsPacketCapacityWithoutMutation() {
         return Fail("frame packet fixture accepted packet capacity overflow");
     }
 
+    constexpr std::size_t expected_required_frame_packet_record_count = 2U;
+    if (result.required_frame_packet_record_count != expected_required_frame_packet_record_count) {
+        return Fail("frame packet capacity overflow missed required record count");
+    }
+
     if (!PassResultsUnchanged(second_results, sentinel)) {
         return Fail("frame packet capacity overflow mutated result storage");
     }
@@ -2362,6 +2367,10 @@ int RenderCoreFramePacketRejectsPacketCapacityWithoutMutation() {
     const auto frame_snapshot = frame_packet.Snapshot();
     if (frame_snapshot.packet_capacity_rejected_count != 1U || frame_snapshot.frame_packet_record_count != 1U) {
         return Fail("frame packet capacity counters were not updated");
+    }
+
+    if (frame_snapshot.required_frame_packet_record_count != expected_required_frame_packet_record_count) {
+        return Fail("frame packet capacity snapshot missed required record count");
     }
 
     return 0;

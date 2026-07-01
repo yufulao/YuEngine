@@ -270,6 +270,7 @@ void RenderFramePacketFixture::Reset() {
     records_ = {};
     snapshot_ = {};
     snapshot_.frame_packet_record_capacity = desc_.frame_packet_record_capacity;
+    snapshot_.required_frame_packet_record_count = 1U;
 }
 
 RenderFramePacketFixtureStatus RenderFramePacketFixture::ValidateRequest(
@@ -296,6 +297,7 @@ RenderFramePacketFixtureStatus RenderFramePacketFixture::ValidateRequest(
         return RenderFramePacketFixtureStatus::DuplicateFrameId;
     }
 
+    result->required_frame_packet_record_count = snapshot_.frame_packet_record_count + 1U;
     if (!HasRecordCapacity()) {
         return RenderFramePacketFixtureStatus::PacketCapacityExceeded;
     }
@@ -332,6 +334,9 @@ void RenderFramePacketFixture::RecordRejectedPacket(const RenderFramePacketFixtu
     snapshot_.last_failed_entry_index = result.failed_entry_index;
     snapshot_.last_pass_id = result.pass_id;
     snapshot_.last_material_id = result.material_id;
+    if (result.required_frame_packet_record_count > 0U) {
+        snapshot_.required_frame_packet_record_count = result.required_frame_packet_record_count;
+    }
     snapshot_.last_status = result.status;
     snapshot_.last_batch_status = result.batch_status;
     snapshot_.last_pass_status = result.pass_status;
@@ -359,6 +364,7 @@ void RenderFramePacketFixture::RecordCompletedPacket(const RenderFramePacketFixt
     ++snapshot_.accepted_packet_count;
     ++snapshot_.completed_packet_count;
     snapshot_.completed_entry_count += result.completed_entry_count;
+    snapshot_.required_frame_packet_record_count = result.required_frame_packet_record_count;
     snapshot_.last_frame_id = result.frame_id;
     snapshot_.last_entry_count = result.entry_count;
     snapshot_.last_completed_entry_count = result.completed_entry_count;
@@ -383,6 +389,7 @@ void RenderFramePacketFixture::RecordSubmissionBatchFailure(const RenderFramePac
     ++snapshot_.submission_batch_failure_count;
     snapshot_.completed_entry_count += result.completed_entry_count;
     snapshot_.failed_entry_count += result.failed_entry_count;
+    snapshot_.required_frame_packet_record_count = result.required_frame_packet_record_count;
     snapshot_.last_frame_id = result.frame_id;
     snapshot_.last_entry_count = result.entry_count;
     snapshot_.last_completed_entry_count = result.completed_entry_count;
