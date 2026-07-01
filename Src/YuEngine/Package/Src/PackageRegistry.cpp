@@ -304,6 +304,94 @@ void RecordLoadPlanCapacityEntry(
     snapshot->last_failed_load_plan_record_capacity = snapshot->load_plan_record_capacity;
     snapshot->last_failed_load_plan_record_count = current_record_count;
 }
+
+void ClearRegistrationCapacityFailure(PackageSnapshot &snapshot) {
+    snapshot.last_failed_manifest_index = 0U;
+    snapshot.last_failed_package = PackageId{};
+    snapshot.last_failed_entry_index = 0U;
+    snapshot.last_failed_entry = PackageEntryId{};
+    snapshot.last_required_dependency_edge_count = 0U;
+    snapshot.last_registration_capacity_failure_kind = PackageStatus::Success;
+    snapshot.last_failed_manifest_capacity = 0U;
+    snapshot.last_failed_entry_capacity = 0U;
+    snapshot.last_failed_dependency_edge_capacity = 0U;
+    snapshot.last_failed_manifest_count = 0U;
+    snapshot.last_failed_entry_count = 0U;
+    snapshot.last_failed_dependency_edge_count = 0U;
+    snapshot.last_failed_dependency_edge_index = 0U;
+    snapshot.last_failed_dependency = PackageEntryId{};
+}
+
+void RecordRegistrationCapacitySummary(
+    PackageRegistrationResult &result,
+    PackageSnapshot &snapshot,
+    PackageStatus capacity_failure_kind) {
+    result.capacity_failure_kind = capacity_failure_kind;
+    result.manifest_capacity = snapshot.manifest_capacity;
+    result.entry_capacity = snapshot.entry_capacity;
+    result.dependency_edge_capacity = snapshot.dependency_edge_capacity;
+    result.current_manifest_count = snapshot.manifest_count;
+    result.current_entry_count = snapshot.entry_count;
+    result.current_dependency_edge_count = snapshot.dependency_edge_count;
+    snapshot.last_registration_capacity_failure_kind = capacity_failure_kind;
+    snapshot.last_failed_manifest_capacity = snapshot.manifest_capacity;
+    snapshot.last_failed_entry_capacity = snapshot.entry_capacity;
+    snapshot.last_failed_dependency_edge_capacity = snapshot.dependency_edge_capacity;
+    snapshot.last_failed_manifest_count = snapshot.manifest_count;
+    snapshot.last_failed_entry_count = snapshot.entry_count;
+    snapshot.last_failed_dependency_edge_count = snapshot.dependency_edge_count;
+}
+
+void RecordManifestCapacityFailure(
+    PackageRegistrationResult &result,
+    PackageSnapshot &snapshot,
+    std::uint32_t failed_index,
+    PackageId package) {
+    RecordRegistrationCapacitySummary(result, snapshot, PackageStatus::ManifestCapacityExceeded);
+    result.required_manifest_record_count = failed_index + 1U;
+    result.failed_manifest_index = failed_index;
+    result.failed_package = package;
+    snapshot.required_manifest_record_count = result.required_manifest_record_count;
+    snapshot.last_failed_manifest_index = result.failed_manifest_index;
+    snapshot.last_failed_package = result.failed_package;
+}
+
+void RecordEntryCapacityFailure(
+    PackageRegistrationResult &result,
+    PackageSnapshot &snapshot,
+    std::uint32_t failed_index,
+    PackageId package,
+    PackageEntryId entry) {
+    RecordRegistrationCapacitySummary(result, snapshot, PackageStatus::EntryCapacityExceeded);
+    result.required_entry_record_count = failed_index + 1U;
+    result.failed_package = package;
+    result.failed_entry_index = failed_index;
+    result.failed_entry = entry;
+    snapshot.required_entry_record_count = result.required_entry_record_count;
+    snapshot.last_failed_package = result.failed_package;
+    snapshot.last_failed_entry_index = result.failed_entry_index;
+    snapshot.last_failed_entry = result.failed_entry;
+}
+
+void RecordDependencyCapacityFailure(
+    PackageSnapshot &snapshot,
+    std::uint32_t failed_index,
+    PackageId package,
+    PackageEntryId dependent,
+    PackageEntryId dependency) {
+    snapshot.last_registration_capacity_failure_kind = PackageStatus::DependencyCapacityExceeded;
+    snapshot.last_failed_manifest_capacity = snapshot.manifest_capacity;
+    snapshot.last_failed_entry_capacity = snapshot.entry_capacity;
+    snapshot.last_failed_dependency_edge_capacity = snapshot.dependency_edge_capacity;
+    snapshot.last_failed_manifest_count = snapshot.manifest_count;
+    snapshot.last_failed_entry_count = snapshot.entry_count;
+    snapshot.last_failed_dependency_edge_count = snapshot.dependency_edge_count;
+    snapshot.last_required_dependency_edge_count = failed_index + 1U;
+    snapshot.last_failed_package = package;
+    snapshot.last_failed_entry = dependent;
+    snapshot.last_failed_dependency_edge_index = failed_index;
+    snapshot.last_failed_dependency = dependency;
+}
 }
 
 PackageRegistry::PackageRegistry()
@@ -346,6 +434,10 @@ PackageRegistry::PackageRegistry(PackageRegistryDesc desc)
           0U,
           0U,
           0U,
+          PackageId{},
+          0U,
+          PackageEntryId{},
+          0U,
           0U,
           0U,
           0U,
@@ -361,6 +453,8 @@ PackageRegistry::PackageRegistry(PackageRegistryDesc desc)
 }
 
 PackageRegistrationResult PackageRegistry::RegisterSyntheticManifest(const PackageManifestDescriptor& descriptor) {
+    ClearRegistrationCapacityFailure(snapshot_);
+
     if (!descriptor.id.IsValid()) {
         return PackageRegistrationResult::Failure(RecordFailure(PackageStatus::InvalidPackageId));
     }
@@ -372,8 +466,8 @@ PackageRegistrationResult PackageRegistry::RegisterSyntheticManifest(const Packa
     if (snapshot_.manifest_count >= snapshot_.manifest_capacity) {
         PackageRegistrationResult result =
             PackageRegistrationResult::Failure(RecordFailure(PackageStatus::ManifestCapacityExceeded));
-        result.required_manifest_record_count = snapshot_.manifest_count + 1U;
-        snapshot_.required_manifest_record_count = result.required_manifest_record_count;
+        const std::uint32_t failed_index = snapshot_.manifest_count;
+        RecordManifestCapacityFailure(result, snapshot_, failed_index, descriptor.id);
         return result;
     }
 
@@ -382,8 +476,7 @@ PackageRegistrationResult PackageRegistry::RegisterSyntheticManifest(const Packa
         if (index >= snapshot_.manifest_capacity) {
             PackageRegistrationResult result =
                 PackageRegistrationResult::Failure(RecordFailure(PackageStatus::ManifestCapacityExceeded));
-            result.required_manifest_record_count = index + 1U;
-            snapshot_.required_manifest_record_count = result.required_manifest_record_count;
+            RecordManifestCapacityFailure(result, snapshot_, index, descriptor.id);
             return result;
         }
 
@@ -404,12 +497,14 @@ PackageRegistrationResult PackageRegistry::RegisterSyntheticManifest(const Packa
 
     PackageRegistrationResult result =
         PackageRegistrationResult::Failure(RecordFailure(PackageStatus::ManifestCapacityExceeded));
-    result.required_manifest_record_count = snapshot_.manifest_count + 1U;
-    snapshot_.required_manifest_record_count = result.required_manifest_record_count;
+    const std::uint32_t failed_index = snapshot_.manifest_count;
+    RecordManifestCapacityFailure(result, snapshot_, failed_index, descriptor.id);
     return result;
 }
 
 PackageRegistrationResult PackageRegistry::RegisterEntry(const PackageEntryDescriptor& descriptor) {
+    ClearRegistrationCapacityFailure(snapshot_);
+
     const PackageStatus validation_status = ValidateEntryDescriptor(descriptor);
     if (validation_status != PackageStatus::Success) {
         return PackageRegistrationResult::Failure(RecordFailure(validation_status));
@@ -430,8 +525,8 @@ PackageRegistrationResult PackageRegistry::RegisterEntry(const PackageEntryDescr
     if (snapshot_.entry_count >= snapshot_.entry_capacity) {
         PackageRegistrationResult result =
             PackageRegistrationResult::Failure(RecordFailure(PackageStatus::EntryCapacityExceeded));
-        result.required_entry_record_count = snapshot_.entry_count + 1U;
-        snapshot_.required_entry_record_count = result.required_entry_record_count;
+        const std::uint32_t failed_index = snapshot_.entry_count;
+        RecordEntryCapacityFailure(result, snapshot_, failed_index, descriptor.package, descriptor.entry);
         return result;
     }
 
@@ -440,8 +535,7 @@ PackageRegistrationResult PackageRegistry::RegisterEntry(const PackageEntryDescr
         if (index >= snapshot_.entry_capacity) {
             PackageRegistrationResult result =
                 PackageRegistrationResult::Failure(RecordFailure(PackageStatus::EntryCapacityExceeded));
-            result.required_entry_record_count = index + 1U;
-            snapshot_.required_entry_record_count = result.required_entry_record_count;
+            RecordEntryCapacityFailure(result, snapshot_, index, descriptor.package, descriptor.entry);
             return result;
         }
 
@@ -467,8 +561,8 @@ PackageRegistrationResult PackageRegistry::RegisterEntry(const PackageEntryDescr
 
     PackageRegistrationResult result =
         PackageRegistrationResult::Failure(RecordFailure(PackageStatus::EntryCapacityExceeded));
-    result.required_entry_record_count = snapshot_.entry_count + 1U;
-    snapshot_.required_entry_record_count = result.required_entry_record_count;
+    const std::uint32_t failed_index = snapshot_.entry_count;
+    RecordEntryCapacityFailure(result, snapshot_, failed_index, descriptor.package, descriptor.entry);
     return result;
 }
 
@@ -509,13 +603,18 @@ PackageStatus PackageRegistry::AddDependency(PackageId package, PackageEntryId d
     }
 
     if (snapshot_.dependency_edge_count >= snapshot_.dependency_edge_capacity) {
-        return RecordFailure(PackageStatus::DependencyCapacityExceeded);
+        const PackageStatus status = RecordFailure(PackageStatus::DependencyCapacityExceeded);
+        const std::uint32_t failed_index = snapshot_.dependency_edge_count;
+        RecordDependencyCapacityFailure(snapshot_, failed_index, package, dependent, dependency);
+        return status;
     }
 
     std::uint32_t index = 0U;
     for (DependencyEdge& edge : dependency_edges_) {
         if (index >= snapshot_.dependency_edge_capacity) {
-            return RecordFailure(PackageStatus::DependencyCapacityExceeded);
+            const PackageStatus status = RecordFailure(PackageStatus::DependencyCapacityExceeded);
+            RecordDependencyCapacityFailure(snapshot_, index, package, dependent, dependency);
+            return status;
         }
 
         if (edge.is_active) {
@@ -534,7 +633,10 @@ PackageStatus PackageRegistry::AddDependency(PackageId package, PackageEntryId d
         return PackageStatus::Success;
     }
 
-    return RecordFailure(PackageStatus::DependencyCapacityExceeded);
+    const PackageStatus status = RecordFailure(PackageStatus::DependencyCapacityExceeded);
+    const std::uint32_t failed_index = snapshot_.dependency_edge_count;
+    RecordDependencyCapacityFailure(snapshot_, failed_index, package, dependent, dependency);
+    return status;
 }
 
 PackageLoadPlanResult PackageRegistry::ResolveEntryByResourceKey(
@@ -606,6 +708,7 @@ PackageStatus PackageRegistry::RecordFailure(PackageStatus status) {
     ++snapshot_.rejected_operation_count;
     snapshot_.last_status = status;
     ClearLoadPlanCapacityEntry(snapshot_);
+    ClearRegistrationCapacityFailure(snapshot_);
     return status;
 }
 
@@ -613,6 +716,7 @@ void PackageRegistry::RecordSuccess() {
     ++snapshot_.accepted_operation_count;
     snapshot_.last_status = PackageStatus::Success;
     ClearLoadPlanCapacityEntry(snapshot_);
+    ClearRegistrationCapacityFailure(snapshot_);
 }
 
 bool PackageRegistry::HasManifest(PackageId package) const {

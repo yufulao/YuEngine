@@ -27,6 +27,10 @@ struct PackageSnapshot final {
     std::uint32_t entry_count;
     std::uint32_t required_manifest_record_count = 0U;
     std::uint32_t required_entry_record_count = 0U;
+    std::uint32_t last_failed_manifest_index = 0U;
+    PackageId last_failed_package{};
+    std::uint32_t last_failed_entry_index = 0U;
+    PackageEntryId last_failed_entry{};
     std::uint32_t dependency_edge_count;
     std::uint32_t dependency_validation_count;
     std::uint32_t load_plan_resolve_count;
@@ -43,5 +47,15 @@ struct PackageSnapshot final {
     ResourceLogicalKey last_failed_load_plan_resource_key{};
     std::uint32_t last_failed_load_plan_record_capacity = 0U;
     std::uint32_t last_failed_load_plan_record_count = 0U;
+    std::uint32_t last_required_dependency_edge_count = 0U;
+    PackageStatus last_registration_capacity_failure_kind = PackageStatus::Success;
+    std::uint32_t last_failed_manifest_capacity = 0U;
+    std::uint32_t last_failed_entry_capacity = 0U;
+    std::uint32_t last_failed_dependency_edge_capacity = 0U;
+    std::uint32_t last_failed_manifest_count = 0U;
+    std::uint32_t last_failed_entry_count = 0U;
+    std::uint32_t last_failed_dependency_edge_count = 0U;
+    std::uint32_t last_failed_dependency_edge_index = 0U;
+    PackageEntryId last_failed_dependency{};
 };
 }

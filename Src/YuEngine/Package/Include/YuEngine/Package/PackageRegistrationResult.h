@@ -16,6 +16,20 @@ struct PackageRegistrationResult final {
     PackageEntryId entry;
     std::uint32_t required_manifest_record_count = 0U;
     std::uint32_t required_entry_record_count = 0U;
+    std::uint32_t required_dependency_edge_count = 0U;
+    PackageStatus capacity_failure_kind = PackageStatus::Success;
+    std::uint32_t manifest_capacity = 0U;
+    std::uint32_t entry_capacity = 0U;
+    std::uint32_t dependency_edge_capacity = 0U;
+    std::uint32_t current_manifest_count = 0U;
+    std::uint32_t current_entry_count = 0U;
+    std::uint32_t current_dependency_edge_count = 0U;
+    std::uint32_t failed_manifest_index = 0U;
+    PackageId failed_package{};
+    std::uint32_t failed_entry_index = 0U;
+    PackageEntryId failed_entry{};
+    std::uint32_t failed_dependency_edge_index = 0U;
+    PackageEntryId failed_dependency{};
 
     /**
      * @comment 创建成功 manifest registration result。

@@ -58,6 +58,8 @@ constexpr const char* TEST_INVALID_IDS_TYPE_KEY =
     "Package_RegisterInvalidIdsOrType_ReturnsExplicitStatusWithoutMutation";
 constexpr const char* TEST_MANIFEST_CAPACITY = "Package_ManifestCapacityOverflow_DoesNotMutate";
 constexpr const char* TEST_ENTRY_CAPACITY = "Package_EntryCapacityOverflow_DoesNotMutate";
+constexpr const char* TEST_REGISTRATION_CAPACITY_IDENTITY =
+    "Package_RegistrationCapacityFailureIdentityClearsForNonCapacityFailures";
 constexpr const char* TEST_OVERSIZED_KEYS = "Package_RegisterEntryRejectsOversizedKeysWithoutMutation";
 constexpr const char* TEST_OVERSIZED_BYTE_RANGE = "Package_RegisterEntryRejectsOversizedByteRangeWithoutMutation";
 constexpr const char* TEST_LARGE_BYTE_RANGE_INDEX =
@@ -881,6 +883,7 @@ int PackageRegisterInvalidIdsOrTypeReturnsExplicitStatusWithoutMutation() {
 
 int PackageManifestCapacityOverflowDoesNotMutate() {
     constexpr std::uint32_t EXPECTED_REQUIRED_MANIFEST_COUNT = 2U;
+    constexpr std::uint32_t EXPECTED_FAILED_MANIFEST_INDEX = 1U;
 
     PackageRegistry registry(PackageRegistryDesc{1U, 4U, 4U, 4U});
     RegisterManifest(registry, PACKAGE_A);
@@ -900,8 +903,46 @@ int PackageManifestCapacityOverflowDoesNotMutate() {
         return Fail("manifest capacity overflow did not report required manifest count");
     }
 
+    if (overflow.capacity_failure_kind != PackageStatus::ManifestCapacityExceeded) {
+        return Fail("manifest capacity overflow did not report failure kind");
+    }
+
+    if (overflow.manifest_capacity != before_snapshot.manifest_capacity ||
+        overflow.current_manifest_count != before_snapshot.manifest_count ||
+        overflow.current_entry_count != before_snapshot.entry_count ||
+        overflow.current_dependency_edge_count != before_snapshot.dependency_edge_count) {
+        return Fail("manifest capacity overflow did not freeze current counts");
+    }
+
+    if (overflow.failed_manifest_index != EXPECTED_FAILED_MANIFEST_INDEX) {
+        return Fail("manifest capacity overflow did not report failed manifest index");
+    }
+
+    if (overflow.failed_package.value != PACKAGE_B.value) {
+        return Fail("manifest capacity overflow did not report failed package");
+    }
+
     if (after_snapshot.required_manifest_record_count != EXPECTED_REQUIRED_MANIFEST_COUNT) {
         return Fail("manifest capacity overflow did not snapshot required manifest count");
+    }
+
+    if (after_snapshot.last_registration_capacity_failure_kind != PackageStatus::ManifestCapacityExceeded) {
+        return Fail("manifest capacity overflow did not snapshot failure kind");
+    }
+
+    if (after_snapshot.last_failed_manifest_capacity != before_snapshot.manifest_capacity ||
+        after_snapshot.last_failed_manifest_count != before_snapshot.manifest_count ||
+        after_snapshot.last_failed_entry_count != before_snapshot.entry_count ||
+        after_snapshot.last_failed_dependency_edge_count != before_snapshot.dependency_edge_count) {
+        return Fail("manifest capacity overflow did not snapshot current counts");
+    }
+
+    if (after_snapshot.last_failed_manifest_index != EXPECTED_FAILED_MANIFEST_INDEX) {
+        return Fail("manifest capacity overflow did not snapshot failed manifest index");
+    }
+
+    if (after_snapshot.last_failed_package.value != PACKAGE_B.value) {
+        return Fail("manifest capacity overflow did not snapshot failed package");
     }
 
     return 0;
@@ -909,6 +950,7 @@ int PackageManifestCapacityOverflowDoesNotMutate() {
 
 int PackageEntryCapacityOverflowDoesNotMutate() {
     constexpr std::uint32_t EXPECTED_REQUIRED_ENTRY_COUNT = 2U;
+    constexpr std::uint32_t EXPECTED_FAILED_ENTRY_INDEX = 1U;
 
     PackageRegistry registry(PackageRegistryDesc{1U, 1U, 4U, 4U});
     RegisterManifest(registry);
@@ -930,8 +972,214 @@ int PackageEntryCapacityOverflowDoesNotMutate() {
         return Fail("entry capacity overflow did not report required entry count");
     }
 
+    if (overflow.capacity_failure_kind != PackageStatus::EntryCapacityExceeded) {
+        return Fail("entry capacity overflow did not report failure kind");
+    }
+
+    if (overflow.entry_capacity != before_snapshot.entry_capacity ||
+        overflow.current_manifest_count != before_snapshot.manifest_count ||
+        overflow.current_entry_count != before_snapshot.entry_count ||
+        overflow.current_dependency_edge_count != before_snapshot.dependency_edge_count) {
+        return Fail("entry capacity overflow did not freeze current counts");
+    }
+
+    if (overflow.failed_package.value != PACKAGE_A.value) {
+        return Fail("entry capacity overflow did not report failed package");
+    }
+
+    if (overflow.failed_entry_index != EXPECTED_FAILED_ENTRY_INDEX) {
+        return Fail("entry capacity overflow did not report failed entry index");
+    }
+
+    if (overflow.failed_entry.value != ENTRY_MATERIAL.value) {
+        return Fail("entry capacity overflow did not report failed entry");
+    }
+
     if (after_snapshot.required_entry_record_count != EXPECTED_REQUIRED_ENTRY_COUNT) {
         return Fail("entry capacity overflow did not snapshot required entry count");
+    }
+
+    if (after_snapshot.last_registration_capacity_failure_kind != PackageStatus::EntryCapacityExceeded) {
+        return Fail("entry capacity overflow did not snapshot failure kind");
+    }
+
+    if (after_snapshot.last_failed_entry_capacity != before_snapshot.entry_capacity ||
+        after_snapshot.last_failed_manifest_count != before_snapshot.manifest_count ||
+        after_snapshot.last_failed_entry_count != before_snapshot.entry_count ||
+        after_snapshot.last_failed_dependency_edge_count != before_snapshot.dependency_edge_count) {
+        return Fail("entry capacity overflow did not snapshot current counts");
+    }
+
+    if (after_snapshot.last_failed_package.value != PACKAGE_A.value) {
+        return Fail("entry capacity overflow did not snapshot failed package");
+    }
+
+    if (after_snapshot.last_failed_entry_index != EXPECTED_FAILED_ENTRY_INDEX) {
+        return Fail("entry capacity overflow did not snapshot failed entry index");
+    }
+
+    if (after_snapshot.last_failed_entry.value != ENTRY_MATERIAL.value) {
+        return Fail("entry capacity overflow did not snapshot failed entry");
+    }
+
+    return 0;
+}
+
+int PackageRegistrationCapacityFailureIdentityClearsForNonCapacityFailures() {
+    PackageRegistry manifest_registry(PackageRegistryDesc{1U, 4U, 4U, 4U});
+    RegisterManifest(manifest_registry, PACKAGE_A);
+    RegisterManifest(manifest_registry, PACKAGE_B);
+
+    const PackageRegistrationResult duplicate_manifest = RegisterManifest(manifest_registry, PACKAGE_A);
+    if (duplicate_manifest.status != PackageStatus::DuplicateManifest) {
+        return Fail("duplicate manifest did not return duplicate status after capacity failure");
+    }
+
+    if (duplicate_manifest.failed_manifest_index != 0U) {
+        return Fail("duplicate manifest reported stale failed manifest index");
+    }
+
+    if (duplicate_manifest.failed_package.IsValid()) {
+        return Fail("duplicate manifest reported stale failed package");
+    }
+
+    const PackageSnapshot duplicate_manifest_snapshot = manifest_registry.Snapshot();
+    if (duplicate_manifest_snapshot.last_failed_manifest_index != 0U) {
+        return Fail("duplicate manifest snapshot kept stale failed manifest index");
+    }
+
+    if (duplicate_manifest_snapshot.last_failed_package.IsValid()) {
+        return Fail("duplicate manifest snapshot kept stale failed package");
+    }
+
+    RegisterManifest(manifest_registry, PACKAGE_B);
+    const PackageRegistrationResult invalid_manifest = RegisterManifest(manifest_registry, PackageId{});
+    if (invalid_manifest.status != PackageStatus::InvalidPackageId) {
+        return Fail("invalid manifest did not return invalid package status after capacity failure");
+    }
+
+    if (invalid_manifest.failed_manifest_index != 0U) {
+        return Fail("invalid manifest reported stale failed manifest index");
+    }
+
+    if (invalid_manifest.failed_package.IsValid()) {
+        return Fail("invalid manifest reported stale failed package");
+    }
+
+    const PackageSnapshot invalid_manifest_snapshot = manifest_registry.Snapshot();
+    if (invalid_manifest_snapshot.last_failed_manifest_index != 0U) {
+        return Fail("invalid manifest snapshot kept stale failed manifest index");
+    }
+
+    if (invalid_manifest_snapshot.last_failed_package.IsValid()) {
+        return Fail("invalid manifest snapshot kept stale failed package");
+    }
+
+    PackageRegistry entry_registry(PackageRegistryDesc{1U, 1U, 4U, 4U});
+    RegisterManifest(entry_registry);
+    RegisterEntry(entry_registry, ENTRY_TEXTURE, TYPE_TEXTURE, "texture_a", "textures/texture_a.bin");
+    RegisterEntry(entry_registry, ENTRY_MATERIAL, TYPE_MATERIAL, "material_a", "materials/material_a.bin");
+
+    const PackageRegistrationResult duplicate_entry =
+        RegisterEntry(entry_registry, ENTRY_TEXTURE, TYPE_TEXTURE, "texture_a", "textures/texture_a.bin");
+    if (duplicate_entry.status != PackageStatus::DuplicateEntry) {
+        return Fail("duplicate entry did not return duplicate status after capacity failure");
+    }
+
+    if (duplicate_entry.failed_package.IsValid()) {
+        return Fail("duplicate entry reported stale failed package");
+    }
+
+    if (duplicate_entry.failed_entry_index != 0U) {
+        return Fail("duplicate entry reported stale failed entry index");
+    }
+
+    if (duplicate_entry.failed_entry.IsValid()) {
+        return Fail("duplicate entry reported stale failed entry");
+    }
+
+    const PackageSnapshot duplicate_entry_snapshot = entry_registry.Snapshot();
+    if (duplicate_entry_snapshot.last_failed_package.IsValid()) {
+        return Fail("duplicate entry snapshot kept stale failed package");
+    }
+
+    if (duplicate_entry_snapshot.last_failed_entry_index != 0U) {
+        return Fail("duplicate entry snapshot kept stale failed entry index");
+    }
+
+    if (duplicate_entry_snapshot.last_failed_entry.IsValid()) {
+        return Fail("duplicate entry snapshot kept stale failed entry");
+    }
+
+    RegisterEntry(entry_registry, ENTRY_MATERIAL, TYPE_MATERIAL, "material_b", "materials/material_b.bin");
+    const PackageRegistrationResult invalid_entry =
+        entry_registry.RegisterEntry(Entry(PACKAGE_A, PackageEntryId{}, TYPE_TEXTURE, "invalid", "invalid.bin"));
+    if (invalid_entry.status != PackageStatus::InvalidEntryId) {
+        return Fail("invalid entry did not return invalid entry status after capacity failure");
+    }
+
+    if (invalid_entry.failed_package.IsValid()) {
+        return Fail("invalid entry reported stale failed package");
+    }
+
+    if (invalid_entry.failed_entry_index != 0U) {
+        return Fail("invalid entry reported stale failed entry index");
+    }
+
+    if (invalid_entry.failed_entry.IsValid()) {
+        return Fail("invalid entry reported stale failed entry");
+    }
+
+    const PackageSnapshot invalid_entry_snapshot = entry_registry.Snapshot();
+    if (invalid_entry_snapshot.last_failed_package.IsValid()) {
+        return Fail("invalid entry snapshot kept stale failed package");
+    }
+
+    if (invalid_entry_snapshot.last_failed_entry_index != 0U) {
+        return Fail("invalid entry snapshot kept stale failed entry index");
+    }
+
+    if (invalid_entry_snapshot.last_failed_entry.IsValid()) {
+        return Fail("invalid entry snapshot kept stale failed entry");
+    }
+
+    PackageRegistry dependency_registry(PackageRegistryDesc{1U, 4U, 1U, 4U});
+    RegisterManifest(dependency_registry);
+    RegisterEntry(dependency_registry, ENTRY_TEXTURE, TYPE_TEXTURE, "texture_a", "textures/texture_a.bin");
+    RegisterEntry(dependency_registry, ENTRY_MATERIAL, TYPE_MATERIAL, "material_a", "materials/material_a.bin");
+    RegisterEntry(dependency_registry, ENTRY_AUDIO, TYPE_AUDIO, "audio_a", "audio/audio_a.bin");
+    dependency_registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_MATERIAL);
+    dependency_registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_AUDIO);
+
+    const PackageStatus duplicate_dependency =
+        dependency_registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_MATERIAL);
+    if (duplicate_dependency != PackageStatus::Success) {
+        return Fail("duplicate dependency did not return success after capacity failure");
+    }
+
+    const PackageSnapshot duplicate_dependency_snapshot = dependency_registry.Snapshot();
+    if (duplicate_dependency_snapshot.last_registration_capacity_failure_kind != PackageStatus::Success) {
+        return Fail("duplicate dependency snapshot kept stale failure kind");
+    }
+
+    if (duplicate_dependency_snapshot.last_failed_dependency.IsValid()) {
+        return Fail("duplicate dependency snapshot kept stale failed dependency");
+    }
+
+    dependency_registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_AUDIO);
+    const PackageStatus invalid_dependency =
+        dependency_registry.AddDependency(PACKAGE_A, PackageEntryId{}, ENTRY_AUDIO);
+    if (invalid_dependency != PackageStatus::InvalidEntryId) {
+        return Fail("invalid dependency did not return invalid entry status after capacity failure");
+    }
+
+    const PackageSnapshot invalid_dependency_snapshot = dependency_registry.Snapshot();
+    if (invalid_dependency_snapshot.last_registration_capacity_failure_kind != PackageStatus::Success) {
+        return Fail("invalid dependency snapshot kept stale failure kind");
+    }
+
+    if (invalid_dependency_snapshot.last_failed_dependency.IsValid()) {
+        return Fail("invalid dependency snapshot kept stale failed dependency");
     }
 
     return 0;
@@ -1739,6 +1987,9 @@ int PackageDependencyClosureRejectsRecordBudgetWithoutMutation() {
 }
 
 int PackageDependencyCapacityOverflowDoesNotMutate() {
+    constexpr std::uint32_t EXPECTED_REQUIRED_DEPENDENCY_COUNT = 2U;
+    constexpr std::uint32_t EXPECTED_FAILED_DEPENDENCY_INDEX = 1U;
+
     PackageRegistry registry(PackageRegistryDesc{1U, 4U, 1U, 1U});
     RegisterManifest(registry);
     RegisterEntry(registry, ENTRY_TEXTURE, TYPE_TEXTURE, "texture_a", "textures/texture_a.bin");
@@ -1763,6 +2014,32 @@ int PackageDependencyCapacityOverflowDoesNotMutate() {
 
     if (!LoadPlanCapacitySnapshotCleared(registry.Snapshot())) {
         return Fail("dependency capacity overflow did not clear load-plan capacity entry");
+    }
+
+    const PackageSnapshot after_snapshot = registry.Snapshot();
+    if (after_snapshot.last_registration_capacity_failure_kind != PackageStatus::DependencyCapacityExceeded) {
+        return Fail("dependency capacity overflow did not snapshot failure kind");
+    }
+
+    if (after_snapshot.last_failed_package.value != PACKAGE_A.value ||
+        after_snapshot.last_failed_entry.value != ENTRY_TEXTURE.value ||
+        after_snapshot.last_failed_dependency.value != ENTRY_AUDIO.value) {
+        return Fail("dependency capacity overflow did not snapshot rejected identity");
+    }
+
+    if (after_snapshot.last_failed_dependency_edge_index != EXPECTED_FAILED_DEPENDENCY_INDEX) {
+        return Fail("dependency capacity overflow did not snapshot failed dependency index");
+    }
+
+    if (after_snapshot.last_required_dependency_edge_count != EXPECTED_REQUIRED_DEPENDENCY_COUNT) {
+        return Fail("dependency capacity overflow did not snapshot required dependency count");
+    }
+
+    if (after_snapshot.last_failed_dependency_edge_capacity != before_snapshot.dependency_edge_capacity ||
+        after_snapshot.last_failed_manifest_count != before_snapshot.manifest_count ||
+        after_snapshot.last_failed_entry_count != before_snapshot.entry_count ||
+        after_snapshot.last_failed_dependency_edge_count != before_snapshot.dependency_edge_count) {
+        return Fail("dependency capacity overflow did not snapshot current counts");
     }
 
     return 0;
@@ -2887,6 +3164,7 @@ int main(int argc, char** argv) {
         {TEST_INVALID_IDS_TYPE_KEY, PackageRegisterInvalidIdsOrTypeReturnsExplicitStatusWithoutMutation},
         {TEST_MANIFEST_CAPACITY, PackageManifestCapacityOverflowDoesNotMutate},
         {TEST_ENTRY_CAPACITY, PackageEntryCapacityOverflowDoesNotMutate},
+        {TEST_REGISTRATION_CAPACITY_IDENTITY, PackageRegistrationCapacityFailureIdentityClearsForNonCapacityFailures},
         {TEST_OVERSIZED_KEYS, PackageRegisterEntryRejectsOversizedKeysWithoutMutation},
         {TEST_OVERSIZED_BYTE_RANGE, PackageRegisterEntryRejectsOversizedByteRangeWithoutMutation},
         {TEST_LARGE_BYTE_RANGE_INDEX, PackageRegisterEntryAcceptsLargeByteRangeAndResolvePreservesIndexMetadata},
