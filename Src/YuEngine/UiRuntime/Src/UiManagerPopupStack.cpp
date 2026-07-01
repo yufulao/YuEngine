@@ -454,22 +454,33 @@ UiManagerPopupStackResult UiManagerPopupStack::ReleasePopupPanel(
         removed_from_stack);
 }
 
-UiManagerPopupStackStatus UiManagerPopupStack::ExportPopupOrder(
+UiManagerPopupStackResult UiManagerPopupStack::ExportPopupOrder(
     UiPanelId *output_panel_ids,
-    std::uint32_t output_capacity) const {
+    std::uint32_t output_capacity) {
+    UiManagerPopupStackResult result{};
+    result.popup_count = snapshot_.popup_count;
+    result.required_popup_order_count = snapshot_.popup_count;
+    result.top_panel_id = snapshot_.top_panel_id;
+
     if (snapshot_.popup_count > 0U && output_panel_ids == nullptr) {
-        return UiManagerPopupStackStatus::InvalidOutputBuffer;
+        snapshot_.last_required_popup_order_count = snapshot_.popup_count;
+        result.status = UiManagerPopupStackStatus::InvalidOutputBuffer;
+        return result;
     }
 
     if (output_capacity < snapshot_.popup_count) {
-        return UiManagerPopupStackStatus::InvalidOutputBuffer;
+        snapshot_.last_required_popup_order_count = snapshot_.popup_count;
+        result.status = UiManagerPopupStackStatus::InvalidOutputBuffer;
+        return result;
     }
 
     for (std::uint32_t index = 0U; index < snapshot_.popup_count; ++index) {
         output_panel_ids[index] = snapshot_.popup_order[index];
     }
 
-    return UiManagerPopupStackStatus::Success;
+    snapshot_.last_required_popup_order_count = 0U;
+    result.status = UiManagerPopupStackStatus::Success;
+    return result;
 }
 
 bool UiManagerPopupStack::IsPopupStacked(UiPanelId panel_id) const {
@@ -760,6 +771,7 @@ UiManagerPopupStackResult UiManagerPopupStack::MakeResult(
 }
 
 UiManagerPopupStackStatus UiManagerPopupStack::RecordFailure(UiManagerPopupStackStatus status) {
+    snapshot_.last_required_popup_order_count = 0U;
     ++snapshot_.rejected_operation_count;
     ++snapshot_.failed_operation_count;
     snapshot_.last_status = status;
@@ -767,6 +779,7 @@ UiManagerPopupStackStatus UiManagerPopupStack::RecordFailure(UiManagerPopupStack
 }
 
 void UiManagerPopupStack::RecordSuccess() {
+    snapshot_.last_required_popup_order_count = 0U;
     ++snapshot_.accepted_operation_count;
     snapshot_.last_status = UiManagerPopupStackStatus::Success;
 }

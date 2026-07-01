@@ -16,6 +16,7 @@ struct UiManagerPopupStackSnapshot final {
     UiPanelId top_panel_id;
     std::uint32_t popup_capacity = MAX_UI_MANAGER_POPUP_STACK_COUNT;
     std::uint32_t popup_count = 0U;
+    std::uint32_t last_required_popup_order_count = 0U;
     std::uint32_t open_operation_count = 0U;
     std::uint32_t bring_to_top_operation_count = 0U;
     std::uint32_t close_operation_count = 0U;

@@ -18,6 +18,7 @@ struct UiManagerPopupStackResult final {
     UiPanelId panel_id;
     UiPanelId top_panel_id;
     std::uint32_t popup_count = 0U;
+    std::uint32_t required_popup_order_count = 0U;
     bool pushed = false;
     bool brought_to_top = false;
     bool already_top = false;

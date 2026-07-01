@@ -85,11 +85,11 @@ public:
      * @comment 导出 popup 顺序，索引越大越靠近顶部。
      * @param output_panel_ids 输出 panel id。
      * @param output_capacity 输出容量。
-     * @return 显式导出状态。
+     * @return 显式导出结果。
      */
-    UiManagerPopupStackStatus ExportPopupOrder(
+    UiManagerPopupStackResult ExportPopupOrder(
         UiPanelId *output_panel_ids,
-        std::uint32_t output_capacity) const;
+        std::uint32_t output_capacity);
 
     /**
      * @comment 查询 popup 是否在 stack 中。

@@ -223,14 +223,18 @@ int RegisterPanelAndBind(
 }
 
 int RequirePopupOrder(
-    const UiManagerPopupStack &popup_stack,
+    UiManagerPopupStack &popup_stack,
     std::span<const std::uint32_t> expected_order,
     std::string_view message) {
     std::array<UiPanelId, MAX_UI_MANAGER_POPUP_STACK_COUNT> output_order{};
     const std::uint32_t expected_count = static_cast<std::uint32_t>(expected_order.size());
-    const UiManagerPopupStackStatus export_status =
+    const UiManagerPopupStackResult export_result =
         popup_stack.ExportPopupOrder(output_order.data(), expected_count);
-    if (export_status != UiManagerPopupStackStatus::Success) {
+    if (export_result.status != UiManagerPopupStackStatus::Success) {
+        return Fail(message);
+    }
+
+    if (export_result.required_popup_order_count != expected_count) {
         return Fail(message);
     }
 
@@ -338,9 +342,21 @@ int RunOpenPushesPopupOrderTest() {
     }
 
     std::array<UiPanelId, 2U> small_order{};
-    const UiManagerPopupStackStatus small_export =
+    const UiManagerPopupStackResult small_export =
         popup_stack.ExportPopupOrder(small_order.data(), static_cast<std::uint32_t>(small_order.size()));
-    return RequireStatus(small_export, UiManagerPopupStackStatus::InvalidOutputBuffer, "small popup export status mismatch");
+    if (RequireStatus(small_export.status, UiManagerPopupStackStatus::InvalidOutputBuffer, "small popup export status mismatch") != 0) {
+        return 1;
+    }
+
+    if (small_export.required_popup_order_count != 3U || small_export.popup_count != 3U) {
+        return Fail("small popup export required count mismatch");
+    }
+
+    if (popup_stack.Snapshot().last_required_popup_order_count != 3U) {
+        return Fail("small popup export snapshot required count mismatch");
+    }
+
+    return 0;
 }
 
 int RunBringExistingPopupToTopTest() {
