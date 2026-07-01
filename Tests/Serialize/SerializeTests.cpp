@@ -206,6 +206,14 @@ bool SnapshotsMatch(const SerializeSnapshot& left, const SerializeSnapshot& righ
         return false;
     }
 
+    if (left.last_required_record_count != right.last_required_record_count) {
+        return false;
+    }
+
+    if (left.last_required_field_count != right.last_required_field_count) {
+        return false;
+    }
+
     if (left.accepted_operation_count != right.accepted_operation_count) {
         return false;
     }
@@ -583,6 +591,14 @@ int SerializeRecordCapacityOverflowDoesNotMutate() {
         return Fail("record overflow changed committed byte count");
     }
 
+    if (after_snapshot.last_required_record_count != before_snapshot.record_count + 1U) {
+        return Fail("record overflow did not report required record count");
+    }
+
+    if (after_snapshot.last_required_field_count != 0U) {
+        return Fail("record overflow changed required field count");
+    }
+
     return 0;
 }
 
@@ -618,6 +634,14 @@ int SerializeFieldCapacityOverflowDoesNotMutate() {
 
     if (after_snapshot.committed_byte_count != before_snapshot.committed_byte_count) {
         return Fail("field overflow changed committed byte count");
+    }
+
+    if (after_snapshot.last_required_field_count != before_snapshot.field_count + 1U) {
+        return Fail("field overflow did not report required field count");
+    }
+
+    if (after_snapshot.last_required_record_count != 0U) {
+        return Fail("field overflow changed required record count");
     }
 
     return 0;
@@ -1030,6 +1054,10 @@ int SerializeSnapshotReportsCountsAndLastStatus() {
     const SerializeSnapshot writer_snapshot = writer.Snapshot();
     if (writer_snapshot.record_count != 1U || writer_snapshot.field_count != 2U) {
         return Fail("writer snapshot did not report record and field counts");
+    }
+
+    if (writer_snapshot.last_required_record_count != 0U || writer_snapshot.last_required_field_count != 0U) {
+        return Fail("writer snapshot carried required counts after non-capacity failure");
     }
 
     if (writer_snapshot.accepted_operation_count != 4U || writer_snapshot.failed_operation_count != 1U) {

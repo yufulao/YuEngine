@@ -36,7 +36,7 @@ void EncodeUInt64(std::uint8_t* bytes, std::uint64_t value) {
 }
 }
 
-static_assert(sizeof(SerializeSnapshot) == 32U);
+static_assert(sizeof(SerializeSnapshot) == 40U);
 
 SerializeWriter::SerializeWriter(std::uint8_t* buffer, std::uint32_t capacity)
     : buffer_(buffer),
@@ -98,6 +98,8 @@ SerializeStatus SerializeWriter::BeginRecord(SerializeRecordId record) {
     }
 
     if (snapshot_.record_count >= MAX_RECORDS_PER_STREAM) {
+        snapshot_.last_required_record_count = snapshot_.record_count + 1U;
+        snapshot_.last_required_field_count = 0U;
         return RecordFailure(SerializeStatus::RecordCapacityExceeded);
     }
 
@@ -191,10 +193,14 @@ SerializeStatus SerializeWriter::CommitField(
     }
 
     if (snapshot_.field_count >= MAX_FIELDS_PER_STREAM) {
+        snapshot_.last_required_record_count = 0U;
+        snapshot_.last_required_field_count = snapshot_.field_count + 1U;
         return RecordFailure(SerializeStatus::FieldCapacityExceeded);
     }
 
     if (current_record_field_count_ >= MAX_FIELDS_PER_RECORD) {
+        snapshot_.last_required_record_count = 0U;
+        snapshot_.last_required_field_count = current_record_field_count_ + 1U;
         return RecordFailure(SerializeStatus::FieldCapacityExceeded);
     }
 
@@ -228,6 +234,8 @@ SerializeStatus SerializeWriter::RecordFailure(SerializeStatus status) {
 
 void SerializeWriter::RecordSuccess() {
     ++snapshot_.accepted_operation_count;
+    snapshot_.last_required_record_count = 0U;
+    snapshot_.last_required_field_count = 0U;
     snapshot_.last_status = SerializeStatus::Success;
 }
 

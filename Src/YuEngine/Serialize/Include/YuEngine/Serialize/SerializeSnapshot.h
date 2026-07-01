@@ -21,5 +21,7 @@ struct SerializeSnapshot final {
     std::uint32_t failed_operation_count;
     MemoryAccountingStatus allocation_accounting_status;
     SerializeStatus last_status;
+    std::uint32_t last_required_record_count = 0U;
+    std::uint32_t last_required_field_count = 0U;
 };
 }
