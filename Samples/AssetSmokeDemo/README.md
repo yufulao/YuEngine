@@ -23,7 +23,13 @@
 - `Binaries/ThirdParty/Ogg/Win64/VS2015`
 - `Binaries/ThirdParty/Vorbis/Win64/VS2015`
 
-调用方可以设置 `UE_ENGINE_ROOT` 环境变量，或设置 CMake cache 变量 `YU_ASSET_SMOKE_UE_ENGINE_ROOT`。辅助脚本会在 `UE_ENGINE_ROOT` 存在时转发给 CMake。
+依赖根目录解析顺序：
+
+1. CMake cache 变量 `YU_ASSET_SMOKE_UE_ENGINE_ROOT`，或同名环境变量；
+2. `UE_ENGINE_ROOT` 环境变量；
+3. 本仓库相邻的 `ue/Engine`，例如 `C:\Steam\steamapps\common\TouhouNewWorld\ue\Engine`，该目录存在 `Source` 时自动使用。
+
+其他本机安装位置需要显式设置上述变量；旧的个人机器路径不作为 canonical fallback。
 
 仓库内的音乐、网格、贴图和材质文件是示例输入，来源记录为提交 `a3c7ede` 引入的现有样例资源。本次清理不新增第三方资源，也不扩展这些资源的许可证声明。
 
@@ -62,7 +68,7 @@ ctest --preset windows-release-gate -R "^Sample_L1VerticalPrep_" --output-on-fai
 在本目录执行：
 
 ```powershell
-$env:UE_ENGINE_ROOT = 'D:\app\Epic Games\UE_5.5\Engine'
+$env:YU_ASSET_SMOKE_UE_ENGINE_ROOT = 'C:\Steam\steamapps\common\TouhouNewWorld\ue\Engine'
 powershell -ExecutionPolicy Bypass -File .\RunAssetSmokeDemo.ps1
 ```
 

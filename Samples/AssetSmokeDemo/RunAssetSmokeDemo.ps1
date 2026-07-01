@@ -1,12 +1,46 @@
 param(
     [string]$Configuration = 'Debug',
     [string]$BuildDir = 'Build',
-    [string]$UEEngineRoot = $env:UE_ENGINE_ROOT,
+    [string]$UEEngineRoot = '',
     [string]$EngineRoot = '',
     [int]$Seconds = 8
 )
 
 $ErrorActionPreference = 'Stop'
+
+function Resolve-AssetSmokeUEEngineRoot {
+    param(
+        [string]$SampleRoot,
+        [string]$ExplicitRoot
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($ExplicitRoot)) {
+        return $ExplicitRoot
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($env:YU_ASSET_SMOKE_UE_ENGINE_ROOT)) {
+        return $env:YU_ASSET_SMOKE_UE_ENGINE_ROOT
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($env:UE_ENGINE_ROOT)) {
+        return $env:UE_ENGINE_ROOT
+    }
+
+    $candidateRoots = @(
+        (Join-Path $SampleRoot '..\..\..\ue\Engine'),
+        (Join-Path $SampleRoot '..\..\..\..\ue\Engine'),
+        (Join-Path $SampleRoot '..\..\..\..\..\ue\Engine')
+    )
+    foreach ($candidateRoot in $candidateRoots) {
+        $candidateSource = Join-Path $candidateRoot 'Source'
+        if (Test-Path -LiteralPath $candidateSource -PathType Container) {
+            $resolvedRoot = Resolve-Path -LiteralPath $candidateRoot
+            return $resolvedRoot.Path
+        }
+    }
+
+    return ''
+}
 
 # Resolve the sample root from the script location.
 $root = $PSScriptRoot
@@ -20,8 +54,9 @@ if ([string]::IsNullOrWhiteSpace($root)) {
 
 $build = Join-Path $root $BuildDir
 $configureArgs = @('-S', $root, '-B', $build)
-if (-not [string]::IsNullOrWhiteSpace($UEEngineRoot)) {
-    $configureArgs += "-DYU_ASSET_SMOKE_UE_ENGINE_ROOT=$UEEngineRoot"
+$resolvedUEEngineRoot = Resolve-AssetSmokeUEEngineRoot -SampleRoot $root -ExplicitRoot $UEEngineRoot
+if (-not [string]::IsNullOrWhiteSpace($resolvedUEEngineRoot)) {
+    $configureArgs += "-DYU_ASSET_SMOKE_UE_ENGINE_ROOT=$resolvedUEEngineRoot"
 }
 if (-not [string]::IsNullOrWhiteSpace($EngineRoot)) {
     $configureArgs += "-DYU_ASSET_SMOKE_ENGINE_ROOT=$EngineRoot"

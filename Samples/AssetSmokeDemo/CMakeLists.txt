@@ -8,11 +8,28 @@ get_filename_component(YU_ASSET_SMOKE_DEFAULT_ENGINE_ROOT "${CMAKE_CURRENT_LIST_
 set(YU_ASSET_SMOKE_ENGINE_ROOT "${YU_ASSET_SMOKE_DEFAULT_ENGINE_ROOT}" CACHE PATH "YuEngine source root used by the sample engine evidence path.")
 
 set(YU_ASSET_SMOKE_UE_ENGINE_ROOT "" CACHE PATH "Unreal Engine root used only for Ogg and Vorbis sample dependencies.")
+if("${YU_ASSET_SMOKE_UE_ENGINE_ROOT}" STREQUAL "" AND DEFINED ENV{YU_ASSET_SMOKE_UE_ENGINE_ROOT})
+    file(TO_CMAKE_PATH "$ENV{YU_ASSET_SMOKE_UE_ENGINE_ROOT}" YU_ASSET_SMOKE_UE_ENGINE_ROOT)
+endif()
 if("${YU_ASSET_SMOKE_UE_ENGINE_ROOT}" STREQUAL "" AND DEFINED ENV{UE_ENGINE_ROOT})
     file(TO_CMAKE_PATH "$ENV{UE_ENGINE_ROOT}" YU_ASSET_SMOKE_UE_ENGINE_ROOT)
 endif()
 if("${YU_ASSET_SMOKE_UE_ENGINE_ROOT}" STREQUAL "")
-    set(YU_ASSET_SMOKE_UE_ENGINE_ROOT "D:/app/Epic Games/UE_5.5/Engine")
+    set(YU_ASSET_SMOKE_UE_ENGINE_CANDIDATES
+        "${CMAKE_CURRENT_LIST_DIR}/../../../ue/Engine"
+        "${CMAKE_CURRENT_LIST_DIR}/../../../../ue/Engine"
+        "${CMAKE_CURRENT_LIST_DIR}/../../../../../ue/Engine"
+    )
+    foreach(candidate_root IN LISTS YU_ASSET_SMOKE_UE_ENGINE_CANDIDATES)
+        get_filename_component(candidate_root_abs "${candidate_root}" ABSOLUTE)
+        if(IS_DIRECTORY "${candidate_root_abs}/Source")
+            set(YU_ASSET_SMOKE_UE_ENGINE_ROOT "${candidate_root_abs}")
+            break()
+        endif()
+    endforeach()
+endif()
+if("${YU_ASSET_SMOKE_UE_ENGINE_ROOT}" STREQUAL "")
+    message(FATAL_ERROR "AssetSmokeDemo requires Unreal Engine Ogg/Vorbis dependencies. Set -DYU_ASSET_SMOKE_UE_ENGINE_ROOT=..., YU_ASSET_SMOKE_UE_ENGINE_ROOT, or UE_ENGINE_ROOT; a sibling ue/Engine source root is also accepted when present.")
 endif()
 
 if(MSVC)
@@ -38,7 +55,7 @@ set(YU_ASSET_SMOKE_REQUIRED_FILES
 
 foreach(required_file IN LISTS YU_ASSET_SMOKE_REQUIRED_FILES)
     if(NOT EXISTS "${required_file}")
-        message(FATAL_ERROR "AssetSmokeDemo requires Unreal Engine Ogg/Vorbis dependencies. Set -DYU_ASSET_SMOKE_UE_ENGINE_ROOT=... or UE_ENGINE_ROOT. Missing: ${required_file}")
+        message(FATAL_ERROR "AssetSmokeDemo requires Unreal Engine Ogg/Vorbis dependencies. Set -DYU_ASSET_SMOKE_UE_ENGINE_ROOT=..., YU_ASSET_SMOKE_UE_ENGINE_ROOT, or UE_ENGINE_ROOT; a sibling ue/Engine source root is also accepted when present. Missing: ${required_file}")
     endif()
 endforeach()
 
