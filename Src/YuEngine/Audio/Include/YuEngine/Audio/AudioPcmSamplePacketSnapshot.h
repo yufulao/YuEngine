@@ -7,6 +7,7 @@
 #include <cstdint>
 
 #include "YuEngine/Audio/AudioPcmSamplePacketOperation.h"
+#include "YuEngine/Audio/AudioSampleFormat.h"
 #include "YuEngine/Audio/AudioStatus.h"
 
 namespace yuengine::audio {
@@ -21,6 +22,13 @@ struct AudioPcmSamplePacketSnapshot final {
     std::uint64_t stale_packet_rejected_count = 0U;
     std::uint64_t capacity_rejected_count = 0U;
     std::size_t last_required_packet_count = 0U;
+    std::size_t last_failed_packet_capacity = 0U;
+    std::size_t last_failed_active_packet_count = 0U;
+    std::uint32_t last_failed_packet_id = 0U;
+    std::size_t last_failed_frame_count = 0U;
+    std::uint32_t last_failed_sample_rate = 0U;
+    std::uint16_t last_failed_channel_count = 0U;
+    AudioSampleFormat last_failed_format = AudioSampleFormat::Signed16;
     AudioStatus last_status = AudioStatus::NotInitialized;
     AudioPcmSamplePacketOperation last_operation = AudioPcmSamplePacketOperation::None;
 };

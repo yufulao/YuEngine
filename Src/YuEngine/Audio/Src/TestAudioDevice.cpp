@@ -27,6 +27,16 @@ void ClearPcmSamplePacketRequiredCounts(AudioPcmSamplePacketSnapshot &snapshot) 
     snapshot.last_required_packet_count = 0U;
 }
 
+void ClearPcmSamplePacketCapacityFailure(AudioPcmSamplePacketSnapshot &snapshot) {
+    snapshot.last_failed_packet_capacity = 0U;
+    snapshot.last_failed_active_packet_count = 0U;
+    snapshot.last_failed_packet_id = 0U;
+    snapshot.last_failed_frame_count = 0U;
+    snapshot.last_failed_sample_rate = 0U;
+    snapshot.last_failed_channel_count = 0U;
+    snapshot.last_failed_format = AudioSampleFormat::Signed16;
+}
+
 void ClearPcmStreamQueueRequiredCounts(AudioPcmStreamQueueSnapshot &snapshot) {
     snapshot.last_required_queue_count = 0U;
     snapshot.last_required_output_chunk_count = 0U;
@@ -213,6 +223,13 @@ AudioStatus TestAudioDevice::CreatePcmSamplePacket(const AudioPcmSamplePacketReq
     const AudioStatus status =
         RecordPcmSamplePacketFailure(AudioStatus::CapacityExceeded, AudioPcmSamplePacketOperation::Create);
     pcm_sample_packet_snapshot_.last_required_packet_count = required_packet_count;
+    pcm_sample_packet_snapshot_.last_failed_packet_capacity = pcm_sample_packet_snapshot_.packet_capacity;
+    pcm_sample_packet_snapshot_.last_failed_active_packet_count = pcm_sample_packet_snapshot_.active_packet_count;
+    pcm_sample_packet_snapshot_.last_failed_packet_id = request.packet_id;
+    pcm_sample_packet_snapshot_.last_failed_frame_count = request.frame_count;
+    pcm_sample_packet_snapshot_.last_failed_sample_rate = request.sample_rate;
+    pcm_sample_packet_snapshot_.last_failed_channel_count = request.channel_count;
+    pcm_sample_packet_snapshot_.last_failed_format = request.format;
     return status;
 }
 
@@ -849,6 +866,10 @@ std::int16_t TestAudioDevice::SaturateToS16(std::int64_t sample) const {
 
 void TestAudioDevice::SetPcmSamplePacketLastStatus(AudioStatus status, AudioPcmSamplePacketOperation operation) {
     ClearPcmSamplePacketRequiredCounts(pcm_sample_packet_snapshot_);
+    if (status != AudioStatus::CapacityExceeded) {
+        ClearPcmSamplePacketCapacityFailure(pcm_sample_packet_snapshot_);
+    }
+
     pcm_sample_packet_snapshot_.last_status = status;
     pcm_sample_packet_snapshot_.last_operation = operation;
 }

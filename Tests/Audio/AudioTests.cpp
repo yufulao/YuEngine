@@ -1570,23 +1570,44 @@ int AudioPcmSamplePacketRejectsByteCountMismatchWithoutMutation() {
 
 int AudioPcmSamplePacketRejectsCapacityOverflowWithoutMutation() {
     TestAudioDevice device = CreateInitializedDevice();
+    AudioPcmSamplePacketHandle first_packet{};
     for (std::size_t index = 0U; index < MAX_PCM_SAMPLE_PACKETS; ++index) {
         AudioPcmSamplePacketHandle packet{};
         const std::uint32_t packet_id = static_cast<std::uint32_t>(index + 1U);
         if (!CreateBasicPcmSamplePacket(device, packet_id, packet)) {
             return Fail("pcm packet capacity setup failed");
         }
+
+        if (index == 0U) {
+            first_packet = packet;
+        }
     }
 
     const AudioPcmSamplePacketSnapshot before_snapshot = device.PcmSamplePacketSnapshot();
     const AudioPcmSamplePacketRequest overflow_request = BasicPcmSamplePacketRequest(static_cast<std::uint32_t>(MAX_PCM_SAMPLE_PACKETS + 1U));
-    if (!ExpectPcmCreateRejectedWithoutActiveMutation(device, overflow_request, AudioStatus::CapacityExceeded)) {
+    AudioPcmSamplePacketHandle rejected_packet{777U, 888U};
+    const AudioPcmSamplePacketHandle expected_rejected_packet = rejected_packet;
+    const AudioStatus overflow_status = device.CreatePcmSamplePacket(overflow_request, rejected_packet);
+    if (overflow_status != AudioStatus::CapacityExceeded) {
         return Fail("pcm packet capacity overflow was not rejected without active mutation");
     }
 
-    const AudioPcmSamplePacketSnapshot snapshot = device.PcmSamplePacketSnapshot();
+    if (rejected_packet.slot != expected_rejected_packet.slot ||
+        rejected_packet.generation != expected_rejected_packet.generation) {
+        return Fail("pcm packet capacity rejection mutated caller output handle");
+    }
+
+    AudioPcmSamplePacketSnapshot snapshot = device.PcmSamplePacketSnapshot();
     if (snapshot.active_packet_count != MAX_PCM_SAMPLE_PACKETS) {
         return Fail("pcm packet capacity rejection changed active count");
+    }
+
+    if (snapshot.created_packet_count != before_snapshot.created_packet_count) {
+        return Fail("pcm packet capacity rejection changed created count");
+    }
+
+    if (snapshot.rejected_packet_count != before_snapshot.rejected_packet_count + 1U) {
+        return Fail("pcm packet capacity rejection did not increment rejected count");
     }
 
     if (snapshot.capacity_rejected_count != 1U) {
@@ -1596,6 +1617,81 @@ int AudioPcmSamplePacketRejectsCapacityOverflowWithoutMutation() {
     const std::size_t required_packet_count = before_snapshot.active_packet_count + 1U;
     if (snapshot.last_required_packet_count != required_packet_count) {
         return Fail("pcm packet capacity rejection missed required packet count");
+    }
+
+    if (snapshot.last_failed_packet_capacity != MAX_PCM_SAMPLE_PACKETS) {
+        return Fail("pcm packet capacity rejection missed packet capacity");
+    }
+
+    if (snapshot.last_failed_active_packet_count != before_snapshot.active_packet_count) {
+        return Fail("pcm packet capacity rejection missed active packet count");
+    }
+
+    if (snapshot.last_failed_packet_id != overflow_request.packet_id) {
+        return Fail("pcm packet capacity rejection missed failed packet id");
+    }
+
+    if (snapshot.last_failed_frame_count != overflow_request.frame_count) {
+        return Fail("pcm packet capacity rejection missed failed frame count");
+    }
+
+    if (snapshot.last_failed_sample_rate != overflow_request.sample_rate) {
+        return Fail("pcm packet capacity rejection missed failed sample rate");
+    }
+
+    if (snapshot.last_failed_channel_count != overflow_request.channel_count) {
+        return Fail("pcm packet capacity rejection missed failed channel count");
+    }
+
+    if (snapshot.last_failed_format != overflow_request.format) {
+        return Fail("pcm packet capacity rejection missed failed format");
+    }
+
+    AudioPcmSamplePacketRequest invalid_request = BasicPcmSamplePacketRequest(0U);
+    AudioPcmSamplePacketHandle invalid_packet{555U, 666U};
+    if (device.CreatePcmSamplePacket(invalid_request, invalid_packet) != AudioStatus::InvalidDescriptor) {
+        return Fail("pcm packet invalid descriptor did not reject after capacity failure");
+    }
+
+    snapshot = device.PcmSamplePacketSnapshot();
+    if (snapshot.last_required_packet_count != 0U) {
+        return Fail("pcm packet invalid descriptor kept required packet count");
+    }
+
+    if (snapshot.last_failed_packet_id != 0U ||
+        snapshot.last_failed_packet_capacity != 0U ||
+        snapshot.last_failed_active_packet_count != 0U ||
+        snapshot.last_failed_frame_count != 0U ||
+        snapshot.last_failed_sample_rate != 0U ||
+        snapshot.last_failed_channel_count != 0U ||
+        snapshot.last_failed_format != AudioSampleFormat::Signed16) {
+        return Fail("pcm packet invalid descriptor kept capacity failure identity");
+    }
+
+    const AudioPcmSamplePacketRequest second_overflow_request = BasicPcmSamplePacketRequest(static_cast<std::uint32_t>(MAX_PCM_SAMPLE_PACKETS + 2U));
+    AudioPcmSamplePacketHandle second_rejected_packet{};
+    if (device.CreatePcmSamplePacket(second_overflow_request, second_rejected_packet) != AudioStatus::CapacityExceeded) {
+        return Fail("pcm packet second capacity overflow was not rejected");
+    }
+
+    AudioPcmSamplePacketRecord record{};
+    if (device.QueryPcmSamplePacket(first_packet, record) != AudioStatus::Success) {
+        return Fail("pcm packet query did not clear capacity failure setup");
+    }
+
+    snapshot = device.PcmSamplePacketSnapshot();
+    if (snapshot.last_required_packet_count != 0U) {
+        return Fail("pcm packet query success kept required packet count");
+    }
+
+    if (snapshot.last_failed_packet_id != 0U ||
+        snapshot.last_failed_packet_capacity != 0U ||
+        snapshot.last_failed_active_packet_count != 0U ||
+        snapshot.last_failed_frame_count != 0U ||
+        snapshot.last_failed_sample_rate != 0U ||
+        snapshot.last_failed_channel_count != 0U ||
+        snapshot.last_failed_format != AudioSampleFormat::Signed16) {
+        return Fail("pcm packet query success kept capacity failure identity");
     }
 
     return 0;
