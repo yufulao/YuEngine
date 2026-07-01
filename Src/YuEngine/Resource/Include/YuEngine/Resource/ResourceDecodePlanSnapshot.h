@@ -17,6 +17,8 @@ struct ResourceDecodePlanSnapshot final {
     std::uint32_t planned_decoded_byte_count = 0U;
     std::uint32_t active_plan_count = 0U;
     std::uint32_t decode_plan_record_count = 0U;
+    std::uint32_t last_required_plan_count = 0U;
+    std::uint32_t last_required_decoded_byte_count = 0U;
     std::uint64_t created_plan_count = 0U;
     std::uint64_t queried_plan_count = 0U;
     std::uint64_t released_plan_count = 0U;

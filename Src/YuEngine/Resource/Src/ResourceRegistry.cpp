@@ -1883,16 +1883,29 @@ ResourceDecodePlanStatus ResourceRegistry::RecordDecodePlanRejected(
     const ResourceDecodePlanRequest &request,
     ResourceDecodePlanStatus status) {
     ++decode_plan_snapshot_.rejected_plan_request_count;
+    decode_plan_snapshot_.last_required_plan_count = 0U;
+    decode_plan_snapshot_.last_required_decoded_byte_count = 0U;
     if (status == ResourceDecodePlanStatus::DuplicatePlanId) {
         ++decode_plan_snapshot_.duplicate_plan_rejected_count;
     }
 
     if (status == ResourceDecodePlanStatus::CapacityExceeded) {
         ++decode_plan_snapshot_.capacity_rejected_plan_count;
+        decode_plan_snapshot_.last_required_plan_count =
+            decode_plan_snapshot_.active_plan_count + 1U;
     }
 
     if (status == ResourceDecodePlanStatus::BudgetExceeded) {
         ++decode_plan_snapshot_.budget_rejected_plan_count;
+        if (operation == ResourceDecodePlanOperation::Create) {
+            decode_plan_snapshot_.last_required_decoded_byte_count =
+                decode_plan_snapshot_.planned_decoded_byte_count + request.expected_decoded_byte_count;
+        }
+
+        if (operation == ResourceDecodePlanOperation::ConfigureBudget) {
+            decode_plan_snapshot_.last_required_decoded_byte_count =
+                decode_plan_snapshot_.planned_decoded_byte_count;
+        }
     }
 
     if (status == ResourceDecodePlanStatus::InvalidHeader) {
@@ -1941,6 +1954,8 @@ void ResourceRegistry::RecordDecodePlanSuccess(
 
     decode_plan_snapshot_.last_operation = operation;
     decode_plan_snapshot_.last_status = ResourceDecodePlanStatus::Success;
+    decode_plan_snapshot_.last_required_plan_count = 0U;
+    decode_plan_snapshot_.last_required_decoded_byte_count = 0U;
     decode_plan_snapshot_.last_resource = request.resource;
     decode_plan_snapshot_.last_payload_id = request.payload_id;
     decode_plan_snapshot_.last_decode_plan_id = request.decode_plan_id;
