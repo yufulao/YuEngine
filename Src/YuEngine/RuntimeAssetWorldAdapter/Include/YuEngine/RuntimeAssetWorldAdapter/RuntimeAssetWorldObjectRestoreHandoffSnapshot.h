@@ -24,6 +24,8 @@ struct RuntimeAssetWorldObjectRestoreHandoffSnapshot final {
     std::uint64_t emitted_gate_record_count = 0U;
     std::uint64_t restored_identity_count = 0U;
     std::uint64_t restored_transform_count = 0U;
+    std::uint64_t applied_transform_value_count = 0U;
+    std::uint64_t updated_world_object_count = 0U;
     yuengine::memory::MemoryAccountingStatus allocation_accounting_status =
         yuengine::memory::MemoryAccountingStatus::ExplicitlyTrackedOnly;
     RuntimeAssetWorldObjectRestoreHandoffStatus last_status =

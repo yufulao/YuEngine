@@ -21,5 +21,7 @@ struct RuntimeAssetWorldObjectRestoreHandoffState final {
     std::uint32_t restored_binding_count = 0U;
     std::uint32_t restored_identity_count = 0U;
     std::uint32_t restored_transform_count = 0U;
+    std::uint32_t applied_transform_value_count = 0U;
+    std::uint32_t updated_world_object_count = 0U;
 };
 }

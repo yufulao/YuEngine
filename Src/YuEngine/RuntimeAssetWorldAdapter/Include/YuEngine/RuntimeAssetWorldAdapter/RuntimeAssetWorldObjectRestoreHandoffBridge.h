@@ -42,6 +42,8 @@ private:
         RuntimeAssetWorldObjectRestoreHandoffStatus status);
     RuntimeAssetWorldObjectRestoreHandoffResult RecordAdapterFailure(
         RuntimeAssetWorldObjectAdapterStatus adapter_status);
+    RuntimeAssetWorldObjectRestoreHandoffResult RecordTransformApplicationFailure(
+        RuntimeAssetWorldObjectAdapterStatus adapter_status);
     RuntimeAssetWorldObjectRestoreHandoffResult RecordGateFailure(
         yuengine::world::WorldSceneActiveRestoreGateStatus gate_status,
         yuengine::world::WorldSceneApplyTimeRestoreProofStatus proof_status);

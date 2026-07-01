@@ -26,6 +26,17 @@ enum class RuntimeAssetWorldObjectAdapterStatus {
     DuplicateWorldObjectId,
     DuplicateObjectHandle,
     IdentityOutputCapacityExceeded,
-    TransformOutputCapacityExceeded
+    TransformOutputCapacityExceeded,
+    InvalidTransformDestination,
+    InvalidTransformApplicationOutput,
+    InvalidTransformSampleRequest,
+    InvalidSampledTransformInput,
+    SampledTransformOutputCapacityExceeded,
+    MissingSampledTransform,
+    UnsupportedSampledTransformChannel,
+    InvalidSampledTransformValue,
+    TransformTargetNotFound,
+    TransformSamplingFailed,
+    TransformApplyFailed
 };
 }

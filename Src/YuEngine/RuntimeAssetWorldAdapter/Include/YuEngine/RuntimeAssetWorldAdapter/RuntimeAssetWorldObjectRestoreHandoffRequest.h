@@ -6,6 +6,7 @@
 #include <cstdint>
 
 #include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectAdapterRequest.h"
+#include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectTransformApplicationRequest.h"
 #include "YuEngine/World/WorldComponentAttachmentSnapshotRecord.h"
 #include "YuEngine/World/WorldComponentResourceBindingSnapshotRecord.h"
 #include "YuEngine/World/WorldSceneActiveRestoreGateRecord.h"
@@ -32,6 +33,7 @@ class WorldTransformBridge;
 namespace yuengine::runtimeassetworldadapter {
 struct RuntimeAssetWorldObjectRestoreHandoffRequest final {
     const RuntimeAssetWorldObjectAdapterRequest *adapter_request = nullptr;
+    const RuntimeAssetWorldObjectTransformApplicationRequest *transform_application_request = nullptr;
     yuengine::world::WorldInstance *world = nullptr;
     yuengine::object::ObjectRegistry *object_registry = nullptr;
     yuengine::resource::ResourceRegistry *resource_registry = nullptr;

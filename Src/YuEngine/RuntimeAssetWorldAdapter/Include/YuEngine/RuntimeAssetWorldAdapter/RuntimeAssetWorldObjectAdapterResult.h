@@ -13,9 +13,11 @@ struct RuntimeAssetWorldObjectAdapterResult final {
     RuntimeAssetWorldObjectAdapterStatus status = RuntimeAssetWorldObjectAdapterStatus::Success;
     RuntimeAssetWorldObjectAdapterState state{};
     std::uint32_t failed_mapping_index = 0U;
+    std::uint32_t failed_playback_request_index = 0U;
     std::uint64_t failed_target_id = 0U;
     std::uint32_t required_identity_output_count = 0U;
     std::uint32_t required_transform_output_count = 0U;
+    std::uint32_t required_sampled_transform_value_count = 0U;
 
     /**
      * @comment 创建成功结果。

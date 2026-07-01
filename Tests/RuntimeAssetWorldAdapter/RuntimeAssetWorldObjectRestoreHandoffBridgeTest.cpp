@@ -4,8 +4,12 @@
 #include <array>
 #include <cstdint>
 #include <cstdio>
+#include <span>
 #include <string_view>
 
+#include "YuEngine/Animation/AnimationRuntimeSampler.h"
+#include "YuEngine/Kernel/RuntimeFrameContext.h"
+#include "YuEngine/Kernel/RuntimeFrameMode.h"
 #include "YuEngine/Object/ObjectDescriptor.h"
 #include "YuEngine/Object/ObjectHandle.h"
 #include "YuEngine/Object/ObjectRegistrationResult.h"
@@ -19,14 +23,20 @@
 #include "YuEngine/Resource/ResourceRegistry.h"
 #include "YuEngine/Resource/ResourceTypeId.h"
 #include "YuEngine/RuntimeAsset/RuntimeAssetData.h"
+#include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectAdapterBridge.h"
 #include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectAdapterIdentityRecord.h"
 #include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectAdapterRequest.h"
+#include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectAdapterResult.h"
 #include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectAdapterStatus.h"
+#include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectProducerPlaybackRequest.h"
 #include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectRestoreHandoffBridge.h"
 #include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectRestoreHandoffRequest.h"
 #include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectRestoreHandoffResult.h"
 #include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectRestoreHandoffSnapshot.h"
 #include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectRestoreHandoffStatus.h"
+#include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectTimelineTransformSampleRequest.h"
+#include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectTransformApplicationRequest.h"
+#include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectTransformSamplerBridgeRequest.h"
 #include "YuEngine/World/WorldComponentAttachmentBridge.h"
 #include "YuEngine/World/WorldComponentAttachmentSnapshotRecord.h"
 #include "YuEngine/World/WorldComponentResourceBindingBridge.h"
@@ -54,6 +64,15 @@
 #include "YuEngine/World/WorldTransformState.h"
 #include "YuEngine/World/WorldTransformStatus.h"
 
+using yuengine::animation::AnimationRuntimeChannel;
+using yuengine::animation::AnimationRuntimeClipRecord;
+using yuengine::animation::AnimationRuntimeInterpolation;
+using yuengine::animation::AnimationRuntimeKeyframeRecord;
+using yuengine::animation::AnimationRuntimeSampleRequest;
+using yuengine::animation::AnimationRuntimeSampledValue;
+using yuengine::animation::AnimationRuntimeTrackRecord;
+using yuengine::kernel::RuntimeFrameContext;
+using yuengine::kernel::RuntimeFrameMode;
 using yuengine::object::ObjectDescriptor;
 using yuengine::object::ObjectHandle;
 using yuengine::object::ObjectRegistrationResult;
@@ -70,14 +89,21 @@ using yuengine::runtimeasset::RuntimeAssetRuntimeInstanceMappingRecord;
 using yuengine::runtimeasset::RuntimeAssetSceneEntityRecord;
 using yuengine::runtimeasset::RuntimeAssetSceneTransformOutputRecord;
 using yuengine::runtimeasset::RuntimeAssetTargetIdentityKind;
+using yuengine::runtimeassetworldadapter::RuntimeAssetWorldObjectAdapterBridge;
 using yuengine::runtimeassetworldadapter::RuntimeAssetWorldObjectAdapterIdentityRecord;
 using yuengine::runtimeassetworldadapter::RuntimeAssetWorldObjectAdapterRequest;
+using yuengine::runtimeassetworldadapter::RuntimeAssetWorldObjectAdapterResult;
 using yuengine::runtimeassetworldadapter::RuntimeAssetWorldObjectAdapterStatus;
+using yuengine::runtimeassetworldadapter::RuntimeAssetWorldObjectProducerPlaybackBatchRequest;
+using yuengine::runtimeassetworldadapter::RuntimeAssetWorldObjectProducerPlaybackRequest;
 using yuengine::runtimeassetworldadapter::RuntimeAssetWorldObjectRestoreHandoffBridge;
 using yuengine::runtimeassetworldadapter::RuntimeAssetWorldObjectRestoreHandoffRequest;
 using yuengine::runtimeassetworldadapter::RuntimeAssetWorldObjectRestoreHandoffResult;
 using yuengine::runtimeassetworldadapter::RuntimeAssetWorldObjectRestoreHandoffSnapshot;
 using yuengine::runtimeassetworldadapter::RuntimeAssetWorldObjectRestoreHandoffStatus;
+using yuengine::runtimeassetworldadapter::RuntimeAssetWorldObjectTimelineTransformSampleRequest;
+using yuengine::runtimeassetworldadapter::RuntimeAssetWorldObjectTransformApplicationRequest;
+using yuengine::runtimeassetworldadapter::RuntimeAssetWorldObjectTransformSamplerBridgeRequest;
 using yuengine::world::WorldComponentAttachmentBridge;
 using yuengine::world::WorldComponentAttachmentSnapshotRecord;
 using yuengine::world::WorldComponentResourceBindingBridge;
@@ -121,6 +147,20 @@ constexpr std::uint32_t SCRATCH_RECORD_COUNT = 8U;
 constexpr std::uint32_t SIDECAR_RECORD_COUNT = 2U;
 constexpr const char *TEST_APPLY_RESTORE =
     "RuntimeAssetWorldObjectRestoreHandoff_AppliesAdapterRecordsThroughWorldRestoreBridge";
+constexpr const char *TEST_APPLY_SAMPLED_TRANSFORMS =
+    "RuntimeAssetWorldObjectRestoreHandoff_AppliesSampledTransformsThroughAdapterBridge";
+constexpr const char *TEST_APPLY_RUNTIME_ANIMATION_SAMPLES =
+    "RuntimeAssetWorldObjectRestoreHandoff_AppliesRuntimeAnimationSamplesThroughSamplerBridge";
+constexpr const char *TEST_APPLY_TIMELINE_SAMPLES =
+    "RuntimeAssetWorldObjectRestoreHandoff_AppliesTimelineSamplesThroughSamplerRequest";
+constexpr const char *TEST_SNAPSHOT_TIMELINE_APPLICATION_COUNT =
+    "RuntimeAssetWorldObjectRestoreHandoff_SnapshotsTimelineTransformApplicationCountWithoutMutation";
+constexpr const char *TEST_APPLY_PRODUCER_PLAYBACK =
+    "RuntimeAssetWorldObjectRestoreHandoff_AppliesProducerPlaybackThroughScratchHandoff";
+constexpr const char *TEST_APPLY_PRODUCER_PLAYBACK_BATCH =
+    "RuntimeAssetWorldObjectRestoreHandoff_AppliesProducerPlaybackBatchThroughScratchHandoff";
+constexpr const char *TEST_SNAPSHOT_PRODUCER_PLAYBACK_BATCH_COUNT =
+    "RuntimeAssetWorldObjectRestoreHandoff_SnapshotsProducerPlaybackBatchCountWithoutMutation";
 constexpr const char *TEST_APPLY_TARGET_FAMILY_ALIASES =
     "RuntimeAssetWorldObjectRestoreHandoff_AppliesModelAndSkeletonTargetFamilyAliases";
 constexpr const char *TEST_APPLY_ATTACHMENT_BINDING_GATE_RECORDS =
@@ -131,12 +171,27 @@ constexpr const char *TEST_REJECT_SIDECAR_ASSEMBLY_FAILURE_STATUS =
     "RuntimeAssetWorldObjectRestoreHandoff_ExposesSidecarAssemblyFailureStatus";
 constexpr const char *TEST_REJECT_ADAPTER_PREFLIGHT =
     "RuntimeAssetWorldObjectRestoreHandoff_RejectsAdapterPreflightWithoutWorldMutation";
+constexpr const char *TEST_REJECT_UNMAPPED_SAMPLED_TRANSFORM =
+    "RuntimeAssetWorldObjectRestoreHandoff_RejectsUnmappedSampledTransformBeforeWorldRestore";
+constexpr const char *TEST_REJECT_TIMELINE_OUTPUT_ATOMIC =
+    "RuntimeAssetWorldObjectRestoreHandoff_RejectsTimelineSamplerOutputFailureWithoutMutation";
+constexpr const char *TEST_REJECT_TIMELINE_APPLICATION_COUNT =
+    "RuntimeAssetWorldObjectRestoreHandoff_RejectsTimelineTransformApplicationCountFailureWithoutMutation";
+constexpr const char *TEST_REJECT_PRODUCER_PLAYBACK_ATOMIC =
+    "RuntimeAssetWorldObjectRestoreHandoff_RejectsProducerPlaybackFailureWithoutMutation";
+constexpr const char *TEST_REJECT_PRODUCER_PLAYBACK_BATCH_ATOMIC =
+    "RuntimeAssetWorldObjectRestoreHandoff_RejectsProducerPlaybackBatchFailureWithoutMutation";
+constexpr const char *TEST_REJECT_PRODUCER_PLAYBACK_BATCH_COUNT =
+    "RuntimeAssetWorldObjectRestoreHandoff_RejectsProducerPlaybackBatchCountFailureWithoutMutation";
+constexpr const char *TEST_REJECT_TIMELINE_SAMPLE_TARGETS =
+    "RuntimeAssetWorldObjectRestoreHandoff_RejectsTimelineSampleTargetsBeforeWorldRestore";
 constexpr const char *TEST_REJECT_WORLD_GATE =
     "RuntimeAssetWorldObjectRestoreHandoff_RejectsWorldGateWithoutRestoringSidecars";
 constexpr const char *TEST_REJECT_NULL_ADAPTER =
     "RuntimeAssetWorldObjectRestoreHandoff_RejectsNullAdapterRequestWithoutMutation";
 constexpr WorldObjectId WORLD_OBJECT_A{1U};
 constexpr WorldObjectId WORLD_OBJECT_B{2U};
+constexpr WorldObjectId WORLD_OBJECT_UNMAPPED{77U};
 constexpr WorldObjectId SENTINEL_WORLD_OBJECT{99U};
 constexpr ObjectHandle SENTINEL_OBJECT_HANDLE{9U, 9U};
 constexpr ObjectTypeId OBJECT_TYPE_PLAYER{1U};
@@ -151,6 +206,9 @@ constexpr std::uint64_t TARGET_A = 1001U;
 constexpr std::uint64_t TARGET_B = 1002U;
 constexpr std::uint32_t ENTITY_A = 11U;
 constexpr std::uint32_t ENTITY_B = 12U;
+constexpr std::uint32_t CLIP_ID = 2101U;
+constexpr std::uint32_t TRACK_ID = 2201U;
+constexpr std::uint64_t HALF_SECOND_NANOSECONDS = 500000000ULL;
 
 using TestFunction = int (*)();
 
@@ -189,6 +247,63 @@ WorldTransformState Transform(float translation_x) {
     transform.scale_y = 1.0F;
     transform.scale_z = 1.0F;
     return transform;
+}
+
+RuntimeFrameContext FrameContext(std::uint64_t fixed_time_nanoseconds) {
+    RuntimeFrameContext context{};
+    context.frame_index = 1U;
+    context.delta_time_nanoseconds = HALF_SECOND_NANOSECONDS;
+    context.fixed_time_nanoseconds = fixed_time_nanoseconds;
+    context.frame_mode = RuntimeFrameMode::Fixed;
+    return context;
+}
+
+AnimationRuntimeClipRecord ClipRecord(std::size_t track_count) {
+    AnimationRuntimeClipRecord clip{};
+    clip.clip_id = CLIP_ID;
+    clip.duration_seconds = 1.0F;
+    clip.first_track_index = 0U;
+    clip.track_count = track_count;
+    clip.layer_count = 1U;
+    clip.is_valid = true;
+    return clip;
+}
+
+AnimationRuntimeTrackRecord TrackRecord(
+    WorldObjectId target,
+    AnimationRuntimeChannel channel,
+    std::size_t first_keyframe_index) {
+    AnimationRuntimeTrackRecord track{};
+    track.track_id = TRACK_ID + static_cast<std::uint32_t>(first_keyframe_index);
+    track.target = target;
+    track.channel = channel;
+    track.interpolation = AnimationRuntimeInterpolation::Linear;
+    track.first_keyframe_index = first_keyframe_index;
+    track.keyframe_count = 2U;
+    track.is_valid = true;
+    return track;
+}
+
+AnimationRuntimeKeyframeRecord Keyframe(float time_seconds, float value) {
+    AnimationRuntimeKeyframeRecord keyframe{};
+    keyframe.time_seconds = time_seconds;
+    keyframe.value = value;
+    keyframe.is_valid = true;
+    return keyframe;
+}
+
+AnimationRuntimeSampleRequest MakeSampleRequest(
+    std::span<const AnimationRuntimeClipRecord> clips,
+    std::span<const AnimationRuntimeTrackRecord> tracks,
+    std::span<const AnimationRuntimeKeyframeRecord> keyframes) {
+    AnimationRuntimeSampleRequest request{};
+    request.clip_id = CLIP_ID;
+    request.clips = clips;
+    request.tracks = tracks;
+    request.keyframes = keyframes;
+    request.frame_context = FrameContext(HALF_SECOND_NANOSECONDS);
+    request.clip_start_time_nanoseconds = 0U;
+    return request;
 }
 
 RuntimeAssetRuntimeInstanceMappingRecord Mapping(
@@ -367,6 +482,22 @@ int RegisterWorldObject(WorldInstance *world, WorldObjectId world_object_id) {
     return 0;
 }
 
+int RegisterTransform(
+    WorldTransformBridge *transform_destination,
+    WorldObjectId world_object_id,
+    WorldTransformState transform) {
+    if (transform_destination == nullptr) {
+        return Fail("transform destination missing");
+    }
+
+    const WorldTransformResult result = transform_destination->Register(world_object_id, transform);
+    if (result.status != WorldTransformStatus::Success) {
+        return Fail("transform setup failed");
+    }
+
+    return 0;
+}
+
 int PrepareWorldAndObjects(
     WorldInstance *world,
     ObjectRegistry *object_registry,
@@ -427,6 +558,131 @@ RuntimeAssetWorldObjectAdapterRequest MakeAdapterRequest(HandoffFixture *fixture
     request.output_identity_capacity = OUTPUT_RECORD_COUNT;
     request.output_transforms = fixture->output_transforms.data();
     request.output_transform_capacity = OUTPUT_RECORD_COUNT;
+    return request;
+}
+
+RuntimeAssetWorldObjectTransformApplicationRequest MakeTransformApplicationRequest(
+    HandoffFixture *fixture,
+    WorldTransformBridge *transform_destination,
+    const AnimationRuntimeSampledValue *sampled_values,
+    std::uint32_t sampled_value_count) {
+    RuntimeAssetWorldObjectTransformApplicationRequest request{};
+    if (fixture == nullptr) {
+        return request;
+    }
+
+    request.runtime_instance_mappings = fixture->mappings.data();
+    request.runtime_instance_mapping_count = OUTPUT_RECORD_COUNT;
+    request.identity_records = fixture->identity_records.data();
+    request.identity_record_count = OUTPUT_RECORD_COUNT;
+    request.transform_destination = transform_destination;
+    request.sampled_values = sampled_values;
+    request.sampled_value_count = sampled_value_count;
+    return request;
+}
+
+RuntimeAssetWorldObjectTransformSamplerBridgeRequest MakeTransformSamplerBridgeRequest(
+    HandoffFixture *fixture,
+    WorldTransformBridge *transform_destination,
+    const AnimationRuntimeSampleRequest *sample_request,
+    AnimationRuntimeSampledValue *sampled_value_output,
+    std::uint32_t sampled_value_output_capacity) {
+    RuntimeAssetWorldObjectTransformSamplerBridgeRequest request{};
+    if (fixture == nullptr) {
+        return request;
+    }
+
+    request.runtime_instance_mappings = fixture->mappings.data();
+    request.runtime_instance_mapping_count = OUTPUT_RECORD_COUNT;
+    request.identity_records = fixture->identity_records.data();
+    request.identity_record_count = OUTPUT_RECORD_COUNT;
+    request.transform_destination = transform_destination;
+    request.sample_request = sample_request;
+    request.sampled_value_output = sampled_value_output;
+    request.sampled_value_output_capacity = sampled_value_output_capacity;
+    return request;
+}
+
+RuntimeAssetWorldObjectTimelineTransformSampleRequest MakeTimelineTransformSampleRequest(
+    HandoffFixture *fixture,
+    WorldTransformBridge *transform_destination,
+    std::span<const AnimationRuntimeClipRecord> clips,
+    std::span<const AnimationRuntimeTrackRecord> tracks,
+    std::span<const AnimationRuntimeKeyframeRecord> keyframes,
+    AnimationRuntimeSampledValue *sampled_value_scratch,
+    std::uint32_t sampled_value_scratch_capacity,
+    AnimationRuntimeSampledValue *sampled_value_output,
+    std::uint32_t sampled_value_output_capacity) {
+    RuntimeAssetWorldObjectTimelineTransformSampleRequest request{};
+    if (fixture == nullptr) {
+        return request;
+    }
+
+    request.runtime_instance_mappings = fixture->mappings.data();
+    request.runtime_instance_mapping_count = OUTPUT_RECORD_COUNT;
+    request.identity_records = fixture->identity_records.data();
+    request.identity_record_count = OUTPUT_RECORD_COUNT;
+    request.transform_destination = transform_destination;
+    request.clip_id = CLIP_ID;
+    request.clips = clips;
+    request.tracks = tracks;
+    request.keyframes = keyframes;
+    request.frame_context = FrameContext(HALF_SECOND_NANOSECONDS);
+    request.clip_start_time_nanoseconds = 0U;
+    request.sampled_value_scratch = sampled_value_scratch;
+    request.sampled_value_scratch_capacity = sampled_value_scratch_capacity;
+    request.sampled_value_output = sampled_value_output;
+    request.sampled_value_output_capacity = sampled_value_output_capacity;
+    return request;
+}
+
+RuntimeAssetWorldObjectProducerPlaybackRequest MakeProducerPlaybackRequest(
+    HandoffFixture *fixture,
+    WorldTransformBridge *transform_destination,
+    std::span<const AnimationRuntimeClipRecord> clips,
+    std::span<const AnimationRuntimeTrackRecord> tracks,
+    std::span<const AnimationRuntimeKeyframeRecord> keyframes,
+    AnimationRuntimeSampledValue *sampled_value_scratch,
+    std::uint32_t sampled_value_scratch_capacity,
+    AnimationRuntimeSampledValue *sampled_value_output,
+    std::uint32_t sampled_value_output_capacity) {
+    RuntimeAssetWorldObjectProducerPlaybackRequest request{};
+    if (fixture == nullptr) {
+        return request;
+    }
+
+    request.runtime_instance_mappings = fixture->mappings.data();
+    request.runtime_instance_mapping_count = OUTPUT_RECORD_COUNT;
+    request.identity_records = fixture->identity_records.data();
+    request.identity_record_count = OUTPUT_RECORD_COUNT;
+    request.transform_destination = transform_destination;
+    request.export_clip_id = CLIP_ID;
+    request.export_clips = clips;
+    request.export_tracks = tracks;
+    request.export_keyframes = keyframes;
+    request.playback_frame_context = FrameContext(HALF_SECOND_NANOSECONDS);
+    request.export_clip_start_time_nanoseconds = 0U;
+    request.sampled_value_scratch = sampled_value_scratch;
+    request.sampled_value_scratch_capacity = sampled_value_scratch_capacity;
+    request.sampled_value_output = sampled_value_output;
+    request.sampled_value_output_capacity = sampled_value_output_capacity;
+    return request;
+}
+
+RuntimeAssetWorldObjectProducerPlaybackBatchRequest MakeProducerPlaybackBatchRequest(
+    const RuntimeAssetWorldObjectProducerPlaybackRequest *playback_requests,
+    std::uint32_t playback_request_count,
+    AnimationRuntimeSampledValue *sampled_value_scratch,
+    std::uint32_t sampled_value_scratch_capacity,
+    AnimationRuntimeSampledValue *sampled_value_output,
+    std::uint32_t sampled_value_output_capacity) {
+    RuntimeAssetWorldObjectProducerPlaybackBatchRequest request{};
+    request.producer_playback_requests = playback_requests;
+    request.producer_playback_request_count = playback_request_count;
+    request.sampled_value_scratch = sampled_value_scratch;
+    request.sampled_value_scratch_capacity = sampled_value_scratch_capacity;
+    request.sampled_value_output = sampled_value_output;
+    request.sampled_value_output_capacity = sampled_value_output_capacity;
     return request;
 }
 
@@ -566,6 +822,37 @@ bool TransformsMatch(WorldTransformState left, WorldTransformState right) {
     }
 
     return left.scale_z == right.scale_z;
+}
+
+bool SampledValuesMatch(AnimationRuntimeSampledValue left, AnimationRuntimeSampledValue right) {
+    if (left.target.value != right.target.value) {
+        return false;
+    }
+
+    if (left.channel != right.channel) {
+        return false;
+    }
+
+    return left.value == right.value;
+}
+
+bool SampledValueArraysMatch(
+    std::span<const AnimationRuntimeSampledValue> left,
+    std::span<const AnimationRuntimeSampledValue> right) {
+    if (left.size() != right.size()) {
+        return false;
+    }
+
+    std::size_t value_index = 0U;
+    while (value_index < left.size()) {
+        if (!SampledValuesMatch(left[value_index], right[value_index])) {
+            return false;
+        }
+
+        ++value_index;
+    }
+
+    return true;
 }
 
 bool ObjectHandlesMatch(ObjectHandle left, ObjectHandle right) {
@@ -738,6 +1025,2005 @@ int TestApplyRestore() {
 
     if (snapshot.restored_identity_count != OUTPUT_RECORD_COUNT) {
         return Fail("handoff snapshot restored identity count mismatch");
+    }
+
+    return 0;
+}
+
+int TestApplySampledTransformsThroughAdapterBridge() {
+    HandoffFixture fixture = MakeFixture();
+    WorldInstance world = MakeWorld();
+    ObjectRegistry object_registry = MakeObjectRegistry();
+    if (PrepareWorldAndObjects(&world, &object_registry, &fixture, true) != 0) {
+        return 1;
+    }
+
+    ResourceRegistry resource_registry{};
+    WorldObjectIdentityBridge identity_destination(world, object_registry);
+    WorldTransformBridge transform_destination(world);
+    WorldComponentAttachmentBridge attachment_destination{};
+    WorldComponentResourceBindingBridge binding_destination{};
+    RuntimeAssetWorldObjectAdapterRequest adapter_request = MakeAdapterRequest(&fixture);
+    std::array<AnimationRuntimeSampledValue, 3U> sampled_values{};
+    sampled_values[0U].target = WORLD_OBJECT_A;
+    sampled_values[0U].channel = AnimationRuntimeChannel::TranslationX;
+    sampled_values[0U].value = 31.0F;
+    sampled_values[1U].target = WORLD_OBJECT_A;
+    sampled_values[1U].channel = AnimationRuntimeChannel::RotationY;
+    sampled_values[1U].value = 0.25F;
+    sampled_values[2U].target = WORLD_OBJECT_B;
+    sampled_values[2U].channel = AnimationRuntimeChannel::ScaleZ;
+    sampled_values[2U].value = 3.5F;
+    RuntimeAssetWorldObjectTransformApplicationRequest transform_application_request =
+        MakeTransformApplicationRequest(
+            &fixture,
+            &transform_destination,
+            sampled_values.data(),
+            static_cast<std::uint32_t>(sampled_values.size()));
+    RuntimeAssetWorldObjectRestoreHandoffRequest handoff_request = MakeHandoffRequest(
+        &fixture,
+        &adapter_request,
+        &world,
+        &object_registry,
+        &resource_registry,
+        &identity_destination,
+        &transform_destination,
+        &attachment_destination,
+        &binding_destination);
+    handoff_request.transform_application_request = &transform_application_request;
+
+    RuntimeAssetWorldObjectRestoreHandoffBridge bridge{};
+    const RuntimeAssetWorldObjectRestoreHandoffResult result = bridge.ApplyRestore(handoff_request);
+    if (!result.Succeeded()) {
+        return Fail("sampled transform handoff apply failed");
+    }
+
+    if (result.state.applied_transform_value_count != 3U) {
+        return Fail("sampled transform handoff applied value count mismatch");
+    }
+
+    if (result.state.updated_world_object_count != 2U) {
+        return Fail("sampled transform handoff updated object count mismatch");
+    }
+
+    const WorldTransformResult transform_a = transform_destination.Query(WORLD_OBJECT_A);
+    if (!transform_a.Succeeded()) {
+        return Fail("sampled transform handoff query a failed");
+    }
+
+    if (transform_a.transform_state.translation_x != 31.0F ||
+        transform_a.transform_state.rotation_y != 0.25F ||
+        transform_a.transform_state.translation_y != fixture.scene_transforms[0U].transform.translation_y) {
+        return Fail("sampled transform handoff transform a mismatch");
+    }
+
+    const WorldTransformResult transform_b = transform_destination.Query(WORLD_OBJECT_B);
+    if (!transform_b.Succeeded()) {
+        return Fail("sampled transform handoff query b failed");
+    }
+
+    if (transform_b.transform_state.scale_z != 3.5F ||
+        transform_b.transform_state.translation_x != fixture.scene_transforms[1U].transform.translation_x) {
+        return Fail("sampled transform handoff transform b mismatch");
+    }
+
+    const RuntimeAssetWorldObjectRestoreHandoffSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.applied_transform_value_count != 3U) {
+        return Fail("sampled transform handoff snapshot applied value count mismatch");
+    }
+
+    if (snapshot.updated_world_object_count != 2U) {
+        return Fail("sampled transform handoff snapshot updated object count mismatch");
+    }
+
+    return 0;
+}
+
+int TestApplyRuntimeAnimationSamplesThroughSamplerBridge() {
+    HandoffFixture fixture = MakeFixture();
+    WorldInstance world = MakeWorld();
+    ObjectRegistry object_registry = MakeObjectRegistry();
+    if (PrepareWorldAndObjects(&world, &object_registry, &fixture, true) != 0) {
+        return 1;
+    }
+
+    ResourceRegistry resource_registry{};
+    WorldObjectIdentityBridge identity_destination(world, object_registry);
+    WorldTransformBridge transform_destination(world);
+    WorldComponentAttachmentBridge attachment_destination{};
+    WorldComponentResourceBindingBridge binding_destination{};
+    RuntimeAssetWorldObjectAdapterRequest adapter_request = MakeAdapterRequest(&fixture);
+
+    std::array<AnimationRuntimeClipRecord, 1U> clips{};
+    clips[0U] = ClipRecord(3U);
+    std::array<AnimationRuntimeTrackRecord, 3U> tracks{};
+    tracks[0U] = TrackRecord(WORLD_OBJECT_A, AnimationRuntimeChannel::TranslationX, 0U);
+    tracks[1U] = TrackRecord(WORLD_OBJECT_A, AnimationRuntimeChannel::RotationY, 2U);
+    tracks[2U] = TrackRecord(WORLD_OBJECT_B, AnimationRuntimeChannel::ScaleZ, 4U);
+    std::array<AnimationRuntimeKeyframeRecord, 6U> keyframes{};
+    keyframes[0U] = Keyframe(0.0F, 30.0F);
+    keyframes[1U] = Keyframe(1.0F, 32.0F);
+    keyframes[2U] = Keyframe(0.0F, 0.0F);
+    keyframes[3U] = Keyframe(1.0F, 0.5F);
+    keyframes[4U] = Keyframe(0.0F, 3.0F);
+    keyframes[5U] = Keyframe(1.0F, 4.0F);
+    const AnimationRuntimeSampleRequest sample_request = MakeSampleRequest(
+        std::span<const AnimationRuntimeClipRecord>(clips.data(), clips.size()),
+        std::span<const AnimationRuntimeTrackRecord>(tracks.data(), tracks.size()),
+        std::span<const AnimationRuntimeKeyframeRecord>(keyframes.data(), keyframes.size()));
+
+    std::array<AnimationRuntimeSampledValue, 3U> sampled_values{};
+    const std::uint32_t sampled_value_count = static_cast<std::uint32_t>(sampled_values.size());
+    const std::uint64_t sampled_value_count_snapshot = static_cast<std::uint64_t>(sampled_value_count);
+    RuntimeAssetWorldObjectTransformApplicationRequest transform_application_request{};
+    const RuntimeAssetWorldObjectTransformSamplerBridgeRequest sampler_bridge_request =
+        MakeTransformSamplerBridgeRequest(
+            &fixture,
+            &transform_destination,
+            &sample_request,
+            sampled_values.data(),
+            sampled_value_count);
+
+    RuntimeAssetWorldObjectAdapterBridge adapter_bridge{};
+    const RuntimeAssetWorldObjectAdapterResult sampler_result =
+        adapter_bridge.BuildTransformApplicationRequest(
+            sampler_bridge_request,
+            &transform_application_request);
+    if (!sampler_result.Succeeded()) {
+        return Fail("runtime animation sampler bridge request failed");
+    }
+
+    if (sampler_result.state.sampled_transform_value_count != sampled_value_count) {
+        return Fail("runtime animation sampler bridge sampled count mismatch");
+    }
+
+    if (transform_application_request.sampled_values != sampled_values.data()) {
+        return Fail("runtime animation sampler bridge output pointer mismatch");
+    }
+
+    if (transform_application_request.sampled_value_count != sampled_value_count) {
+        return Fail("runtime animation sampler bridge output count mismatch");
+    }
+
+    const auto adapter_snapshot = adapter_bridge.Snapshot();
+    if (adapter_snapshot.transform_sampler_bridge_attempt_count != 1U) {
+        return Fail("runtime animation sampler bridge attempt count mismatch");
+    }
+
+    if (adapter_snapshot.sampled_transform_value_count != sampled_value_count_snapshot) {
+        return Fail("runtime animation sampler bridge snapshot count mismatch");
+    }
+
+    RuntimeAssetWorldObjectRestoreHandoffRequest handoff_request = MakeHandoffRequest(
+        &fixture,
+        &adapter_request,
+        &world,
+        &object_registry,
+        &resource_registry,
+        &identity_destination,
+        &transform_destination,
+        &attachment_destination,
+        &binding_destination);
+    handoff_request.transform_application_request = &transform_application_request;
+
+    RuntimeAssetWorldObjectRestoreHandoffBridge bridge{};
+    const RuntimeAssetWorldObjectRestoreHandoffResult result = bridge.ApplyRestore(handoff_request);
+    if (!result.Succeeded()) {
+        return Fail("runtime animation sampler handoff apply failed");
+    }
+
+    if (result.state.applied_transform_value_count != sampled_value_count) {
+        return Fail("runtime animation sampler handoff applied value count mismatch");
+    }
+
+    if (result.state.updated_world_object_count != 2U) {
+        return Fail("runtime animation sampler handoff updated object count mismatch");
+    }
+
+    const WorldTransformResult transform_a = transform_destination.Query(WORLD_OBJECT_A);
+    if (!transform_a.Succeeded()) {
+        return Fail("runtime animation sampler handoff query a failed");
+    }
+
+    if (transform_a.transform_state.translation_x != 31.0F ||
+        transform_a.transform_state.rotation_y != 0.25F ||
+        transform_a.transform_state.translation_y != fixture.scene_transforms[0U].transform.translation_y) {
+        return Fail("runtime animation sampler handoff transform a mismatch");
+    }
+
+    const WorldTransformResult transform_b = transform_destination.Query(WORLD_OBJECT_B);
+    if (!transform_b.Succeeded()) {
+        return Fail("runtime animation sampler handoff query b failed");
+    }
+
+    if (transform_b.transform_state.scale_z != 3.5F ||
+        transform_b.transform_state.translation_x != fixture.scene_transforms[1U].transform.translation_x) {
+        return Fail("runtime animation sampler handoff transform b mismatch");
+    }
+
+    const RuntimeAssetWorldObjectRestoreHandoffSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.applied_transform_value_count != sampled_value_count_snapshot) {
+        return Fail("runtime animation sampler handoff snapshot applied count mismatch");
+    }
+
+    return 0;
+}
+
+int TestApplyTimelineSamplesThroughSamplerRequest() {
+    HandoffFixture fixture = MakeFixture();
+    WorldInstance world = MakeWorld();
+    ObjectRegistry object_registry = MakeObjectRegistry();
+    if (PrepareWorldAndObjects(&world, &object_registry, &fixture, true) != 0) {
+        return 1;
+    }
+
+    ResourceRegistry resource_registry{};
+    WorldObjectIdentityBridge identity_destination(world, object_registry);
+    WorldTransformBridge transform_destination(world);
+    WorldComponentAttachmentBridge attachment_destination{};
+    WorldComponentResourceBindingBridge binding_destination{};
+    RuntimeAssetWorldObjectAdapterRequest adapter_request = MakeAdapterRequest(&fixture);
+
+    std::array<AnimationRuntimeClipRecord, 1U> clips{};
+    clips[0U] = ClipRecord(3U);
+    std::array<AnimationRuntimeTrackRecord, 3U> tracks{};
+    tracks[0U] = TrackRecord(WORLD_OBJECT_B, AnimationRuntimeChannel::ScaleZ, 0U);
+    tracks[1U] = TrackRecord(WORLD_OBJECT_A, AnimationRuntimeChannel::TranslationX, 2U);
+    tracks[2U] = TrackRecord(WORLD_OBJECT_A, AnimationRuntimeChannel::RotationY, 4U);
+    std::array<AnimationRuntimeKeyframeRecord, 6U> keyframes{};
+    keyframes[0U] = Keyframe(0.0F, 3.0F);
+    keyframes[1U] = Keyframe(1.0F, 4.0F);
+    keyframes[2U] = Keyframe(0.0F, 40.0F);
+    keyframes[3U] = Keyframe(1.0F, 42.0F);
+    keyframes[4U] = Keyframe(0.0F, 0.0F);
+    keyframes[5U] = Keyframe(1.0F, 0.5F);
+
+    std::array<AnimationRuntimeSampledValue, 3U> sampled_scratch{};
+    std::array<AnimationRuntimeSampledValue, 3U> sampled_values{};
+    const std::uint32_t sampled_value_count = static_cast<std::uint32_t>(sampled_values.size());
+    const std::uint64_t sampled_value_count_snapshot = static_cast<std::uint64_t>(sampled_value_count);
+    const RuntimeAssetWorldObjectTimelineTransformSampleRequest timeline_request =
+        MakeTimelineTransformSampleRequest(
+            &fixture,
+            &transform_destination,
+            std::span<const AnimationRuntimeClipRecord>(clips.data(), clips.size()),
+            std::span<const AnimationRuntimeTrackRecord>(tracks.data(), tracks.size()),
+            std::span<const AnimationRuntimeKeyframeRecord>(keyframes.data(), keyframes.size()),
+            sampled_scratch.data(),
+            sampled_value_count,
+            sampled_values.data(),
+            sampled_value_count);
+
+    RuntimeAssetWorldObjectAdapterBridge adapter_bridge{};
+    RuntimeAssetWorldObjectTransformApplicationRequest transform_application_request{};
+    const RuntimeAssetWorldObjectAdapterResult sampler_result =
+        adapter_bridge.BuildTimelineTransformApplicationRequest(
+            timeline_request,
+            &transform_application_request);
+    if (!sampler_result.Succeeded()) {
+        return Fail("timeline sampler request failed");
+    }
+
+    if (sampler_result.state.sampled_transform_value_count != sampled_value_count) {
+        return Fail("timeline sampler request sampled count mismatch");
+    }
+
+    if (sampled_values[0U].target.value != WORLD_OBJECT_B.value ||
+        sampled_values[0U].channel != AnimationRuntimeChannel::ScaleZ ||
+        sampled_values[0U].value != 3.5F) {
+        return Fail("timeline sampler request first value mismatch");
+    }
+
+    if (sampled_values[1U].target.value != WORLD_OBJECT_A.value ||
+        sampled_values[1U].channel != AnimationRuntimeChannel::TranslationX ||
+        sampled_values[1U].value != 41.0F) {
+        return Fail("timeline sampler request second value mismatch");
+    }
+
+    if (sampled_values[2U].target.value != WORLD_OBJECT_A.value ||
+        sampled_values[2U].channel != AnimationRuntimeChannel::RotationY ||
+        sampled_values[2U].value != 0.25F) {
+        return Fail("timeline sampler request third value mismatch");
+    }
+
+    const RuntimeAssetWorldObjectAdapterResult repeated_sampler_result =
+        adapter_bridge.BuildTimelineTransformApplicationRequest(
+            timeline_request,
+            &transform_application_request);
+    if (!repeated_sampler_result.Succeeded()) {
+        return Fail("timeline sampler repeated request failed");
+    }
+
+    if (transform_application_request.sampled_values != sampled_values.data()) {
+        return Fail("timeline sampler request output pointer mismatch");
+    }
+
+    if (transform_application_request.sampled_value_count != sampled_value_count) {
+        return Fail("timeline sampler request output count mismatch");
+    }
+
+    const RuntimeAssetWorldObjectAdapterResult preflight_result =
+        adapter_bridge.PreflightSampledTransforms(transform_application_request);
+    if (!preflight_result.Succeeded()) {
+        return Fail("timeline sampler request preflight failed");
+    }
+
+    const RuntimeAssetWorldObjectAdapterResult repeated_preflight_result =
+        adapter_bridge.PreflightSampledTransforms(transform_application_request);
+    if (!repeated_preflight_result.Succeeded()) {
+        return Fail("timeline sampler request repeated preflight failed");
+    }
+
+    const auto adapter_snapshot = adapter_bridge.Snapshot();
+    if (adapter_snapshot.transform_sampler_bridge_attempt_count != 2U) {
+        return Fail("timeline sampler request attempt count mismatch");
+    }
+
+    if (adapter_snapshot.sampled_transform_value_count != sampled_value_count_snapshot * 2U) {
+        return Fail("timeline sampler request snapshot count mismatch");
+    }
+
+    RuntimeAssetWorldObjectRestoreHandoffRequest handoff_request = MakeHandoffRequest(
+        &fixture,
+        &adapter_request,
+        &world,
+        &object_registry,
+        &resource_registry,
+        &identity_destination,
+        &transform_destination,
+        &attachment_destination,
+        &binding_destination);
+    handoff_request.transform_application_request = &transform_application_request;
+
+    RuntimeAssetWorldObjectRestoreHandoffBridge bridge{};
+    const RuntimeAssetWorldObjectRestoreHandoffResult result = bridge.ApplyRestore(handoff_request);
+    if (!result.Succeeded()) {
+        return Fail("timeline sampler handoff apply failed");
+    }
+
+    if (result.state.applied_transform_value_count != sampled_value_count) {
+        return Fail("timeline sampler handoff applied count mismatch");
+    }
+
+    if (result.state.updated_world_object_count != 2U) {
+        return Fail("timeline sampler handoff updated object count mismatch");
+    }
+
+    const WorldTransformResult transform_a = transform_destination.Query(WORLD_OBJECT_A);
+    if (!transform_a.Succeeded()) {
+        return Fail("timeline sampler handoff query a failed");
+    }
+
+    if (transform_a.transform_state.translation_x != 41.0F ||
+        transform_a.transform_state.rotation_y != 0.25F ||
+        transform_a.transform_state.translation_y != fixture.scene_transforms[0U].transform.translation_y) {
+        return Fail("timeline sampler handoff transform a mismatch");
+    }
+
+    const WorldTransformResult transform_b = transform_destination.Query(WORLD_OBJECT_B);
+    if (!transform_b.Succeeded()) {
+        return Fail("timeline sampler handoff query b failed");
+    }
+
+    if (transform_b.transform_state.scale_z != 3.5F ||
+        transform_b.transform_state.translation_x != fixture.scene_transforms[1U].transform.translation_x) {
+        return Fail("timeline sampler handoff transform b mismatch");
+    }
+
+    const RuntimeAssetWorldObjectRestoreHandoffSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.applied_transform_value_count != sampled_value_count_snapshot) {
+        return Fail("timeline sampler handoff snapshot applied count mismatch");
+    }
+
+    return 0;
+}
+
+int TestSnapshotTimelineTransformApplicationCountWithoutMutation() {
+    HandoffFixture fixture = MakeFixture();
+    WorldInstance world = MakeWorld();
+    ObjectRegistry object_registry = MakeObjectRegistry();
+    if (PrepareWorldAndObjects(&world, &object_registry, &fixture, true) != 0) {
+        return 1;
+    }
+
+    WorldTransformBridge transform_destination(world);
+    std::array<AnimationRuntimeClipRecord, 1U> clips{};
+    clips[0U] = ClipRecord(3U);
+    std::array<AnimationRuntimeTrackRecord, 3U> tracks{};
+    tracks[0U] = TrackRecord(WORLD_OBJECT_B, AnimationRuntimeChannel::ScaleZ, 0U);
+    tracks[1U] = TrackRecord(WORLD_OBJECT_A, AnimationRuntimeChannel::TranslationX, 2U);
+    tracks[2U] = TrackRecord(WORLD_OBJECT_A, AnimationRuntimeChannel::RotationY, 4U);
+    std::array<AnimationRuntimeKeyframeRecord, 6U> keyframes{};
+    keyframes[0U] = Keyframe(0.0F, 3.0F);
+    keyframes[1U] = Keyframe(1.0F, 4.0F);
+    keyframes[2U] = Keyframe(0.0F, 40.0F);
+    keyframes[3U] = Keyframe(1.0F, 42.0F);
+    keyframes[4U] = Keyframe(0.0F, 0.0F);
+    keyframes[5U] = Keyframe(1.0F, 0.5F);
+
+    std::array<AnimationRuntimeSampledValue, 3U> sampled_scratch{};
+    std::array<AnimationRuntimeSampledValue, 3U> sampled_values{};
+    const std::uint32_t sampled_value_count = static_cast<std::uint32_t>(sampled_values.size());
+    const std::uint64_t sampled_value_count_snapshot = static_cast<std::uint64_t>(sampled_value_count);
+    const RuntimeAssetWorldObjectTimelineTransformSampleRequest timeline_request =
+        MakeTimelineTransformSampleRequest(
+            &fixture,
+            &transform_destination,
+            std::span<const AnimationRuntimeClipRecord>(clips.data(), clips.size()),
+            std::span<const AnimationRuntimeTrackRecord>(tracks.data(), tracks.size()),
+            std::span<const AnimationRuntimeKeyframeRecord>(keyframes.data(), keyframes.size()),
+            sampled_scratch.data(),
+            sampled_value_count,
+            sampled_values.data(),
+            sampled_value_count);
+
+    RuntimeAssetWorldObjectAdapterBridge adapter_bridge{};
+    RuntimeAssetWorldObjectTransformApplicationRequest transform_application_request{};
+    const RuntimeAssetWorldObjectAdapterResult build_result =
+        adapter_bridge.BuildTimelineTransformApplicationRequest(
+            timeline_request,
+            &transform_application_request);
+    if (!build_result.Succeeded()) {
+        return Fail("timeline count snapshot setup failed");
+    }
+
+    const std::array<AnimationRuntimeSampledValue, 3U> previous_values = sampled_values;
+    const RuntimeAssetWorldObjectTransformApplicationRequest previous_request = transform_application_request;
+    const RuntimeAssetWorldObjectAdapterResult count_result =
+        adapter_bridge.SnapshotTimelineTransformApplicationCount(timeline_request);
+    if (!count_result.Succeeded()) {
+        return Fail("timeline count snapshot failed");
+    }
+
+    if (count_result.required_sampled_transform_value_count != sampled_value_count) {
+        return Fail("timeline count snapshot required count mismatch");
+    }
+
+    if (count_result.state.sampled_transform_value_count != sampled_value_count) {
+        return Fail("timeline count snapshot state mismatch");
+    }
+
+    if (transform_application_request.sampled_values != previous_request.sampled_values ||
+        transform_application_request.sampled_value_count != previous_request.sampled_value_count ||
+        transform_application_request.transform_destination != previous_request.transform_destination) {
+        return Fail("timeline count snapshot mutated request");
+    }
+
+    if (!SampledValueArraysMatch(
+            std::span<const AnimationRuntimeSampledValue>(sampled_values.data(), sampled_values.size()),
+            std::span<const AnimationRuntimeSampledValue>(previous_values.data(), previous_values.size()))) {
+        return Fail("timeline count snapshot mutated values");
+    }
+
+    const auto adapter_snapshot = adapter_bridge.Snapshot();
+    if (adapter_snapshot.transform_sampler_bridge_attempt_count != 2U) {
+        return Fail("timeline count snapshot attempt count mismatch");
+    }
+
+    if (adapter_snapshot.required_sampled_transform_value_count != sampled_value_count_snapshot) {
+        return Fail("timeline count snapshot required snapshot mismatch");
+    }
+
+    if (adapter_snapshot.sampled_transform_value_count != sampled_value_count_snapshot) {
+        return Fail("timeline count snapshot sampled counter mismatch");
+    }
+
+    return 0;
+}
+
+int TestApplyProducerPlaybackThroughScratchHandoff() {
+    HandoffFixture fixture = MakeFixture();
+    WorldInstance world = MakeWorld();
+    ObjectRegistry object_registry = MakeObjectRegistry();
+    if (PrepareWorldAndObjects(&world, &object_registry, &fixture, true) != 0) {
+        return 1;
+    }
+
+    ResourceRegistry resource_registry{};
+    WorldObjectIdentityBridge identity_destination(world, object_registry);
+    WorldTransformBridge transform_destination(world);
+    WorldComponentAttachmentBridge attachment_destination{};
+    WorldComponentResourceBindingBridge binding_destination{};
+    RuntimeAssetWorldObjectAdapterRequest adapter_request = MakeAdapterRequest(&fixture);
+
+    std::array<AnimationRuntimeClipRecord, 1U> clips{};
+    clips[0U] = ClipRecord(3U);
+    std::array<AnimationRuntimeTrackRecord, 3U> tracks{};
+    tracks[0U] = TrackRecord(WORLD_OBJECT_B, AnimationRuntimeChannel::ScaleZ, 0U);
+    tracks[1U] = TrackRecord(WORLD_OBJECT_A, AnimationRuntimeChannel::TranslationX, 2U);
+    tracks[2U] = TrackRecord(WORLD_OBJECT_A, AnimationRuntimeChannel::RotationY, 4U);
+    std::array<AnimationRuntimeKeyframeRecord, 6U> keyframes{};
+    keyframes[0U] = Keyframe(0.0F, 3.0F);
+    keyframes[1U] = Keyframe(1.0F, 4.0F);
+    keyframes[2U] = Keyframe(0.0F, 40.0F);
+    keyframes[3U] = Keyframe(1.0F, 42.0F);
+    keyframes[4U] = Keyframe(0.0F, 0.0F);
+    keyframes[5U] = Keyframe(1.0F, 0.5F);
+
+    std::array<AnimationRuntimeSampledValue, 3U> sampled_scratch{};
+    std::array<AnimationRuntimeSampledValue, 3U> sampled_values{};
+    const std::uint32_t sampled_value_count = static_cast<std::uint32_t>(sampled_values.size());
+    const std::uint64_t sampled_value_count_snapshot = static_cast<std::uint64_t>(sampled_value_count);
+    const RuntimeAssetWorldObjectProducerPlaybackRequest playback_request =
+        MakeProducerPlaybackRequest(
+            &fixture,
+            &transform_destination,
+            std::span<const AnimationRuntimeClipRecord>(clips.data(), clips.size()),
+            std::span<const AnimationRuntimeTrackRecord>(tracks.data(), tracks.size()),
+            std::span<const AnimationRuntimeKeyframeRecord>(keyframes.data(), keyframes.size()),
+            sampled_scratch.data(),
+            sampled_value_count,
+            sampled_values.data(),
+            sampled_value_count);
+
+    RuntimeAssetWorldObjectAdapterBridge adapter_bridge{};
+    RuntimeAssetWorldObjectTransformApplicationRequest transform_application_request{};
+    const RuntimeAssetWorldObjectAdapterResult sampler_result =
+        adapter_bridge.BuildProducerPlaybackTransformApplicationRequest(
+            playback_request,
+            &transform_application_request);
+    if (!sampler_result.Succeeded()) {
+        return Fail("producer playback sampler request failed");
+    }
+
+    if (sampler_result.state.sampled_transform_value_count != sampled_value_count) {
+        return Fail("producer playback sampled count mismatch");
+    }
+
+    if (sampled_values[0U].target.value != WORLD_OBJECT_B.value ||
+        sampled_values[0U].channel != AnimationRuntimeChannel::ScaleZ ||
+        sampled_values[0U].value != 3.5F) {
+        return Fail("producer playback first value mismatch");
+    }
+
+    if (sampled_values[1U].target.value != WORLD_OBJECT_A.value ||
+        sampled_values[1U].channel != AnimationRuntimeChannel::TranslationX ||
+        sampled_values[1U].value != 41.0F) {
+        return Fail("producer playback second value mismatch");
+    }
+
+    if (sampled_values[2U].target.value != WORLD_OBJECT_A.value ||
+        sampled_values[2U].channel != AnimationRuntimeChannel::RotationY ||
+        sampled_values[2U].value != 0.25F) {
+        return Fail("producer playback third value mismatch");
+    }
+
+    if (transform_application_request.sampled_values != sampled_values.data()) {
+        return Fail("producer playback request output pointer mismatch");
+    }
+
+    if (transform_application_request.sampled_value_count != sampled_value_count) {
+        return Fail("producer playback request output count mismatch");
+    }
+
+    const auto adapter_snapshot = adapter_bridge.Snapshot();
+    if (adapter_snapshot.transform_sampler_bridge_attempt_count != 1U) {
+        return Fail("producer playback attempt count mismatch");
+    }
+
+    if (adapter_snapshot.sampled_transform_value_count != sampled_value_count_snapshot) {
+        return Fail("producer playback snapshot count mismatch");
+    }
+
+    RuntimeAssetWorldObjectRestoreHandoffRequest handoff_request = MakeHandoffRequest(
+        &fixture,
+        &adapter_request,
+        &world,
+        &object_registry,
+        &resource_registry,
+        &identity_destination,
+        &transform_destination,
+        &attachment_destination,
+        &binding_destination);
+    handoff_request.transform_application_request = &transform_application_request;
+
+    RuntimeAssetWorldObjectRestoreHandoffBridge bridge{};
+    const RuntimeAssetWorldObjectRestoreHandoffResult result = bridge.ApplyRestore(handoff_request);
+    if (!result.Succeeded()) {
+        return Fail("producer playback handoff apply failed");
+    }
+
+    if (result.state.applied_transform_value_count != sampled_value_count) {
+        return Fail("producer playback handoff applied count mismatch");
+    }
+
+    const WorldTransformResult transform_a = transform_destination.Query(WORLD_OBJECT_A);
+    if (!transform_a.Succeeded()) {
+        return Fail("producer playback handoff query a failed");
+    }
+
+    if (transform_a.transform_state.translation_x != 41.0F ||
+        transform_a.transform_state.rotation_y != 0.25F ||
+        transform_a.transform_state.translation_y != fixture.scene_transforms[0U].transform.translation_y) {
+        return Fail("producer playback handoff transform a mismatch");
+    }
+
+    const WorldTransformResult transform_b = transform_destination.Query(WORLD_OBJECT_B);
+    if (!transform_b.Succeeded()) {
+        return Fail("producer playback handoff query b failed");
+    }
+
+    if (transform_b.transform_state.scale_z != 3.5F ||
+        transform_b.transform_state.translation_x != fixture.scene_transforms[1U].transform.translation_x) {
+        return Fail("producer playback handoff transform b mismatch");
+    }
+
+    const RuntimeAssetWorldObjectRestoreHandoffSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.applied_transform_value_count != sampled_value_count_snapshot) {
+        return Fail("producer playback handoff snapshot applied count mismatch");
+    }
+
+    return 0;
+}
+
+int TestApplyProducerPlaybackBatchThroughScratchHandoff() {
+    HandoffFixture fixture = MakeFixture();
+    WorldInstance world = MakeWorld();
+    ObjectRegistry object_registry = MakeObjectRegistry();
+    if (PrepareWorldAndObjects(&world, &object_registry, &fixture, true) != 0) {
+        return 1;
+    }
+
+    ResourceRegistry resource_registry{};
+    WorldObjectIdentityBridge identity_destination(world, object_registry);
+    WorldTransformBridge transform_destination(world);
+    WorldComponentAttachmentBridge attachment_destination{};
+    WorldComponentResourceBindingBridge binding_destination{};
+    RuntimeAssetWorldObjectAdapterRequest adapter_request = MakeAdapterRequest(&fixture);
+
+    std::array<AnimationRuntimeClipRecord, 1U> first_clips{};
+    first_clips[0U] = ClipRecord(2U);
+    std::array<AnimationRuntimeTrackRecord, 2U> first_tracks{};
+    first_tracks[0U] = TrackRecord(WORLD_OBJECT_A, AnimationRuntimeChannel::TranslationX, 0U);
+    first_tracks[1U] = TrackRecord(WORLD_OBJECT_B, AnimationRuntimeChannel::ScaleZ, 2U);
+    std::array<AnimationRuntimeKeyframeRecord, 4U> first_keyframes{};
+    first_keyframes[0U] = Keyframe(0.0F, 40.0F);
+    first_keyframes[1U] = Keyframe(1.0F, 42.0F);
+    first_keyframes[2U] = Keyframe(0.0F, 3.0F);
+    first_keyframes[3U] = Keyframe(1.0F, 4.0F);
+
+    std::array<AnimationRuntimeClipRecord, 1U> second_clips{};
+    second_clips[0U] = ClipRecord(1U);
+    std::array<AnimationRuntimeTrackRecord, 1U> second_tracks{};
+    second_tracks[0U] = TrackRecord(WORLD_OBJECT_A, AnimationRuntimeChannel::RotationY, 0U);
+    std::array<AnimationRuntimeKeyframeRecord, 2U> second_keyframes{};
+    second_keyframes[0U] = Keyframe(0.0F, 0.0F);
+    second_keyframes[1U] = Keyframe(1.0F, 0.5F);
+
+    std::array<RuntimeAssetWorldObjectProducerPlaybackRequest, 2U> playback_requests{};
+    playback_requests[0U] = MakeProducerPlaybackRequest(
+        &fixture,
+        &transform_destination,
+        std::span<const AnimationRuntimeClipRecord>(first_clips.data(), first_clips.size()),
+        std::span<const AnimationRuntimeTrackRecord>(first_tracks.data(), first_tracks.size()),
+        std::span<const AnimationRuntimeKeyframeRecord>(first_keyframes.data(), first_keyframes.size()),
+        nullptr,
+        0U,
+        nullptr,
+        0U);
+    playback_requests[1U] = MakeProducerPlaybackRequest(
+        &fixture,
+        &transform_destination,
+        std::span<const AnimationRuntimeClipRecord>(second_clips.data(), second_clips.size()),
+        std::span<const AnimationRuntimeTrackRecord>(second_tracks.data(), second_tracks.size()),
+        std::span<const AnimationRuntimeKeyframeRecord>(second_keyframes.data(), second_keyframes.size()),
+        nullptr,
+        0U,
+        nullptr,
+        0U);
+
+    std::array<AnimationRuntimeSampledValue, 3U> sampled_scratch{};
+    std::array<AnimationRuntimeSampledValue, 3U> sampled_values{};
+    const std::uint32_t sampled_value_count = static_cast<std::uint32_t>(sampled_values.size());
+    const std::uint64_t sampled_value_count_snapshot = static_cast<std::uint64_t>(sampled_value_count);
+    const RuntimeAssetWorldObjectProducerPlaybackBatchRequest batch_request =
+        MakeProducerPlaybackBatchRequest(
+            playback_requests.data(),
+            static_cast<std::uint32_t>(playback_requests.size()),
+            sampled_scratch.data(),
+            sampled_value_count,
+            sampled_values.data(),
+            sampled_value_count);
+
+    RuntimeAssetWorldObjectAdapterBridge adapter_bridge{};
+    RuntimeAssetWorldObjectTransformApplicationRequest transform_application_request{};
+    const RuntimeAssetWorldObjectAdapterResult sampler_result =
+        adapter_bridge.BuildProducerPlaybackBatchTransformApplicationRequest(
+            batch_request,
+            &transform_application_request);
+    if (!sampler_result.Succeeded()) {
+        return Fail("producer playback batch sampler request failed");
+    }
+
+    if (sampler_result.state.sampled_transform_value_count != sampled_value_count) {
+        return Fail("producer playback batch sampled count mismatch");
+    }
+
+    if (sampled_values[0U].target.value != WORLD_OBJECT_A.value ||
+        sampled_values[0U].channel != AnimationRuntimeChannel::TranslationX ||
+        sampled_values[0U].value != 41.0F) {
+        return Fail("producer playback batch first value mismatch");
+    }
+
+    if (sampled_values[1U].target.value != WORLD_OBJECT_B.value ||
+        sampled_values[1U].channel != AnimationRuntimeChannel::ScaleZ ||
+        sampled_values[1U].value != 3.5F) {
+        return Fail("producer playback batch second value mismatch");
+    }
+
+    if (sampled_values[2U].target.value != WORLD_OBJECT_A.value ||
+        sampled_values[2U].channel != AnimationRuntimeChannel::RotationY ||
+        sampled_values[2U].value != 0.25F) {
+        return Fail("producer playback batch third value mismatch");
+    }
+
+    if (transform_application_request.sampled_values != sampled_values.data()) {
+        return Fail("producer playback batch request output pointer mismatch");
+    }
+
+    if (transform_application_request.sampled_value_count != sampled_value_count) {
+        return Fail("producer playback batch request output count mismatch");
+    }
+
+    RuntimeAssetWorldObjectRestoreHandoffRequest handoff_request = MakeHandoffRequest(
+        &fixture,
+        &adapter_request,
+        &world,
+        &object_registry,
+        &resource_registry,
+        &identity_destination,
+        &transform_destination,
+        &attachment_destination,
+        &binding_destination);
+    handoff_request.transform_application_request = &transform_application_request;
+
+    RuntimeAssetWorldObjectRestoreHandoffBridge bridge{};
+    const RuntimeAssetWorldObjectRestoreHandoffResult result = bridge.ApplyRestore(handoff_request);
+    if (!result.Succeeded()) {
+        return Fail("producer playback batch handoff apply failed");
+    }
+
+    if (result.state.applied_transform_value_count != sampled_value_count) {
+        return Fail("producer playback batch handoff applied count mismatch");
+    }
+
+    const WorldTransformResult transform_a = transform_destination.Query(WORLD_OBJECT_A);
+    if (!transform_a.Succeeded()) {
+        return Fail("producer playback batch handoff query a failed");
+    }
+
+    if (transform_a.transform_state.translation_x != 41.0F ||
+        transform_a.transform_state.rotation_y != 0.25F ||
+        transform_a.transform_state.translation_y != fixture.scene_transforms[0U].transform.translation_y) {
+        return Fail("producer playback batch handoff transform a mismatch");
+    }
+
+    const WorldTransformResult transform_b = transform_destination.Query(WORLD_OBJECT_B);
+    if (!transform_b.Succeeded()) {
+        return Fail("producer playback batch handoff query b failed");
+    }
+
+    if (transform_b.transform_state.scale_z != 3.5F ||
+        transform_b.transform_state.translation_x != fixture.scene_transforms[1U].transform.translation_x) {
+        return Fail("producer playback batch handoff transform b mismatch");
+    }
+
+    const RuntimeAssetWorldObjectRestoreHandoffSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.applied_transform_value_count != sampled_value_count_snapshot) {
+        return Fail("producer playback batch handoff snapshot applied count mismatch");
+    }
+
+    const auto adapter_snapshot = adapter_bridge.Snapshot();
+    if (adapter_snapshot.transform_sampler_bridge_attempt_count != 1U) {
+        return Fail("producer playback batch attempt count mismatch");
+    }
+
+    if (adapter_snapshot.sampled_transform_value_count != sampled_value_count_snapshot) {
+        return Fail("producer playback batch snapshot count mismatch");
+    }
+
+    return 0;
+}
+
+int TestSnapshotProducerPlaybackBatchCountWithoutMutation() {
+    HandoffFixture fixture = MakeFixture();
+    WorldInstance world = MakeWorld();
+    ObjectRegistry object_registry = MakeObjectRegistry();
+    if (PrepareWorldAndObjects(&world, &object_registry, &fixture, true) != 0) {
+        return 1;
+    }
+
+    WorldTransformBridge transform_destination(world);
+    std::array<AnimationRuntimeClipRecord, 1U> first_clips{};
+    first_clips[0U] = ClipRecord(2U);
+    std::array<AnimationRuntimeTrackRecord, 2U> first_tracks{};
+    first_tracks[0U] = TrackRecord(WORLD_OBJECT_A, AnimationRuntimeChannel::TranslationX, 0U);
+    first_tracks[1U] = TrackRecord(WORLD_OBJECT_B, AnimationRuntimeChannel::ScaleZ, 2U);
+    std::array<AnimationRuntimeKeyframeRecord, 4U> first_keyframes{};
+    first_keyframes[0U] = Keyframe(0.0F, 40.0F);
+    first_keyframes[1U] = Keyframe(1.0F, 42.0F);
+    first_keyframes[2U] = Keyframe(0.0F, 3.0F);
+    first_keyframes[3U] = Keyframe(1.0F, 4.0F);
+
+    std::array<AnimationRuntimeClipRecord, 1U> second_clips{};
+    second_clips[0U] = ClipRecord(1U);
+    std::array<AnimationRuntimeTrackRecord, 1U> second_tracks{};
+    second_tracks[0U] = TrackRecord(WORLD_OBJECT_A, AnimationRuntimeChannel::RotationY, 0U);
+    std::array<AnimationRuntimeKeyframeRecord, 2U> second_keyframes{};
+    second_keyframes[0U] = Keyframe(0.0F, 0.0F);
+    second_keyframes[1U] = Keyframe(1.0F, 0.5F);
+
+    std::array<RuntimeAssetWorldObjectProducerPlaybackRequest, 2U> playback_requests{};
+    playback_requests[0U] = MakeProducerPlaybackRequest(
+        &fixture,
+        &transform_destination,
+        std::span<const AnimationRuntimeClipRecord>(first_clips.data(), first_clips.size()),
+        std::span<const AnimationRuntimeTrackRecord>(first_tracks.data(), first_tracks.size()),
+        std::span<const AnimationRuntimeKeyframeRecord>(first_keyframes.data(), first_keyframes.size()),
+        nullptr,
+        0U,
+        nullptr,
+        0U);
+    playback_requests[1U] = MakeProducerPlaybackRequest(
+        &fixture,
+        &transform_destination,
+        std::span<const AnimationRuntimeClipRecord>(second_clips.data(), second_clips.size()),
+        std::span<const AnimationRuntimeTrackRecord>(second_tracks.data(), second_tracks.size()),
+        std::span<const AnimationRuntimeKeyframeRecord>(second_keyframes.data(), second_keyframes.size()),
+        nullptr,
+        0U,
+        nullptr,
+        0U);
+
+    std::array<AnimationRuntimeSampledValue, 3U> sampled_scratch{};
+    std::array<AnimationRuntimeSampledValue, 3U> sampled_values{};
+    const std::uint32_t sampled_value_count = static_cast<std::uint32_t>(sampled_values.size());
+    const std::uint64_t sampled_value_count_snapshot = static_cast<std::uint64_t>(sampled_value_count);
+    const std::uint32_t playback_request_count = static_cast<std::uint32_t>(playback_requests.size());
+    const RuntimeAssetWorldObjectProducerPlaybackBatchRequest batch_request =
+        MakeProducerPlaybackBatchRequest(
+            playback_requests.data(),
+            playback_request_count,
+            sampled_scratch.data(),
+            sampled_value_count,
+            sampled_values.data(),
+            sampled_value_count);
+
+    RuntimeAssetWorldObjectAdapterBridge adapter_bridge{};
+    RuntimeAssetWorldObjectTransformApplicationRequest transform_application_request{};
+    const RuntimeAssetWorldObjectAdapterResult build_result =
+        adapter_bridge.BuildProducerPlaybackBatchTransformApplicationRequest(
+            batch_request,
+            &transform_application_request);
+    if (!build_result.Succeeded()) {
+        return Fail("producer playback batch count setup failed");
+    }
+
+    const std::array<AnimationRuntimeSampledValue, 3U> previous_values = sampled_values;
+    const RuntimeAssetWorldObjectTransformApplicationRequest previous_request = transform_application_request;
+    const RuntimeAssetWorldObjectAdapterResult count_result =
+        adapter_bridge.SnapshotProducerPlaybackBatchTransformApplicationCount(batch_request);
+    if (!count_result.Succeeded()) {
+        return Fail("producer playback batch count snapshot failed");
+    }
+
+    if (count_result.required_sampled_transform_value_count != sampled_value_count) {
+        return Fail("producer playback batch count required count mismatch");
+    }
+
+    if (count_result.state.sampled_transform_value_count != sampled_value_count) {
+        return Fail("producer playback batch count state mismatch");
+    }
+
+    if (transform_application_request.sampled_values != previous_request.sampled_values ||
+        transform_application_request.sampled_value_count != previous_request.sampled_value_count) {
+        return Fail("producer playback batch count mutated request");
+    }
+
+    if (!SampledValueArraysMatch(
+            std::span<const AnimationRuntimeSampledValue>(sampled_values.data(), sampled_values.size()),
+            std::span<const AnimationRuntimeSampledValue>(previous_values.data(), previous_values.size()))) {
+        return Fail("producer playback batch count mutated values");
+    }
+
+    const auto adapter_snapshot = adapter_bridge.Snapshot();
+    if (adapter_snapshot.transform_sampler_bridge_attempt_count != 2U) {
+        return Fail("producer playback batch count attempt count mismatch");
+    }
+
+    if (adapter_snapshot.required_sampled_transform_value_count != sampled_value_count_snapshot) {
+        return Fail("producer playback batch count snapshot required count mismatch");
+    }
+
+    if (adapter_snapshot.sampled_transform_value_count != sampled_value_count_snapshot) {
+        return Fail("producer playback batch count sampled counter mismatch");
+    }
+
+    return 0;
+}
+
+int TestRejectTimelineSamplerOutputFailureWithoutMutation() {
+    HandoffFixture fixture = MakeFixture();
+    WorldInstance world = MakeWorld();
+    ObjectRegistry object_registry = MakeObjectRegistry();
+    if (PrepareWorldAndObjects(&world, &object_registry, &fixture, true) != 0) {
+        return 1;
+    }
+
+    WorldTransformBridge transform_destination(world);
+    std::array<AnimationRuntimeClipRecord, 1U> clips{};
+    clips[0U] = ClipRecord(3U);
+    std::array<AnimationRuntimeTrackRecord, 3U> tracks{};
+    tracks[0U] = TrackRecord(WORLD_OBJECT_B, AnimationRuntimeChannel::ScaleZ, 0U);
+    tracks[1U] = TrackRecord(WORLD_OBJECT_A, AnimationRuntimeChannel::TranslationX, 2U);
+    tracks[2U] = TrackRecord(WORLD_OBJECT_A, AnimationRuntimeChannel::RotationY, 4U);
+    std::array<AnimationRuntimeKeyframeRecord, 6U> keyframes{};
+    keyframes[0U] = Keyframe(0.0F, 3.0F);
+    keyframes[1U] = Keyframe(1.0F, 4.0F);
+    keyframes[2U] = Keyframe(0.0F, 40.0F);
+    keyframes[3U] = Keyframe(1.0F, 42.0F);
+    keyframes[4U] = Keyframe(0.0F, 0.0F);
+    keyframes[5U] = Keyframe(1.0F, 0.5F);
+
+    std::array<AnimationRuntimeSampledValue, 3U> sampled_scratch{};
+    std::array<AnimationRuntimeSampledValue, 3U> sampled_values{};
+    const std::uint32_t sampled_value_count = static_cast<std::uint32_t>(sampled_values.size());
+    const std::uint64_t sampled_value_count_snapshot = static_cast<std::uint64_t>(sampled_value_count);
+    const RuntimeAssetWorldObjectTimelineTransformSampleRequest full_capacity_request =
+        MakeTimelineTransformSampleRequest(
+            &fixture,
+            &transform_destination,
+            std::span<const AnimationRuntimeClipRecord>(clips.data(), clips.size()),
+            std::span<const AnimationRuntimeTrackRecord>(tracks.data(), tracks.size()),
+            std::span<const AnimationRuntimeKeyframeRecord>(keyframes.data(), keyframes.size()),
+            sampled_scratch.data(),
+            sampled_value_count,
+            sampled_values.data(),
+            sampled_value_count);
+
+    RuntimeAssetWorldObjectAdapterBridge adapter_bridge{};
+    RuntimeAssetWorldObjectTransformApplicationRequest transform_application_request{};
+    const RuntimeAssetWorldObjectAdapterResult success_result =
+        adapter_bridge.BuildTimelineTransformApplicationRequest(
+            full_capacity_request,
+            &transform_application_request);
+    if (!success_result.Succeeded()) {
+        return Fail("timeline sampler output atomic setup failed");
+    }
+
+    const std::array<AnimationRuntimeSampledValue, 3U> previous_values = sampled_values;
+    const RuntimeAssetWorldObjectTransformApplicationRequest previous_request = transform_application_request;
+    constexpr std::uint32_t SMALL_OUTPUT_CAPACITY = 1U;
+    const RuntimeAssetWorldObjectTimelineTransformSampleRequest small_output_request =
+        MakeTimelineTransformSampleRequest(
+            &fixture,
+            &transform_destination,
+            std::span<const AnimationRuntimeClipRecord>(clips.data(), clips.size()),
+            std::span<const AnimationRuntimeTrackRecord>(tracks.data(), tracks.size()),
+            std::span<const AnimationRuntimeKeyframeRecord>(keyframes.data(), keyframes.size()),
+            sampled_scratch.data(),
+            sampled_value_count,
+            sampled_values.data(),
+            SMALL_OUTPUT_CAPACITY);
+
+    const RuntimeAssetWorldObjectAdapterResult capacity_result =
+        adapter_bridge.BuildTimelineTransformApplicationRequest(
+            small_output_request,
+            &transform_application_request);
+    if (capacity_result.status != RuntimeAssetWorldObjectAdapterStatus::SampledTransformOutputCapacityExceeded) {
+        return Fail("timeline sampler output capacity status mismatch");
+    }
+
+    if (capacity_result.required_sampled_transform_value_count != sampled_value_count) {
+        return Fail("timeline sampler output capacity required count mismatch");
+    }
+
+    if (transform_application_request.sampled_values != previous_request.sampled_values ||
+        transform_application_request.sampled_value_count != previous_request.sampled_value_count) {
+        return Fail("timeline sampler output capacity mutated request");
+    }
+
+    if (!SampledValueArraysMatch(
+            std::span<const AnimationRuntimeSampledValue>(sampled_values.data(), sampled_values.size()),
+            std::span<const AnimationRuntimeSampledValue>(previous_values.data(), previous_values.size()))) {
+        return Fail("timeline sampler output capacity mutated values");
+    }
+
+    const RuntimeAssetWorldObjectAdapterResult repeated_capacity_result =
+        adapter_bridge.BuildTimelineTransformApplicationRequest(
+            small_output_request,
+            &transform_application_request);
+    if (repeated_capacity_result.status != RuntimeAssetWorldObjectAdapterStatus::SampledTransformOutputCapacityExceeded) {
+        return Fail("timeline sampler repeated output capacity status mismatch");
+    }
+
+    if (transform_application_request.sampled_values != previous_request.sampled_values ||
+        transform_application_request.sampled_value_count != previous_request.sampled_value_count) {
+        return Fail("timeline sampler repeated output capacity mutated request");
+    }
+
+    if (!SampledValueArraysMatch(
+            std::span<const AnimationRuntimeSampledValue>(sampled_values.data(), sampled_values.size()),
+            std::span<const AnimationRuntimeSampledValue>(previous_values.data(), previous_values.size()))) {
+        return Fail("timeline sampler repeated output capacity mutated values");
+    }
+
+    const auto adapter_snapshot = adapter_bridge.Snapshot();
+    if (adapter_snapshot.transform_sampler_bridge_attempt_count != 3U) {
+        return Fail("timeline sampler output atomic attempt count mismatch");
+    }
+
+    if (adapter_snapshot.failed_operation_count != 2U) {
+        return Fail("timeline sampler output atomic failure count mismatch");
+    }
+
+    if (adapter_snapshot.required_sampled_transform_value_count != sampled_value_count_snapshot) {
+        return Fail("timeline sampler output atomic snapshot required count mismatch");
+    }
+
+    return 0;
+}
+
+int TestRejectTimelineTransformApplicationCountFailureWithoutMutation() {
+    HandoffFixture fixture = MakeFixture();
+    WorldInstance world = MakeWorld();
+    ObjectRegistry object_registry = MakeObjectRegistry();
+    if (PrepareWorldAndObjects(&world, &object_registry, &fixture, true) != 0) {
+        return 1;
+    }
+
+    WorldTransformBridge transform_destination(world);
+    std::array<AnimationRuntimeClipRecord, 1U> clips{};
+    clips[0U] = ClipRecord(3U);
+    std::array<AnimationRuntimeTrackRecord, 3U> tracks{};
+    tracks[0U] = TrackRecord(WORLD_OBJECT_B, AnimationRuntimeChannel::ScaleZ, 0U);
+    tracks[1U] = TrackRecord(WORLD_OBJECT_A, AnimationRuntimeChannel::TranslationX, 2U);
+    tracks[2U] = TrackRecord(WORLD_OBJECT_A, AnimationRuntimeChannel::RotationY, 4U);
+    std::array<AnimationRuntimeKeyframeRecord, 6U> keyframes{};
+    keyframes[0U] = Keyframe(0.0F, 3.0F);
+    keyframes[1U] = Keyframe(1.0F, 4.0F);
+    keyframes[2U] = Keyframe(0.0F, 40.0F);
+    keyframes[3U] = Keyframe(1.0F, 42.0F);
+    keyframes[4U] = Keyframe(0.0F, 0.0F);
+    keyframes[5U] = Keyframe(1.0F, 0.5F);
+
+    std::array<AnimationRuntimeSampledValue, 3U> sampled_scratch{};
+    std::array<AnimationRuntimeSampledValue, 3U> sampled_values{};
+    const std::uint32_t sampled_value_count = static_cast<std::uint32_t>(sampled_values.size());
+    const RuntimeAssetWorldObjectTimelineTransformSampleRequest full_capacity_request =
+        MakeTimelineTransformSampleRequest(
+            &fixture,
+            &transform_destination,
+            std::span<const AnimationRuntimeClipRecord>(clips.data(), clips.size()),
+            std::span<const AnimationRuntimeTrackRecord>(tracks.data(), tracks.size()),
+            std::span<const AnimationRuntimeKeyframeRecord>(keyframes.data(), keyframes.size()),
+            sampled_scratch.data(),
+            sampled_value_count,
+            sampled_values.data(),
+            sampled_value_count);
+
+    RuntimeAssetWorldObjectAdapterBridge adapter_bridge{};
+    RuntimeAssetWorldObjectTransformApplicationRequest transform_application_request{};
+    const RuntimeAssetWorldObjectAdapterResult success_result =
+        adapter_bridge.BuildTimelineTransformApplicationRequest(
+            full_capacity_request,
+            &transform_application_request);
+    if (!success_result.Succeeded()) {
+        return Fail("timeline count failure setup failed");
+    }
+
+    const std::array<AnimationRuntimeSampledValue, 3U> previous_values = sampled_values;
+    const RuntimeAssetWorldObjectTransformApplicationRequest previous_request = transform_application_request;
+    RuntimeAssetWorldObjectTimelineTransformSampleRequest invalid_clip_request = full_capacity_request;
+    invalid_clip_request.clip_id = 0U;
+    const RuntimeAssetWorldObjectAdapterResult invalid_clip_result =
+        adapter_bridge.SnapshotTimelineTransformApplicationCount(invalid_clip_request);
+    if (invalid_clip_result.status != RuntimeAssetWorldObjectAdapterStatus::TransformSamplingFailed) {
+        return Fail("timeline count invalid clip status mismatch");
+    }
+
+    if (transform_application_request.sampled_values != previous_request.sampled_values ||
+        transform_application_request.sampled_value_count != previous_request.sampled_value_count) {
+        return Fail("timeline count invalid clip mutated request");
+    }
+
+    if (!SampledValueArraysMatch(
+            std::span<const AnimationRuntimeSampledValue>(sampled_values.data(), sampled_values.size()),
+            std::span<const AnimationRuntimeSampledValue>(previous_values.data(), previous_values.size()))) {
+        return Fail("timeline count invalid clip mutated values");
+    }
+
+    constexpr std::uint32_t SMALL_SCRATCH_CAPACITY = 1U;
+    const RuntimeAssetWorldObjectTimelineTransformSampleRequest small_scratch_request =
+        MakeTimelineTransformSampleRequest(
+            &fixture,
+            &transform_destination,
+            std::span<const AnimationRuntimeClipRecord>(clips.data(), clips.size()),
+            std::span<const AnimationRuntimeTrackRecord>(tracks.data(), tracks.size()),
+            std::span<const AnimationRuntimeKeyframeRecord>(keyframes.data(), keyframes.size()),
+            sampled_scratch.data(),
+            SMALL_SCRATCH_CAPACITY,
+            sampled_values.data(),
+            sampled_value_count);
+    const RuntimeAssetWorldObjectAdapterResult scratch_capacity_result =
+        adapter_bridge.SnapshotTimelineTransformApplicationCount(small_scratch_request);
+    if (scratch_capacity_result.status != RuntimeAssetWorldObjectAdapterStatus::SampledTransformOutputCapacityExceeded) {
+        return Fail("timeline count scratch capacity status mismatch");
+    }
+
+    if (scratch_capacity_result.required_sampled_transform_value_count != sampled_value_count) {
+        return Fail("timeline count scratch capacity required mismatch");
+    }
+
+    if (!SampledValueArraysMatch(
+            std::span<const AnimationRuntimeSampledValue>(sampled_values.data(), sampled_values.size()),
+            std::span<const AnimationRuntimeSampledValue>(previous_values.data(), previous_values.size()))) {
+        return Fail("timeline count scratch capacity mutated values");
+    }
+
+    constexpr std::uint32_t SMALL_OUTPUT_CAPACITY = 1U;
+    const RuntimeAssetWorldObjectTimelineTransformSampleRequest small_output_request =
+        MakeTimelineTransformSampleRequest(
+            &fixture,
+            &transform_destination,
+            std::span<const AnimationRuntimeClipRecord>(clips.data(), clips.size()),
+            std::span<const AnimationRuntimeTrackRecord>(tracks.data(), tracks.size()),
+            std::span<const AnimationRuntimeKeyframeRecord>(keyframes.data(), keyframes.size()),
+            sampled_scratch.data(),
+            sampled_value_count,
+            sampled_values.data(),
+            SMALL_OUTPUT_CAPACITY);
+    const RuntimeAssetWorldObjectAdapterResult output_capacity_result =
+        adapter_bridge.SnapshotTimelineTransformApplicationCount(small_output_request);
+    if (output_capacity_result.status != RuntimeAssetWorldObjectAdapterStatus::SampledTransformOutputCapacityExceeded) {
+        return Fail("timeline count output capacity status mismatch");
+    }
+
+    if (output_capacity_result.required_sampled_transform_value_count != sampled_value_count) {
+        return Fail("timeline count output capacity required mismatch");
+    }
+
+    const RuntimeAssetWorldObjectAdapterResult repeated_output_result =
+        adapter_bridge.SnapshotTimelineTransformApplicationCount(small_output_request);
+    if (repeated_output_result.status != RuntimeAssetWorldObjectAdapterStatus::SampledTransformOutputCapacityExceeded) {
+        return Fail("timeline count repeated output status mismatch");
+    }
+
+    if (transform_application_request.sampled_values != previous_request.sampled_values ||
+        transform_application_request.sampled_value_count != previous_request.sampled_value_count) {
+        return Fail("timeline count repeated output mutated request");
+    }
+
+    if (!SampledValueArraysMatch(
+            std::span<const AnimationRuntimeSampledValue>(sampled_values.data(), sampled_values.size()),
+            std::span<const AnimationRuntimeSampledValue>(previous_values.data(), previous_values.size()))) {
+        return Fail("timeline count repeated output mutated values");
+    }
+
+    RuntimeAssetWorldObjectTimelineTransformSampleRequest null_scratch_request = full_capacity_request;
+    null_scratch_request.sampled_value_scratch = nullptr;
+    const RuntimeAssetWorldObjectAdapterResult null_scratch_result =
+        adapter_bridge.SnapshotTimelineTransformApplicationCount(null_scratch_request);
+    if (null_scratch_result.status != RuntimeAssetWorldObjectAdapterStatus::InvalidSampledTransformInput) {
+        return Fail("timeline count null scratch status mismatch");
+    }
+
+    std::array<AnimationRuntimeTrackRecord, 3U> unmapped_tracks = tracks;
+    unmapped_tracks[0U] = TrackRecord(WORLD_OBJECT_UNMAPPED, AnimationRuntimeChannel::ScaleZ, 0U);
+    const RuntimeAssetWorldObjectTimelineTransformSampleRequest unmapped_target_request =
+        MakeTimelineTransformSampleRequest(
+            &fixture,
+            &transform_destination,
+            std::span<const AnimationRuntimeClipRecord>(clips.data(), clips.size()),
+            std::span<const AnimationRuntimeTrackRecord>(unmapped_tracks.data(), unmapped_tracks.size()),
+            std::span<const AnimationRuntimeKeyframeRecord>(keyframes.data(), keyframes.size()),
+            sampled_scratch.data(),
+            sampled_value_count,
+            sampled_values.data(),
+            sampled_value_count);
+    const RuntimeAssetWorldObjectAdapterResult unmapped_target_result =
+        adapter_bridge.SnapshotTimelineTransformApplicationCount(unmapped_target_request);
+    if (unmapped_target_result.status != RuntimeAssetWorldObjectAdapterStatus::TransformTargetNotFound) {
+        return Fail("timeline count target status mismatch");
+    }
+
+    if (unmapped_target_result.failed_target_id != WORLD_OBJECT_UNMAPPED.value) {
+        return Fail("timeline count target diagnostic mismatch");
+    }
+
+    if (transform_application_request.sampled_values != previous_request.sampled_values ||
+        transform_application_request.sampled_value_count != previous_request.sampled_value_count) {
+        return Fail("timeline count target mutated request");
+    }
+
+    if (!SampledValueArraysMatch(
+            std::span<const AnimationRuntimeSampledValue>(sampled_values.data(), sampled_values.size()),
+            std::span<const AnimationRuntimeSampledValue>(previous_values.data(), previous_values.size()))) {
+        return Fail("timeline count target mutated values");
+    }
+
+    const auto adapter_snapshot = adapter_bridge.Snapshot();
+    if (adapter_snapshot.transform_sampler_bridge_attempt_count != 7U) {
+        return Fail("timeline count failure attempt count mismatch");
+    }
+
+    if (adapter_snapshot.failed_operation_count != 6U) {
+        return Fail("timeline count failure count mismatch");
+    }
+
+    if (adapter_snapshot.required_sampled_transform_value_count != 0U) {
+        return Fail("timeline count final required count mismatch");
+    }
+
+    return 0;
+}
+
+int TestRejectProducerPlaybackFailureWithoutMutation() {
+    HandoffFixture fixture = MakeFixture();
+    WorldInstance world = MakeWorld();
+    ObjectRegistry object_registry = MakeObjectRegistry();
+    if (PrepareWorldAndObjects(&world, &object_registry, &fixture, true) != 0) {
+        return 1;
+    }
+
+    WorldTransformBridge transform_destination(world);
+    std::array<AnimationRuntimeClipRecord, 1U> clips{};
+    clips[0U] = ClipRecord(3U);
+    std::array<AnimationRuntimeTrackRecord, 3U> tracks{};
+    tracks[0U] = TrackRecord(WORLD_OBJECT_B, AnimationRuntimeChannel::ScaleZ, 0U);
+    tracks[1U] = TrackRecord(WORLD_OBJECT_A, AnimationRuntimeChannel::TranslationX, 2U);
+    tracks[2U] = TrackRecord(WORLD_OBJECT_A, AnimationRuntimeChannel::RotationY, 4U);
+    std::array<AnimationRuntimeKeyframeRecord, 6U> keyframes{};
+    keyframes[0U] = Keyframe(0.0F, 3.0F);
+    keyframes[1U] = Keyframe(1.0F, 4.0F);
+    keyframes[2U] = Keyframe(0.0F, 40.0F);
+    keyframes[3U] = Keyframe(1.0F, 42.0F);
+    keyframes[4U] = Keyframe(0.0F, 0.0F);
+    keyframes[5U] = Keyframe(1.0F, 0.5F);
+
+    std::array<AnimationRuntimeSampledValue, 3U> sampled_scratch{};
+    std::array<AnimationRuntimeSampledValue, 3U> sampled_values{};
+    const std::uint32_t sampled_value_count = static_cast<std::uint32_t>(sampled_values.size());
+    const RuntimeAssetWorldObjectProducerPlaybackRequest full_capacity_request =
+        MakeProducerPlaybackRequest(
+            &fixture,
+            &transform_destination,
+            std::span<const AnimationRuntimeClipRecord>(clips.data(), clips.size()),
+            std::span<const AnimationRuntimeTrackRecord>(tracks.data(), tracks.size()),
+            std::span<const AnimationRuntimeKeyframeRecord>(keyframes.data(), keyframes.size()),
+            sampled_scratch.data(),
+            sampled_value_count,
+            sampled_values.data(),
+            sampled_value_count);
+
+    RuntimeAssetWorldObjectAdapterBridge adapter_bridge{};
+    RuntimeAssetWorldObjectTransformApplicationRequest transform_application_request{};
+    const RuntimeAssetWorldObjectAdapterResult success_result =
+        adapter_bridge.BuildProducerPlaybackTransformApplicationRequest(
+            full_capacity_request,
+            &transform_application_request);
+    if (!success_result.Succeeded()) {
+        return Fail("producer playback atomic setup failed");
+    }
+
+    const std::array<AnimationRuntimeSampledValue, 3U> previous_values = sampled_values;
+    const RuntimeAssetWorldObjectTransformApplicationRequest previous_request = transform_application_request;
+    constexpr std::uint32_t SMALL_CAPACITY = 1U;
+    const RuntimeAssetWorldObjectProducerPlaybackRequest small_output_request =
+        MakeProducerPlaybackRequest(
+            &fixture,
+            &transform_destination,
+            std::span<const AnimationRuntimeClipRecord>(clips.data(), clips.size()),
+            std::span<const AnimationRuntimeTrackRecord>(tracks.data(), tracks.size()),
+            std::span<const AnimationRuntimeKeyframeRecord>(keyframes.data(), keyframes.size()),
+            sampled_scratch.data(),
+            sampled_value_count,
+            sampled_values.data(),
+            SMALL_CAPACITY);
+
+    const RuntimeAssetWorldObjectAdapterResult output_capacity_result =
+        adapter_bridge.BuildProducerPlaybackTransformApplicationRequest(
+            small_output_request,
+            &transform_application_request);
+    if (output_capacity_result.status != RuntimeAssetWorldObjectAdapterStatus::SampledTransformOutputCapacityExceeded) {
+        return Fail("producer playback output capacity status mismatch");
+    }
+
+    if (output_capacity_result.required_sampled_transform_value_count != sampled_value_count) {
+        return Fail("producer playback output capacity required count mismatch");
+    }
+
+    if (transform_application_request.sampled_values != previous_request.sampled_values ||
+        transform_application_request.sampled_value_count != previous_request.sampled_value_count) {
+        return Fail("producer playback output capacity mutated request");
+    }
+
+    if (!SampledValueArraysMatch(
+            std::span<const AnimationRuntimeSampledValue>(sampled_values.data(), sampled_values.size()),
+            std::span<const AnimationRuntimeSampledValue>(previous_values.data(), previous_values.size()))) {
+        return Fail("producer playback output capacity mutated values");
+    }
+
+    const RuntimeAssetWorldObjectProducerPlaybackRequest small_scratch_request =
+        MakeProducerPlaybackRequest(
+            &fixture,
+            &transform_destination,
+            std::span<const AnimationRuntimeClipRecord>(clips.data(), clips.size()),
+            std::span<const AnimationRuntimeTrackRecord>(tracks.data(), tracks.size()),
+            std::span<const AnimationRuntimeKeyframeRecord>(keyframes.data(), keyframes.size()),
+            sampled_scratch.data(),
+            SMALL_CAPACITY,
+            sampled_values.data(),
+            SMALL_CAPACITY);
+
+    const RuntimeAssetWorldObjectAdapterResult scratch_capacity_result =
+        adapter_bridge.BuildProducerPlaybackTransformApplicationRequest(
+            small_scratch_request,
+            &transform_application_request);
+    if (scratch_capacity_result.status != RuntimeAssetWorldObjectAdapterStatus::SampledTransformOutputCapacityExceeded) {
+        return Fail("producer playback scratch capacity status mismatch");
+    }
+
+    if (scratch_capacity_result.required_sampled_transform_value_count != sampled_value_count) {
+        return Fail("producer playback scratch capacity required count mismatch");
+    }
+
+    if (!SampledValueArraysMatch(
+            std::span<const AnimationRuntimeSampledValue>(sampled_values.data(), sampled_values.size()),
+            std::span<const AnimationRuntimeSampledValue>(previous_values.data(), previous_values.size()))) {
+        return Fail("producer playback scratch capacity mutated values");
+    }
+
+    const RuntimeAssetWorldObjectAdapterResult repeated_capacity_result =
+        adapter_bridge.BuildProducerPlaybackTransformApplicationRequest(
+            small_output_request,
+            &transform_application_request);
+    if (repeated_capacity_result.status != RuntimeAssetWorldObjectAdapterStatus::SampledTransformOutputCapacityExceeded) {
+        return Fail("producer playback repeated capacity status mismatch");
+    }
+
+    if (transform_application_request.sampled_values != previous_request.sampled_values ||
+        transform_application_request.sampled_value_count != previous_request.sampled_value_count) {
+        return Fail("producer playback repeated capacity mutated request");
+    }
+
+    RuntimeAssetWorldObjectProducerPlaybackRequest default_clip_request = full_capacity_request;
+    default_clip_request.export_clip_id = 0U;
+    const RuntimeAssetWorldObjectAdapterResult default_clip_result =
+        adapter_bridge.BuildProducerPlaybackTransformApplicationRequest(
+            default_clip_request,
+            &transform_application_request);
+    if (default_clip_result.status != RuntimeAssetWorldObjectAdapterStatus::TransformSamplingFailed) {
+        return Fail("producer playback default clip status mismatch");
+    }
+
+    if (!SampledValueArraysMatch(
+            std::span<const AnimationRuntimeSampledValue>(sampled_values.data(), sampled_values.size()),
+            std::span<const AnimationRuntimeSampledValue>(previous_values.data(), previous_values.size()))) {
+        return Fail("producer playback default clip mutated values");
+    }
+
+    tracks[0U] = TrackRecord(WORLD_OBJECT_UNMAPPED, AnimationRuntimeChannel::TranslationX, 0U);
+    const RuntimeAssetWorldObjectProducerPlaybackRequest unmapped_target_request =
+        MakeProducerPlaybackRequest(
+            &fixture,
+            &transform_destination,
+            std::span<const AnimationRuntimeClipRecord>(clips.data(), clips.size()),
+            std::span<const AnimationRuntimeTrackRecord>(tracks.data(), tracks.size()),
+            std::span<const AnimationRuntimeKeyframeRecord>(keyframes.data(), keyframes.size()),
+            sampled_scratch.data(),
+            sampled_value_count,
+            sampled_values.data(),
+            sampled_value_count);
+    const RuntimeAssetWorldObjectAdapterResult unmapped_target_result =
+        adapter_bridge.BuildProducerPlaybackTransformApplicationRequest(
+            unmapped_target_request,
+            &transform_application_request);
+    if (unmapped_target_result.status != RuntimeAssetWorldObjectAdapterStatus::TransformTargetNotFound) {
+        return Fail("producer playback unmapped target status mismatch");
+    }
+
+    if (transform_application_request.sampled_values != previous_request.sampled_values ||
+        transform_application_request.sampled_value_count != previous_request.sampled_value_count) {
+        return Fail("producer playback target failure mutated request");
+    }
+
+    if (!SampledValueArraysMatch(
+            std::span<const AnimationRuntimeSampledValue>(sampled_values.data(), sampled_values.size()),
+            std::span<const AnimationRuntimeSampledValue>(previous_values.data(), previous_values.size()))) {
+        return Fail("producer playback target failure mutated values");
+    }
+
+    const auto adapter_snapshot = adapter_bridge.Snapshot();
+    if (adapter_snapshot.transform_sampler_bridge_attempt_count != 6U) {
+        return Fail("producer playback atomic attempt count mismatch");
+    }
+
+    if (adapter_snapshot.failed_operation_count != 5U) {
+        return Fail("producer playback atomic failure count mismatch");
+    }
+
+    if (adapter_snapshot.required_sampled_transform_value_count != 0U) {
+        return Fail("producer playback final required count mismatch");
+    }
+
+    return 0;
+}
+
+int TestRejectProducerPlaybackBatchFailureWithoutMutation() {
+    HandoffFixture fixture = MakeFixture();
+    WorldInstance world = MakeWorld();
+    ObjectRegistry object_registry = MakeObjectRegistry();
+    if (PrepareWorldAndObjects(&world, &object_registry, &fixture, true) != 0) {
+        return 1;
+    }
+
+    WorldTransformBridge transform_destination(world);
+    std::array<AnimationRuntimeClipRecord, 1U> first_clips{};
+    first_clips[0U] = ClipRecord(2U);
+    std::array<AnimationRuntimeTrackRecord, 2U> first_tracks{};
+    first_tracks[0U] = TrackRecord(WORLD_OBJECT_A, AnimationRuntimeChannel::TranslationX, 0U);
+    first_tracks[1U] = TrackRecord(WORLD_OBJECT_B, AnimationRuntimeChannel::ScaleZ, 2U);
+    std::array<AnimationRuntimeKeyframeRecord, 4U> first_keyframes{};
+    first_keyframes[0U] = Keyframe(0.0F, 40.0F);
+    first_keyframes[1U] = Keyframe(1.0F, 42.0F);
+    first_keyframes[2U] = Keyframe(0.0F, 3.0F);
+    first_keyframes[3U] = Keyframe(1.0F, 4.0F);
+
+    std::array<AnimationRuntimeClipRecord, 1U> second_clips{};
+    second_clips[0U] = ClipRecord(1U);
+    std::array<AnimationRuntimeTrackRecord, 1U> second_tracks{};
+    second_tracks[0U] = TrackRecord(WORLD_OBJECT_A, AnimationRuntimeChannel::RotationY, 0U);
+    std::array<AnimationRuntimeKeyframeRecord, 2U> second_keyframes{};
+    second_keyframes[0U] = Keyframe(0.0F, 0.0F);
+    second_keyframes[1U] = Keyframe(1.0F, 0.5F);
+
+    std::array<RuntimeAssetWorldObjectProducerPlaybackRequest, 2U> playback_requests{};
+    playback_requests[0U] = MakeProducerPlaybackRequest(
+        &fixture,
+        &transform_destination,
+        std::span<const AnimationRuntimeClipRecord>(first_clips.data(), first_clips.size()),
+        std::span<const AnimationRuntimeTrackRecord>(first_tracks.data(), first_tracks.size()),
+        std::span<const AnimationRuntimeKeyframeRecord>(first_keyframes.data(), first_keyframes.size()),
+        nullptr,
+        0U,
+        nullptr,
+        0U);
+    playback_requests[1U] = MakeProducerPlaybackRequest(
+        &fixture,
+        &transform_destination,
+        std::span<const AnimationRuntimeClipRecord>(second_clips.data(), second_clips.size()),
+        std::span<const AnimationRuntimeTrackRecord>(second_tracks.data(), second_tracks.size()),
+        std::span<const AnimationRuntimeKeyframeRecord>(second_keyframes.data(), second_keyframes.size()),
+        nullptr,
+        0U,
+        nullptr,
+        0U);
+
+    std::array<AnimationRuntimeSampledValue, 3U> sampled_scratch{};
+    std::array<AnimationRuntimeSampledValue, 3U> sampled_values{};
+    const std::uint32_t sampled_value_count = static_cast<std::uint32_t>(sampled_values.size());
+    const std::uint32_t playback_request_count = static_cast<std::uint32_t>(playback_requests.size());
+    const RuntimeAssetWorldObjectProducerPlaybackBatchRequest full_capacity_request =
+        MakeProducerPlaybackBatchRequest(
+            playback_requests.data(),
+            playback_request_count,
+            sampled_scratch.data(),
+            sampled_value_count,
+            sampled_values.data(),
+            sampled_value_count);
+
+    RuntimeAssetWorldObjectAdapterBridge adapter_bridge{};
+    RuntimeAssetWorldObjectTransformApplicationRequest transform_application_request{};
+    const RuntimeAssetWorldObjectAdapterResult success_result =
+        adapter_bridge.BuildProducerPlaybackBatchTransformApplicationRequest(
+            full_capacity_request,
+            &transform_application_request);
+    if (!success_result.Succeeded()) {
+        return Fail("producer playback batch atomic setup failed");
+    }
+
+    const std::array<AnimationRuntimeSampledValue, 3U> previous_values = sampled_values;
+    const RuntimeAssetWorldObjectTransformApplicationRequest previous_request = transform_application_request;
+    std::array<RuntimeAssetWorldObjectProducerPlaybackRequest, 2U> invalid_clip_requests = playback_requests;
+    invalid_clip_requests[1U].export_clip_id = 0U;
+    RuntimeAssetWorldObjectProducerPlaybackBatchRequest invalid_clip_request =
+        MakeProducerPlaybackBatchRequest(
+            invalid_clip_requests.data(),
+            playback_request_count,
+            sampled_scratch.data(),
+            sampled_value_count,
+            sampled_values.data(),
+            sampled_value_count);
+    const RuntimeAssetWorldObjectAdapterResult invalid_clip_result =
+        adapter_bridge.BuildProducerPlaybackBatchTransformApplicationRequest(
+            invalid_clip_request,
+            &transform_application_request);
+    if (invalid_clip_result.status != RuntimeAssetWorldObjectAdapterStatus::TransformSamplingFailed) {
+        return Fail("producer playback batch invalid clip status mismatch");
+    }
+
+    if (invalid_clip_result.failed_playback_request_index != 1U) {
+        return Fail("producer playback batch invalid clip index mismatch");
+    }
+
+    if (transform_application_request.sampled_values != previous_request.sampled_values ||
+        transform_application_request.sampled_value_count != previous_request.sampled_value_count) {
+        return Fail("producer playback batch invalid clip mutated request");
+    }
+
+    if (!SampledValueArraysMatch(
+            std::span<const AnimationRuntimeSampledValue>(sampled_values.data(), sampled_values.size()),
+            std::span<const AnimationRuntimeSampledValue>(previous_values.data(), previous_values.size()))) {
+        return Fail("producer playback batch invalid clip mutated values");
+    }
+
+    constexpr std::uint32_t SMALL_CAPACITY = 2U;
+    const RuntimeAssetWorldObjectProducerPlaybackBatchRequest small_scratch_request =
+        MakeProducerPlaybackBatchRequest(
+            playback_requests.data(),
+            playback_request_count,
+            sampled_scratch.data(),
+            SMALL_CAPACITY,
+            sampled_values.data(),
+            sampled_value_count);
+    const RuntimeAssetWorldObjectAdapterResult scratch_capacity_result =
+        adapter_bridge.BuildProducerPlaybackBatchTransformApplicationRequest(
+            small_scratch_request,
+            &transform_application_request);
+    if (scratch_capacity_result.status != RuntimeAssetWorldObjectAdapterStatus::SampledTransformOutputCapacityExceeded) {
+        return Fail("producer playback batch scratch capacity status mismatch");
+    }
+
+    if (scratch_capacity_result.failed_playback_request_index != 1U) {
+        return Fail("producer playback batch scratch capacity index mismatch");
+    }
+
+    if (scratch_capacity_result.required_sampled_transform_value_count != sampled_value_count) {
+        return Fail("producer playback batch scratch capacity required count mismatch");
+    }
+
+    if (!SampledValueArraysMatch(
+            std::span<const AnimationRuntimeSampledValue>(sampled_values.data(), sampled_values.size()),
+            std::span<const AnimationRuntimeSampledValue>(previous_values.data(), previous_values.size()))) {
+        return Fail("producer playback batch scratch capacity mutated values");
+    }
+
+    const RuntimeAssetWorldObjectProducerPlaybackBatchRequest small_output_request =
+        MakeProducerPlaybackBatchRequest(
+            playback_requests.data(),
+            playback_request_count,
+            sampled_scratch.data(),
+            sampled_value_count,
+            sampled_values.data(),
+            SMALL_CAPACITY);
+    const RuntimeAssetWorldObjectAdapterResult output_capacity_result =
+        adapter_bridge.BuildProducerPlaybackBatchTransformApplicationRequest(
+            small_output_request,
+            &transform_application_request);
+    if (output_capacity_result.status != RuntimeAssetWorldObjectAdapterStatus::SampledTransformOutputCapacityExceeded) {
+        return Fail("producer playback batch output capacity status mismatch");
+    }
+
+    if (output_capacity_result.failed_playback_request_index != 1U) {
+        return Fail("producer playback batch output capacity index mismatch");
+    }
+
+    if (output_capacity_result.required_sampled_transform_value_count != sampled_value_count) {
+        return Fail("producer playback batch output capacity required count mismatch");
+    }
+
+    if (transform_application_request.sampled_values != previous_request.sampled_values ||
+        transform_application_request.sampled_value_count != previous_request.sampled_value_count) {
+        return Fail("producer playback batch output capacity mutated request");
+    }
+
+    const RuntimeAssetWorldObjectAdapterResult repeated_output_capacity_result =
+        adapter_bridge.BuildProducerPlaybackBatchTransformApplicationRequest(
+            small_output_request,
+            &transform_application_request);
+    if (repeated_output_capacity_result.status != RuntimeAssetWorldObjectAdapterStatus::SampledTransformOutputCapacityExceeded) {
+        return Fail("producer playback batch repeated output capacity status mismatch");
+    }
+
+    if (!SampledValueArraysMatch(
+            std::span<const AnimationRuntimeSampledValue>(sampled_values.data(), sampled_values.size()),
+            std::span<const AnimationRuntimeSampledValue>(previous_values.data(), previous_values.size()))) {
+        return Fail("producer playback batch repeated output capacity mutated values");
+    }
+
+    std::array<AnimationRuntimeTrackRecord, 1U> unmapped_tracks = second_tracks;
+    unmapped_tracks[0U] = TrackRecord(WORLD_OBJECT_UNMAPPED, AnimationRuntimeChannel::RotationY, 0U);
+    std::array<RuntimeAssetWorldObjectProducerPlaybackRequest, 2U> unmapped_target_requests = playback_requests;
+    unmapped_target_requests[1U] = MakeProducerPlaybackRequest(
+        &fixture,
+        &transform_destination,
+        std::span<const AnimationRuntimeClipRecord>(second_clips.data(), second_clips.size()),
+        std::span<const AnimationRuntimeTrackRecord>(unmapped_tracks.data(), unmapped_tracks.size()),
+        std::span<const AnimationRuntimeKeyframeRecord>(second_keyframes.data(), second_keyframes.size()),
+        nullptr,
+        0U,
+        nullptr,
+        0U);
+    const RuntimeAssetWorldObjectProducerPlaybackBatchRequest unmapped_target_request =
+        MakeProducerPlaybackBatchRequest(
+            unmapped_target_requests.data(),
+            playback_request_count,
+            sampled_scratch.data(),
+            sampled_value_count,
+            sampled_values.data(),
+            sampled_value_count);
+    const RuntimeAssetWorldObjectAdapterResult unmapped_target_result =
+        adapter_bridge.BuildProducerPlaybackBatchTransformApplicationRequest(
+            unmapped_target_request,
+            &transform_application_request);
+    if (unmapped_target_result.status != RuntimeAssetWorldObjectAdapterStatus::TransformTargetNotFound) {
+        return Fail("producer playback batch target status mismatch");
+    }
+
+    if (unmapped_target_result.failed_playback_request_index != 1U) {
+        return Fail("producer playback batch target index mismatch");
+    }
+
+    if (transform_application_request.sampled_values != previous_request.sampled_values ||
+        transform_application_request.sampled_value_count != previous_request.sampled_value_count) {
+        return Fail("producer playback batch target failure mutated request");
+    }
+
+    if (!SampledValueArraysMatch(
+            std::span<const AnimationRuntimeSampledValue>(sampled_values.data(), sampled_values.size()),
+            std::span<const AnimationRuntimeSampledValue>(previous_values.data(), previous_values.size()))) {
+        return Fail("producer playback batch target failure mutated values");
+    }
+
+    const auto adapter_snapshot = adapter_bridge.Snapshot();
+    if (adapter_snapshot.transform_sampler_bridge_attempt_count != 6U) {
+        return Fail("producer playback batch atomic attempt count mismatch");
+    }
+
+    if (adapter_snapshot.failed_operation_count != 5U) {
+        return Fail("producer playback batch atomic failure count mismatch");
+    }
+
+    if (adapter_snapshot.required_sampled_transform_value_count != 0U) {
+        return Fail("producer playback batch final required count mismatch");
+    }
+
+    return 0;
+}
+
+int TestRejectProducerPlaybackBatchCountFailureWithoutMutation() {
+    HandoffFixture fixture = MakeFixture();
+    WorldInstance world = MakeWorld();
+    ObjectRegistry object_registry = MakeObjectRegistry();
+    if (PrepareWorldAndObjects(&world, &object_registry, &fixture, true) != 0) {
+        return 1;
+    }
+
+    WorldTransformBridge transform_destination(world);
+    std::array<AnimationRuntimeClipRecord, 1U> first_clips{};
+    first_clips[0U] = ClipRecord(2U);
+    std::array<AnimationRuntimeTrackRecord, 2U> first_tracks{};
+    first_tracks[0U] = TrackRecord(WORLD_OBJECT_A, AnimationRuntimeChannel::TranslationX, 0U);
+    first_tracks[1U] = TrackRecord(WORLD_OBJECT_B, AnimationRuntimeChannel::ScaleZ, 2U);
+    std::array<AnimationRuntimeKeyframeRecord, 4U> first_keyframes{};
+    first_keyframes[0U] = Keyframe(0.0F, 40.0F);
+    first_keyframes[1U] = Keyframe(1.0F, 42.0F);
+    first_keyframes[2U] = Keyframe(0.0F, 3.0F);
+    first_keyframes[3U] = Keyframe(1.0F, 4.0F);
+
+    std::array<AnimationRuntimeClipRecord, 1U> second_clips{};
+    second_clips[0U] = ClipRecord(1U);
+    std::array<AnimationRuntimeTrackRecord, 1U> second_tracks{};
+    second_tracks[0U] = TrackRecord(WORLD_OBJECT_A, AnimationRuntimeChannel::RotationY, 0U);
+    std::array<AnimationRuntimeKeyframeRecord, 2U> second_keyframes{};
+    second_keyframes[0U] = Keyframe(0.0F, 0.0F);
+    second_keyframes[1U] = Keyframe(1.0F, 0.5F);
+
+    std::array<RuntimeAssetWorldObjectProducerPlaybackRequest, 2U> playback_requests{};
+    playback_requests[0U] = MakeProducerPlaybackRequest(
+        &fixture,
+        &transform_destination,
+        std::span<const AnimationRuntimeClipRecord>(first_clips.data(), first_clips.size()),
+        std::span<const AnimationRuntimeTrackRecord>(first_tracks.data(), first_tracks.size()),
+        std::span<const AnimationRuntimeKeyframeRecord>(first_keyframes.data(), first_keyframes.size()),
+        nullptr,
+        0U,
+        nullptr,
+        0U);
+    playback_requests[1U] = MakeProducerPlaybackRequest(
+        &fixture,
+        &transform_destination,
+        std::span<const AnimationRuntimeClipRecord>(second_clips.data(), second_clips.size()),
+        std::span<const AnimationRuntimeTrackRecord>(second_tracks.data(), second_tracks.size()),
+        std::span<const AnimationRuntimeKeyframeRecord>(second_keyframes.data(), second_keyframes.size()),
+        nullptr,
+        0U,
+        nullptr,
+        0U);
+
+    std::array<AnimationRuntimeSampledValue, 3U> sampled_scratch{};
+    std::array<AnimationRuntimeSampledValue, 3U> sampled_values{};
+    const std::uint32_t sampled_value_count = static_cast<std::uint32_t>(sampled_values.size());
+    const std::uint32_t playback_request_count = static_cast<std::uint32_t>(playback_requests.size());
+    const RuntimeAssetWorldObjectProducerPlaybackBatchRequest full_capacity_request =
+        MakeProducerPlaybackBatchRequest(
+            playback_requests.data(),
+            playback_request_count,
+            sampled_scratch.data(),
+            sampled_value_count,
+            sampled_values.data(),
+            sampled_value_count);
+
+    RuntimeAssetWorldObjectAdapterBridge adapter_bridge{};
+    RuntimeAssetWorldObjectTransformApplicationRequest transform_application_request{};
+    const RuntimeAssetWorldObjectAdapterResult success_result =
+        adapter_bridge.BuildProducerPlaybackBatchTransformApplicationRequest(
+            full_capacity_request,
+            &transform_application_request);
+    if (!success_result.Succeeded()) {
+        return Fail("producer playback batch count failure setup failed");
+    }
+
+    const std::array<AnimationRuntimeSampledValue, 3U> previous_values = sampled_values;
+    const RuntimeAssetWorldObjectTransformApplicationRequest previous_request = transform_application_request;
+    std::array<RuntimeAssetWorldObjectProducerPlaybackRequest, 2U> invalid_clip_requests = playback_requests;
+    invalid_clip_requests[1U].export_clip_id = 0U;
+    const RuntimeAssetWorldObjectProducerPlaybackBatchRequest invalid_clip_request =
+        MakeProducerPlaybackBatchRequest(
+            invalid_clip_requests.data(),
+            playback_request_count,
+            sampled_scratch.data(),
+            sampled_value_count,
+            sampled_values.data(),
+            sampled_value_count);
+    const RuntimeAssetWorldObjectAdapterResult invalid_clip_result =
+        adapter_bridge.SnapshotProducerPlaybackBatchTransformApplicationCount(invalid_clip_request);
+    if (invalid_clip_result.status != RuntimeAssetWorldObjectAdapterStatus::TransformSamplingFailed) {
+        return Fail("producer playback batch count invalid clip status mismatch");
+    }
+
+    if (invalid_clip_result.failed_playback_request_index != 1U) {
+        return Fail("producer playback batch count invalid clip index mismatch");
+    }
+
+    if (transform_application_request.sampled_values != previous_request.sampled_values ||
+        transform_application_request.sampled_value_count != previous_request.sampled_value_count) {
+        return Fail("producer playback batch count invalid clip mutated request");
+    }
+
+    if (!SampledValueArraysMatch(
+            std::span<const AnimationRuntimeSampledValue>(sampled_values.data(), sampled_values.size()),
+            std::span<const AnimationRuntimeSampledValue>(previous_values.data(), previous_values.size()))) {
+        return Fail("producer playback batch count invalid clip mutated values");
+    }
+
+    constexpr std::uint32_t SMALL_CAPACITY = 2U;
+    const RuntimeAssetWorldObjectProducerPlaybackBatchRequest small_scratch_request =
+        MakeProducerPlaybackBatchRequest(
+            playback_requests.data(),
+            playback_request_count,
+            sampled_scratch.data(),
+            SMALL_CAPACITY,
+            sampled_values.data(),
+            sampled_value_count);
+    const RuntimeAssetWorldObjectAdapterResult scratch_capacity_result =
+        adapter_bridge.SnapshotProducerPlaybackBatchTransformApplicationCount(small_scratch_request);
+    if (scratch_capacity_result.status != RuntimeAssetWorldObjectAdapterStatus::SampledTransformOutputCapacityExceeded) {
+        return Fail("producer playback batch count scratch capacity status mismatch");
+    }
+
+    if (scratch_capacity_result.failed_playback_request_index != 1U) {
+        return Fail("producer playback batch count scratch capacity index mismatch");
+    }
+
+    if (scratch_capacity_result.required_sampled_transform_value_count != sampled_value_count) {
+        return Fail("producer playback batch count scratch capacity required mismatch");
+    }
+
+    const RuntimeAssetWorldObjectAdapterResult repeated_scratch_result =
+        adapter_bridge.SnapshotProducerPlaybackBatchTransformApplicationCount(small_scratch_request);
+    if (repeated_scratch_result.status != RuntimeAssetWorldObjectAdapterStatus::SampledTransformOutputCapacityExceeded) {
+        return Fail("producer playback batch count repeated scratch status mismatch");
+    }
+
+    if (!SampledValueArraysMatch(
+            std::span<const AnimationRuntimeSampledValue>(sampled_values.data(), sampled_values.size()),
+            std::span<const AnimationRuntimeSampledValue>(previous_values.data(), previous_values.size()))) {
+        return Fail("producer playback batch count repeated scratch mutated values");
+    }
+
+    std::array<AnimationRuntimeTrackRecord, 1U> unmapped_tracks = second_tracks;
+    unmapped_tracks[0U] = TrackRecord(WORLD_OBJECT_UNMAPPED, AnimationRuntimeChannel::RotationY, 0U);
+    std::array<RuntimeAssetWorldObjectProducerPlaybackRequest, 2U> unmapped_target_requests = playback_requests;
+    unmapped_target_requests[1U] = MakeProducerPlaybackRequest(
+        &fixture,
+        &transform_destination,
+        std::span<const AnimationRuntimeClipRecord>(second_clips.data(), second_clips.size()),
+        std::span<const AnimationRuntimeTrackRecord>(unmapped_tracks.data(), unmapped_tracks.size()),
+        std::span<const AnimationRuntimeKeyframeRecord>(second_keyframes.data(), second_keyframes.size()),
+        nullptr,
+        0U,
+        nullptr,
+        0U);
+    const RuntimeAssetWorldObjectProducerPlaybackBatchRequest unmapped_target_request =
+        MakeProducerPlaybackBatchRequest(
+            unmapped_target_requests.data(),
+            playback_request_count,
+            sampled_scratch.data(),
+            sampled_value_count,
+            sampled_values.data(),
+            sampled_value_count);
+    const RuntimeAssetWorldObjectAdapterResult unmapped_target_result =
+        adapter_bridge.SnapshotProducerPlaybackBatchTransformApplicationCount(unmapped_target_request);
+    if (unmapped_target_result.status != RuntimeAssetWorldObjectAdapterStatus::TransformTargetNotFound) {
+        return Fail("producer playback batch count target status mismatch");
+    }
+
+    if (unmapped_target_result.failed_playback_request_index != 1U) {
+        return Fail("producer playback batch count target index mismatch");
+    }
+
+    if (transform_application_request.sampled_values != previous_request.sampled_values ||
+        transform_application_request.sampled_value_count != previous_request.sampled_value_count) {
+        return Fail("producer playback batch count target mutated request");
+    }
+
+    if (!SampledValueArraysMatch(
+            std::span<const AnimationRuntimeSampledValue>(sampled_values.data(), sampled_values.size()),
+            std::span<const AnimationRuntimeSampledValue>(previous_values.data(), previous_values.size()))) {
+        return Fail("producer playback batch count target mutated values");
+    }
+
+    const auto adapter_snapshot = adapter_bridge.Snapshot();
+    if (adapter_snapshot.transform_sampler_bridge_attempt_count != 5U) {
+        return Fail("producer playback batch count failure attempt count mismatch");
+    }
+
+    if (adapter_snapshot.failed_operation_count != 4U) {
+        return Fail("producer playback batch count failure count mismatch");
+    }
+
+    if (adapter_snapshot.required_sampled_transform_value_count != 0U) {
+        return Fail("producer playback batch count final required count mismatch");
+    }
+
+    return 0;
+}
+
+int TestRejectTimelineSampleTargetsBeforeWorldRestore() {
+    HandoffFixture fixture = MakeFixture();
+    WorldInstance world = MakeWorld();
+    ObjectRegistry object_registry = MakeObjectRegistry();
+    if (PrepareWorldAndObjects(&world, &object_registry, &fixture, true) != 0) {
+        return 1;
+    }
+
+    if (RegisterWorldObject(&world, WORLD_OBJECT_UNMAPPED) != 0) {
+        return 1;
+    }
+
+    WorldObjectIdentityBridge identity_destination(world, object_registry);
+    WorldTransformBridge transform_destination(world);
+    const WorldTransformState unmapped_transform = Transform(70.0F);
+    if (RegisterTransform(&transform_destination, WORLD_OBJECT_UNMAPPED, unmapped_transform) != 0) {
+        return 1;
+    }
+
+    const WorldObjectIdentitySnapshot identity_before = identity_destination.Snapshot();
+    const WorldTransformSnapshot transform_before = transform_destination.Snapshot();
+    std::array<AnimationRuntimeClipRecord, 1U> clips{};
+    clips[0U] = ClipRecord(1U);
+    std::array<AnimationRuntimeTrackRecord, 1U> tracks{};
+    tracks[0U] = TrackRecord(WorldObjectId{}, AnimationRuntimeChannel::TranslationX, 0U);
+    std::array<AnimationRuntimeKeyframeRecord, 2U> keyframes{};
+    keyframes[0U] = Keyframe(0.0F, 90.0F);
+    keyframes[1U] = Keyframe(1.0F, 100.0F);
+    std::array<AnimationRuntimeSampledValue, 1U> sampled_scratch{};
+    std::array<AnimationRuntimeSampledValue, 1U> sampled_values{};
+    sampled_values[0U].target = SENTINEL_WORLD_OBJECT;
+    sampled_values[0U].channel = AnimationRuntimeChannel::ScaleZ;
+    sampled_values[0U].value = 123.0F;
+    const std::uint32_t sampled_value_count = static_cast<std::uint32_t>(sampled_values.size());
+    const RuntimeAssetWorldObjectTimelineTransformSampleRequest default_target_request =
+        MakeTimelineTransformSampleRequest(
+            &fixture,
+            &transform_destination,
+            std::span<const AnimationRuntimeClipRecord>(clips.data(), clips.size()),
+            std::span<const AnimationRuntimeTrackRecord>(tracks.data(), tracks.size()),
+            std::span<const AnimationRuntimeKeyframeRecord>(keyframes.data(), keyframes.size()),
+            sampled_scratch.data(),
+            sampled_value_count,
+            sampled_values.data(),
+            sampled_value_count);
+
+    RuntimeAssetWorldObjectAdapterBridge adapter_bridge{};
+    RuntimeAssetWorldObjectTransformApplicationRequest transform_application_request{};
+    const RuntimeAssetWorldObjectAdapterResult default_result =
+        adapter_bridge.BuildTimelineTransformApplicationRequest(
+            default_target_request,
+            &transform_application_request);
+    if (default_result.status != RuntimeAssetWorldObjectAdapterStatus::TransformSamplingFailed) {
+        return Fail("timeline sampler default target status mismatch");
+    }
+
+    if (transform_application_request.sampled_value_count != 0U) {
+        return Fail("timeline sampler default target exposed request");
+    }
+
+    if (sampled_values[0U].target.value != SENTINEL_WORLD_OBJECT.value ||
+        sampled_values[0U].channel != AnimationRuntimeChannel::ScaleZ ||
+        sampled_values[0U].value != 123.0F) {
+        return Fail("timeline sampler default target mutated sampled output");
+    }
+
+    tracks[0U] = TrackRecord(WORLD_OBJECT_UNMAPPED, AnimationRuntimeChannel::TranslationX, 0U);
+    sampled_values[0U].target = SENTINEL_WORLD_OBJECT;
+    sampled_values[0U].channel = AnimationRuntimeChannel::ScaleZ;
+    sampled_values[0U].value = 123.0F;
+    const RuntimeAssetWorldObjectTimelineTransformSampleRequest unmapped_target_request =
+        MakeTimelineTransformSampleRequest(
+            &fixture,
+            &transform_destination,
+            std::span<const AnimationRuntimeClipRecord>(clips.data(), clips.size()),
+            std::span<const AnimationRuntimeTrackRecord>(tracks.data(), tracks.size()),
+            std::span<const AnimationRuntimeKeyframeRecord>(keyframes.data(), keyframes.size()),
+            sampled_scratch.data(),
+            sampled_value_count,
+            sampled_values.data(),
+            sampled_value_count);
+    const RuntimeAssetWorldObjectAdapterResult unmapped_result =
+        adapter_bridge.BuildTimelineTransformApplicationRequest(
+            unmapped_target_request,
+            &transform_application_request);
+    if (unmapped_result.status != RuntimeAssetWorldObjectAdapterStatus::TransformTargetNotFound) {
+        return Fail("timeline sampler unmapped target status mismatch");
+    }
+
+    if (transform_application_request.sampled_value_count != 0U) {
+        return Fail("timeline sampler unmapped target exposed request");
+    }
+
+    if (sampled_values[0U].target.value != SENTINEL_WORLD_OBJECT.value ||
+        sampled_values[0U].channel != AnimationRuntimeChannel::ScaleZ ||
+        sampled_values[0U].value != 123.0F) {
+        return Fail("timeline sampler unmapped target mutated sampled output");
+    }
+
+    if (sampled_scratch[0U].target.value != WORLD_OBJECT_UNMAPPED.value ||
+        sampled_scratch[0U].channel != AnimationRuntimeChannel::TranslationX ||
+        sampled_scratch[0U].value != 95.0F) {
+        return Fail("timeline sampler unmapped target scratch value mismatch");
+    }
+
+    if (!ObjectIdentitySnapshotsMatch(identity_before, identity_destination.Snapshot())) {
+        return Fail("timeline sampler target failure mutated identity destination");
+    }
+
+    if (!TransformSnapshotsMatch(transform_before, transform_destination.Snapshot())) {
+        return Fail("timeline sampler target failure mutated transform destination");
+    }
+
+    const WorldTransformResult unmapped_query = transform_destination.Query(WORLD_OBJECT_UNMAPPED);
+    if (!unmapped_query.Succeeded()) {
+        return Fail("timeline sampler unmapped target query failed");
+    }
+
+    if (!TransformsMatch(unmapped_query.transform_state, unmapped_transform)) {
+        return Fail("timeline sampler unmapped target mutated existing target");
+    }
+
+    const auto adapter_snapshot = adapter_bridge.Snapshot();
+    if (adapter_snapshot.transform_sampler_bridge_attempt_count != 2U) {
+        return Fail("timeline sampler target failure attempt count mismatch");
+    }
+
+    if (adapter_snapshot.failed_operation_count != 2U) {
+        return Fail("timeline sampler target failure count mismatch");
+    }
+
+    if (adapter_snapshot.last_status != RuntimeAssetWorldObjectAdapterStatus::TransformTargetNotFound) {
+        return Fail("timeline sampler target failure snapshot status mismatch");
     }
 
     return 0;
@@ -1308,6 +3594,104 @@ int TestRejectAdapterPreflight() {
     return 0;
 }
 
+int TestRejectUnmappedSampledTransformBeforeWorldRestore() {
+    HandoffFixture fixture = MakeFixture();
+    WorldInstance world = MakeWorld();
+    ObjectRegistry object_registry = MakeObjectRegistry();
+    if (PrepareWorldAndObjects(&world, &object_registry, &fixture, true) != 0) {
+        return 1;
+    }
+
+    if (RegisterWorldObject(&world, WORLD_OBJECT_UNMAPPED) != 0) {
+        return 1;
+    }
+
+    ResourceRegistry resource_registry{};
+    WorldObjectIdentityBridge identity_destination(world, object_registry);
+    WorldTransformBridge transform_destination(world);
+    WorldComponentAttachmentBridge attachment_destination{};
+    WorldComponentResourceBindingBridge binding_destination{};
+    const WorldTransformState unmapped_transform = Transform(70.0F);
+    if (RegisterTransform(&transform_destination, WORLD_OBJECT_UNMAPPED, unmapped_transform) != 0) {
+        return 1;
+    }
+
+    const WorldObjectIdentitySnapshot identity_before = identity_destination.Snapshot();
+    const WorldTransformSnapshot transform_before = transform_destination.Snapshot();
+    std::array<AnimationRuntimeSampledValue, 1U> sampled_values{};
+    sampled_values[0U].target = WORLD_OBJECT_UNMAPPED;
+    sampled_values[0U].channel = AnimationRuntimeChannel::TranslationX;
+    sampled_values[0U].value = 99.0F;
+    RuntimeAssetWorldObjectTransformApplicationRequest transform_application_request =
+        MakeTransformApplicationRequest(
+            &fixture,
+            &transform_destination,
+            sampled_values.data(),
+            static_cast<std::uint32_t>(sampled_values.size()));
+    RuntimeAssetWorldObjectAdapterRequest adapter_request = MakeAdapterRequest(&fixture);
+    RuntimeAssetWorldObjectRestoreHandoffRequest handoff_request = MakeHandoffRequest(
+        &fixture,
+        &adapter_request,
+        &world,
+        &object_registry,
+        &resource_registry,
+        &identity_destination,
+        &transform_destination,
+        &attachment_destination,
+        &binding_destination);
+    handoff_request.transform_application_request = &transform_application_request;
+
+    RuntimeAssetWorldObjectRestoreHandoffBridge bridge{};
+    const RuntimeAssetWorldObjectRestoreHandoffResult result = bridge.ApplyRestore(handoff_request);
+    if (result.status != RuntimeAssetWorldObjectRestoreHandoffStatus::TransformApplicationFailed) {
+        return Fail("unmapped sampled transform handoff status mismatch");
+    }
+
+    if (result.adapter_status != RuntimeAssetWorldObjectAdapterStatus::TransformTargetNotFound) {
+        return Fail("unmapped sampled transform adapter status mismatch");
+    }
+
+    if (!OutputRecordsHaveSentinelValues(fixture)) {
+        return Fail("unmapped sampled transform mutated output records");
+    }
+
+    if (!ObjectIdentitySnapshotsMatch(identity_before, identity_destination.Snapshot())) {
+        return Fail("unmapped sampled transform mutated identity destination");
+    }
+
+    if (!TransformSnapshotsMatch(transform_before, transform_destination.Snapshot())) {
+        return Fail("unmapped sampled transform mutated transform destination");
+    }
+
+    const WorldTransformResult unmapped_result = transform_destination.Query(WORLD_OBJECT_UNMAPPED);
+    if (!unmapped_result.Succeeded()) {
+        return Fail("unmapped sampled transform query failed");
+    }
+
+    if (!TransformsMatch(unmapped_result.transform_state, unmapped_transform)) {
+        return Fail("unmapped sampled transform mutated existing target");
+    }
+
+    const RuntimeAssetWorldObjectRestoreHandoffSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.failed_operation_count != 1U) {
+        return Fail("unmapped sampled transform snapshot failure count mismatch");
+    }
+
+    if (snapshot.rejected_operation_count != 1U) {
+        return Fail("unmapped sampled transform snapshot rejection mismatch");
+    }
+
+    if (snapshot.last_status != RuntimeAssetWorldObjectRestoreHandoffStatus::TransformApplicationFailed) {
+        return Fail("unmapped sampled transform snapshot handoff status mismatch");
+    }
+
+    if (snapshot.last_adapter_status != RuntimeAssetWorldObjectAdapterStatus::TransformTargetNotFound) {
+        return Fail("unmapped sampled transform snapshot adapter status mismatch");
+    }
+
+    return 0;
+}
+
 int TestRejectWorldGate() {
     HandoffFixture fixture = MakeFixture();
     WorldInstance world = MakeWorld();
@@ -1407,13 +3791,27 @@ int TestRejectNullAdapterRequest() {
 }
 
 int RunTest(std::string_view test_name) {
-    constexpr std::array<TestCase, 8U> TESTS{{
+    constexpr std::array<TestCase, 22U> TESTS{{
         {TEST_APPLY_RESTORE, TestApplyRestore},
+        {TEST_APPLY_SAMPLED_TRANSFORMS, TestApplySampledTransformsThroughAdapterBridge},
+        {TEST_APPLY_RUNTIME_ANIMATION_SAMPLES, TestApplyRuntimeAnimationSamplesThroughSamplerBridge},
+        {TEST_APPLY_TIMELINE_SAMPLES, TestApplyTimelineSamplesThroughSamplerRequest},
+        {TEST_SNAPSHOT_TIMELINE_APPLICATION_COUNT, TestSnapshotTimelineTransformApplicationCountWithoutMutation},
+        {TEST_APPLY_PRODUCER_PLAYBACK, TestApplyProducerPlaybackThroughScratchHandoff},
+        {TEST_APPLY_PRODUCER_PLAYBACK_BATCH, TestApplyProducerPlaybackBatchThroughScratchHandoff},
+        {TEST_SNAPSHOT_PRODUCER_PLAYBACK_BATCH_COUNT, TestSnapshotProducerPlaybackBatchCountWithoutMutation},
         {TEST_APPLY_TARGET_FAMILY_ALIASES, TestApplyTargetFamilyAliases},
         {TEST_APPLY_ATTACHMENT_BINDING_GATE_RECORDS, TestApplyAttachmentAndBindingGateRecords},
         {TEST_APPLY_SIDECAR_ASSEMBLY_RESTORE, TestApplySidecarAssemblyRestore},
         {TEST_REJECT_SIDECAR_ASSEMBLY_FAILURE_STATUS, TestRejectSidecarAssemblyFailureStatus},
         {TEST_REJECT_ADAPTER_PREFLIGHT, TestRejectAdapterPreflight},
+        {TEST_REJECT_UNMAPPED_SAMPLED_TRANSFORM, TestRejectUnmappedSampledTransformBeforeWorldRestore},
+        {TEST_REJECT_TIMELINE_OUTPUT_ATOMIC, TestRejectTimelineSamplerOutputFailureWithoutMutation},
+        {TEST_REJECT_TIMELINE_APPLICATION_COUNT, TestRejectTimelineTransformApplicationCountFailureWithoutMutation},
+        {TEST_REJECT_PRODUCER_PLAYBACK_ATOMIC, TestRejectProducerPlaybackFailureWithoutMutation},
+        {TEST_REJECT_PRODUCER_PLAYBACK_BATCH_ATOMIC, TestRejectProducerPlaybackBatchFailureWithoutMutation},
+        {TEST_REJECT_PRODUCER_PLAYBACK_BATCH_COUNT, TestRejectProducerPlaybackBatchCountFailureWithoutMutation},
+        {TEST_REJECT_TIMELINE_SAMPLE_TARGETS, TestRejectTimelineSampleTargetsBeforeWorldRestore},
         {TEST_REJECT_WORLD_GATE, TestRejectWorldGate},
         {TEST_REJECT_NULL_ADAPTER, TestRejectNullAdapterRequest},
     }};

@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <string_view>
 
+#include "YuEngine/Animation/AnimationRuntimeSampler.h"
 #include "YuEngine/Object/ObjectDescriptor.h"
 #include "YuEngine/Object/ObjectHandle.h"
 #include "YuEngine/Object/ObjectRegistrationResult.h"
@@ -19,6 +20,7 @@
 #include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectAdapterResult.h"
 #include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectAdapterSnapshot.h"
 #include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectAdapterStatus.h"
+#include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectTransformApplicationRequest.h"
 #include "YuEngine/World/WorldDesc.h"
 #include "YuEngine/World/WorldInstance.h"
 #include "YuEngine/World/WorldObjectDesc.h"
@@ -27,8 +29,14 @@
 #include "YuEngine/World/WorldSceneObjectTransformRestoreIdentityRecord.h"
 #include "YuEngine/World/WorldSceneObjectTransformRestoreTransformRecord.h"
 #include "YuEngine/World/WorldSnapshot.h"
+#include "YuEngine/World/WorldTransformBridge.h"
+#include "YuEngine/World/WorldTransformBridgeDesc.h"
+#include "YuEngine/World/WorldTransformResult.h"
 #include "YuEngine/World/WorldTransformState.h"
+#include "YuEngine/World/WorldTransformStatus.h"
 
+using yuengine::animation::AnimationRuntimeChannel;
+using yuengine::animation::AnimationRuntimeSampledValue;
 using yuengine::object::ObjectDescriptor;
 using yuengine::object::ObjectHandle;
 using yuengine::object::ObjectRegistrationResult;
@@ -45,6 +53,7 @@ using yuengine::runtimeassetworldadapter::RuntimeAssetWorldObjectAdapterRequest;
 using yuengine::runtimeassetworldadapter::RuntimeAssetWorldObjectAdapterResult;
 using yuengine::runtimeassetworldadapter::RuntimeAssetWorldObjectAdapterSnapshot;
 using yuengine::runtimeassetworldadapter::RuntimeAssetWorldObjectAdapterStatus;
+using yuengine::runtimeassetworldadapter::RuntimeAssetWorldObjectTransformApplicationRequest;
 using yuengine::world::WorldDesc;
 using yuengine::world::WorldInstance;
 using yuengine::world::WorldObjectDesc;
@@ -53,7 +62,11 @@ using yuengine::world::WorldRegistrationResult;
 using yuengine::world::WorldSceneObjectTransformRestoreIdentityRecord;
 using yuengine::world::WorldSceneObjectTransformRestoreTransformRecord;
 using yuengine::world::WorldSnapshot;
+using yuengine::world::WorldTransformBridge;
+using yuengine::world::WorldTransformBridgeDesc;
+using yuengine::world::WorldTransformResult;
 using yuengine::world::WorldTransformState;
+using yuengine::world::WorldTransformStatus;
 
 namespace {
 constexpr std::uint32_t OUTPUT_RECORD_COUNT = 2U;
@@ -83,8 +96,13 @@ constexpr const char *TEST_REJECT_SMALL_TRANSFORM_OUTPUT =
     "RuntimeAssetWorldObjectAdapter_RejectsSmallTransformOutputWithoutMutation";
 constexpr const char *TEST_NO_WORLD_OBJECT_REGISTRY_MUTATION =
     "RuntimeAssetWorldObjectAdapter_DoesNotMutateWorldOrObjectRegistryDuringBuild";
+constexpr const char *TEST_APPLY_SAMPLED_TRANSFORM =
+    "RuntimeAssetWorldObjectAdapter_AppliesRuntimeAssetSampledTransformToCallerOwnedWorldObject";
+constexpr const char *TEST_REJECT_UNMAPPED_SAMPLED_TRANSFORM =
+    "RuntimeAssetWorldObjectAdapter_RejectsUnmappedSampledTransformWithoutMutation";
 constexpr WorldObjectId WORLD_OBJECT_A{1U};
 constexpr WorldObjectId WORLD_OBJECT_B{2U};
+constexpr WorldObjectId WORLD_OBJECT_UNMAPPED{77U};
 constexpr WorldObjectId SENTINEL_WORLD_OBJECT{99U};
 constexpr ObjectHandle OBJECT_HANDLE_A{1U, 1U};
 constexpr ObjectHandle OBJECT_HANDLE_B{2U, 1U};
@@ -224,6 +242,58 @@ AdapterFixture MakeFixture() {
     }
 
     return fixture;
+}
+
+RuntimeAssetWorldObjectTransformApplicationRequest MakeTransformApplicationRequest(
+    AdapterFixture *fixture,
+    WorldTransformBridge *transform_destination,
+    const AnimationRuntimeSampledValue *sampled_values,
+    std::uint32_t sampled_value_count) {
+    RuntimeAssetWorldObjectTransformApplicationRequest request{};
+    if (fixture == nullptr) {
+        return request;
+    }
+
+    request.runtime_instance_mappings = fixture->mappings.data();
+    request.runtime_instance_mapping_count = OUTPUT_RECORD_COUNT;
+    request.identity_records = fixture->identity_records.data();
+    request.identity_record_count = OUTPUT_RECORD_COUNT;
+    request.transform_destination = transform_destination;
+    request.sampled_values = sampled_values;
+    request.sampled_value_count = sampled_value_count;
+    return request;
+}
+
+int RegisterWorldObject(WorldInstance *world, WorldObjectId world_object_id) {
+    if (world == nullptr) {
+        return Fail("world fixture missing");
+    }
+
+    WorldObjectDesc object_desc{};
+    object_desc.id = world_object_id;
+    object_desc.is_enabled = true;
+    const WorldRegistrationResult result = world->RegisterObject(object_desc);
+    if (!result.Succeeded()) {
+        return Fail("world object setup failed");
+    }
+
+    return 0;
+}
+
+int RegisterTransform(
+    WorldTransformBridge *transform_destination,
+    WorldObjectId world_object_id,
+    WorldTransformState transform) {
+    if (transform_destination == nullptr) {
+        return Fail("transform destination missing");
+    }
+
+    const WorldTransformResult result = transform_destination->Register(world_object_id, transform);
+    if (result.status != WorldTransformStatus::Success) {
+        return Fail("transform setup failed");
+    }
+
+    return 0;
 }
 
 bool ObjectHandlesMatch(ObjectHandle left, ObjectHandle right) {
@@ -720,8 +790,204 @@ int TestDoesNotMutateWorldOrObjectRegistryDuringBuild() {
     return 0;
 }
 
+int TestApplySampledTransformToCallerOwnedWorldObject() {
+    AdapterFixture fixture = MakeFixture();
+    const std::array<WorldSceneObjectTransformRestoreIdentityRecord, OUTPUT_RECORD_COUNT> identity_before =
+        fixture.output_identities;
+    const std::array<WorldSceneObjectTransformRestoreTransformRecord, OUTPUT_RECORD_COUNT> transform_before =
+        fixture.output_transforms;
+
+    WorldDesc world_desc{};
+    world_desc.object_capacity = 4U;
+    WorldInstance world(world_desc);
+    if (RegisterWorldObject(&world, WORLD_OBJECT_A) != 0) {
+        return 1;
+    }
+
+    if (RegisterWorldObject(&world, WORLD_OBJECT_B) != 0) {
+        return 1;
+    }
+
+    WorldTransformBridgeDesc transform_desc{};
+    transform_desc.bridge_capacity = 4U;
+    WorldTransformBridge transform_destination(world, transform_desc);
+    const WorldTransformState initial_a = Transform(-10.0F);
+    const WorldTransformState initial_b = Transform(-20.0F);
+    if (RegisterTransform(&transform_destination, WORLD_OBJECT_A, initial_a) != 0) {
+        return 1;
+    }
+
+    if (RegisterTransform(&transform_destination, WORLD_OBJECT_B, initial_b) != 0) {
+        return 1;
+    }
+
+    std::array<AnimationRuntimeSampledValue, 3U> sampled_values{};
+    sampled_values[0U].target = WORLD_OBJECT_A;
+    sampled_values[0U].channel = AnimationRuntimeChannel::TranslationX;
+    sampled_values[0U].value = 31.0F;
+    sampled_values[1U].target = WORLD_OBJECT_A;
+    sampled_values[1U].channel = AnimationRuntimeChannel::RotationY;
+    sampled_values[1U].value = 0.25F;
+    sampled_values[2U].target = WORLD_OBJECT_B;
+    sampled_values[2U].channel = AnimationRuntimeChannel::ScaleZ;
+    sampled_values[2U].value = 3.5F;
+
+    RuntimeAssetWorldObjectTransformApplicationRequest request = MakeTransformApplicationRequest(
+        &fixture,
+        &transform_destination,
+        sampled_values.data(),
+        static_cast<std::uint32_t>(sampled_values.size()));
+    RuntimeAssetWorldObjectAdapterBridge bridge{};
+    const RuntimeAssetWorldObjectAdapterResult result = bridge.ApplySampledTransforms(request);
+    if (!result.Succeeded()) {
+        return Fail("sampled transform application failed");
+    }
+
+    if (result.state.input_mapping_count != OUTPUT_RECORD_COUNT) {
+        return Fail("sampled transform application mapping count mismatch");
+    }
+
+    if (result.state.applied_transform_value_count != 3U) {
+        return Fail("sampled transform applied value count mismatch");
+    }
+
+    if (result.state.updated_world_object_count != 2U) {
+        return Fail("sampled transform updated object count mismatch");
+    }
+
+    const WorldTransformResult transform_a = transform_destination.Query(WORLD_OBJECT_A);
+    if (transform_a.status != WorldTransformStatus::Success) {
+        return Fail("sampled transform query a failed");
+    }
+
+    if (transform_a.transform_state.translation_x != 31.0F ||
+        transform_a.transform_state.rotation_y != 0.25F ||
+        transform_a.transform_state.translation_y != initial_a.translation_y) {
+        return Fail("sampled transform application a mismatch");
+    }
+
+    const WorldTransformResult transform_b = transform_destination.Query(WORLD_OBJECT_B);
+    if (transform_b.status != WorldTransformStatus::Success) {
+        return Fail("sampled transform query b failed");
+    }
+
+    if (transform_b.transform_state.scale_z != 3.5F ||
+        transform_b.transform_state.translation_x != initial_b.translation_x) {
+        return Fail("sampled transform application b mismatch");
+    }
+
+    if (!OutputIdentitiesMatch(fixture.output_identities, identity_before)) {
+        return Fail("sampled transform application mutated identity outputs");
+    }
+
+    if (!OutputTransformsMatch(fixture.output_transforms, transform_before)) {
+        return Fail("sampled transform application mutated transform outputs");
+    }
+
+    const RuntimeAssetWorldObjectAdapterSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.transform_application_attempt_count != 1U) {
+        return Fail("sampled transform application attempt count mismatch");
+    }
+
+    if (snapshot.applied_transform_value_count != 3U) {
+        return Fail("sampled transform snapshot applied value count mismatch");
+    }
+
+    if (snapshot.updated_world_object_count != 2U) {
+        return Fail("sampled transform snapshot updated object count mismatch");
+    }
+
+    if (snapshot.built_identity_count != 0U || snapshot.built_transform_count != 0U) {
+        return Fail("sampled transform application should not build restore records");
+    }
+
+    return 0;
+}
+
+int TestRejectUnmappedSampledTransformWithoutMutation() {
+    AdapterFixture fixture = MakeFixture();
+
+    WorldDesc world_desc{};
+    world_desc.object_capacity = 4U;
+    WorldInstance world(world_desc);
+    if (RegisterWorldObject(&world, WORLD_OBJECT_A) != 0) {
+        return 1;
+    }
+
+    if (RegisterWorldObject(&world, WORLD_OBJECT_B) != 0) {
+        return 1;
+    }
+
+    if (RegisterWorldObject(&world, WORLD_OBJECT_UNMAPPED) != 0) {
+        return 1;
+    }
+
+    WorldTransformBridgeDesc transform_desc{};
+    transform_desc.bridge_capacity = 4U;
+    WorldTransformBridge transform_destination(world, transform_desc);
+    const WorldTransformState initial_a = Transform(-10.0F);
+    const WorldTransformState initial_unmapped = Transform(70.0F);
+    const WorldTransformState initial_b = Transform(-20.0F);
+    if (RegisterTransform(&transform_destination, WORLD_OBJECT_A, initial_a) != 0) {
+        return 1;
+    }
+
+    if (RegisterTransform(&transform_destination, WORLD_OBJECT_B, initial_b) != 0) {
+        return 1;
+    }
+
+    if (RegisterTransform(&transform_destination, WORLD_OBJECT_UNMAPPED, initial_unmapped) != 0) {
+        return 1;
+    }
+
+    std::array<AnimationRuntimeSampledValue, 1U> sampled_values{};
+    sampled_values[0U].target = WORLD_OBJECT_UNMAPPED;
+    sampled_values[0U].channel = AnimationRuntimeChannel::TranslationX;
+    sampled_values[0U].value = 99.0F;
+
+    RuntimeAssetWorldObjectTransformApplicationRequest request = MakeTransformApplicationRequest(
+        &fixture,
+        &transform_destination,
+        sampled_values.data(),
+        static_cast<std::uint32_t>(sampled_values.size()));
+    RuntimeAssetWorldObjectAdapterBridge bridge{};
+    const RuntimeAssetWorldObjectAdapterResult result = bridge.ApplySampledTransforms(request);
+    if (result.status != RuntimeAssetWorldObjectAdapterStatus::TransformTargetNotFound) {
+        return Fail("unmapped sampled transform status mismatch");
+    }
+
+    const WorldTransformResult unmapped_result = transform_destination.Query(WORLD_OBJECT_UNMAPPED);
+    if (unmapped_result.status != WorldTransformStatus::Success) {
+        return Fail("unmapped sampled transform query failed");
+    }
+
+    if (!TransformsMatch(unmapped_result.transform_state, initial_unmapped)) {
+        return Fail("unmapped sampled transform mutated target");
+    }
+
+    const WorldTransformResult mapped_result = transform_destination.Query(WORLD_OBJECT_A);
+    if (mapped_result.status != WorldTransformStatus::Success) {
+        return Fail("mapped transform query failed");
+    }
+
+    if (!TransformsMatch(mapped_result.transform_state, initial_a)) {
+        return Fail("unmapped sampled transform mutated mapped target");
+    }
+
+    const RuntimeAssetWorldObjectAdapterSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.failed_operation_count != 1U) {
+        return Fail("unmapped sampled transform failure count mismatch");
+    }
+
+    if (snapshot.applied_transform_value_count != 0U || snapshot.updated_world_object_count != 0U) {
+        return Fail("unmapped sampled transform snapshot mutation mismatch");
+    }
+
+    return 0;
+}
+
 int RunTest(std::string_view test_name) {
-    constexpr std::array<TestCase, 13U> TESTS{{
+    constexpr std::array<TestCase, 15U> TESTS{{
         {TEST_BUILD_RESTORE_RECORDS, TestBuildRestoreRecords},
         {TEST_BUILD_TARGET_FAMILY_ALIAS_RESTORE_RECORDS, TestBuildTargetFamilyAliasRestoreRecords},
         {TEST_REJECT_MISSING_MAPPING, TestRejectMissingRuntimeInstanceMapping},
@@ -735,6 +1001,8 @@ int RunTest(std::string_view test_name) {
         {TEST_REJECT_SMALL_IDENTITY_OUTPUT, TestRejectSmallIdentityOutput},
         {TEST_REJECT_SMALL_TRANSFORM_OUTPUT, TestRejectSmallTransformOutput},
         {TEST_NO_WORLD_OBJECT_REGISTRY_MUTATION, TestDoesNotMutateWorldOrObjectRegistryDuringBuild},
+        {TEST_APPLY_SAMPLED_TRANSFORM, TestApplySampledTransformToCallerOwnedWorldObject},
+        {TEST_REJECT_UNMAPPED_SAMPLED_TRANSFORM, TestRejectUnmappedSampledTransformWithoutMutation},
     }};
 
     for (const TestCase &test : TESTS) {

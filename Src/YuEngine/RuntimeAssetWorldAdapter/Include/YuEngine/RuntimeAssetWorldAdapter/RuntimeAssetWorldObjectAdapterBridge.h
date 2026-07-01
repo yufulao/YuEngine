@@ -10,7 +10,15 @@
 #include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectAdapterRequest.h"
 #include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectAdapterResult.h"
 #include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectAdapterSnapshot.h"
+#include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectProducerPlaybackRequest.h"
+#include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectTimelineTransformSampleRequest.h"
+#include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectTransformApplicationRequest.h"
+#include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectTransformSamplerBridgeRequest.h"
 #include "YuEngine/World/WorldObjectId.h"
+
+namespace yuengine::animation {
+enum class AnimationRuntimeStatus;
+}
 
 namespace yuengine::runtimeasset {
 struct RuntimeAssetRuntimeInstanceMappingRecord;
@@ -26,6 +34,70 @@ public:
      */
     RuntimeAssetWorldObjectAdapterResult BuildRestoreRecords(
         const RuntimeAssetWorldObjectAdapterRequest &request);
+    /**
+     * @comment 从 producer/export playback 输入装配 timeline transform application 请求。
+     * @param request RuntimeAsset mapping、identity、export playback 输入和 sampled value 输出。
+     * @param out_request 调用方持有的 transform application request 输出。
+     * @return 显式操作结果。
+     */
+    RuntimeAssetWorldObjectAdapterResult BuildProducerPlaybackTransformApplicationRequest(
+        const RuntimeAssetWorldObjectProducerPlaybackRequest &request,
+        RuntimeAssetWorldObjectTransformApplicationRequest *out_request);
+    /**
+     * @comment 从 caller-owned producer playback 批量输入原子装配 transform application 请求。
+     * @param request producer playback 输入数组和 batch scratch/output。
+     * @param out_request 调用方持有的 transform application request 输出。
+     * @return 显式操作结果。
+     */
+    RuntimeAssetWorldObjectAdapterResult BuildProducerPlaybackBatchTransformApplicationRequest(
+        const RuntimeAssetWorldObjectProducerPlaybackBatchRequest &request,
+        RuntimeAssetWorldObjectTransformApplicationRequest *out_request);
+    /**
+     * @comment 预检 producer playback 批量输入并返回最终 sampled output 所需数量。
+     * @param request producer playback 输入数组和 batch scratch。
+     * @return 显式操作结果。
+     */
+    RuntimeAssetWorldObjectAdapterResult SnapshotProducerPlaybackBatchTransformApplicationCount(
+        const RuntimeAssetWorldObjectProducerPlaybackBatchRequest &request);
+    /**
+     * @comment 从 caller-owned timeline/export transform sample 输入装配 transform application 请求。
+     * @param request RuntimeAsset mapping、identity、timeline sample 输入和 sampled value 输出。
+     * @param out_request 调用方持有的 transform application request 输出。
+     * @return 显式操作结果。
+     */
+    RuntimeAssetWorldObjectAdapterResult BuildTimelineTransformApplicationRequest(
+        const RuntimeAssetWorldObjectTimelineTransformSampleRequest &request,
+        RuntimeAssetWorldObjectTransformApplicationRequest *out_request);
+    /**
+     * @comment 预检 timeline/export transform sample 输入并返回 sampled output 所需数量。
+     * @param request RuntimeAsset mapping、identity、timeline sample 输入和 scratch/output 容量。
+     * @return 显式操作结果。
+     */
+    RuntimeAssetWorldObjectAdapterResult SnapshotTimelineTransformApplicationCount(
+        const RuntimeAssetWorldObjectTimelineTransformSampleRequest &request);
+    /**
+     * @comment 从 Animation runtime sampler 输出装配 RuntimeAssetWorldObject transform application 请求。
+     * @param request RuntimeAsset mapping、identity、sample request 和 sampled value 输出。
+     * @param out_request 调用方持有的 transform application request 输出。
+     * @return 显式操作结果。
+     */
+    RuntimeAssetWorldObjectAdapterResult BuildTransformApplicationRequest(
+        const RuntimeAssetWorldObjectTransformSamplerBridgeRequest &request,
+        RuntimeAssetWorldObjectTransformApplicationRequest *out_request);
+    /**
+     * @comment 将 RuntimeAsset sampled transform values 直接应用到调用方持有的 World transform bridge。
+     * @param request RuntimeAsset mapping、identity 和 sampled transform 输入。
+     * @return 显式操作结果。
+     */
+    RuntimeAssetWorldObjectAdapterResult ApplySampledTransforms(
+        const RuntimeAssetWorldObjectTransformApplicationRequest &request);
+    /**
+     * @comment 在调用方持有的 World transform records 写入前校验 RuntimeAsset sampled transform 目标。
+     * @param request RuntimeAsset mapping、identity 和 sampled transform 输入。
+     * @return 显式操作结果。
+     */
+    RuntimeAssetWorldObjectAdapterResult PreflightSampledTransforms(
+        const RuntimeAssetWorldObjectTransformApplicationRequest &request);
 
     /**
      * @comment 返回当前 bridge 状态快照。
@@ -44,32 +116,81 @@ private:
         std::uint32_t required_transform_output_count);
     RuntimeAssetWorldObjectAdapterResult RecordSuccess(
         const RuntimeAssetWorldObjectAdapterState &state);
+    RuntimeAssetWorldObjectAdapterResult RecordTransformApplicationRequestSuccess(
+        const RuntimeAssetWorldObjectAdapterState &state);
+    RuntimeAssetWorldObjectAdapterResult RecordTransformApplicationSuccess(
+        const RuntimeAssetWorldObjectAdapterState &state);
     RuntimeAssetWorldObjectAdapterStatus ValidateRequest(
         const RuntimeAssetWorldObjectAdapterRequest &request,
         std::uint32_t *out_failed_mapping_index,
         std::uint64_t *out_failed_target_id,
         std::uint32_t *out_required_identity_output_count,
         std::uint32_t *out_required_transform_output_count) const;
+    RuntimeAssetWorldObjectAdapterStatus ValidateTransformApplicationRequest(
+        const RuntimeAssetWorldObjectTransformApplicationRequest &request) const;
+    RuntimeAssetWorldObjectAdapterStatus ValidateTransformSamplerRequest(
+        const RuntimeAssetWorldObjectTransformSamplerBridgeRequest &request,
+        const RuntimeAssetWorldObjectTransformApplicationRequest *out_request) const;
+    RuntimeAssetWorldObjectAdapterStatus ValidateProducerPlaybackBatchRequest(
+        const RuntimeAssetWorldObjectProducerPlaybackBatchRequest &request,
+        const RuntimeAssetWorldObjectTransformApplicationRequest *out_request) const;
+    RuntimeAssetWorldObjectAdapterStatus ValidateProducerPlaybackBatchCountRequest(
+        const RuntimeAssetWorldObjectProducerPlaybackBatchRequest &request) const;
+    RuntimeAssetWorldObjectAdapterStatus ValidateProducerPlaybackRequest(
+        const RuntimeAssetWorldObjectProducerPlaybackRequest &request) const;
+    RuntimeAssetWorldObjectAdapterStatus ValidateTimelineTransformSampleRequest(
+        const RuntimeAssetWorldObjectTimelineTransformSampleRequest &request,
+        const RuntimeAssetWorldObjectTransformApplicationRequest *out_request) const;
+    RuntimeAssetWorldObjectAdapterStatus ValidateTimelineTransformSampleCountRequest(
+        const RuntimeAssetWorldObjectTimelineTransformSampleRequest &request) const;
+    RuntimeAssetWorldObjectAdapterResult PreflightSampledTransformsWithTargetDiagnostics(
+        const RuntimeAssetWorldObjectTransformApplicationRequest &request);
     RuntimeAssetWorldObjectAdapterStatus ValidateRuntimeInstanceMapping(
         const RuntimeAssetWorldObjectAdapterRequest &request,
         std::uint32_t mapping_index) const;
+    RuntimeAssetWorldObjectAdapterStatus ValidateRuntimeInstanceMapping(
+        const RuntimeAssetWorldObjectTransformApplicationRequest &request,
+        std::uint32_t mapping_index) const;
+    RuntimeAssetWorldObjectAdapterStatus ValidateSampledTransformTargets(
+        const RuntimeAssetWorldObjectTransformApplicationRequest &request) const;
     const RuntimeAssetWorldObjectAdapterIdentityRecord *FindIdentityRecord(
         const RuntimeAssetWorldObjectAdapterRequest &request,
+        std::uint64_t target_id) const;
+    const RuntimeAssetWorldObjectAdapterIdentityRecord *FindIdentityRecord(
+        const RuntimeAssetWorldObjectTransformApplicationRequest &request,
         std::uint64_t target_id) const;
     bool HasDuplicateMappingTargetId(
         const RuntimeAssetWorldObjectAdapterRequest &request,
         std::uint32_t mapping_index) const;
+    bool HasDuplicateMappingTargetId(
+        const RuntimeAssetWorldObjectTransformApplicationRequest &request,
+        std::uint32_t mapping_index) const;
     bool HasDuplicateWorldObjectId(
         const RuntimeAssetWorldObjectAdapterRequest &request,
+        std::uint32_t mapping_index,
+        yuengine::world::WorldObjectId world_object_id) const;
+    bool HasDuplicateWorldObjectId(
+        const RuntimeAssetWorldObjectTransformApplicationRequest &request,
         std::uint32_t mapping_index,
         yuengine::world::WorldObjectId world_object_id) const;
     bool HasDuplicateObjectHandle(
         const RuntimeAssetWorldObjectAdapterRequest &request,
         std::uint32_t mapping_index,
         yuengine::object::ObjectHandle object_handle) const;
+    bool HasDuplicateObjectHandle(
+        const RuntimeAssetWorldObjectTransformApplicationRequest &request,
+        std::uint32_t mapping_index,
+        yuengine::object::ObjectHandle object_handle) const;
+    bool HasMappedWorldObject(
+        const RuntimeAssetWorldObjectTransformApplicationRequest &request,
+        yuengine::world::WorldObjectId world_object_id) const;
     bool ObjectHandlesMatch(
         yuengine::object::ObjectHandle left,
         yuengine::object::ObjectHandle right) const;
+    RuntimeAssetWorldObjectAdapterStatus MapAnimationStatus(
+        yuengine::animation::AnimationRuntimeStatus status) const;
+    RuntimeAssetWorldObjectAdapterStatus MapAnimationSampleStatus(
+        yuengine::animation::AnimationRuntimeStatus status) const;
 
     RuntimeAssetWorldObjectAdapterSnapshot snapshot_;
 };

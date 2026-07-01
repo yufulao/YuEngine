@@ -75,6 +75,19 @@ RuntimeAssetWorldObjectRestoreHandoffResult RuntimeAssetWorldObjectRestoreHandof
     }
 
     RuntimeAssetWorldObjectAdapterBridge adapter_bridge{};
+    if (request.transform_application_request != nullptr &&
+        request.transform_application_request->transform_destination != request.transform_destination) {
+        return RecordTransformApplicationFailure(RuntimeAssetWorldObjectAdapterStatus::InvalidTransformDestination);
+    }
+
+    if (request.transform_application_request != nullptr) {
+        const RuntimeAssetWorldObjectAdapterResult transform_preflight_result =
+            adapter_bridge.PreflightSampledTransforms(*request.transform_application_request);
+        if (!transform_preflight_result.Succeeded()) {
+            return RecordTransformApplicationFailure(transform_preflight_result.status);
+        }
+    }
+
     const RuntimeAssetWorldObjectAdapterResult adapter_result =
         adapter_bridge.BuildRestoreRecords(*request.adapter_request);
     if (!adapter_result.Succeeded()) {
@@ -137,6 +150,15 @@ RuntimeAssetWorldObjectRestoreHandoffResult RuntimeAssetWorldObjectRestoreHandof
         return RecordRestoreFailure(restore_result.status);
     }
 
+    RuntimeAssetWorldObjectAdapterResult transform_application_result{};
+    if (request.transform_application_request != nullptr) {
+        transform_application_result =
+            adapter_bridge.ApplySampledTransforms(*request.transform_application_request);
+        if (!transform_application_result.Succeeded()) {
+            return RecordTransformApplicationFailure(transform_application_result.status);
+        }
+    }
+
     RuntimeAssetWorldObjectRestoreHandoffState state{};
     state.input_mapping_count = adapter_result.state.input_mapping_count;
     state.output_identity_count = adapter_result.state.output_identity_count;
@@ -149,6 +171,8 @@ RuntimeAssetWorldObjectRestoreHandoffResult RuntimeAssetWorldObjectRestoreHandof
     state.restored_binding_count = assembly_result.state.restored_binding_count;
     state.restored_identity_count = restore_result.state.restored_identity_count;
     state.restored_transform_count = restore_result.state.restored_transform_count;
+    state.applied_transform_value_count = transform_application_result.state.applied_transform_value_count;
+    state.updated_world_object_count = transform_application_result.state.updated_world_object_count;
     return RecordSuccess(state);
 }
 
@@ -180,6 +204,21 @@ RuntimeAssetWorldObjectRestoreHandoffResult RuntimeAssetWorldObjectRestoreHandof
     snapshot_.last_restore_status = WorldSceneObjectTransformRestoreStatus::Success;
     return RuntimeAssetWorldObjectRestoreHandoffResult::Failure(
         RuntimeAssetWorldObjectRestoreHandoffStatus::AdapterBuildFailed,
+        adapter_status);
+}
+
+RuntimeAssetWorldObjectRestoreHandoffResult RuntimeAssetWorldObjectRestoreHandoffBridge::RecordTransformApplicationFailure(
+    RuntimeAssetWorldObjectAdapterStatus adapter_status) {
+    ++snapshot_.failed_operation_count;
+    ++snapshot_.rejected_operation_count;
+    snapshot_.last_status = RuntimeAssetWorldObjectRestoreHandoffStatus::TransformApplicationFailed;
+    snapshot_.last_adapter_status = adapter_status;
+    snapshot_.last_gate_status = WorldSceneActiveRestoreGateStatus::Success;
+    snapshot_.last_proof_status = WorldSceneApplyTimeRestoreProofStatus::Success;
+    snapshot_.last_assembly_status = WorldSceneAssemblyStatus::Success;
+    snapshot_.last_restore_status = WorldSceneObjectTransformRestoreStatus::Success;
+    return RuntimeAssetWorldObjectRestoreHandoffResult::Failure(
+        RuntimeAssetWorldObjectRestoreHandoffStatus::TransformApplicationFailed,
         adapter_status);
 }
 
@@ -245,6 +284,8 @@ RuntimeAssetWorldObjectRestoreHandoffResult RuntimeAssetWorldObjectRestoreHandof
     snapshot_.emitted_gate_record_count += state.gate_record_count;
     snapshot_.restored_identity_count += state.restored_identity_count;
     snapshot_.restored_transform_count += state.restored_transform_count;
+    snapshot_.applied_transform_value_count += state.applied_transform_value_count;
+    snapshot_.updated_world_object_count += state.updated_world_object_count;
     snapshot_.last_status = RuntimeAssetWorldObjectRestoreHandoffStatus::Success;
     snapshot_.last_adapter_status = RuntimeAssetWorldObjectAdapterStatus::Success;
     snapshot_.last_gate_status = WorldSceneActiveRestoreGateStatus::Success;
