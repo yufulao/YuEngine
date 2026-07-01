@@ -10,6 +10,13 @@
 #include "YuEngine/UiRuntime/UiManagerPanelLayerBinding.h"
 
 namespace yuengine::uiruntime {
+enum class UiManagerLayerModelOperationKind {
+    None,
+    RegisterLayer,
+    RegisterLayerSet,
+    BindPanelToLayer
+};
+
 struct UiManagerLayerModelResult final {
     UiManagerLayerModelStatus status = UiManagerLayerModelStatus::InvalidDesc;
     UiManagerLayerRecord layer_record;
@@ -17,6 +24,10 @@ struct UiManagerLayerModelResult final {
     std::uint32_t record_index = 0U;
     std::uint32_t required_layer_count = 0U;
     std::uint32_t required_binding_count = 0U;
+    UiManagerLayerModelOperationKind failed_operation_kind = UiManagerLayerModelOperationKind::None;
+    UiManagerLayerId failed_layer_id{};
+    UiPanelId failed_panel_id{};
+    std::uint32_t failed_record_index = 0U;
 
     /**
      * @comment 检查 UIManager layer model 操作是否成功。

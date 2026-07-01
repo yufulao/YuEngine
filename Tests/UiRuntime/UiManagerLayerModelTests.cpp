@@ -21,6 +21,7 @@
 using yuengine::uiruntime::UiManagerLayerId;
 using yuengine::uiruntime::UiManagerLayerModel;
 using yuengine::uiruntime::UiManagerLayerModelDesc;
+using yuengine::uiruntime::UiManagerLayerModelOperationKind;
 using yuengine::uiruntime::UiManagerLayerModelResult;
 using yuengine::uiruntime::UiManagerLayerModelSnapshot;
 using yuengine::uiruntime::UiManagerLayerModelStatus;
@@ -40,6 +41,8 @@ constexpr const char *TEST_STABLE_ORDER =
     "UiRuntime_ManagerLayerModel_ExportsLayersInStableOrder";
 constexpr const char *TEST_PANEL_RESOLVE =
     "UiRuntime_ManagerLayerModel_ResolvesPanelIdsToLayerRoots";
+constexpr const char *TEST_CAPACITY_ENTRY =
+    "UiRuntime_ManagerLayerModel_CapacityFailuresReportRejectedOperation";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 
@@ -391,6 +394,181 @@ int UiRuntimeManagerLayerModelResolvesPanelIdsToLayerRoots() {
     return 0;
 }
 
+bool LayerModelCapacityEntryCleared(const UiManagerLayerModelSnapshot &snapshot) {
+    if (snapshot.required_layer_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.required_binding_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_operation_kind != UiManagerLayerModelOperationKind::None) {
+        return false;
+    }
+
+    if (snapshot.last_failed_layer_id.IsValid()) {
+        return false;
+    }
+
+    if (snapshot.last_failed_panel_id.IsValid()) {
+        return false;
+    }
+
+    return snapshot.last_failed_record_index == 0U;
+}
+
+int UiRuntimeManagerLayerModelCapacityFailuresReportRejectedOperation() {
+    UiManagerLayerModel layer_model(UiManagerLayerModelDesc{1U, 2U});
+    const UiManagerLayerRecord first_layer = LayerRecord(1U, UiManagerLayerType::Game, 10, 100U);
+    const UiManagerLayerModelResult first_layer_result =
+        layer_model.RegisterLayer(first_layer);
+    if (!first_layer_result.Succeeded()) {
+        return Fail("layer capacity fixture register failed");
+    }
+
+    const UiManagerLayerRecord failed_layer =
+        LayerRecord(2U, UiManagerLayerType::Fullscreen, 20, 200U);
+    UiManagerLayerModelResult result = layer_model.RegisterLayer(failed_layer);
+    if (result.status != UiManagerLayerModelStatus::CapacityExceeded) {
+        return Fail("layer capacity status mismatch");
+    }
+
+    if (result.required_layer_count != 2U ||
+        result.required_binding_count != 0U ||
+        result.failed_operation_kind != UiManagerLayerModelOperationKind::RegisterLayer ||
+        result.failed_layer_id.value != failed_layer.layer_id.value ||
+        result.failed_panel_id.IsValid() ||
+        result.failed_record_index != 1U) {
+        return Fail("layer capacity result identity mismatch");
+    }
+
+    UiManagerLayerModelSnapshot snapshot = layer_model.Snapshot();
+    if (snapshot.required_layer_count != 2U ||
+        snapshot.last_failed_operation_kind != UiManagerLayerModelOperationKind::RegisterLayer ||
+        snapshot.last_failed_layer_id.value != failed_layer.layer_id.value ||
+        snapshot.last_failed_record_index != 1U) {
+        return Fail("layer capacity snapshot identity mismatch");
+    }
+
+    const UiManagerLayerRecord duplicate_layer =
+        LayerRecord(1U, UiManagerLayerType::Fullscreen, 20, 201U);
+    result = layer_model.RegisterLayer(duplicate_layer);
+    if (result.status != UiManagerLayerModelStatus::DuplicateLayerId) {
+        return Fail("duplicate after capacity status mismatch");
+    }
+
+    snapshot = layer_model.Snapshot();
+    if (!LayerModelCapacityEntryCleared(snapshot)) {
+        return Fail("duplicate failure did not clear layer capacity entry");
+    }
+
+    result = layer_model.RegisterLayer(failed_layer);
+    if (result.status != UiManagerLayerModelStatus::CapacityExceeded) {
+        return Fail("layer capacity repeat status mismatch");
+    }
+
+    const UiManagerLayerRecord invalid_layer = LayerRecord(3U, UiManagerLayerType::Popup, 30, 0U);
+    result = layer_model.RegisterLayer(invalid_layer);
+    if (result.status != UiManagerLayerModelStatus::InvalidLayerRoot) {
+        return Fail("invalid after capacity status mismatch");
+    }
+
+    snapshot = layer_model.Snapshot();
+    if (!LayerModelCapacityEntryCleared(snapshot)) {
+        return Fail("invalid failure did not clear layer capacity entry");
+    }
+
+    UiManagerLayerModel layer_set_model(UiManagerLayerModelDesc{2U, 2U});
+    const UiManagerLayerRecord layer_set_fixture =
+        LayerRecord(1U, UiManagerLayerType::Game, 10, 100U);
+    const UiManagerLayerModelResult layer_set_fixture_result =
+        layer_set_model.RegisterLayer(layer_set_fixture);
+    if (!layer_set_fixture_result.Succeeded()) {
+        return Fail("layer set capacity fixture register failed");
+    }
+
+    std::array<UiManagerLayerRecord, 2U> layer_set_records{};
+    layer_set_records[0U] = LayerRecord(2U, UiManagerLayerType::Fullscreen, 20, 200U);
+    layer_set_records[1U] = LayerRecord(3U, UiManagerLayerType::Popup, 30, 300U);
+    UiManagerLayerSet layer_set{};
+    layer_set.records = std::span<const UiManagerLayerRecord>(
+        layer_set_records.data(),
+        layer_set_records.size());
+    result = layer_set_model.RegisterLayerSet(layer_set);
+    if (result.status != UiManagerLayerModelStatus::CapacityExceeded) {
+        return Fail("layer set capacity status mismatch");
+    }
+
+    if (result.required_layer_count != 3U ||
+        result.failed_operation_kind != UiManagerLayerModelOperationKind::RegisterLayerSet ||
+        result.failed_layer_id.value != layer_set_records[1U].layer_id.value ||
+        result.failed_record_index != 1U) {
+        return Fail("layer set capacity result identity mismatch");
+    }
+
+    result = layer_set_model.RegisterLayer(layer_set_records[0U]);
+    if (!result.Succeeded()) {
+        return Fail("success after layer set capacity failed");
+    }
+
+    snapshot = layer_set_model.Snapshot();
+    if (!LayerModelCapacityEntryCleared(snapshot)) {
+        return Fail("success did not clear layer set capacity entry");
+    }
+
+    UiManagerLayerModel binding_model(UiManagerLayerModelDesc{2U, 1U});
+    const UiManagerLayerRecord binding_layer = LayerRecord(1U, UiManagerLayerType::Game, 10, 100U);
+    const UiManagerLayerModelResult binding_layer_result =
+        binding_model.RegisterLayer(binding_layer);
+    if (!binding_layer_result.Succeeded()) {
+        return Fail("binding capacity layer fixture register failed");
+    }
+
+    result = binding_model.BindPanelToLayer(PanelBinding(501U, 1U));
+    if (!result.Succeeded()) {
+        return Fail("binding capacity fixture bind failed");
+    }
+
+    const UiManagerPanelLayerBinding failed_binding = PanelBinding(502U, 1U);
+    result = binding_model.BindPanelToLayer(failed_binding);
+    if (result.status != UiManagerLayerModelStatus::CapacityExceeded) {
+        return Fail("binding capacity status mismatch");
+    }
+
+    if (result.required_layer_count != 1U ||
+        result.required_binding_count != 2U ||
+        result.failed_operation_kind != UiManagerLayerModelOperationKind::BindPanelToLayer ||
+        result.failed_layer_id.value != failed_binding.layer_id.value ||
+        result.failed_panel_id.value != failed_binding.panel_id.value ||
+        result.failed_record_index != 1U) {
+        return Fail("binding capacity result identity mismatch");
+    }
+
+    snapshot = binding_model.Snapshot();
+    if (snapshot.required_binding_count != 2U ||
+        snapshot.last_failed_operation_kind != UiManagerLayerModelOperationKind::BindPanelToLayer ||
+        snapshot.last_failed_panel_id.value != failed_binding.panel_id.value ||
+        snapshot.last_failed_layer_id.value != failed_binding.layer_id.value ||
+        snapshot.last_failed_record_index != 1U) {
+        return Fail("binding capacity snapshot identity mismatch");
+    }
+
+    const UiManagerLayerRecord binding_clear_layer =
+        LayerRecord(2U, UiManagerLayerType::Fullscreen, 20, 200U);
+    result = binding_model.RegisterLayer(binding_clear_layer);
+    if (!result.Succeeded()) {
+        return Fail("success after binding capacity failed");
+    }
+
+    snapshot = binding_model.Snapshot();
+    if (!LayerModelCapacityEntryCleared(snapshot)) {
+        return Fail("success did not clear binding capacity entry");
+    }
+
+    return 0;
+}
+
 int RunNamedTest(std::string_view test_name) {
     if (test_name == TEST_LAYER_ROOTS) {
         return UiRuntimeManagerLayerModelRegistersFiveLayerRoots();
@@ -406,6 +584,10 @@ int RunNamedTest(std::string_view test_name) {
 
     if (test_name == TEST_PANEL_RESOLVE) {
         return UiRuntimeManagerLayerModelResolvesPanelIdsToLayerRoots();
+    }
+
+    if (test_name == TEST_CAPACITY_ENTRY) {
+        return UiRuntimeManagerLayerModelCapacityFailuresReportRejectedOperation();
     }
 
     return Fail(ERROR_UNKNOWN_TEST_NAME);

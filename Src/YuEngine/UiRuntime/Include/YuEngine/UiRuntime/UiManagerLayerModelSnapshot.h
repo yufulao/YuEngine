@@ -5,7 +5,10 @@
 
 #include <cstdint>
 
+#include "YuEngine/UiRuntime/UiManagerLayerId.h"
+#include "YuEngine/UiRuntime/UiManagerLayerModelResult.h"
 #include "YuEngine/UiRuntime/UiManagerLayerModelStatus.h"
+#include "YuEngine/UiRuntime/UiPanelId.h"
 
 namespace yuengine::uiruntime {
 struct UiManagerLayerModelSnapshot final {
@@ -19,5 +22,11 @@ struct UiManagerLayerModelSnapshot final {
     std::uint32_t duplicate_layer_rejected_count = 0U;
     std::uint32_t duplicate_panel_rejected_count = 0U;
     UiManagerLayerModelStatus last_status = UiManagerLayerModelStatus::Success;
+    std::uint32_t required_layer_count = 0U;
+    std::uint32_t required_binding_count = 0U;
+    UiManagerLayerModelOperationKind last_failed_operation_kind = UiManagerLayerModelOperationKind::None;
+    UiManagerLayerId last_failed_layer_id{};
+    UiPanelId last_failed_panel_id{};
+    std::uint32_t last_failed_record_index = 0U;
 };
 }

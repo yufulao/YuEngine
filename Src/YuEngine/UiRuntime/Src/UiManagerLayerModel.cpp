@@ -62,11 +62,15 @@ UiManagerLayerModelResult UiManagerLayerModel::RegisterLayer(const UiManagerLaye
     }
 
     if (snapshot_.registered_layer_count >= snapshot_.layer_capacity) {
-        return MakeResult(
-            RecordFailure(UiManagerLayerModelStatus::CapacityExceeded),
+        const std::uint32_t required_layer_count = snapshot_.registered_layer_count + 1U;
+        const std::uint32_t failed_record_index = snapshot_.registered_layer_count;
+        return MakeCapacityResult(
+            UiManagerLayerModelOperationKind::RegisterLayer,
             record,
             UiManagerPanelLayerBinding{},
-            0U);
+            failed_record_index,
+            required_layer_count,
+            snapshot_.panel_binding_count);
     }
 
     UiManagerLayerModelResult result = InsertLayerRecord(record);
@@ -79,10 +83,15 @@ UiManagerLayerModelResult UiManagerLayerModel::RegisterLayer(const UiManagerLaye
 
 UiManagerLayerModelResult UiManagerLayerModel::RegisterLayerSet(const UiManagerLayerSet &layer_set) {
     const UiManagerLayerModelStatus status = ValidateLayerSet(layer_set);
+    const std::uint32_t layer_count = static_cast<std::uint32_t>(layer_set.records.size());
     if (status != UiManagerLayerModelStatus::Success) {
         if (status == UiManagerLayerModelStatus::DuplicateLayerId ||
             status == UiManagerLayerModelStatus::DuplicateLayerType) {
             ++snapshot_.duplicate_layer_rejected_count;
+        }
+
+        if (status == UiManagerLayerModelStatus::CapacityExceeded) {
+            return MakeLayerSetCapacityResult(layer_set, layer_count);
         }
 
         return MakeResult(
@@ -92,13 +101,9 @@ UiManagerLayerModelResult UiManagerLayerModel::RegisterLayerSet(const UiManagerL
             0U);
     }
 
-    const std::uint32_t layer_count = static_cast<std::uint32_t>(layer_set.records.size());
-    if (snapshot_.registered_layer_count + layer_count > snapshot_.layer_capacity) {
-        return MakeResult(
-            RecordFailure(UiManagerLayerModelStatus::CapacityExceeded),
-            UiManagerLayerRecord{},
-            UiManagerPanelLayerBinding{},
-            0U);
+    const std::uint32_t required_layer_count = snapshot_.registered_layer_count + layer_count;
+    if (required_layer_count > snapshot_.layer_capacity) {
+        return MakeLayerSetCapacityResult(layer_set, layer_count);
     }
 
     UiManagerLayerModelResult result{};
@@ -137,11 +142,15 @@ UiManagerLayerModelResult UiManagerLayerModel::BindPanelToLayer(const UiManagerP
     }
 
     if (snapshot_.panel_binding_count >= snapshot_.binding_capacity) {
-        return MakeResult(
-            RecordFailure(UiManagerLayerModelStatus::CapacityExceeded),
+        const std::uint32_t required_binding_count = snapshot_.panel_binding_count + 1U;
+        const std::uint32_t failed_record_index = snapshot_.panel_binding_count;
+        return MakeCapacityResult(
+            UiManagerLayerModelOperationKind::BindPanelToLayer,
             UiManagerLayerRecord{},
             binding,
-            0U);
+            failed_record_index,
+            snapshot_.registered_layer_count,
+            required_binding_count);
     }
 
     UiManagerLayerModelResult result = InsertBindingRecord(binding);
@@ -518,7 +527,61 @@ UiManagerLayerModelResult UiManagerLayerModel::MakeResult(
     return result;
 }
 
+UiManagerLayerModelResult UiManagerLayerModel::MakeCapacityResult(
+    UiManagerLayerModelOperationKind operation_kind,
+    const UiManagerLayerRecord &layer_record,
+    const UiManagerPanelLayerBinding &binding_record,
+    std::uint32_t failed_record_index,
+    std::uint32_t required_layer_count,
+    std::uint32_t required_binding_count) {
+    UiManagerLayerId failed_layer_id = layer_record.layer_id;
+    if (operation_kind == UiManagerLayerModelOperationKind::BindPanelToLayer) {
+        failed_layer_id = binding_record.layer_id;
+    }
+
+    RecordCapacityEntry(
+        operation_kind,
+        failed_layer_id,
+        binding_record.panel_id,
+        failed_record_index,
+        required_layer_count,
+        required_binding_count);
+
+    UiManagerLayerModelResult result = MakeResult(
+        RecordFailure(UiManagerLayerModelStatus::CapacityExceeded),
+        layer_record,
+        binding_record,
+        failed_record_index);
+    result.required_layer_count = required_layer_count;
+    result.required_binding_count = required_binding_count;
+    result.failed_operation_kind = operation_kind;
+    result.failed_layer_id = failed_layer_id;
+    result.failed_panel_id = binding_record.panel_id;
+    result.failed_record_index = failed_record_index;
+    return result;
+}
+
+UiManagerLayerModelResult UiManagerLayerModel::MakeLayerSetCapacityResult(
+    const UiManagerLayerSet &layer_set,
+    std::uint32_t layer_count) {
+    const std::uint32_t available_layer_count = snapshot_.layer_capacity - snapshot_.registered_layer_count;
+    const std::uint32_t failed_record_index = available_layer_count;
+    const std::uint32_t required_layer_count = snapshot_.registered_layer_count + layer_count;
+    const UiManagerLayerRecord &failed_record = layer_set.records[failed_record_index];
+    return MakeCapacityResult(
+        UiManagerLayerModelOperationKind::RegisterLayerSet,
+        failed_record,
+        UiManagerPanelLayerBinding{},
+        failed_record_index,
+        required_layer_count,
+        snapshot_.panel_binding_count);
+}
+
 UiManagerLayerModelStatus UiManagerLayerModel::RecordFailure(UiManagerLayerModelStatus status) {
+    if (status != UiManagerLayerModelStatus::CapacityExceeded) {
+        ClearCapacityEntry();
+    }
+
     ++snapshot_.failed_operation_count;
     ++snapshot_.rejected_operation_count;
     snapshot_.last_status = status;
@@ -526,7 +589,32 @@ UiManagerLayerModelStatus UiManagerLayerModel::RecordFailure(UiManagerLayerModel
 }
 
 void UiManagerLayerModel::RecordSuccess() {
+    ClearCapacityEntry();
     ++snapshot_.accepted_operation_count;
     snapshot_.last_status = UiManagerLayerModelStatus::Success;
+}
+
+void UiManagerLayerModel::ClearCapacityEntry() {
+    snapshot_.required_layer_count = 0U;
+    snapshot_.required_binding_count = 0U;
+    snapshot_.last_failed_operation_kind = UiManagerLayerModelOperationKind::None;
+    snapshot_.last_failed_layer_id = UiManagerLayerId{};
+    snapshot_.last_failed_panel_id = UiPanelId{};
+    snapshot_.last_failed_record_index = 0U;
+}
+
+void UiManagerLayerModel::RecordCapacityEntry(
+    UiManagerLayerModelOperationKind operation_kind,
+    UiManagerLayerId failed_layer_id,
+    UiPanelId failed_panel_id,
+    std::uint32_t failed_record_index,
+    std::uint32_t required_layer_count,
+    std::uint32_t required_binding_count) {
+    snapshot_.required_layer_count = required_layer_count;
+    snapshot_.required_binding_count = required_binding_count;
+    snapshot_.last_failed_operation_kind = operation_kind;
+    snapshot_.last_failed_layer_id = failed_layer_id;
+    snapshot_.last_failed_panel_id = failed_panel_id;
+    snapshot_.last_failed_record_index = failed_record_index;
 }
 }

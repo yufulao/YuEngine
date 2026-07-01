@@ -120,8 +120,26 @@ private:
         const UiManagerLayerRecord &layer_record,
         const UiManagerPanelLayerBinding &binding_record,
         std::uint32_t record_index) const;
+    UiManagerLayerModelResult MakeCapacityResult(
+        UiManagerLayerModelOperationKind operation_kind,
+        const UiManagerLayerRecord &layer_record,
+        const UiManagerPanelLayerBinding &binding_record,
+        std::uint32_t failed_record_index,
+        std::uint32_t required_layer_count,
+        std::uint32_t required_binding_count);
+    UiManagerLayerModelResult MakeLayerSetCapacityResult(
+        const UiManagerLayerSet &layer_set,
+        std::uint32_t layer_count);
     UiManagerLayerModelStatus RecordFailure(UiManagerLayerModelStatus status);
     void RecordSuccess();
+    void ClearCapacityEntry();
+    void RecordCapacityEntry(
+        UiManagerLayerModelOperationKind operation_kind,
+        UiManagerLayerId failed_layer_id,
+        UiPanelId failed_panel_id,
+        std::uint32_t failed_record_index,
+        std::uint32_t required_layer_count,
+        std::uint32_t required_binding_count);
 
     std::array<UiManagerLayerRecord, MAX_UI_MANAGER_LAYER_COUNT> layer_records_;
     std::array<bool, MAX_UI_MANAGER_LAYER_COUNT> used_layer_records_;
