@@ -132,6 +132,8 @@ constexpr const char *TEST_DEPENDENCY_EDGE_EXACT_LOOKUP =
     "Resource_DependencyEdgeExactLookupFindsDirectEdge";
 constexpr const char *TEST_DEPENDENCY_EDGE_COUNT =
     "Resource_DependencyEdgeCountSnapshotMatchesDirectEdges";
+constexpr const char *TEST_DEPENDENCY_EDGE_ENUMERATION =
+    "Resource_DependencyEdgeEnumerationReportsCommittedRows";
 constexpr const char *TEST_DEPENDENCY_TRAVERSAL =
     "Resource_DependencyTraversalReturnsExplicitClosureHandles";
 constexpr const char *TEST_DEPENDENCY_MULTIROOT_TRAVERSAL =
@@ -2352,6 +2354,127 @@ int ResourceDependencyEdgeCountSnapshotMatchesDirectEdges() {
     const ResourceStatus after_lookup_status = registry.CountDependencyEdges(&after_lookup_count);
     if (after_lookup_status != ResourceStatus::Success || after_lookup_count != stable_count_snapshot) {
         return Fail("dependency edge count changed after direct lookup");
+    }
+
+    return 0;
+}
+
+bool DependencyRequestMatches(
+    const ResourceDependencyRequest &request,
+    ResourceHandle dependent,
+    ResourceHandle dependency) {
+    if (request.dependent.slot != dependent.slot ||
+        request.dependent.generation != dependent.generation) {
+        return false;
+    }
+
+    if (request.dependency.slot != dependency.slot ||
+        request.dependency.generation != dependency.generation) {
+        return false;
+    }
+
+    return true;
+}
+
+int ResourceDependencyEdgeEnumerationReportsCommittedRows() {
+    ResourceRegistry empty_registry;
+    std::uint32_t empty_dependency_count = 7U;
+    const ResourceSnapshot empty_before_snapshot = empty_registry.Snapshot();
+    const ResourceStatus empty_status = empty_registry.EnumerateDependencyEdges(
+        nullptr,
+        0U,
+        &empty_dependency_count);
+    if (empty_status != ResourceStatus::Success || empty_dependency_count != 0U) {
+        return Fail("dependency edge enumeration empty graph did not succeed");
+    }
+
+    const ResourceSnapshot empty_after_snapshot = empty_registry.Snapshot();
+    if (empty_after_snapshot.dependency_edge_count != empty_before_snapshot.dependency_edge_count ||
+        empty_after_snapshot.dependency_validation_count != empty_before_snapshot.dependency_validation_count) {
+        return Fail("dependency edge enumeration empty graph mutated dependency counters");
+    }
+
+    ResourceRegistry registry;
+    const ResourceRegistrationResult root = Register(registry, TYPE_MATERIAL, "enumerate_root");
+    const ResourceRegistrationResult shared = Register(registry, TYPE_TEXTURE, "enumerate_shared");
+    const ResourceRegistrationResult leaf = Register(registry, TYPE_AUDIO, "enumerate_leaf");
+    const ResourceRegistrationResult second_root = Register(registry, TYPE_EFFECT, "enumerate_second_root");
+    if (!root.Succeeded() ||
+        !shared.Succeeded() ||
+        !leaf.Succeeded() ||
+        !second_root.Succeeded()) {
+        return Fail("dependency edge enumeration fixture registration failed");
+    }
+
+    if (registry.AddDependency(root.handle, shared.handle) != ResourceStatus::Success) {
+        return Fail("dependency edge enumeration single edge failed");
+    }
+
+    const std::array<ResourceDependencyRequest, 2U> batch_rows{{
+        ResourceDependencyRequest{shared.handle, leaf.handle},
+        ResourceDependencyRequest{second_root.handle, shared.handle}}};
+    const ResourceDependencyBatchResult batch_result = registry.AddDependencies(
+        batch_rows.data(),
+        static_cast<std::uint32_t>(batch_rows.size()));
+    if (!batch_result.Succeeded()) {
+        return Fail("dependency edge enumeration batch fixture failed");
+    }
+
+    std::array<ResourceDependencyRequest, 3U> output_dependencies{};
+    std::uint32_t output_dependency_count = 0U;
+    const ResourceSnapshot before_success_snapshot = registry.Snapshot();
+    const ResourceStatus enumerate_status = registry.EnumerateDependencyEdges(
+        output_dependencies.data(),
+        static_cast<std::uint32_t>(output_dependencies.size()),
+        &output_dependency_count);
+    if (enumerate_status != ResourceStatus::Success || output_dependency_count != 3U) {
+        return Fail("dependency edge enumeration success returned wrong count");
+    }
+
+    if (!DependencyRequestMatches(output_dependencies[0U], root.handle, shared.handle) ||
+        !DependencyRequestMatches(output_dependencies[1U], shared.handle, leaf.handle) ||
+        !DependencyRequestMatches(output_dependencies[2U], second_root.handle, shared.handle)) {
+        return Fail("dependency edge enumeration did not preserve committed edge order");
+    }
+
+    const ResourceSnapshot after_success_snapshot = registry.Snapshot();
+    if (after_success_snapshot.dependency_edge_count != before_success_snapshot.dependency_edge_count ||
+        after_success_snapshot.dependency_validation_count != before_success_snapshot.dependency_validation_count) {
+        return Fail("dependency edge enumeration success mutated dependency counters");
+    }
+
+    std::array<ResourceDependencyRequest, 2U> small_output_dependencies{};
+    std::uint32_t required_dependency_count = 0U;
+    const ResourceSnapshot before_capacity_snapshot = registry.Snapshot();
+    const ResourceStatus capacity_status = registry.EnumerateDependencyEdges(
+        small_output_dependencies.data(),
+        static_cast<std::uint32_t>(small_output_dependencies.size()),
+        &required_dependency_count);
+    if (capacity_status != ResourceStatus::CapacityExceeded || required_dependency_count != 3U) {
+        return Fail("dependency edge enumeration capacity failure missed required count");
+    }
+
+    const ResourceSnapshot after_capacity_snapshot = registry.Snapshot();
+    if (after_capacity_snapshot.dependency_edge_count != before_capacity_snapshot.dependency_edge_count ||
+        after_capacity_snapshot.dependency_validation_count != before_capacity_snapshot.dependency_validation_count ||
+        after_capacity_snapshot.last_required_dependency_edge_count != 3U) {
+        return Fail("dependency edge enumeration capacity failure mutated counters or missed snapshot count");
+    }
+
+    std::uint32_t invalid_dependency_count = 0U;
+    const ResourceSnapshot before_invalid_snapshot = registry.Snapshot();
+    const ResourceStatus invalid_status = registry.EnumerateDependencyEdges(
+        nullptr,
+        1U,
+        &invalid_dependency_count);
+    if (invalid_status != ResourceStatus::InvalidHandle || invalid_dependency_count != 0U) {
+        return Fail("dependency edge enumeration invalid output did not fail explicitly");
+    }
+
+    const ResourceSnapshot after_invalid_snapshot = registry.Snapshot();
+    if (after_invalid_snapshot.dependency_edge_count != before_invalid_snapshot.dependency_edge_count ||
+        after_invalid_snapshot.dependency_validation_count != before_invalid_snapshot.dependency_validation_count) {
+        return Fail("dependency edge enumeration invalid output mutated dependency counters");
     }
 
     return 0;
@@ -8213,6 +8336,7 @@ int main(int argc, char** argv) {
         {TEST_DEPENDENCY_BATCH, ResourceDependencyBatchSubmitsRowsAndStopsOnFirstFailure},
         {TEST_DEPENDENCY_EDGE_EXACT_LOOKUP, ResourceDependencyEdgeExactLookupFindsDirectEdge},
         {TEST_DEPENDENCY_EDGE_COUNT, ResourceDependencyEdgeCountSnapshotMatchesDirectEdges},
+        {TEST_DEPENDENCY_EDGE_ENUMERATION, ResourceDependencyEdgeEnumerationReportsCommittedRows},
         {TEST_DEPENDENCY_TRAVERSAL, ResourceDependencyTraversalReturnsExplicitClosureHandles},
         {TEST_DEPENDENCY_MULTIROOT_TRAVERSAL, ResourceDependencyTraversalMultiRootDeduplicatesClosureHandles},
         {TEST_NO_FILE_PACKAGE, ResourceNoFileOrPackageDependencyForHandleRegistry},

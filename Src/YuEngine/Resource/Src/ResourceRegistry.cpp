@@ -549,6 +549,56 @@ ResourceStatus ResourceRegistry::CountDependencyEdges(std::uint32_t *output_depe
     return ResourceStatus::Success;
 }
 
+ResourceStatus ResourceRegistry::EnumerateDependencyEdges(
+    ResourceDependencyRequest *output_dependencies,
+    std::uint32_t output_dependency_capacity,
+    std::uint32_t *output_dependency_count) {
+    if (output_dependency_count == nullptr) {
+        return RecordFailure(ResourceStatus::InvalidHandle);
+    }
+
+    *output_dependency_count = 0U;
+    if (output_dependency_capacity > 0U && output_dependencies == nullptr) {
+        return RecordFailure(ResourceStatus::InvalidHandle);
+    }
+
+    std::uint32_t required_dependency_edge_count = 0U;
+    for (const ResourceDependencyEdge &edge : dependency_edges_) {
+        if (!edge.is_active) {
+            continue;
+        }
+
+        ++required_dependency_edge_count;
+    }
+
+    *output_dependency_count = required_dependency_edge_count;
+    if (required_dependency_edge_count > output_dependency_capacity) {
+        const ResourceStatus status = RecordFailure(ResourceStatus::CapacityExceeded);
+        snapshot_.last_required_dependency_edge_count = required_dependency_edge_count;
+        return status;
+    }
+
+    std::uint32_t output_index = 0U;
+    for (const ResourceDependencyEdge &edge : dependency_edges_) {
+        if (!edge.is_active) {
+            continue;
+        }
+
+        ResourceDependencyRequest request{};
+        request.dependent = ResourceHandle{
+            edge.dependent_slot,
+            slots_[edge.dependent_slot].generation};
+        request.dependency = ResourceHandle{
+            edge.dependency_slot,
+            slots_[edge.dependency_slot].generation};
+        output_dependencies[output_index] = request;
+        ++output_index;
+    }
+
+    RecordSuccess();
+    return ResourceStatus::Success;
+}
+
 ResourceStatus ResourceRegistry::TraverseDependencies(
     ResourceHandle root,
     ResourceHandle *output_dependencies,

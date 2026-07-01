@@ -123,6 +123,17 @@ public:
      */
     ResourceStatus CountDependencyEdges(std::uint32_t *output_dependency_edge_count);
     /**
+     * @comment 按提交顺序枚举当前直接 Resource dependency 边。
+     * @param output_dependencies 输出 dependency 请求存储。
+     * @param output_dependency_capacity 输出存储容量。
+     * @param output_dependency_count 输出 dependency 请求数量。
+     * @return 显式操作状态。
+     */
+    ResourceStatus EnumerateDependencyEdges(
+        ResourceDependencyRequest *output_dependencies,
+        std::uint32_t output_dependency_capacity,
+        std::uint32_t *output_dependency_count);
+    /**
      * @comment 按确定顺序遍历 root Resource 的依赖闭包。
      * @param root 输入 root Resource。
      * @param output_dependencies 输出 Resource handle 存储。
