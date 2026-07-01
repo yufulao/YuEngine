@@ -375,8 +375,14 @@ int AudioResourcePcmPacketImportBridgeRejectsCapacityOverflow() {
         return Fail("capacity overflow was not rejected");
     }
 
-    if (bridge.Snapshot().capacity_rejected_count != 1U) {
+    const AudioResourcePcmPacketImportSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.capacity_rejected_count != 1U) {
         return Fail("capacity rejection counter was unexpected");
+    }
+
+    constexpr std::uint32_t EXPECTED_REQUIRED_IMPORT_COUNT = MAX_AUDIO_RESOURCE_PCM_PACKET_IMPORT_RECORDS + 1U;
+    if (snapshot.last_required_import_count != EXPECTED_REQUIRED_IMPORT_COUNT) {
+        return Fail("capacity required import count was unexpected");
     }
 
     return 0;

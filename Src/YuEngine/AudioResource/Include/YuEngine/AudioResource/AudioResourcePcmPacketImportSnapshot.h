@@ -12,6 +12,7 @@ namespace yuengine::audioresource {
 struct AudioResourcePcmPacketImportSnapshot final {
     std::uint32_t import_capacity = 0U;
     std::uint32_t active_import_count = 0U;
+    std::uint32_t last_required_import_count = 0U;
     std::uint64_t imported_packet_count = 0U;
     std::uint64_t queried_import_count = 0U;
     std::uint64_t released_import_count = 0U;

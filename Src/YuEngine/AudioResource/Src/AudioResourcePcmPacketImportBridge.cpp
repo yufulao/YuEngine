@@ -420,6 +420,7 @@ void AudioResourcePcmPacketImportBridge::RecordImportedPacket(
     *out_packet_request = request.packet_request;
     ++snapshot_.active_import_count;
     ++snapshot_.imported_packet_count;
+    snapshot_.last_required_import_count = 0U;
     snapshot_.last_import_id = request.import_id;
     snapshot_.last_decode_result_id = request.decode_result_id;
     snapshot_.last_packet_id = request.packet_request.packet_id;
@@ -438,6 +439,7 @@ AudioResourcePcmPacketImportStatus AudioResourcePcmPacketImportBridge::RecordRej
     snapshot_.last_decoded_byte_count = ToU32ByteCount(request.packet_request.byte_count);
     snapshot_.last_status = status;
     snapshot_.last_operation = AudioResourcePcmPacketImportOperation::Import;
+    snapshot_.last_required_import_count = 0U;
 
     if (status == AudioResourcePcmPacketImportStatus::DuplicateImportId) {
         ++snapshot_.duplicate_import_rejected_count;
@@ -450,7 +452,9 @@ AudioResourcePcmPacketImportStatus AudioResourcePcmPacketImportBridge::RecordRej
     }
 
     if (status == AudioResourcePcmPacketImportStatus::CapacityExceeded) {
+        const std::uint32_t required_import_count = snapshot_.active_import_count + 1U;
         ++snapshot_.capacity_rejected_count;
+        snapshot_.last_required_import_count = required_import_count;
         return status;
     }
 
@@ -469,6 +473,7 @@ AudioResourcePcmPacketImportStatus AudioResourcePcmPacketImportBridge::RecordRej
     ++snapshot_.rejected_import_count;
     snapshot_.last_status = status;
     snapshot_.last_operation = operation;
+    snapshot_.last_required_import_count = 0U;
 
     if (status == AudioResourcePcmPacketImportStatus::InvalidHandle) {
         ++snapshot_.stale_import_rejected_count;
@@ -492,6 +497,7 @@ AudioResourcePcmPacketImportStatus AudioResourcePcmPacketImportBridge::RecordRej
 void AudioResourcePcmPacketImportBridge::RecordQuerySuccess(
     const AudioResourcePcmPacketImportRecord &record) {
     ++snapshot_.queried_import_count;
+    snapshot_.last_required_import_count = 0U;
     snapshot_.last_import_id = record.import_id;
     snapshot_.last_decode_result_id = record.decode_result_id;
     snapshot_.last_packet_id = record.packet_request.packet_id;
@@ -503,6 +509,7 @@ void AudioResourcePcmPacketImportBridge::RecordQuerySuccess(
 void AudioResourcePcmPacketImportBridge::RecordReleaseSuccess(
     const AudioResourcePcmPacketImportRecord &record) {
     ++snapshot_.released_import_count;
+    snapshot_.last_required_import_count = 0U;
     snapshot_.last_import_id = record.import_id;
     snapshot_.last_decode_result_id = record.decode_result_id;
     snapshot_.last_packet_id = record.packet_request.packet_id;
