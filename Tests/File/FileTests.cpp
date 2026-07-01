@@ -21,6 +21,7 @@
 
 using yuengine::file::FileStatus;
 using AsyncFileReadQueue = yuengine::file::AsyncFileReadQueue;
+using AsyncFileReadQueueSnapshot = yuengine::file::AsyncFileReadQueueSnapshot;
 using AsyncFileReadRequest = yuengine::file::AsyncFileReadRequest;
 using AsyncFileReadResult = yuengine::file::AsyncFileReadResult;
 using yuengine::file::AsyncFileReadStatus;
@@ -54,6 +55,8 @@ constexpr const char* TEST_SNAPSHOT = "File_ReadSnapshot_RecordsCountsAndBytes";
 constexpr const char* TEST_DISABLED_DIAGNOSTICS = "File_DiagnosticsDisabled_DoesNotChangeBehavior";
 constexpr const char* TEST_ASYNC_READ = "File_AsyncReadQueue_ReadsFixtureIntoCallerStorage";
 constexpr const char* TEST_ASYNC_CAPACITY = "File_AsyncReadQueue_RejectsCapacityOverflow";
+constexpr const char* TEST_ASYNC_CAPACITY_ENTRY =
+    "File_AsyncReadQueue_CapacityEntryRecordsRejectedRequestAndClears";
 constexpr const char* TEST_ASYNC_FAILURE = "File_AsyncReadQueue_ReportsReadFailureCompletion";
 constexpr const char* TEST_ASYNC_SMALL_OUTPUT = "File_AsyncReadQueue_RejectsSmallOutputWithoutOverrun";
 constexpr const char* TEST_ASYNC_RANGE_SMALL_OUTPUT = "File_AsyncReadQueue_RangedOutputTooSmallDoesNotCopyPartialBytes";
@@ -138,6 +141,107 @@ AsyncFileReadRequest CreateAsyncRequest(
     request.output_bytes = output_bytes;
     request.output_capacity = output_capacity;
     return request;
+}
+
+int RequireNoAsyncQueueCapacityEntry(
+    const AsyncFileReadQueueSnapshot &snapshot,
+    const std::string &message) {
+    if (snapshot.last_required_queue_capacity != 0U) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_request_index != 0U) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_read_request.mount.IsValid()) {
+        return Fail(message);
+    }
+
+    if (!snapshot.last_failed_read_request.path.Value().empty()) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_read_request.use_range) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_read_request.range_byte_offset != 0ULL) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_read_request.range_byte_size != 0ULL) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_output_capacity != 0U) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_work_capacity != 0U) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_pending_count != 0U) {
+        return Fail(message);
+    }
+
+    return 0;
+}
+
+int RequireAsyncQueueCapacityEntry(
+    const AsyncFileReadQueueSnapshot &snapshot,
+    std::uint64_t request_index,
+    const char *path,
+    std::size_t output_capacity,
+    std::size_t work_capacity,
+    std::size_t pending_count,
+    std::size_t required_queue_capacity,
+    bool use_range,
+    std::uint64_t range_byte_offset,
+    std::uint64_t range_byte_size,
+    const std::string &message) {
+    if (snapshot.last_required_queue_capacity != required_queue_capacity) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_request_index != request_index) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_read_request.mount.Value() != PRIMARY_MOUNT) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_read_request.path.Value() != path) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_read_request.use_range != use_range) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_read_request.range_byte_offset != range_byte_offset) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_read_request.range_byte_size != range_byte_size) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_output_capacity != output_capacity) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_work_capacity != work_capacity) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_pending_count != pending_count) {
+        return Fail(message);
+    }
+
+    return 0;
 }
 
 FileReadRequest CreateRangeReadRequest(
@@ -983,6 +1087,22 @@ int FileAsyncReadQueueRejectsCapacityOverflow() {
         return Fail("async queue capacity overflow was not rejected");
     }
 
+    const auto rejected_snapshot = queue.Snapshot();
+    if (RequireAsyncQueueCapacityEntry(
+            rejected_snapshot,
+            2U,
+            NORMALIZED_PATH,
+            second_output.size(),
+            1U,
+            1U,
+            2U,
+            false,
+            0ULL,
+            0ULL,
+            "async queue capacity entry mismatch") != 0) {
+        return 1;
+    }
+
     queue.Shutdown(false);
 
     const auto snapshot = queue.Snapshot();
@@ -992,6 +1112,107 @@ int FileAsyncReadQueueRejectsCapacityOverflow() {
 
     if (snapshot.submitted_count != 1U) {
         return Fail("async queue overflow changed submitted count");
+    }
+
+    if (RequireNoAsyncQueueCapacityEntry(snapshot, "async shutdown did not clear queue capacity entry") != 0) {
+        return 1;
+    }
+
+    return 0;
+}
+
+int FileAsyncReadQueueCapacityEntryRecordsRejectedRequestAndClears() {
+    MountTable table = CreateMountedTable();
+    AsyncFileReadQueue queue;
+    if (queue.Initialize(1U, 1U) != AsyncFileReadStatus::Success) {
+        return Fail("async capacity entry queue initialize failed");
+    }
+
+    if (queue.Start() != AsyncFileReadStatus::Success) {
+        return Fail("async capacity entry queue start failed");
+    }
+
+    std::array<std::uint8_t, ASYNC_OUTPUT_CAPACITY> first_output{};
+    std::array<std::uint8_t, ASYNC_OUTPUT_CAPACITY> rejected_output{};
+    AsyncFileReadRequest first_request = CreateAsyncRequest(
+        table,
+        21U,
+        NORMALIZED_PATH,
+        first_output.data(),
+        first_output.size());
+    AsyncFileReadRequest rejected_request = CreateAsyncRequest(
+        table,
+        22U,
+        NORMALIZED_PATH,
+        rejected_output.data(),
+        rejected_output.size(),
+        true,
+        RANGE_BYTE_OFFSET,
+        RANGE_BYTE_SIZE);
+
+    if (queue.Submit(first_request) != AsyncFileReadStatus::Queued) {
+        return Fail("async capacity entry first submit failed");
+    }
+
+    if (queue.Submit(rejected_request) != AsyncFileReadStatus::QueueFull) {
+        return Fail("async capacity entry rejected submit did not return queue full");
+    }
+
+    const auto rejected_snapshot = queue.Snapshot();
+    if (RequireAsyncQueueCapacityEntry(
+            rejected_snapshot,
+            22U,
+            NORMALIZED_PATH,
+            rejected_output.size(),
+            1U,
+            1U,
+            2U,
+            true,
+            RANGE_BYTE_OFFSET,
+            RANGE_BYTE_SIZE,
+            "async capacity entry rejected request mismatch") != 0) {
+        return 1;
+    }
+
+    AsyncFileReadRequest invalid_mount_request = rejected_request;
+    invalid_mount_request.mount_table = nullptr;
+    if (queue.Submit(invalid_mount_request) != AsyncFileReadStatus::InvalidArgument) {
+        return Fail("async capacity entry invalid mount did not return invalid argument");
+    }
+
+    const auto invalid_mount_snapshot = queue.Snapshot();
+    if (RequireNoAsyncQueueCapacityEntry(
+            invalid_mount_snapshot,
+            "async invalid mount did not clear capacity entry") != 0) {
+        return 1;
+    }
+
+    if (queue.Submit(rejected_request) != AsyncFileReadStatus::QueueFull) {
+        return Fail("async capacity entry second rejected submit did not return queue full");
+    }
+
+    if (queue.Shutdown(false) != AsyncFileReadStatus::ShutdownComplete) {
+        return Fail("async capacity entry shutdown failed");
+    }
+
+    const auto shutdown_snapshot = queue.Snapshot();
+    if (RequireNoAsyncQueueCapacityEntry(
+            shutdown_snapshot,
+            "async shutdown did not clear capacity entry") != 0) {
+        return 1;
+    }
+
+    std::array<AsyncFileReadResult, 1U> results{};
+    std::size_t written_count = 0U;
+    if (queue.DrainCompletions(results.data(), results.size(), &written_count) != AsyncFileReadStatus::Success) {
+        return Fail("async capacity entry drain failed");
+    }
+
+    const auto final_snapshot = queue.Snapshot();
+    if (RequireNoAsyncQueueCapacityEntry(
+            final_snapshot,
+            "async final drain did not keep capacity entry clear") != 0) {
+        return 1;
     }
 
     return 0;
@@ -1035,6 +1256,10 @@ int FileAsyncReadQueueReportsReadFailureCompletion() {
     const auto snapshot = queue.Snapshot();
     if (snapshot.last_status != AsyncFileReadStatus::ReadFailure) {
         return Fail("read failure completion did not preserve last status");
+    }
+
+    if (RequireNoAsyncQueueCapacityEntry(snapshot, "read failure completion left capacity entry") != 0) {
+        return 1;
     }
 
     return 0;
@@ -1083,6 +1308,10 @@ int FileAsyncReadQueueRejectsSmallOutputWithoutOverrun() {
     const auto snapshot = queue.Snapshot();
     if (snapshot.last_status != AsyncFileReadStatus::OutputTooSmall) {
         return Fail("small output completion did not preserve last status");
+    }
+
+    if (RequireNoAsyncQueueCapacityEntry(snapshot, "small output completion left capacity entry") != 0) {
+        return 1;
     }
 
     return 0;
@@ -1136,6 +1365,10 @@ int FileAsyncReadQueueRangedOutputTooSmallDoesNotCopyPartialBytes() {
     const auto snapshot = queue.Snapshot();
     if (snapshot.last_status != AsyncFileReadStatus::OutputTooSmall) {
         return Fail("ranged small output completion did not preserve last status");
+    }
+
+    if (RequireNoAsyncQueueCapacityEntry(snapshot, "ranged small output completion left capacity entry") != 0) {
+        return 1;
     }
 
     return 0;
@@ -1253,6 +1486,12 @@ int FileAsyncReadQueueInitializedFailuresUpdateLastStatus() {
         return Fail("async zero output capacity did not report required output count");
     }
 
+    if (RequireNoAsyncQueueCapacityEntry(
+            zero_capacity_snapshot,
+            "async zero output capacity left queue capacity entry") != 0) {
+        return 1;
+    }
+
     const AsyncFileReadStatus final_drain_status = queue.DrainCompletions(results.data(), results.size(), &written_count);
     if (final_drain_status != AsyncFileReadStatus::Success) {
         return Fail("async final drain after zero capacity failed");
@@ -1261,6 +1500,10 @@ int FileAsyncReadQueueInitializedFailuresUpdateLastStatus() {
     const auto final_drain_snapshot = queue.Snapshot();
     if (final_drain_snapshot.required_completion_output_count != 0U) {
         return Fail("async final drain did not clear required output count");
+    }
+
+    if (RequireNoAsyncQueueCapacityEntry(final_drain_snapshot, "async final drain left queue capacity entry") != 0) {
+        return 1;
     }
 
     return 0;
@@ -1338,6 +1581,13 @@ int FileAsyncReadQueueShutdownRejectsSubmission() {
     const AsyncFileReadStatus submit_status = queue.Submit(request);
     if (submit_status != AsyncFileReadStatus::ShutdownRequested) {
         return Fail("async submit after shutdown was not rejected");
+    }
+
+    const auto submit_snapshot = queue.Snapshot();
+    if (RequireNoAsyncQueueCapacityEntry(
+            submit_snapshot,
+            "async submit after shutdown left queue capacity entry") != 0) {
+        return 1;
     }
 
     return 0;
@@ -1418,6 +1668,7 @@ int main(int argc, char** argv) {
         {TEST_DISABLED_DIAGNOSTICS, FileDiagnosticsDisabledDoesNotChangeBehavior},
         {TEST_ASYNC_READ, FileAsyncReadQueueReadsFixtureIntoCallerStorage},
         {TEST_ASYNC_CAPACITY, FileAsyncReadQueueRejectsCapacityOverflow},
+        {TEST_ASYNC_CAPACITY_ENTRY, FileAsyncReadQueueCapacityEntryRecordsRejectedRequestAndClears},
         {TEST_ASYNC_FAILURE, FileAsyncReadQueueReportsReadFailureCompletion},
         {TEST_ASYNC_SMALL_OUTPUT, FileAsyncReadQueueRejectsSmallOutputWithoutOverrun},
         {TEST_ASYNC_RANGE_SMALL_OUTPUT, FileAsyncReadQueueRangedOutputTooSmallDoesNotCopyPartialBytes},

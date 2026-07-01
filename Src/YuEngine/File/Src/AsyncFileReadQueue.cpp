@@ -33,14 +33,25 @@ struct AsyncFileReadSlot {
 
 struct AsyncFileReadQueueState final {
     std::vector<AsyncFileReadSlot> slots;
+    std::vector<ThreadWorkerCompletion> completion_buffer;
     ThreadWorker worker;
     AsyncFileReadQueueSnapshot snapshot;
 };
 
 namespace {
+void ClearQueueCapacityFailure(AsyncFileReadQueueState& state) {
+    state.snapshot.last_required_queue_capacity = 0U;
+    state.snapshot.last_failed_request_index = 0U;
+    state.snapshot.last_failed_read_request = FileReadRequest{};
+    state.snapshot.last_failed_output_capacity = 0U;
+    state.snapshot.last_failed_work_capacity = 0U;
+    state.snapshot.last_failed_pending_count = 0U;
+}
+
 void SetLastStatus(AsyncFileReadQueueState& state, AsyncFileReadStatus status) {
     state.snapshot.last_status = status;
     state.snapshot.required_completion_output_count = 0U;
+    ClearQueueCapacityFailure(state);
 }
 
 void RecordCompletionQueueFull(AsyncFileReadQueueState& state, std::size_t required_output_count) {
@@ -145,6 +156,20 @@ void ClearSlot(AsyncFileReadSlot& slot) {
 void RecordRejectedSubmit(AsyncFileReadQueueState& state, AsyncFileReadStatus status) {
     ++state.snapshot.rejected_count;
     SetLastStatus(state, status);
+}
+
+void RecordQueueCapacityFailure(
+    AsyncFileReadQueueState& state,
+    const AsyncFileReadRequest& request,
+    std::size_t required_queue_capacity) {
+    ++state.snapshot.rejected_count;
+    SetLastStatus(state, AsyncFileReadStatus::QueueFull);
+    state.snapshot.last_required_queue_capacity = required_queue_capacity;
+    state.snapshot.last_failed_request_index = request.request_index;
+    state.snapshot.last_failed_read_request = request.read_request;
+    state.snapshot.last_failed_output_capacity = request.output_capacity;
+    state.snapshot.last_failed_work_capacity = state.snapshot.work_capacity;
+    state.snapshot.last_failed_pending_count = CountUsedSlots(state);
 }
 
 void StoreReadResult(AsyncFileReadSlot& slot, AsyncFileReadResult result) {
@@ -297,6 +322,7 @@ AsyncFileReadStatus AsyncFileReadQueue::Initialize(std::size_t work_capacity, st
     }
 
     state_->slots.resize(work_capacity);
+    state_->completion_buffer.resize(completion_capacity);
 
     ThreadWorkerDesc desc;
     desc.work_capacity = work_capacity;
@@ -350,7 +376,8 @@ AsyncFileReadStatus AsyncFileReadQueue::Submit(const AsyncFileReadRequest& reque
 
     AsyncFileReadSlot* slot = FindFreeSlot(*state_);
     if (slot == nullptr) {
-        RecordRejectedSubmit(*state_, AsyncFileReadStatus::QueueFull);
+        const std::size_t required_queue_capacity = state_->slots.size() + 1U;
+        RecordQueueCapacityFailure(*state_, request, required_queue_capacity);
         return AsyncFileReadStatus::QueueFull;
     }
 
@@ -457,23 +484,26 @@ AsyncFileReadStatus AsyncFileReadQueue::DrainCompletions(
         return AsyncFileReadStatus::CompletionQueueFull;
     }
 
+    std::size_t worker_output_capacity = output_capacity - *written_count;
+    if (worker_output_capacity > state_->completion_buffer.size()) {
+        worker_output_capacity = state_->completion_buffer.size();
+    }
+
+    std::size_t worker_written_count = 0U;
     AsyncFileReadStatus drained_last_status = AsyncFileReadStatus::Success;
-    while (*written_count < output_capacity) {
-        ThreadWorkerCompletion worker_completion;
-        std::size_t worker_written_count = 0U;
+    if (worker_output_capacity > 0U) {
         const ThreadWorkerStatus worker_status = state_->worker.DrainCompletions(
-            &worker_completion,
-            1U,
+            state_->completion_buffer.data(),
+            worker_output_capacity,
             &worker_written_count);
         if (worker_status != ThreadWorkerStatus::Success && worker_written_count == 0U) {
             SetLastStatus(*state_, MapWorkerStatus(worker_status));
             return MapWorkerStatus(worker_status);
         }
+    }
 
-        if (worker_written_count == 0U) {
-            break;
-        }
-
+    for (std::size_t index = 0U; index < worker_written_count; ++index) {
+        const ThreadWorkerCompletion& worker_completion = state_->completion_buffer[index];
         AsyncFileReadSlot* slot = FindSlotByTaskId(*state_, worker_completion.task_id);
         AsyncFileReadResult result = BuildWorkerFailureResult(worker_completion);
         if (slot != nullptr) {
