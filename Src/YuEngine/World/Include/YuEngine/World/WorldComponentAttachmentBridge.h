@@ -28,6 +28,11 @@ struct WorldComponentAttachmentExportResult final {
     }
 };
 
+struct WorldComponentAttachmentQueryDesc final {
+    WorldObjectId world_object_id{};
+    WorldComponentTypeId component_type_id{};
+};
+
 class WorldComponentAttachmentBridge final {
 public:
     /**
@@ -57,6 +62,76 @@ public:
     WorldComponentAttachmentResult Query(
         WorldObjectId world_object_id,
         WorldComponentTypeId component_type_id);
+    /**
+     * @comment 精确查找一个 component attachment，并只在成功时写入调用方 output。
+     * @param world_object_id 输入 world object id。
+     * @param component_type_id 输入 component type id。
+     * @param output_attachment 调用方持有的 output attachment。
+     * @return 显式操作结果。
+     */
+    WorldComponentAttachmentResult Lookup(
+        WorldObjectId world_object_id,
+        WorldComponentTypeId component_type_id,
+        WorldComponentAttachment *output_attachment);
+    /**
+     * @comment 按 component type 枚举 matching component attachments。
+     * @param component_type_id 输入 component type id。
+     * @param output_attachments 调用方持有的 output attachment buffer。
+     * @param output_capacity 输出 attachment buffer capacity。
+     * @return 显式操作结果。
+     */
+    WorldComponentAttachmentResult EnumerateType(
+        WorldComponentTypeId component_type_id,
+        WorldComponentAttachment *output_attachments,
+        std::uint32_t output_capacity);
+    /**
+     * @comment 按 component type 统计 matching component attachment 数量。
+     * @param component_type_id 输入 component type id。
+     * @param output_count 调用方持有的 output count。
+     * @return 显式操作状态。
+     */
+    WorldComponentAttachmentStatus CountType(
+        WorldComponentTypeId component_type_id,
+        std::uint32_t *output_count);
+    /**
+     * @comment 批量按 component type 统计 matching component attachment 数量。
+     * @param component_type_ids 调用方提供的 component type id 数组。
+     * @param component_type_count component type id 数量。
+     * @param output_counts 调用方持有的 output count rows。
+     * @param output_capacity 输出 count row capacity。
+     * @return 显式操作结果。
+     */
+    WorldComponentAttachmentResult CountTypes(
+        const WorldComponentTypeId *component_type_ids,
+        std::uint32_t component_type_count,
+        std::uint32_t *output_counts,
+        std::uint32_t output_capacity);
+    /**
+     * @comment 批量按 component type 枚举 matching component attachments。
+     * @param component_type_ids 调用方提供的 component type id 数组。
+     * @param component_type_count component type id 数量。
+     * @param output_attachments 调用方持有的 output attachment buffer。
+     * @param output_capacity 输出 attachment buffer capacity。
+     * @return 显式操作结果。
+     */
+    WorldComponentAttachmentResult EnumerateTypes(
+        const WorldComponentTypeId *component_type_ids,
+        std::uint32_t component_type_count,
+        WorldComponentAttachment *output_attachments,
+        std::uint32_t output_capacity);
+    /**
+     * @comment 批量查询 component attachments，并在完整预检后写入调用方 output buffer。
+     * @param query_descs 调用方提供的 query descriptors。
+     * @param query_count query descriptor 数量。
+     * @param output_attachments 调用方持有的 output attachment buffer。
+     * @param output_capacity 输出 attachment buffer capacity。
+     * @return 显式操作结果。
+     */
+    WorldComponentAttachmentResult QueryBatch(
+        const WorldComponentAttachmentQueryDesc *query_descs,
+        std::uint32_t query_count,
+        WorldComponentAttachment *output_attachments,
+        std::uint32_t output_capacity);
     /**
      * @comment 移除一个 component attachment。
      * @param world_object_id 输入 world object id。
@@ -104,10 +179,16 @@ public:
 
 private:
     WorldComponentAttachmentResult RecordFailureResult(WorldComponentAttachmentStatus status);
+    WorldComponentAttachmentResult RecordBatchFailureResult(
+        WorldComponentAttachmentStatus status,
+        std::uint32_t required_record_count,
+        std::uint32_t written_record_count);
     WorldComponentAttachmentResult RecordDuplicateFailureResult();
     WorldComponentAttachmentStatus RecordFailure(WorldComponentAttachmentStatus status);
     void RecordSuccess();
     WorldComponentAttachmentStatus ValidateBridgeCapacity() const;
+    WorldComponentAttachmentStatus ValidateQueryDesc(
+        const WorldComponentAttachmentQueryDesc &query_desc) const;
     WorldComponentAttachment *FindAttachment(
         WorldObjectId world_object_id,
         WorldComponentTypeId component_type_id);

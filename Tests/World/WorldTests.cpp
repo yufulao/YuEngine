@@ -258,6 +258,7 @@ using yuengine::world::WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_SCHEMA_VERSION;
 using yuengine::world::WorldComponentAttachmentBridge;
 using yuengine::world::WorldComponentAttachmentBridgeDesc;
 using yuengine::world::WorldComponentAttachment;
+using yuengine::world::WorldComponentAttachmentQueryDesc;
 using yuengine::world::WorldComponentAttachmentResult;
 using yuengine::world::WorldComponentAttachmentExportResult;
 using yuengine::world::WorldComponentAttachmentSnapshot;
@@ -1106,6 +1107,30 @@ constexpr const char *TEST_COMPONENT_ADD_CAPACITY = "WorldComponentAttachmentBri
 constexpr const char *TEST_COMPONENT_QUERY_STORED = "WorldComponentAttachmentBridge_QueryReturnsStoredAttachment";
 constexpr const char *TEST_COMPONENT_QUERY_MISSING = "WorldComponentAttachmentBridge_QueryRejectsMissingAttachmentWithoutMutation";
 constexpr const char *TEST_COMPONENT_QUERY_READ_ONLY = "WorldComponentAttachmentBridge_QueryIsReadOnlyAndBounded";
+constexpr const char *TEST_COMPONENT_LOOKUP_EXACT = "WorldComponentAttachmentBridge_LookupExactReturnsMatchingAttachment";
+constexpr const char *TEST_COMPONENT_LOOKUP_MISSING = "WorldComponentAttachmentBridge_LookupExactRejectsMissingWithoutMutation";
+constexpr const char *TEST_COMPONENT_LOOKUP_INVALID = "WorldComponentAttachmentBridge_LookupExactRejectsInvalidKeyWithoutMutation";
+constexpr const char *TEST_COMPONENT_LOOKUP_NULL_OUTPUT = "WorldComponentAttachmentBridge_LookupExactRejectsNullOutputWithoutQuery";
+constexpr const char *TEST_COMPONENT_ENUMERATE_TYPE_MATCHES = "WorldComponentAttachmentBridge_EnumerateTypeReturnsMatchingAttachmentsInSlotOrder";
+constexpr const char *TEST_COMPONENT_ENUMERATE_TYPE_MISSING = "WorldComponentAttachmentBridge_EnumerateTypeReturnsZeroForMissingType";
+constexpr const char *TEST_COMPONENT_ENUMERATE_TYPE_INVALID = "WorldComponentAttachmentBridge_EnumerateTypeRejectsInvalidTypeWithoutMutation";
+constexpr const char *TEST_COMPONENT_ENUMERATE_TYPE_CAPACITY = "WorldComponentAttachmentBridge_EnumerateTypeRejectsCapacityWithoutMutation";
+constexpr const char *TEST_COMPONENT_COUNT_TYPE_MATCHES = "WorldComponentAttachmentBridge_CountTypeMatchesTypeEnumeration";
+constexpr const char *TEST_COMPONENT_COUNT_TYPE_INVALID = "WorldComponentAttachmentBridge_CountTypeRejectsInvalidTypeWithoutMutation";
+constexpr const char *TEST_COMPONENT_COUNT_TYPE_NULL_OUTPUT = "WorldComponentAttachmentBridge_CountTypeRejectsNullOutputWithoutMutation";
+constexpr const char *TEST_COMPONENT_COUNT_TYPE_REPEATED_FAIL = "WorldComponentAttachmentBridge_CountTypeRepeatedFailurePreservesCount";
+constexpr const char *TEST_COMPONENT_COUNT_TYPES_MATCHES = "WorldComponentAttachmentBridge_CountTypesMatchesRepeatedCountTypeCalls";
+constexpr const char *TEST_COMPONENT_COUNT_TYPES_INVALID = "WorldComponentAttachmentBridge_CountTypesRejectsInvalidTypeWithoutMutation";
+constexpr const char *TEST_COMPONENT_COUNT_TYPES_NULL_OUTPUT = "WorldComponentAttachmentBridge_CountTypesRejectsNullOutputWithoutMutation";
+constexpr const char *TEST_COMPONENT_COUNT_TYPES_CAPACITY = "WorldComponentAttachmentBridge_CountTypesRejectsCapacityWithoutMutation";
+constexpr const char *TEST_COMPONENT_COUNT_TYPES_AFTER_ENUMERATE_FAIL = "WorldComponentAttachmentBridge_CountTypesStableAfterEnumerateTypesFailure";
+constexpr const char *TEST_COMPONENT_ENUMERATE_TYPES_ORDER = "WorldComponentAttachmentBridge_EnumerateTypesReturnsAttachmentsInBatchTypeOrder";
+constexpr const char *TEST_COMPONENT_ENUMERATE_TYPES_INVALID = "WorldComponentAttachmentBridge_EnumerateTypesRejectsInvalidTypeWithoutMutation";
+constexpr const char *TEST_COMPONENT_ENUMERATE_TYPES_NULL_OUTPUT = "WorldComponentAttachmentBridge_EnumerateTypesRejectsNullOutputWithoutMutation";
+constexpr const char *TEST_COMPONENT_ENUMERATE_TYPES_CAPACITY = "WorldComponentAttachmentBridge_EnumerateTypesRejectsCapacityWithoutMutation";
+constexpr const char *TEST_COMPONENT_QUERY_BATCH_ORDER = "WorldComponentAttachmentBridge_QueryBatchReturnsAttachmentsInQueryOrder";
+constexpr const char *TEST_COMPONENT_QUERY_BATCH_CAPACITY = "WorldComponentAttachmentBridge_QueryBatchRejectsCapacityWithoutMutation";
+constexpr const char *TEST_COMPONENT_QUERY_BATCH_INVALID = "WorldComponentAttachmentBridge_QueryBatchRejectsInvalidDescWithoutMutation";
 constexpr const char *TEST_COMPONENT_REMOVE_CLEARS = "WorldComponentAttachmentBridge_RemoveClearsAttachment";
 constexpr const char *TEST_COMPONENT_REMOVE_MISSING = "WorldComponentAttachmentBridge_RemoveRejectsMissingAttachmentWithoutMutation";
 constexpr const char *TEST_COMPONENT_CLEAR_ALL = "WorldComponentAttachmentBridge_ClearRemovesAllAttachmentsInSlotOrder";
@@ -1136,6 +1161,12 @@ constexpr const char *TEST_QUERY_TYPE_CAPACITY_ENTRY =
     "WorldComponentQueryBridge_QueryTypeOutputOverflowReportsRejectedEntry";
 constexpr const char *TEST_QUERY_OBJECT_CAPACITY_ENTRY =
     "WorldComponentQueryBridge_QueryObjectOutputOverflowReportsRejectedEntry";
+constexpr const char *TEST_QUERY_TYPES_BATCH_MATCHES =
+    "WorldComponentQueryBridge_QueryTypesReturnsMatchingWorldObjectsInBatchOrder";
+constexpr const char *TEST_QUERY_TYPES_BATCH_OVERFLOW =
+    "WorldComponentQueryBridge_QueryTypesRejectsBatchOverflowWithoutMutation";
+constexpr const char *TEST_QUERY_TYPES_BATCH_INVALID =
+    "WorldComponentQueryBridge_QueryTypesRejectsInvalidDescWithoutMutation";
 constexpr const char *TEST_QUERY_READ_ONLY = "WorldComponentQueryBridge_QueryIsReadOnlyForAttachmentStorage";
 constexpr const char *TEST_QUERY_UPDATE_PATH = "WorldComponentQueryBridge_QueryPathDoesNotGrowStorage";
 constexpr const char *TEST_QUERY_SNAPSHOT = "WorldComponentQueryBridge_SnapshotReportsCountsAndLastStatus";
@@ -20710,6 +20741,1216 @@ int WorldComponentAttachmentBridgeQueryIsReadOnlyAndBounded() {
     return 0;
 }
 
+int WorldComponentAttachmentBridgeLookupExactReturnsMatchingAttachment() {
+    WorldComponentAttachmentBridge bridge;
+    if (!bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component attachment lookup exact player add failed");
+    }
+
+    if (!bridge.Add(OBJECT_CAMERA, COMPONENT_TYPE_SECONDARY, COMPONENT_SLOT_SECONDARY).Succeeded()) {
+        return Fail("component attachment lookup exact camera add failed");
+    }
+
+    WorldComponentAttachment output_attachment{};
+    const WorldComponentAttachmentResult lookup_result = bridge.Lookup(
+        OBJECT_CAMERA,
+        COMPONENT_TYPE_SECONDARY,
+        &output_attachment);
+    if (!lookup_result.Succeeded()) {
+        return Fail("component attachment lookup exact failed");
+    }
+
+    if (lookup_result.world_object_id.value != OBJECT_CAMERA.value) {
+        return Fail("component attachment lookup exact result object wrong");
+    }
+
+    if (lookup_result.component_slot_id.value != COMPONENT_SLOT_SECONDARY.value) {
+        return Fail("component attachment lookup exact result slot wrong");
+    }
+
+    if (output_attachment.world_object_id.value != OBJECT_CAMERA.value) {
+        return Fail("component attachment lookup exact output object wrong");
+    }
+
+    if (output_attachment.component_type_id.value != COMPONENT_TYPE_SECONDARY.value) {
+        return Fail("component attachment lookup exact output type wrong");
+    }
+
+    if (output_attachment.component_slot_id.value != COMPONENT_SLOT_SECONDARY.value) {
+        return Fail("component attachment lookup exact output slot wrong");
+    }
+
+    const WorldComponentAttachmentSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.query_count != 1U) {
+        return Fail("component attachment lookup exact query count wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeLookupExactRejectsMissingWithoutMutation() {
+    WorldComponentAttachmentBridge bridge;
+    if (!bridge.Add(OBJECT_CAMERA, COMPONENT_TYPE_SECONDARY, COMPONENT_SLOT_SECONDARY).Succeeded()) {
+        return Fail("component attachment lookup missing fixture add failed");
+    }
+
+    WorldComponentAttachment output_attachment{};
+    const WorldComponentAttachmentResult success_result = bridge.Lookup(
+        OBJECT_CAMERA,
+        COMPONENT_TYPE_SECONDARY,
+        &output_attachment);
+    if (!success_result.Succeeded()) {
+        return Fail("component attachment lookup missing fixture lookup failed");
+    }
+
+    const WorldComponentAttachment stable_output = output_attachment;
+    const WorldComponentAttachmentResult first_failure = bridge.Lookup(
+        OBJECT_EFFECT,
+        COMPONENT_TYPE_TERTIARY,
+        &output_attachment);
+    if (first_failure.status != WorldComponentAttachmentStatus::AttachmentNotFound) {
+        return Fail("component attachment lookup missing first status wrong");
+    }
+
+    const WorldComponentAttachmentResult second_failure = bridge.Lookup(
+        OBJECT_EFFECT,
+        COMPONENT_TYPE_TERTIARY,
+        &output_attachment);
+    if (second_failure.status != WorldComponentAttachmentStatus::AttachmentNotFound) {
+        return Fail("component attachment lookup missing second status wrong");
+    }
+
+    if (output_attachment.world_object_id.value != stable_output.world_object_id.value) {
+        return Fail("component attachment lookup missing mutated object");
+    }
+
+    if (output_attachment.component_type_id.value != stable_output.component_type_id.value) {
+        return Fail("component attachment lookup missing mutated type");
+    }
+
+    if (output_attachment.component_slot_id.value != stable_output.component_slot_id.value) {
+        return Fail("component attachment lookup missing mutated slot");
+    }
+
+    const WorldComponentAttachmentSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.query_count != 3U) {
+        return Fail("component attachment lookup missing query count wrong");
+    }
+
+    if (snapshot.failed_operation_count != 2U) {
+        return Fail("component attachment lookup missing failure count wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeLookupExactRejectsInvalidKeyWithoutMutation() {
+    WorldComponentAttachmentBridge bridge;
+    if (!bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component attachment lookup invalid fixture add failed");
+    }
+
+    WorldComponentAttachment output_attachment{};
+    output_attachment.world_object_id = OBJECT_EFFECT;
+    output_attachment.component_type_id = COMPONENT_TYPE_TERTIARY;
+    output_attachment.component_slot_id = COMPONENT_SLOT_TERTIARY;
+    output_attachment.is_attached = true;
+
+    const WorldComponentAttachmentResult invalid_result = bridge.Lookup(
+        WorldObjectId{},
+        COMPONENT_TYPE_PRIMARY,
+        &output_attachment);
+    if (invalid_result.status != WorldComponentAttachmentStatus::InvalidWorldObjectId) {
+        return Fail("component attachment lookup invalid returned wrong status");
+    }
+
+    if (output_attachment.world_object_id.value != OBJECT_EFFECT.value) {
+        return Fail("component attachment lookup invalid mutated object");
+    }
+
+    if (output_attachment.component_type_id.value != COMPONENT_TYPE_TERTIARY.value) {
+        return Fail("component attachment lookup invalid mutated type");
+    }
+
+    if (output_attachment.component_slot_id.value != COMPONENT_SLOT_TERTIARY.value) {
+        return Fail("component attachment lookup invalid mutated slot");
+    }
+
+    const WorldComponentAttachmentSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.query_count != 0U) {
+        return Fail("component attachment lookup invalid mutated query count");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeLookupExactRejectsNullOutputWithoutQuery() {
+    WorldComponentAttachmentBridge bridge;
+    if (!bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component attachment lookup null fixture add failed");
+    }
+
+    const WorldComponentAttachmentResult null_result = bridge.Lookup(
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        nullptr);
+    if (null_result.status != WorldComponentAttachmentStatus::InvalidOutputBuffer) {
+        return Fail("component attachment lookup null returned wrong status");
+    }
+
+    const WorldComponentAttachmentSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.query_count != 0U) {
+        return Fail("component attachment lookup null mutated query count");
+    }
+
+    if (snapshot.failed_operation_count != 1U) {
+        return Fail("component attachment lookup null failure count wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeEnumerateTypeReturnsMatchingAttachmentsInSlotOrder() {
+    WorldComponentAttachmentBridge bridge;
+    if (!bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component attachment enumerate type player add failed");
+    }
+
+    if (!bridge.Add(OBJECT_CAMERA, COMPONENT_TYPE_SECONDARY, COMPONENT_SLOT_SECONDARY).Succeeded()) {
+        return Fail("component attachment enumerate type camera add failed");
+    }
+
+    if (!bridge.Add(OBJECT_EFFECT, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_TERTIARY).Succeeded()) {
+        return Fail("component attachment enumerate type effect add failed");
+    }
+
+    std::array<WorldComponentAttachment, 2U> output_attachments{};
+    const std::uint32_t output_capacity = static_cast<std::uint32_t>(output_attachments.size());
+    const WorldComponentAttachmentResult result = bridge.EnumerateType(
+        COMPONENT_TYPE_PRIMARY,
+        output_attachments.data(),
+        output_capacity);
+    if (!result.Succeeded()) {
+        return Fail("component attachment enumerate type failed");
+    }
+
+    if (result.required_record_count != 2U) {
+        return Fail("component attachment enumerate type required count wrong");
+    }
+
+    if (result.written_record_count != 2U) {
+        return Fail("component attachment enumerate type written count wrong");
+    }
+
+    if (output_attachments[0].world_object_id.value != OBJECT_PLAYER.value) {
+        return Fail("component attachment enumerate type first object wrong");
+    }
+
+    if (output_attachments[0].component_slot_id.value != COMPONENT_SLOT_PRIMARY.value) {
+        return Fail("component attachment enumerate type first slot wrong");
+    }
+
+    if (output_attachments[1].world_object_id.value != OBJECT_EFFECT.value) {
+        return Fail("component attachment enumerate type second object wrong");
+    }
+
+    if (output_attachments[1].component_slot_id.value != COMPONENT_SLOT_TERTIARY.value) {
+        return Fail("component attachment enumerate type second slot wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeEnumerateTypeReturnsZeroForMissingType() {
+    WorldComponentAttachmentBridge bridge;
+    if (!bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component attachment enumerate missing fixture add failed");
+    }
+
+    WorldComponentAttachment output_attachment{};
+    output_attachment.world_object_id = OBJECT_EFFECT;
+    output_attachment.component_type_id = COMPONENT_TYPE_TERTIARY;
+    output_attachment.component_slot_id = COMPONENT_SLOT_TERTIARY;
+    output_attachment.is_attached = true;
+
+    const WorldComponentAttachmentResult result = bridge.EnumerateType(
+        COMPONENT_TYPE_SECONDARY,
+        &output_attachment,
+        1U);
+    if (!result.Succeeded()) {
+        return Fail("component attachment enumerate missing failed");
+    }
+
+    if (result.required_record_count != 0U) {
+        return Fail("component attachment enumerate missing required count wrong");
+    }
+
+    if (result.written_record_count != 0U) {
+        return Fail("component attachment enumerate missing written count wrong");
+    }
+
+    if (output_attachment.world_object_id.value != OBJECT_EFFECT.value) {
+        return Fail("component attachment enumerate missing mutated object");
+    }
+
+    const WorldComponentAttachmentSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.query_count != 1U) {
+        return Fail("component attachment enumerate missing query count wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeEnumerateTypeRejectsInvalidTypeWithoutMutation() {
+    WorldComponentAttachmentBridge bridge;
+    if (!bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component attachment enumerate invalid fixture add failed");
+    }
+
+    WorldComponentAttachment output_attachment{};
+    output_attachment.world_object_id = OBJECT_EFFECT;
+    output_attachment.component_type_id = COMPONENT_TYPE_TERTIARY;
+    output_attachment.component_slot_id = COMPONENT_SLOT_TERTIARY;
+    output_attachment.is_attached = true;
+
+    const WorldComponentAttachmentResult result = bridge.EnumerateType(
+        WorldComponentTypeId{},
+        &output_attachment,
+        1U);
+    if (result.status != WorldComponentAttachmentStatus::InvalidComponentTypeId) {
+        return Fail("component attachment enumerate invalid status wrong");
+    }
+
+    if (output_attachment.world_object_id.value != OBJECT_EFFECT.value) {
+        return Fail("component attachment enumerate invalid mutated object");
+    }
+
+    const WorldComponentAttachmentSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.query_count != 0U) {
+        return Fail("component attachment enumerate invalid mutated query count");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeEnumerateTypeRejectsCapacityWithoutMutation() {
+    WorldComponentAttachmentBridge bridge;
+    if (!bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component attachment enumerate capacity player add failed");
+    }
+
+    if (!bridge.Add(OBJECT_EFFECT, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_TERTIARY).Succeeded()) {
+        return Fail("component attachment enumerate capacity effect add failed");
+    }
+
+    std::array<WorldComponentAttachment, 2U> output_attachments{};
+    const std::uint32_t output_capacity = static_cast<std::uint32_t>(output_attachments.size());
+    const WorldComponentAttachmentResult success_result = bridge.EnumerateType(
+        COMPONENT_TYPE_PRIMARY,
+        output_attachments.data(),
+        output_capacity);
+    if (!success_result.Succeeded()) {
+        return Fail("component attachment enumerate capacity fixture enumerate failed");
+    }
+
+    const WorldComponentAttachment first_output = output_attachments[0];
+    const WorldComponentAttachment second_output = output_attachments[1];
+    const WorldComponentAttachmentResult first_failure = bridge.EnumerateType(
+        COMPONENT_TYPE_PRIMARY,
+        output_attachments.data(),
+        1U);
+    if (first_failure.status != WorldComponentAttachmentStatus::CapacityExceeded) {
+        return Fail("component attachment enumerate capacity first status wrong");
+    }
+
+    if (first_failure.required_record_count != 2U) {
+        return Fail("component attachment enumerate capacity required count wrong");
+    }
+
+    const WorldComponentAttachmentResult second_failure = bridge.EnumerateType(
+        COMPONENT_TYPE_PRIMARY,
+        output_attachments.data(),
+        1U);
+    if (second_failure.status != WorldComponentAttachmentStatus::CapacityExceeded) {
+        return Fail("component attachment enumerate capacity second status wrong");
+    }
+
+    if (output_attachments[0].world_object_id.value != first_output.world_object_id.value) {
+        return Fail("component attachment enumerate capacity mutated first object");
+    }
+
+    if (output_attachments[1].world_object_id.value != second_output.world_object_id.value) {
+        return Fail("component attachment enumerate capacity mutated second object");
+    }
+
+    const WorldComponentAttachmentSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.query_count != 1U) {
+        return Fail("component attachment enumerate capacity mutated query count");
+    }
+
+    if (snapshot.failed_operation_count != 2U) {
+        return Fail("component attachment enumerate capacity failure count wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeCountTypeMatchesTypeEnumeration() {
+    WorldComponentAttachmentBridge bridge;
+    if (!bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component attachment count type player add failed");
+    }
+
+    if (!bridge.Add(OBJECT_CAMERA, COMPONENT_TYPE_SECONDARY, COMPONENT_SLOT_SECONDARY).Succeeded()) {
+        return Fail("component attachment count type camera add failed");
+    }
+
+    if (!bridge.Add(OBJECT_EFFECT, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_TERTIARY).Succeeded()) {
+        return Fail("component attachment count type effect add failed");
+    }
+
+    std::array<WorldComponentAttachment, 2U> output_attachments{};
+    const std::uint32_t output_capacity = static_cast<std::uint32_t>(output_attachments.size());
+    const WorldComponentAttachmentResult enumerate_result = bridge.EnumerateType(
+        COMPONENT_TYPE_PRIMARY,
+        output_attachments.data(),
+        output_capacity);
+    if (!enumerate_result.Succeeded()) {
+        return Fail("component attachment count type enumerate failed");
+    }
+
+    std::uint32_t counted_attachment_count = 0U;
+    const WorldComponentAttachmentStatus count_status = bridge.CountType(
+        COMPONENT_TYPE_PRIMARY,
+        &counted_attachment_count);
+    if (count_status != WorldComponentAttachmentStatus::Success) {
+        return Fail("component attachment count type failed");
+    }
+
+    if (counted_attachment_count != enumerate_result.required_record_count) {
+        return Fail("component attachment count type mismatch");
+    }
+
+    const WorldComponentAttachmentSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.query_count != 1U) {
+        return Fail("component attachment count type mutated query count");
+    }
+
+    if (snapshot.last_status != WorldComponentAttachmentStatus::Success) {
+        return Fail("component attachment count type last status wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeCountTypeRejectsInvalidTypeWithoutMutation() {
+    WorldComponentAttachmentBridge bridge;
+    if (!bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component attachment count invalid fixture add failed");
+    }
+
+    std::uint32_t counted_attachment_count = 7U;
+    const WorldComponentAttachmentStatus count_status = bridge.CountType(
+        WorldComponentTypeId{},
+        &counted_attachment_count);
+    if (count_status != WorldComponentAttachmentStatus::InvalidComponentTypeId) {
+        return Fail("component attachment count invalid status wrong");
+    }
+
+    if (counted_attachment_count != 7U) {
+        return Fail("component attachment count invalid mutated count");
+    }
+
+    const WorldComponentAttachmentSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.query_count != 0U) {
+        return Fail("component attachment count invalid mutated query count");
+    }
+
+    if (snapshot.failed_operation_count != 1U) {
+        return Fail("component attachment count invalid failure count wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeCountTypeRejectsNullOutputWithoutMutation() {
+    WorldComponentAttachmentBridge bridge;
+    if (!bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component attachment count null fixture add failed");
+    }
+
+    const WorldComponentAttachmentStatus count_status = bridge.CountType(
+        COMPONENT_TYPE_PRIMARY,
+        nullptr);
+    if (count_status != WorldComponentAttachmentStatus::InvalidOutputBuffer) {
+        return Fail("component attachment count null status wrong");
+    }
+
+    const WorldComponentAttachmentSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.query_count != 0U) {
+        return Fail("component attachment count null mutated query count");
+    }
+
+    if (snapshot.failed_operation_count != 1U) {
+        return Fail("component attachment count null failure count wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeCountTypeRepeatedFailurePreservesCount() {
+    WorldComponentAttachmentBridge bridge;
+    if (!bridge.Add(OBJECT_CAMERA, COMPONENT_TYPE_SECONDARY, COMPONENT_SLOT_SECONDARY).Succeeded()) {
+        return Fail("component attachment count repeated fixture add failed");
+    }
+
+    std::uint32_t counted_attachment_count = 0U;
+    if (bridge.CountType(COMPONENT_TYPE_SECONDARY, &counted_attachment_count) != WorldComponentAttachmentStatus::Success) {
+        return Fail("component attachment count repeated success failed");
+    }
+
+    const WorldComponentAttachmentStatus first_status = bridge.CountType(
+        WorldComponentTypeId{},
+        &counted_attachment_count);
+    if (first_status != WorldComponentAttachmentStatus::InvalidComponentTypeId) {
+        return Fail("component attachment count repeated first status wrong");
+    }
+
+    const WorldComponentAttachmentStatus second_status = bridge.CountType(
+        WorldComponentTypeId{},
+        &counted_attachment_count);
+    if (second_status != WorldComponentAttachmentStatus::InvalidComponentTypeId) {
+        return Fail("component attachment count repeated second status wrong");
+    }
+
+    if (counted_attachment_count != 1U) {
+        return Fail("component attachment count repeated mutated count");
+    }
+
+    const WorldComponentAttachmentSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.query_count != 0U) {
+        return Fail("component attachment count repeated mutated query count");
+    }
+
+    if (snapshot.failed_operation_count != 2U) {
+        return Fail("component attachment count repeated failure count wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeCountTypesMatchesRepeatedCountTypeCalls() {
+    WorldComponentAttachmentBridge bridge;
+    if (!bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component attachment count types player add failed");
+    }
+
+    if (!bridge.Add(OBJECT_CAMERA, COMPONENT_TYPE_SECONDARY, COMPONENT_SLOT_SECONDARY).Succeeded()) {
+        return Fail("component attachment count types camera add failed");
+    }
+
+    if (!bridge.Add(OBJECT_EFFECT, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_TERTIARY).Succeeded()) {
+        return Fail("component attachment count types effect add failed");
+    }
+
+    std::array<WorldComponentTypeId, 3U> component_type_ids{};
+    component_type_ids[0] = COMPONENT_TYPE_SECONDARY;
+    component_type_ids[1] = COMPONENT_TYPE_PRIMARY;
+    component_type_ids[2] = COMPONENT_TYPE_TERTIARY;
+
+    std::array<std::uint32_t, 3U> expected_counts{};
+    for (std::uint32_t index = 0U; index < static_cast<std::uint32_t>(component_type_ids.size()); ++index) {
+        const WorldComponentAttachmentStatus count_status = bridge.CountType(
+            component_type_ids[index],
+            &expected_counts[index]);
+        if (count_status != WorldComponentAttachmentStatus::Success) {
+            return Fail("component attachment count types single count failed");
+        }
+    }
+
+    std::array<std::uint32_t, 3U> output_counts{};
+    const std::uint32_t component_type_count = static_cast<std::uint32_t>(component_type_ids.size());
+    const std::uint32_t output_capacity = static_cast<std::uint32_t>(output_counts.size());
+    const WorldComponentAttachmentResult result = bridge.CountTypes(
+        component_type_ids.data(),
+        component_type_count,
+        output_counts.data(),
+        output_capacity);
+    if (!result.Succeeded()) {
+        return Fail("component attachment count types failed");
+    }
+
+    if (result.required_record_count != component_type_count) {
+        return Fail("component attachment count types required count wrong");
+    }
+
+    if (result.written_record_count != component_type_count) {
+        return Fail("component attachment count types written count wrong");
+    }
+
+    for (std::uint32_t index = 0U; index < component_type_count; ++index) {
+        if (output_counts[index] != expected_counts[index]) {
+            return Fail("component attachment count types output count mismatch");
+        }
+    }
+
+    const WorldComponentAttachmentSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.query_count != 0U) {
+        return Fail("component attachment count types mutated query count");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeCountTypesRejectsInvalidTypeWithoutMutation() {
+    WorldComponentAttachmentBridge bridge;
+    if (!bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component attachment count types invalid fixture add failed");
+    }
+
+    std::array<WorldComponentTypeId, 2U> component_type_ids{};
+    component_type_ids[0] = COMPONENT_TYPE_PRIMARY;
+
+    std::array<std::uint32_t, 2U> output_counts{};
+    output_counts[0] = 9U;
+    output_counts[1] = 8U;
+
+    const WorldComponentAttachmentResult result = bridge.CountTypes(
+        component_type_ids.data(),
+        static_cast<std::uint32_t>(component_type_ids.size()),
+        output_counts.data(),
+        static_cast<std::uint32_t>(output_counts.size()));
+    if (result.status != WorldComponentAttachmentStatus::InvalidComponentTypeId) {
+        return Fail("component attachment count types invalid status wrong");
+    }
+
+    if (result.written_record_count != 0U) {
+        return Fail("component attachment count types invalid written count wrong");
+    }
+
+    if (output_counts[0] != 9U) {
+        return Fail("component attachment count types invalid mutated first count");
+    }
+
+    if (output_counts[1] != 8U) {
+        return Fail("component attachment count types invalid mutated second count");
+    }
+
+    const WorldComponentAttachmentSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.query_count != 0U) {
+        return Fail("component attachment count types invalid mutated query count");
+    }
+
+    if (snapshot.failed_operation_count != 1U) {
+        return Fail("component attachment count types invalid failure count wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeCountTypesRejectsNullOutputWithoutMutation() {
+    WorldComponentAttachmentBridge bridge;
+    if (!bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component attachment count types null fixture add failed");
+    }
+
+    std::array<WorldComponentTypeId, 1U> component_type_ids{};
+    component_type_ids[0] = COMPONENT_TYPE_PRIMARY;
+
+    const WorldComponentAttachmentResult result = bridge.CountTypes(
+        component_type_ids.data(),
+        1U,
+        nullptr,
+        1U);
+    if (result.status != WorldComponentAttachmentStatus::InvalidOutputBuffer) {
+        return Fail("component attachment count types null status wrong");
+    }
+
+    if (result.required_record_count != 1U) {
+        return Fail("component attachment count types null required count wrong");
+    }
+
+    if (result.written_record_count != 0U) {
+        return Fail("component attachment count types null written count wrong");
+    }
+
+    const WorldComponentAttachmentSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.query_count != 0U) {
+        return Fail("component attachment count types null mutated query count");
+    }
+
+    if (snapshot.failed_operation_count != 1U) {
+        return Fail("component attachment count types null failure count wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeCountTypesRejectsCapacityWithoutMutation() {
+    WorldComponentAttachmentBridge bridge;
+    if (!bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component attachment count types capacity player add failed");
+    }
+
+    if (!bridge.Add(OBJECT_CAMERA, COMPONENT_TYPE_SECONDARY, COMPONENT_SLOT_SECONDARY).Succeeded()) {
+        return Fail("component attachment count types capacity camera add failed");
+    }
+
+    std::array<WorldComponentTypeId, 2U> component_type_ids{};
+    component_type_ids[0] = COMPONENT_TYPE_SECONDARY;
+    component_type_ids[1] = COMPONENT_TYPE_PRIMARY;
+
+    std::array<std::uint32_t, 2U> output_counts{};
+    const std::uint32_t component_type_count = static_cast<std::uint32_t>(component_type_ids.size());
+    const std::uint32_t output_capacity = static_cast<std::uint32_t>(output_counts.size());
+    const WorldComponentAttachmentResult success_result = bridge.CountTypes(
+        component_type_ids.data(),
+        component_type_count,
+        output_counts.data(),
+        output_capacity);
+    if (!success_result.Succeeded()) {
+        return Fail("component attachment count types capacity fixture count failed");
+    }
+
+    const std::uint32_t first_count = output_counts[0];
+    const std::uint32_t second_count = output_counts[1];
+    const WorldComponentAttachmentResult first_failure = bridge.CountTypes(
+        component_type_ids.data(),
+        component_type_count,
+        output_counts.data(),
+        1U);
+    if (first_failure.status != WorldComponentAttachmentStatus::CapacityExceeded) {
+        return Fail("component attachment count types capacity first status wrong");
+    }
+
+    if (first_failure.required_record_count != component_type_count) {
+        return Fail("component attachment count types capacity required count wrong");
+    }
+
+    if (first_failure.written_record_count != 0U) {
+        return Fail("component attachment count types capacity first written count wrong");
+    }
+
+    const WorldComponentAttachmentResult second_failure = bridge.CountTypes(
+        component_type_ids.data(),
+        component_type_count,
+        output_counts.data(),
+        1U);
+    if (second_failure.status != WorldComponentAttachmentStatus::CapacityExceeded) {
+        return Fail("component attachment count types capacity second status wrong");
+    }
+
+    if (output_counts[0] != first_count) {
+        return Fail("component attachment count types capacity mutated first count");
+    }
+
+    if (output_counts[1] != second_count) {
+        return Fail("component attachment count types capacity mutated second count");
+    }
+
+    const WorldComponentAttachmentSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.query_count != 0U) {
+        return Fail("component attachment count types capacity mutated query count");
+    }
+
+    if (snapshot.failed_operation_count != 2U) {
+        return Fail("component attachment count types capacity failure count wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeCountTypesStableAfterEnumerateTypesFailure() {
+    WorldComponentAttachmentBridge bridge;
+    if (!bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component attachment count types stable player add failed");
+    }
+
+    if (!bridge.Add(OBJECT_CAMERA, COMPONENT_TYPE_SECONDARY, COMPONENT_SLOT_SECONDARY).Succeeded()) {
+        return Fail("component attachment count types stable camera add failed");
+    }
+
+    if (!bridge.Add(OBJECT_EFFECT, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_TERTIARY).Succeeded()) {
+        return Fail("component attachment count types stable effect add failed");
+    }
+
+    std::array<WorldComponentTypeId, 2U> component_type_ids{};
+    component_type_ids[0] = COMPONENT_TYPE_SECONDARY;
+    component_type_ids[1] = COMPONENT_TYPE_PRIMARY;
+
+    std::array<WorldComponentAttachment, 1U> small_attachments{};
+    const WorldComponentAttachmentResult enumerate_result = bridge.EnumerateTypes(
+        component_type_ids.data(),
+        static_cast<std::uint32_t>(component_type_ids.size()),
+        small_attachments.data(),
+        static_cast<std::uint32_t>(small_attachments.size()));
+    if (enumerate_result.status != WorldComponentAttachmentStatus::CapacityExceeded) {
+        return Fail("component attachment count types stable enumerate status wrong");
+    }
+
+    std::array<std::uint32_t, 2U> output_counts{};
+    const WorldComponentAttachmentResult count_result = bridge.CountTypes(
+        component_type_ids.data(),
+        static_cast<std::uint32_t>(component_type_ids.size()),
+        output_counts.data(),
+        static_cast<std::uint32_t>(output_counts.size()));
+    if (!count_result.Succeeded()) {
+        return Fail("component attachment count types stable count failed");
+    }
+
+    if (output_counts[0] != 1U) {
+        return Fail("component attachment count types stable secondary count wrong");
+    }
+
+    if (output_counts[1] != 2U) {
+        return Fail("component attachment count types stable primary count wrong");
+    }
+
+    const WorldComponentAttachmentSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.query_count != 0U) {
+        return Fail("component attachment count types stable mutated query count");
+    }
+
+    if (snapshot.failed_operation_count != 1U) {
+        return Fail("component attachment count types stable failure count wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeEnumerateTypesReturnsAttachmentsInBatchTypeOrder() {
+    WorldComponentAttachmentBridge bridge;
+    if (!bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component attachment enumerate types player add failed");
+    }
+
+    if (!bridge.Add(OBJECT_CAMERA, COMPONENT_TYPE_SECONDARY, COMPONENT_SLOT_SECONDARY).Succeeded()) {
+        return Fail("component attachment enumerate types camera add failed");
+    }
+
+    if (!bridge.Add(OBJECT_EFFECT, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_TERTIARY).Succeeded()) {
+        return Fail("component attachment enumerate types effect add failed");
+    }
+
+    std::array<WorldComponentTypeId, 2U> component_type_ids{};
+    component_type_ids[0] = COMPONENT_TYPE_SECONDARY;
+    component_type_ids[1] = COMPONENT_TYPE_PRIMARY;
+
+    std::array<WorldComponentAttachment, 3U> output_attachments{};
+    const std::uint32_t component_type_count = static_cast<std::uint32_t>(component_type_ids.size());
+    const std::uint32_t output_capacity = static_cast<std::uint32_t>(output_attachments.size());
+    const WorldComponentAttachmentResult result = bridge.EnumerateTypes(
+        component_type_ids.data(),
+        component_type_count,
+        output_attachments.data(),
+        output_capacity);
+    if (!result.Succeeded()) {
+        return Fail("component attachment enumerate types failed");
+    }
+
+    if (result.required_record_count != 3U) {
+        return Fail("component attachment enumerate types required count wrong");
+    }
+
+    if (result.written_record_count != 3U) {
+        return Fail("component attachment enumerate types written count wrong");
+    }
+
+    if (output_attachments[0].world_object_id.value != OBJECT_CAMERA.value) {
+        return Fail("component attachment enumerate types first object wrong");
+    }
+
+    if (output_attachments[1].world_object_id.value != OBJECT_PLAYER.value) {
+        return Fail("component attachment enumerate types second object wrong");
+    }
+
+    if (output_attachments[2].world_object_id.value != OBJECT_EFFECT.value) {
+        return Fail("component attachment enumerate types third object wrong");
+    }
+
+    const WorldComponentAttachmentSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.query_count != component_type_count) {
+        return Fail("component attachment enumerate types query count wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeEnumerateTypesRejectsInvalidTypeWithoutMutation() {
+    WorldComponentAttachmentBridge bridge;
+    if (!bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component attachment enumerate types invalid fixture add failed");
+    }
+
+    std::array<WorldComponentTypeId, 2U> component_type_ids{};
+    component_type_ids[0] = COMPONENT_TYPE_PRIMARY;
+
+    WorldComponentAttachment sentinel_attachment{};
+    sentinel_attachment.world_object_id = OBJECT_EFFECT;
+    sentinel_attachment.component_type_id = COMPONENT_TYPE_TERTIARY;
+    sentinel_attachment.component_slot_id = COMPONENT_SLOT_TERTIARY;
+    sentinel_attachment.is_attached = true;
+    std::array<WorldComponentAttachment, 2U> output_attachments{
+        sentinel_attachment,
+        sentinel_attachment};
+
+    const std::uint32_t component_type_count = static_cast<std::uint32_t>(component_type_ids.size());
+    const std::uint32_t output_capacity = static_cast<std::uint32_t>(output_attachments.size());
+    const WorldComponentAttachmentResult result = bridge.EnumerateTypes(
+        component_type_ids.data(),
+        component_type_count,
+        output_attachments.data(),
+        output_capacity);
+    if (result.status != WorldComponentAttachmentStatus::InvalidComponentTypeId) {
+        return Fail("component attachment enumerate types invalid status wrong");
+    }
+
+    if (result.written_record_count != 0U) {
+        return Fail("component attachment enumerate types invalid written count wrong");
+    }
+
+    if (output_attachments[0].world_object_id.value != sentinel_attachment.world_object_id.value) {
+        return Fail("component attachment enumerate types invalid mutated first output");
+    }
+
+    if (output_attachments[1].world_object_id.value != sentinel_attachment.world_object_id.value) {
+        return Fail("component attachment enumerate types invalid mutated second output");
+    }
+
+    const WorldComponentAttachmentSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.query_count != 0U) {
+        return Fail("component attachment enumerate types invalid mutated query count");
+    }
+
+    if (snapshot.failed_operation_count != 1U) {
+        return Fail("component attachment enumerate types invalid failure count wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeEnumerateTypesRejectsNullOutputWithoutMutation() {
+    WorldComponentAttachmentBridge bridge;
+    if (!bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component attachment enumerate types null fixture add failed");
+    }
+
+    std::array<WorldComponentTypeId, 1U> component_type_ids{};
+    component_type_ids[0] = COMPONENT_TYPE_PRIMARY;
+
+    const WorldComponentAttachmentResult result = bridge.EnumerateTypes(
+        component_type_ids.data(),
+        1U,
+        nullptr,
+        1U);
+    if (result.status != WorldComponentAttachmentStatus::InvalidOutputBuffer) {
+        return Fail("component attachment enumerate types null status wrong");
+    }
+
+    if (result.required_record_count != 1U) {
+        return Fail("component attachment enumerate types null required count wrong");
+    }
+
+    if (result.written_record_count != 0U) {
+        return Fail("component attachment enumerate types null written count wrong");
+    }
+
+    const WorldComponentAttachmentSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.query_count != 0U) {
+        return Fail("component attachment enumerate types null mutated query count");
+    }
+
+    if (snapshot.failed_operation_count != 1U) {
+        return Fail("component attachment enumerate types null failure count wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeEnumerateTypesRejectsCapacityWithoutMutation() {
+    WorldComponentAttachmentBridge bridge;
+    if (!bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component attachment enumerate types capacity player add failed");
+    }
+
+    if (!bridge.Add(OBJECT_CAMERA, COMPONENT_TYPE_SECONDARY, COMPONENT_SLOT_SECONDARY).Succeeded()) {
+        return Fail("component attachment enumerate types capacity camera add failed");
+    }
+
+    if (!bridge.Add(OBJECT_EFFECT, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_TERTIARY).Succeeded()) {
+        return Fail("component attachment enumerate types capacity effect add failed");
+    }
+
+    std::array<WorldComponentTypeId, 2U> component_type_ids{};
+    component_type_ids[0] = COMPONENT_TYPE_SECONDARY;
+    component_type_ids[1] = COMPONENT_TYPE_PRIMARY;
+
+    std::array<WorldComponentAttachment, 3U> output_attachments{};
+    const std::uint32_t component_type_count = static_cast<std::uint32_t>(component_type_ids.size());
+    const std::uint32_t output_capacity = static_cast<std::uint32_t>(output_attachments.size());
+    const WorldComponentAttachmentResult success_result = bridge.EnumerateTypes(
+        component_type_ids.data(),
+        component_type_count,
+        output_attachments.data(),
+        output_capacity);
+    if (!success_result.Succeeded()) {
+        return Fail("component attachment enumerate types capacity fixture enumerate failed");
+    }
+
+    const WorldComponentAttachment first_output = output_attachments[0];
+    const WorldComponentAttachment second_output = output_attachments[1];
+    const WorldComponentAttachment third_output = output_attachments[2];
+    const WorldComponentAttachmentResult first_failure = bridge.EnumerateTypes(
+        component_type_ids.data(),
+        component_type_count,
+        output_attachments.data(),
+        2U);
+    if (first_failure.status != WorldComponentAttachmentStatus::CapacityExceeded) {
+        return Fail("component attachment enumerate types capacity first status wrong");
+    }
+
+    if (first_failure.required_record_count != 3U) {
+        return Fail("component attachment enumerate types capacity required count wrong");
+    }
+
+    if (first_failure.written_record_count != 0U) {
+        return Fail("component attachment enumerate types capacity first written count wrong");
+    }
+
+    const WorldComponentAttachmentResult second_failure = bridge.EnumerateTypes(
+        component_type_ids.data(),
+        component_type_count,
+        output_attachments.data(),
+        2U);
+    if (second_failure.status != WorldComponentAttachmentStatus::CapacityExceeded) {
+        return Fail("component attachment enumerate types capacity second status wrong");
+    }
+
+    if (output_attachments[0].world_object_id.value != first_output.world_object_id.value) {
+        return Fail("component attachment enumerate types capacity mutated first object");
+    }
+
+    if (output_attachments[1].world_object_id.value != second_output.world_object_id.value) {
+        return Fail("component attachment enumerate types capacity mutated second object");
+    }
+
+    if (output_attachments[2].world_object_id.value != third_output.world_object_id.value) {
+        return Fail("component attachment enumerate types capacity mutated third object");
+    }
+
+    const WorldComponentAttachmentSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.query_count != component_type_count) {
+        return Fail("component attachment enumerate types capacity mutated query count");
+    }
+
+    if (snapshot.failed_operation_count != 2U) {
+        return Fail("component attachment enumerate types capacity failure count wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeQueryBatchReturnsAttachmentsInQueryOrder() {
+    WorldComponentAttachmentBridge bridge;
+    if (!bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component attachment batch order player add failed");
+    }
+
+    if (!bridge.Add(OBJECT_CAMERA, COMPONENT_TYPE_SECONDARY, COMPONENT_SLOT_SECONDARY).Succeeded()) {
+        return Fail("component attachment batch order camera add failed");
+    }
+
+    if (!bridge.Add(OBJECT_EFFECT, COMPONENT_TYPE_TERTIARY, COMPONENT_SLOT_TERTIARY).Succeeded()) {
+        return Fail("component attachment batch order effect add failed");
+    }
+
+    std::array<WorldComponentAttachmentQueryDesc, 2U> query_descs{};
+    query_descs[0].world_object_id = OBJECT_EFFECT;
+    query_descs[0].component_type_id = COMPONENT_TYPE_TERTIARY;
+    query_descs[1].world_object_id = OBJECT_PLAYER;
+    query_descs[1].component_type_id = COMPONENT_TYPE_PRIMARY;
+
+    std::array<WorldComponentAttachment, 2U> output_attachments{};
+    const std::uint32_t query_count = static_cast<std::uint32_t>(query_descs.size());
+    const std::uint32_t output_capacity = static_cast<std::uint32_t>(output_attachments.size());
+    const WorldComponentAttachmentResult batch_result = bridge.QueryBatch(
+        query_descs.data(),
+        query_count,
+        output_attachments.data(),
+        output_capacity);
+    if (!batch_result.Succeeded()) {
+        return Fail("component attachment batch order query failed");
+    }
+
+    if (batch_result.required_record_count != query_count) {
+        return Fail("component attachment batch order required count wrong");
+    }
+
+    if (batch_result.written_record_count != query_count) {
+        return Fail("component attachment batch order written count wrong");
+    }
+
+    if (output_attachments[0].world_object_id.value != OBJECT_EFFECT.value) {
+        return Fail("component attachment batch order first object wrong");
+    }
+
+    if (output_attachments[0].component_slot_id.value != COMPONENT_SLOT_TERTIARY.value) {
+        return Fail("component attachment batch order first slot wrong");
+    }
+
+    if (output_attachments[1].world_object_id.value != OBJECT_PLAYER.value) {
+        return Fail("component attachment batch order second object wrong");
+    }
+
+    if (output_attachments[1].component_slot_id.value != COMPONENT_SLOT_PRIMARY.value) {
+        return Fail("component attachment batch order second slot wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeQueryBatchRejectsCapacityWithoutMutation() {
+    WorldComponentAttachmentBridge bridge;
+    if (!bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component attachment batch capacity player add failed");
+    }
+
+    if (!bridge.Add(OBJECT_CAMERA, COMPONENT_TYPE_SECONDARY, COMPONENT_SLOT_SECONDARY).Succeeded()) {
+        return Fail("component attachment batch capacity camera add failed");
+    }
+
+    std::array<WorldComponentAttachmentQueryDesc, 2U> query_descs{};
+    query_descs[0].world_object_id = OBJECT_PLAYER;
+    query_descs[0].component_type_id = COMPONENT_TYPE_PRIMARY;
+    query_descs[1].world_object_id = OBJECT_CAMERA;
+    query_descs[1].component_type_id = COMPONENT_TYPE_SECONDARY;
+
+    std::array<WorldComponentAttachment, 2U> output_attachments{};
+    const std::uint32_t query_count = static_cast<std::uint32_t>(query_descs.size());
+    const std::uint32_t output_capacity = static_cast<std::uint32_t>(output_attachments.size());
+    const WorldComponentAttachmentResult success_result = bridge.QueryBatch(
+        query_descs.data(),
+        query_count,
+        output_attachments.data(),
+        output_capacity);
+    if (!success_result.Succeeded()) {
+        return Fail("component attachment batch capacity fixture query failed");
+    }
+
+    const WorldComponentAttachment first_output = output_attachments[0];
+    const WorldComponentAttachment second_output = output_attachments[1];
+    const WorldComponentAttachmentResult overflow_result = bridge.QueryBatch(
+        query_descs.data(),
+        query_count,
+        output_attachments.data(),
+        1U);
+    if (overflow_result.status != WorldComponentAttachmentStatus::CapacityExceeded) {
+        return Fail("component attachment batch capacity returned wrong status");
+    }
+
+    if (overflow_result.required_record_count != query_count) {
+        return Fail("component attachment batch capacity required count wrong");
+    }
+
+    if (overflow_result.written_record_count != 0U) {
+        return Fail("component attachment batch capacity written count wrong");
+    }
+
+    const WorldComponentAttachmentResult repeat_result = bridge.QueryBatch(
+        query_descs.data(),
+        query_count,
+        output_attachments.data(),
+        1U);
+    if (repeat_result.status != WorldComponentAttachmentStatus::CapacityExceeded) {
+        return Fail("component attachment batch capacity repeat status wrong");
+    }
+
+    if (output_attachments[0].world_object_id.value != first_output.world_object_id.value) {
+        return Fail("component attachment batch capacity mutated first object");
+    }
+
+    if (output_attachments[0].component_slot_id.value != first_output.component_slot_id.value) {
+        return Fail("component attachment batch capacity mutated first slot");
+    }
+
+    if (output_attachments[1].world_object_id.value != second_output.world_object_id.value) {
+        return Fail("component attachment batch capacity mutated second object");
+    }
+
+    if (output_attachments[1].component_slot_id.value != second_output.component_slot_id.value) {
+        return Fail("component attachment batch capacity mutated second slot");
+    }
+
+    const WorldComponentAttachmentSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.query_count != query_count) {
+        return Fail("component attachment batch capacity mutated query count");
+    }
+
+    if (snapshot.failed_operation_count != 2U) {
+        return Fail("component attachment batch capacity failure count wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeQueryBatchRejectsInvalidDescWithoutMutation() {
+    WorldComponentAttachmentBridge bridge;
+    if (!bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component attachment batch invalid fixture add failed");
+    }
+
+    std::array<WorldComponentAttachmentQueryDesc, 2U> query_descs{};
+    query_descs[0].world_object_id = OBJECT_PLAYER;
+    query_descs[0].component_type_id = COMPONENT_TYPE_PRIMARY;
+
+    WorldComponentAttachment sentinel_attachment{};
+    sentinel_attachment.world_object_id = OBJECT_EFFECT;
+    sentinel_attachment.component_type_id = COMPONENT_TYPE_TERTIARY;
+    sentinel_attachment.component_slot_id = COMPONENT_SLOT_TERTIARY;
+    sentinel_attachment.is_attached = true;
+    std::array<WorldComponentAttachment, 2U> output_attachments{
+        sentinel_attachment,
+        sentinel_attachment};
+
+    const std::uint32_t query_count = static_cast<std::uint32_t>(query_descs.size());
+    const std::uint32_t output_capacity = static_cast<std::uint32_t>(output_attachments.size());
+    const WorldComponentAttachmentResult invalid_result = bridge.QueryBatch(
+        query_descs.data(),
+        query_count,
+        output_attachments.data(),
+        output_capacity);
+    if (invalid_result.status != WorldComponentAttachmentStatus::InvalidWorldObjectId) {
+        return Fail("component attachment batch invalid returned wrong status");
+    }
+
+    if (invalid_result.required_record_count != query_count) {
+        return Fail("component attachment batch invalid required count wrong");
+    }
+
+    if (invalid_result.written_record_count != 0U) {
+        return Fail("component attachment batch invalid written count wrong");
+    }
+
+    if (output_attachments[0].world_object_id.value != sentinel_attachment.world_object_id.value) {
+        return Fail("component attachment batch invalid mutated first output");
+    }
+
+    if (output_attachments[1].world_object_id.value != sentinel_attachment.world_object_id.value) {
+        return Fail("component attachment batch invalid mutated second output");
+    }
+
+    const WorldComponentAttachmentSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.query_count != 0U) {
+        return Fail("component attachment batch invalid mutated query count");
+    }
+
+    if (snapshot.failed_operation_count != 1U) {
+        return Fail("component attachment batch invalid failure count wrong");
+    }
+
+    return 0;
+}
+
 int WorldComponentAttachmentBridgeRemoveClearsAttachment() {
     WorldComponentAttachmentBridge bridge;
     if (!bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
@@ -21627,6 +22868,175 @@ int WorldComponentQueryBridgeQueryObjectOutputOverflowReportsRejectedEntry() {
     return RequireQueryCapacityEntryCleared(
         clear_snapshot,
         "component query object capacity entry did not clear");
+}
+
+int WorldComponentQueryBridgeQueryTypesReturnsMatchingWorldObjectsInBatchOrder() {
+    WorldComponentAttachmentBridge source_bridge;
+    if (!source_bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component query batch first add failed");
+    }
+
+    if (!source_bridge.Add(OBJECT_CAMERA, COMPONENT_TYPE_SECONDARY, COMPONENT_SLOT_SECONDARY).Succeeded()) {
+        return Fail("component query batch second add failed");
+    }
+
+    if (!source_bridge.Add(OBJECT_EFFECT, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_TERTIARY).Succeeded()) {
+        return Fail("component query batch third add failed");
+    }
+
+    WorldComponentQueryBridge bridge;
+    std::array<WorldObjectId, 2U> primary_output{};
+    std::array<WorldObjectId, 1U> secondary_output{};
+    std::array<WorldComponentQueryTypeDesc, 2U> descs{};
+    descs[0].source_bridge = &source_bridge;
+    descs[0].component_type_id = COMPONENT_TYPE_PRIMARY;
+    descs[0].output_world_object_ids = primary_output.data();
+    descs[0].output_capacity = static_cast<std::uint32_t>(primary_output.size());
+    descs[1].source_bridge = &source_bridge;
+    descs[1].component_type_id = COMPONENT_TYPE_SECONDARY;
+    descs[1].output_world_object_ids = secondary_output.data();
+    descs[1].output_capacity = static_cast<std::uint32_t>(secondary_output.size());
+    const std::uint32_t desc_count = static_cast<std::uint32_t>(descs.size());
+
+    const WorldComponentQueryResult result = bridge.QueryTypes(descs.data(), desc_count);
+    if (!result.Succeeded()) {
+        return Fail("component query batch result failed");
+    }
+
+    if (result.matched_record_count != 3U) {
+        return Fail("component query batch matched count wrong");
+    }
+
+    if (result.written_record_count != 3U) {
+        return Fail("component query batch written count wrong");
+    }
+
+    if (primary_output[0].value != OBJECT_PLAYER.value) {
+        return Fail("component query batch first primary output wrong");
+    }
+
+    if (primary_output[1].value != OBJECT_EFFECT.value) {
+        return Fail("component query batch second primary output wrong");
+    }
+
+    if (secondary_output[0].value != OBJECT_CAMERA.value) {
+        return Fail("component query batch secondary output wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentQueryBridgeQueryTypesRejectsBatchOverflowWithoutMutation() {
+    WorldComponentAttachmentBridge source_bridge;
+    if (!source_bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component query batch overflow first add failed");
+    }
+
+    if (!source_bridge.Add(OBJECT_CAMERA, COMPONENT_TYPE_SECONDARY, COMPONENT_SLOT_SECONDARY).Succeeded()) {
+        return Fail("component query batch overflow second add failed");
+    }
+
+    if (!source_bridge.Add(OBJECT_EFFECT, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_TERTIARY).Succeeded()) {
+        return Fail("component query batch overflow third add failed");
+    }
+
+    WorldComponentQueryBridge bridge;
+    std::array<WorldObjectId, 2U> primary_output{};
+    std::array<WorldObjectId, 1U> secondary_output{};
+    std::array<WorldComponentQueryTypeDesc, 2U> full_descs{};
+    full_descs[0].source_bridge = &source_bridge;
+    full_descs[0].component_type_id = COMPONENT_TYPE_PRIMARY;
+    full_descs[0].output_world_object_ids = primary_output.data();
+    full_descs[0].output_capacity = static_cast<std::uint32_t>(primary_output.size());
+    full_descs[1].source_bridge = &source_bridge;
+    full_descs[1].component_type_id = COMPONENT_TYPE_SECONDARY;
+    full_descs[1].output_world_object_ids = secondary_output.data();
+    full_descs[1].output_capacity = static_cast<std::uint32_t>(secondary_output.size());
+    const std::uint32_t desc_count = static_cast<std::uint32_t>(full_descs.size());
+
+    const WorldComponentQueryResult success_result = bridge.QueryTypes(full_descs.data(), desc_count);
+    if (!success_result.Succeeded()) {
+        return Fail("component query batch overflow setup query failed");
+    }
+
+    std::array<WorldComponentQueryTypeDesc, 2U> small_descs{full_descs[0], full_descs[1]};
+    small_descs[0].output_capacity = 1U;
+
+    const WorldComponentQueryResult first_failure = bridge.QueryTypes(small_descs.data(), desc_count);
+    if (first_failure.status != WorldComponentQueryStatus::OutputCapacityExceeded) {
+        return Fail("component query batch overflow first status wrong");
+    }
+
+    if (first_failure.matched_record_count != 3U) {
+        return Fail("component query batch overflow first matched count wrong");
+    }
+
+    if (first_failure.written_record_count != 0U) {
+        return Fail("component query batch overflow first written count wrong");
+    }
+
+    const WorldComponentQueryResult second_failure = bridge.QueryTypes(small_descs.data(), desc_count);
+    if (second_failure.status != WorldComponentQueryStatus::OutputCapacityExceeded) {
+        return Fail("component query batch overflow second status wrong");
+    }
+
+    if (second_failure.matched_record_count != 3U) {
+        return Fail("component query batch overflow second matched count wrong");
+    }
+
+    if (second_failure.written_record_count != 0U) {
+        return Fail("component query batch overflow second written count wrong");
+    }
+
+    if (primary_output[0].value != OBJECT_PLAYER.value) {
+        return Fail("component query batch overflow mutated first primary output");
+    }
+
+    if (primary_output[1].value != OBJECT_EFFECT.value) {
+        return Fail("component query batch overflow mutated second primary output");
+    }
+
+    if (secondary_output[0].value != OBJECT_CAMERA.value) {
+        return Fail("component query batch overflow mutated secondary output");
+    }
+
+    return 0;
+}
+
+int WorldComponentQueryBridgeQueryTypesRejectsInvalidDescWithoutMutation() {
+    WorldComponentAttachmentBridge source_bridge;
+    if (!source_bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component query batch invalid add failed");
+    }
+
+    WorldComponentQueryBridge bridge;
+    std::array<WorldObjectId, 1U> output_world_object_ids{OBJECT_EFFECT};
+    std::array<WorldComponentQueryTypeDesc, 2U> descs{};
+    descs[0].source_bridge = &source_bridge;
+    descs[0].component_type_id = COMPONENT_TYPE_PRIMARY;
+    descs[0].output_world_object_ids = output_world_object_ids.data();
+    descs[0].output_capacity = static_cast<std::uint32_t>(output_world_object_ids.size());
+    const std::uint32_t desc_count = static_cast<std::uint32_t>(descs.size());
+
+    const WorldComponentQueryResult result = bridge.QueryTypes(descs.data(), desc_count);
+    if (result.status != WorldComponentQueryStatus::InvalidSourceBridge) {
+        return Fail("component query batch invalid status wrong");
+    }
+
+    if (output_world_object_ids[0].value != OBJECT_EFFECT.value) {
+        return Fail("component query batch invalid mutated output");
+    }
+
+    const WorldComponentQuerySnapshot snapshot = bridge.Snapshot();
+    if (snapshot.query_count != 0U) {
+        return Fail("component query batch invalid query count wrong");
+    }
+
+    if (snapshot.failed_operation_count != 1U) {
+        return Fail("component query batch invalid failure count wrong");
+    }
+
+    return 0;
 }
 
 int WorldComponentQueryBridgeQueryIsReadOnlyForAttachmentStorage() {
@@ -23535,6 +24945,30 @@ int main(int argc, char **argv) {
         {TEST_COMPONENT_QUERY_STORED, WorldComponentAttachmentBridgeQueryReturnsStoredAttachment},
         {TEST_COMPONENT_QUERY_MISSING, WorldComponentAttachmentBridgeQueryRejectsMissingAttachmentWithoutMutation},
         {TEST_COMPONENT_QUERY_READ_ONLY, WorldComponentAttachmentBridgeQueryIsReadOnlyAndBounded},
+        {TEST_COMPONENT_LOOKUP_EXACT, WorldComponentAttachmentBridgeLookupExactReturnsMatchingAttachment},
+        {TEST_COMPONENT_LOOKUP_MISSING, WorldComponentAttachmentBridgeLookupExactRejectsMissingWithoutMutation},
+        {TEST_COMPONENT_LOOKUP_INVALID, WorldComponentAttachmentBridgeLookupExactRejectsInvalidKeyWithoutMutation},
+        {TEST_COMPONENT_LOOKUP_NULL_OUTPUT, WorldComponentAttachmentBridgeLookupExactRejectsNullOutputWithoutQuery},
+        {TEST_COMPONENT_ENUMERATE_TYPE_MATCHES, WorldComponentAttachmentBridgeEnumerateTypeReturnsMatchingAttachmentsInSlotOrder},
+        {TEST_COMPONENT_ENUMERATE_TYPE_MISSING, WorldComponentAttachmentBridgeEnumerateTypeReturnsZeroForMissingType},
+        {TEST_COMPONENT_ENUMERATE_TYPE_INVALID, WorldComponentAttachmentBridgeEnumerateTypeRejectsInvalidTypeWithoutMutation},
+        {TEST_COMPONENT_ENUMERATE_TYPE_CAPACITY, WorldComponentAttachmentBridgeEnumerateTypeRejectsCapacityWithoutMutation},
+        {TEST_COMPONENT_COUNT_TYPE_MATCHES, WorldComponentAttachmentBridgeCountTypeMatchesTypeEnumeration},
+        {TEST_COMPONENT_COUNT_TYPE_INVALID, WorldComponentAttachmentBridgeCountTypeRejectsInvalidTypeWithoutMutation},
+        {TEST_COMPONENT_COUNT_TYPE_NULL_OUTPUT, WorldComponentAttachmentBridgeCountTypeRejectsNullOutputWithoutMutation},
+        {TEST_COMPONENT_COUNT_TYPE_REPEATED_FAIL, WorldComponentAttachmentBridgeCountTypeRepeatedFailurePreservesCount},
+        {TEST_COMPONENT_COUNT_TYPES_MATCHES, WorldComponentAttachmentBridgeCountTypesMatchesRepeatedCountTypeCalls},
+        {TEST_COMPONENT_COUNT_TYPES_INVALID, WorldComponentAttachmentBridgeCountTypesRejectsInvalidTypeWithoutMutation},
+        {TEST_COMPONENT_COUNT_TYPES_NULL_OUTPUT, WorldComponentAttachmentBridgeCountTypesRejectsNullOutputWithoutMutation},
+        {TEST_COMPONENT_COUNT_TYPES_CAPACITY, WorldComponentAttachmentBridgeCountTypesRejectsCapacityWithoutMutation},
+        {TEST_COMPONENT_COUNT_TYPES_AFTER_ENUMERATE_FAIL, WorldComponentAttachmentBridgeCountTypesStableAfterEnumerateTypesFailure},
+        {TEST_COMPONENT_ENUMERATE_TYPES_ORDER, WorldComponentAttachmentBridgeEnumerateTypesReturnsAttachmentsInBatchTypeOrder},
+        {TEST_COMPONENT_ENUMERATE_TYPES_INVALID, WorldComponentAttachmentBridgeEnumerateTypesRejectsInvalidTypeWithoutMutation},
+        {TEST_COMPONENT_ENUMERATE_TYPES_NULL_OUTPUT, WorldComponentAttachmentBridgeEnumerateTypesRejectsNullOutputWithoutMutation},
+        {TEST_COMPONENT_ENUMERATE_TYPES_CAPACITY, WorldComponentAttachmentBridgeEnumerateTypesRejectsCapacityWithoutMutation},
+        {TEST_COMPONENT_QUERY_BATCH_ORDER, WorldComponentAttachmentBridgeQueryBatchReturnsAttachmentsInQueryOrder},
+        {TEST_COMPONENT_QUERY_BATCH_CAPACITY, WorldComponentAttachmentBridgeQueryBatchRejectsCapacityWithoutMutation},
+        {TEST_COMPONENT_QUERY_BATCH_INVALID, WorldComponentAttachmentBridgeQueryBatchRejectsInvalidDescWithoutMutation},
         {TEST_COMPONENT_REMOVE_CLEARS, WorldComponentAttachmentBridgeRemoveClearsAttachment},
         {TEST_COMPONENT_REMOVE_MISSING, WorldComponentAttachmentBridgeRemoveRejectsMissingAttachmentWithoutMutation},
         {TEST_COMPONENT_CLEAR_ALL, WorldComponentAttachmentBridgeClearRemovesAllAttachmentsInSlotOrder},
@@ -23561,6 +24995,12 @@ int main(int argc, char **argv) {
         {TEST_QUERY_OBJECT_OUTPUT_OVERFLOW, WorldComponentQueryBridgeQueryObjectRejectsOutputOverflowWithoutMutation},
         {TEST_QUERY_TYPE_CAPACITY_ENTRY, WorldComponentQueryBridgeQueryTypeOutputOverflowReportsRejectedEntry},
         {TEST_QUERY_OBJECT_CAPACITY_ENTRY, WorldComponentQueryBridgeQueryObjectOutputOverflowReportsRejectedEntry},
+        {TEST_QUERY_TYPES_BATCH_MATCHES,
+            WorldComponentQueryBridgeQueryTypesReturnsMatchingWorldObjectsInBatchOrder},
+        {TEST_QUERY_TYPES_BATCH_OVERFLOW,
+            WorldComponentQueryBridgeQueryTypesRejectsBatchOverflowWithoutMutation},
+        {TEST_QUERY_TYPES_BATCH_INVALID,
+            WorldComponentQueryBridgeQueryTypesRejectsInvalidDescWithoutMutation},
         {TEST_QUERY_READ_ONLY, WorldComponentQueryBridgeQueryIsReadOnlyForAttachmentStorage},
         {TEST_QUERY_UPDATE_PATH, WorldComponentQueryBridgeQueryPathDoesNotGrowStorage},
         {TEST_QUERY_SNAPSHOT, WorldComponentQueryBridgeSnapshotReportsCountsAndLastStatus},

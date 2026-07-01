@@ -12,6 +12,44 @@
 using yuengine::memory::MemoryAccountingStatus;
 
 namespace yuengine::world {
+namespace {
+std::uint32_t CountTypeMatches(
+    const WorldComponentAttachment *attachments,
+    std::uint32_t attachment_count,
+    WorldComponentTypeId component_type_id) {
+    std::uint32_t matched_record_count = 0U;
+    for (std::uint32_t index = 0U; index < attachment_count; ++index) {
+        const WorldComponentAttachment &attachment = attachments[index];
+        if (attachment.component_type_id.value != component_type_id.value) {
+            continue;
+        }
+
+        ++matched_record_count;
+    }
+
+    return matched_record_count;
+}
+
+std::uint32_t WriteTypeMatches(
+    const WorldComponentAttachment *attachments,
+    std::uint32_t attachment_count,
+    WorldComponentTypeId component_type_id,
+    WorldObjectId *output_world_object_ids) {
+    std::uint32_t written_record_count = 0U;
+    for (std::uint32_t index = 0U; index < attachment_count; ++index) {
+        const WorldComponentAttachment &attachment = attachments[index];
+        if (attachment.component_type_id.value != component_type_id.value) {
+            continue;
+        }
+
+        output_world_object_ids[written_record_count] = attachment.world_object_id;
+        ++written_record_count;
+    }
+
+    return written_record_count;
+}
+}
+
 WorldComponentQueryBridge::WorldComponentQueryBridge()
     : snapshot_{
           0U,
@@ -37,16 +75,8 @@ WorldComponentQueryResult WorldComponentQueryBridge::QueryType(const WorldCompon
     const std::uint32_t attachment_count =
         desc.source_bridge->ExportAttachments(attachments.data(), MAX_WORLD_OBJECT_COUNT);
 
-    std::uint32_t matched_record_count = 0U;
-    for (std::uint32_t index = 0U; index < attachment_count; ++index) {
-        const WorldComponentAttachment &attachment = attachments[index];
-        if (attachment.component_type_id.value != desc.component_type_id.value) {
-            continue;
-        }
-
-        ++matched_record_count;
-    }
-
+    const std::uint32_t matched_record_count =
+        CountTypeMatches(attachments.data(), attachment_count, desc.component_type_id);
     if (matched_record_count > desc.output_capacity) {
         return RecordOverflowResult(
             WorldComponentQueryKind::Type,
@@ -57,18 +87,73 @@ WorldComponentQueryResult WorldComponentQueryBridge::QueryType(const WorldCompon
             0U);
     }
 
-    std::uint32_t written_record_count = 0U;
-    for (std::uint32_t index = 0U; index < attachment_count; ++index) {
-        const WorldComponentAttachment &attachment = attachments[index];
-        if (attachment.component_type_id.value != desc.component_type_id.value) {
-            continue;
-        }
+    const std::uint32_t written_record_count = WriteTypeMatches(
+        attachments.data(),
+        attachment_count,
+        desc.component_type_id,
+        desc.output_world_object_ids);
+    return RecordSuccessResult(matched_record_count, written_record_count);
+}
 
-        desc.output_world_object_ids[written_record_count] = attachment.world_object_id;
-        ++written_record_count;
+WorldComponentQueryResult WorldComponentQueryBridge::QueryTypes(
+    const WorldComponentQueryTypeDesc *descs,
+    std::uint32_t desc_count) {
+    if ((desc_count != 0U) && (descs == nullptr)) {
+        return RecordFailureResult(WorldComponentQueryStatus::InvalidOutputBuffer);
     }
 
-    return RecordSuccessResult(matched_record_count, written_record_count);
+    std::uint32_t total_matched_record_count = 0U;
+    bool has_overflow = false;
+    WorldComponentTypeId failed_component_type_id{};
+    std::uint32_t failed_output_capacity = 0U;
+    for (std::uint32_t desc_index = 0U; desc_index < desc_count; ++desc_index) {
+        const WorldComponentQueryTypeDesc &desc = descs[desc_index];
+        const WorldComponentQueryStatus validate_status = ValidateTypeDesc(desc);
+        if (validate_status != WorldComponentQueryStatus::Success) {
+            return RecordFailureResult(validate_status);
+        }
+
+        std::array<WorldComponentAttachment, MAX_WORLD_OBJECT_COUNT> attachments{};
+        const std::uint32_t attachment_count =
+            desc.source_bridge->ExportAttachments(attachments.data(), MAX_WORLD_OBJECT_COUNT);
+        const std::uint32_t matched_record_count =
+            CountTypeMatches(attachments.data(), attachment_count, desc.component_type_id);
+        total_matched_record_count += matched_record_count;
+        if (matched_record_count > desc.output_capacity) {
+            if (!has_overflow) {
+                failed_component_type_id = desc.component_type_id;
+                failed_output_capacity = desc.output_capacity;
+            }
+
+            has_overflow = true;
+        }
+    }
+
+    if (has_overflow) {
+        return RecordOverflowResult(
+            WorldComponentQueryKind::Type,
+            WorldObjectId{},
+            failed_component_type_id,
+            failed_output_capacity,
+            total_matched_record_count,
+            0U);
+    }
+
+    std::uint32_t total_written_record_count = 0U;
+    for (std::uint32_t desc_index = 0U; desc_index < desc_count; ++desc_index) {
+        const WorldComponentQueryTypeDesc &desc = descs[desc_index];
+        std::array<WorldComponentAttachment, MAX_WORLD_OBJECT_COUNT> attachments{};
+        const std::uint32_t attachment_count =
+            desc.source_bridge->ExportAttachments(attachments.data(), MAX_WORLD_OBJECT_COUNT);
+        const std::uint32_t written_record_count = WriteTypeMatches(
+            attachments.data(),
+            attachment_count,
+            desc.component_type_id,
+            desc.output_world_object_ids);
+        total_written_record_count += written_record_count;
+    }
+
+    return RecordSuccessResult(total_matched_record_count, total_written_record_count);
 }
 
 WorldComponentQueryResult WorldComponentQueryBridge::QueryObject(const WorldComponentQueryObjectDesc &desc) {

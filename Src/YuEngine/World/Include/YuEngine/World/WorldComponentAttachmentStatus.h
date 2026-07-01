@@ -10,6 +10,7 @@ enum class WorldComponentAttachmentStatus {
     InvalidWorldObjectId,
     InvalidComponentTypeId,
     InvalidComponentSlotId,
+    InvalidOutputBuffer,
     DuplicateAttachment,
     CapacityExceeded,
     AttachmentNotFound

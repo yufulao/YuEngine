@@ -23,6 +23,15 @@ public:
      */
     WorldComponentQueryResult QueryType(const WorldComponentQueryTypeDesc &desc);
     /**
+     * @comment 批量查询 world object ids for component type ids。
+     * @param descs 输入 type query descriptor 数组。
+     * @param desc_count 输入 descriptor 数量。
+     * @return 显式操作结果。
+     */
+    WorldComponentQueryResult QueryTypes(
+        const WorldComponentQueryTypeDesc *descs,
+        std::uint32_t desc_count);
+    /**
      * @comment 查询 component attachments for one world object id。
      * @param desc 输入 object query descriptor。
      * @return 显式操作结果。

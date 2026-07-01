@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 #include "YuEngine/World/WorldComponentAttachment.h"
 #include "YuEngine/World/WorldComponentAttachmentStatus.h"
 #include "YuEngine/World/WorldObjectId.h"
@@ -13,6 +15,8 @@ struct WorldComponentAttachmentResult final {
     WorldObjectId world_object_id{};
     WorldComponentTypeId component_type_id{};
     WorldComponentSlotId component_slot_id{};
+    std::uint32_t required_record_count = 0U;
+    std::uint32_t written_record_count = 0U;
 
     /**
      * @comment 创建成功 result。
@@ -29,7 +33,9 @@ struct WorldComponentAttachmentResult final {
             WorldComponentAttachmentStatus::Success,
             world_object_id,
             component_type_id,
-            component_slot_id};
+            component_slot_id,
+            0U,
+            0U};
     }
 
     /**
@@ -42,7 +48,47 @@ struct WorldComponentAttachmentResult final {
             status,
             WorldObjectId{},
             WorldComponentTypeId{},
-            WorldComponentSlotId{}};
+            WorldComponentSlotId{},
+            0U,
+            0U};
+    }
+
+    /**
+     * @comment 创建 batch 成功 result。
+     * @param required_record_count 调用方需要的 output record 数量。
+     * @param written_record_count 实际写入的 output record 数量。
+     * @return 显式操作结果。
+     */
+    static WorldComponentAttachmentResult BatchSuccess(
+        std::uint32_t required_record_count,
+        std::uint32_t written_record_count) {
+        return WorldComponentAttachmentResult{
+            WorldComponentAttachmentStatus::Success,
+            WorldObjectId{},
+            WorldComponentTypeId{},
+            WorldComponentSlotId{},
+            required_record_count,
+            written_record_count};
+    }
+
+    /**
+     * @comment 创建 batch 失败 result。
+     * @param status 输入 attachment status。
+     * @param required_record_count 调用方需要的 output record 数量。
+     * @param written_record_count 实际写入的 output record 数量。
+     * @return 显式操作结果。
+     */
+    static WorldComponentAttachmentResult BatchFailure(
+        WorldComponentAttachmentStatus status,
+        std::uint32_t required_record_count,
+        std::uint32_t written_record_count) {
+        return WorldComponentAttachmentResult{
+            status,
+            WorldObjectId{},
+            WorldComponentTypeId{},
+            WorldComponentSlotId{},
+            required_record_count,
+            written_record_count};
     }
 
     /**
