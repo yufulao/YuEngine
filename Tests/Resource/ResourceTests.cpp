@@ -96,6 +96,7 @@ using yuengine::resource::MAX_RESOURCE_DECODED_PAYLOAD_BYTES_PER_RECORD;
 using yuengine::resource::MAX_RESOURCE_DECODED_PAYLOAD_RECORD_COUNT;
 using yuengine::resource::MAX_RESOURCE_DECODED_PAYLOAD_TOTAL_BYTES;
 using yuengine::resource::MAX_RESOURCE_CACHE_PAYLOAD_BYTES_PER_RECORD;
+using yuengine::resource::MAX_RESOURCE_CACHE_PAYLOAD_RECORD_COUNT;
 using yuengine::resource::RESOURCE_DECODE_PLAN_HEADER_BYTE_COUNT;
 using yuengine::resource::RESOURCE_DECODE_PLAN_HEADER_MAGIC_0;
 using yuengine::resource::RESOURCE_DECODE_PLAN_HEADER_MAGIC_1;
@@ -583,6 +584,58 @@ ResourceCachePayloadRequest CachePayloadWindowRequest(
     request.payload_window_byte_offset = payload_window_byte_offset;
     request.payload_window_byte_size = payload_window_byte_size;
     return request;
+}
+
+bool ResourceHandlesMatch(ResourceHandle left, ResourceHandle right) {
+    if (left.slot != right.slot) {
+        return false;
+    }
+
+    return left.generation == right.generation;
+}
+
+bool CachePayloadFailedEntryIsClear(const ResourceCachePayloadSnapshot &snapshot) {
+    if (snapshot.last_failed_resource.IsValid()) {
+        return false;
+    }
+
+    if (snapshot.last_failed_expected_type.IsValid()) {
+        return false;
+    }
+
+    if (snapshot.last_failed_payload_id != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_payload_logical_byte_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_payload_window_byte_offset != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_payload_window_byte_size != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_payload_byte_capacity != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_payload_byte_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_payload_reference_capacity != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_payload_current_reference_count != 0U) {
+        return false;
+    }
+
+    return snapshot.last_failed_payload_reference_count == 0U;
 }
 
 void WriteU32LittleEndian(
@@ -3304,8 +3357,55 @@ int ResourceCachePayloadRejectsCapacityOverflow() {
         return Fail("capacity cache payload reported reference count");
     }
 
+    if (!ResourceHandlesMatch(snapshot.last_failed_resource, result.handle)) {
+        return Fail("capacity cache payload missed failed resource");
+    }
+
+    if (snapshot.last_failed_expected_type.value != TYPE_TEXTURE.value) {
+        return Fail("capacity cache payload missed failed type");
+    }
+
+    if (snapshot.last_failed_payload_id != PAYLOAD_ONE) {
+        return Fail("capacity cache payload missed failed payload id");
+    }
+
+    if (snapshot.last_failed_payload_byte_capacity != MAX_RESOURCE_CACHE_PAYLOAD_BYTES_PER_RECORD) {
+        return Fail("capacity cache payload missed failed byte capacity");
+    }
+
+    if (snapshot.last_failed_payload_byte_count != payload_byte_count) {
+        return Fail("capacity cache payload missed failed byte count");
+    }
+
+    if (snapshot.last_failed_payload_reference_capacity != MAX_RESOURCE_CACHE_PAYLOAD_RECORD_COUNT) {
+        return Fail("capacity cache payload missed failed reference capacity");
+    }
+
+    if (snapshot.last_failed_payload_current_reference_count != 0U) {
+        return Fail("capacity cache payload missed current reference count");
+    }
+
+    if (snapshot.last_failed_payload_reference_count != 0U) {
+        return Fail("capacity cache payload reported failed reference count");
+    }
+
     if (snapshot.cached_payload_count != 0U) {
         return Fail("capacity cache payload request stored payload");
+    }
+
+    const std::array<std::uint8_t, 4U> recovery_payload{{2U, 3U, 4U, 5U}};
+    const ResourceCachePayloadRequest recovery_request = CachePayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_TWO,
+        recovery_payload.data(),
+        static_cast<std::uint32_t>(recovery_payload.size()));
+    if (registry.StoreCachePayload(recovery_request) != ResourceCachePayloadStatus::Success) {
+        return Fail("capacity cache payload recovery store failed");
+    }
+
+    if (!CachePayloadFailedEntryIsClear(registry.CachePayloadSnapshot())) {
+        return Fail("successful cache payload store left stale failed entry");
     }
 
     return 0;
@@ -3352,6 +3452,34 @@ int ResourceCachePayloadRejectsBudgetOverflow() {
         return Fail("budget cache payload reported reference count");
     }
 
+    if (!ResourceHandlesMatch(snapshot.last_failed_resource, result.handle)) {
+        return Fail("budget cache payload missed failed resource");
+    }
+
+    if (snapshot.last_failed_expected_type.value != TYPE_TEXTURE.value) {
+        return Fail("budget cache payload missed failed type");
+    }
+
+    if (snapshot.last_failed_payload_id != PAYLOAD_ONE) {
+        return Fail("budget cache payload missed failed payload id");
+    }
+
+    if (snapshot.last_failed_payload_byte_capacity != 3U) {
+        return Fail("budget cache payload missed failed byte capacity");
+    }
+
+    if (snapshot.last_failed_payload_byte_count != payload_byte_count) {
+        return Fail("budget cache payload missed failed byte count");
+    }
+
+    if (snapshot.last_failed_payload_reference_capacity != MAX_RESOURCE_CACHE_PAYLOAD_RECORD_COUNT) {
+        return Fail("budget cache payload missed failed reference capacity");
+    }
+
+    if (snapshot.last_failed_payload_current_reference_count != 0U) {
+        return Fail("budget cache payload missed current reference count");
+    }
+
     if (snapshot.cached_byte_count != 0U) {
         return Fail("budget cache payload request stored bytes");
     }
@@ -3382,7 +3510,7 @@ int ResourceCachePayloadReadRejectsOutputBufferTooSmall() {
         return Fail("output cache payload fixture store failed");
     }
 
-    std::array<std::uint8_t, 2U> output{};
+    std::array<std::uint8_t, 2U> output{{90U, 91U}};
     const std::uint32_t output_byte_capacity = static_cast<std::uint32_t>(output.size());
     std::uint32_t output_byte_count = 99U;
     const ResourceCachePayloadRequest read_request = CachePayloadRequest(
@@ -3411,6 +3539,52 @@ int ResourceCachePayloadReadRejectsOutputBufferTooSmall() {
 
     if (snapshot.read_payload_count != 0U) {
         return Fail("small output cache payload read was counted as success");
+    }
+
+    if (snapshot.last_required_payload_byte_count != payload_byte_count) {
+        return Fail("small output cache payload missed required byte count");
+    }
+
+    if (!ResourceHandlesMatch(snapshot.last_failed_resource, result.handle)) {
+        return Fail("small output cache payload missed failed resource");
+    }
+
+    if (snapshot.last_failed_expected_type.value != TYPE_TEXTURE.value) {
+        return Fail("small output cache payload missed failed type");
+    }
+
+    if (snapshot.last_failed_payload_id != PAYLOAD_ONE) {
+        return Fail("small output cache payload missed failed payload id");
+    }
+
+    if (snapshot.last_failed_payload_byte_count != payload_byte_count) {
+        return Fail("small output cache payload missed failed byte count");
+    }
+
+    if (snapshot.last_failed_payload_reference_capacity != MAX_RESOURCE_CACHE_PAYLOAD_RECORD_COUNT) {
+        return Fail("small output cache payload missed failed reference capacity");
+    }
+
+    if (snapshot.last_failed_payload_current_reference_count != 1U) {
+        return Fail("small output cache payload missed current reference count");
+    }
+
+    if (output[0U] != 90U || output[1U] != 91U) {
+        return Fail("small output cache payload read mutated output bytes");
+    }
+
+    std::array<std::uint8_t, 4U> recovery_output{};
+    std::uint32_t recovery_output_byte_count = 0U;
+    if (registry.ReadCachePayload(
+        read_request,
+        recovery_output.data(),
+        static_cast<std::uint32_t>(recovery_output.size()),
+        &recovery_output_byte_count) != ResourceCachePayloadStatus::Success) {
+        return Fail("small output cache payload recovery read failed");
+    }
+
+    if (!CachePayloadFailedEntryIsClear(registry.CachePayloadSnapshot())) {
+        return Fail("successful cache payload read left stale failed entry");
     }
 
     return 0;
@@ -3709,6 +3883,34 @@ int ResourceCachePayloadRejectsReferenceBudgetWithoutMutation() {
         return Fail("reference budget cache payload reported byte count");
     }
 
+    if (!ResourceHandlesMatch(after_snapshot.last_failed_resource, result.handle)) {
+        return Fail("reference budget cache payload missed failed resource");
+    }
+
+    if (after_snapshot.last_failed_expected_type.value != TYPE_TEXTURE.value) {
+        return Fail("reference budget cache payload missed failed type");
+    }
+
+    if (after_snapshot.last_failed_payload_id != PAYLOAD_TWO) {
+        return Fail("reference budget cache payload missed failed payload id");
+    }
+
+    if (after_snapshot.last_failed_payload_byte_count != payload_byte_count) {
+        return Fail("reference budget cache payload missed failed byte count");
+    }
+
+    if (after_snapshot.last_failed_payload_reference_capacity != 1U) {
+        return Fail("reference budget cache payload missed failed reference capacity");
+    }
+
+    if (after_snapshot.last_failed_payload_current_reference_count != before_snapshot.cached_payload_count) {
+        return Fail("reference budget cache payload missed current reference count");
+    }
+
+    if (after_snapshot.last_failed_payload_reference_count != required_payload_reference_count) {
+        return Fail("reference budget cache payload missed failed reference count");
+    }
+
     return 0;
 }
 
@@ -3774,6 +3976,10 @@ int ResourceCachePayloadFailedValidationDoesNotMutateResourceState() {
 
     if (after_cache_snapshot.cached_byte_count != before_cache_snapshot.cached_byte_count) {
         return Fail("invalid cache payload request changed cached bytes");
+    }
+
+    if (!CachePayloadFailedEntryIsClear(after_cache_snapshot)) {
+        return Fail("invalid cache payload request reported failed capacity entry");
     }
 
     std::array<std::uint8_t, 4U> output{};

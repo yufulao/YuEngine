@@ -9,6 +9,7 @@
 #include "YuEngine/Resource/ResourceCachePayloadStatus.h"
 #include "YuEngine/Resource/ResourceConstants.h"
 #include "YuEngine/Resource/ResourceHandle.h"
+#include "YuEngine/Resource/ResourceTypeId.h"
 
 namespace yuengine::resource {
 struct ResourceCachePayloadSnapshot final {
@@ -19,6 +20,17 @@ struct ResourceCachePayloadSnapshot final {
     std::uint32_t cache_payload_record_count = 0U;
     std::uint32_t last_required_payload_byte_count = 0U;
     std::uint32_t last_required_payload_reference_count = 0U;
+    ResourceHandle last_failed_resource;
+    ResourceTypeId last_failed_expected_type;
+    std::uint64_t last_failed_payload_id = 0U;
+    std::uint64_t last_failed_payload_logical_byte_count = 0U;
+    std::uint64_t last_failed_payload_window_byte_offset = 0U;
+    std::uint64_t last_failed_payload_window_byte_size = 0U;
+    std::uint32_t last_failed_payload_byte_capacity = 0U;
+    std::uint32_t last_failed_payload_byte_count = 0U;
+    std::uint32_t last_failed_payload_reference_capacity = 0U;
+    std::uint32_t last_failed_payload_current_reference_count = 0U;
+    std::uint32_t last_failed_payload_reference_count = 0U;
     std::uint64_t stored_payload_count = 0U;
     std::uint64_t read_payload_count = 0U;
     std::uint64_t released_payload_count = 0U;

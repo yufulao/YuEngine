@@ -232,6 +232,47 @@ std::uint64_t EffectivePayloadLogicalByteCount(
 
     return payload_window_byte_offset + payload_window_byte_size;
 }
+
+void ClearCachePayloadCapacityEntry(ResourceCachePayloadSnapshot &snapshot) {
+    snapshot.last_failed_resource = ResourceHandle{};
+    snapshot.last_failed_expected_type = ResourceTypeId{};
+    snapshot.last_failed_payload_id = 0U;
+    snapshot.last_failed_payload_logical_byte_count = 0U;
+    snapshot.last_failed_payload_window_byte_offset = 0U;
+    snapshot.last_failed_payload_window_byte_size = 0U;
+    snapshot.last_failed_payload_byte_capacity = 0U;
+    snapshot.last_failed_payload_byte_count = 0U;
+    snapshot.last_failed_payload_reference_capacity = 0U;
+    snapshot.last_failed_payload_current_reference_count = 0U;
+    snapshot.last_failed_payload_reference_count = 0U;
+}
+
+void RecordCachePayloadCapacityEntry(
+    ResourceCachePayloadSnapshot &snapshot,
+    const ResourceCachePayloadRequest &request,
+    std::uint32_t failed_payload_byte_count,
+    std::uint32_t failed_payload_byte_capacity,
+    std::uint32_t failed_payload_reference_count) {
+    snapshot.last_failed_resource = request.resource;
+    snapshot.last_failed_expected_type = request.expected_type;
+    snapshot.last_failed_payload_id = request.payload_id;
+    snapshot.last_failed_payload_logical_byte_count = EffectivePayloadLogicalByteCount(
+        request.payload_logical_byte_count,
+        request.payload_window_byte_offset,
+        request.payload_window_byte_size,
+        failed_payload_byte_count);
+    snapshot.last_failed_payload_window_byte_offset = EffectivePayloadWindowByteOffset(
+        request.payload_window_byte_offset,
+        request.payload_window_byte_size);
+    snapshot.last_failed_payload_window_byte_size = EffectivePayloadWindowByteSize(
+        request.payload_window_byte_size,
+        failed_payload_byte_count);
+    snapshot.last_failed_payload_byte_capacity = failed_payload_byte_capacity;
+    snapshot.last_failed_payload_byte_count = failed_payload_byte_count;
+    snapshot.last_failed_payload_reference_capacity = snapshot.budget_payload_reference_capacity;
+    snapshot.last_failed_payload_current_reference_count = snapshot.cached_payload_count;
+    snapshot.last_failed_payload_reference_count = failed_payload_reference_count;
+}
 }
 
 ResourceRegistry::ResourceRegistry()
@@ -984,9 +1025,11 @@ ResourceCachePayloadStatus ResourceRegistry::ReadCachePayload(
     }
 
     if (output_byte_capacity < read_byte_count) {
+        ResourceCachePayloadRequest failed_request = request;
+        failed_request.payload_byte_count = read_byte_count;
         return RecordCachePayloadRejected(
             ResourceCachePayloadOperation::Read,
-            request,
+            failed_request,
             ResourceCachePayloadStatus::OutputBufferTooSmall);
     }
 
@@ -1917,6 +1960,7 @@ ResourceCachePayloadStatus ResourceRegistry::RecordCachePayloadRejected(
     ++cache_payload_snapshot_.rejected_payload_request_count;
     cache_payload_snapshot_.last_required_payload_byte_count = 0U;
     cache_payload_snapshot_.last_required_payload_reference_count = 0U;
+    ClearCachePayloadCapacityEntry(cache_payload_snapshot_);
     if (status == ResourceCachePayloadStatus::DuplicatePayloadId) {
         ++cache_payload_snapshot_.duplicate_payload_rejected_count;
     }
@@ -1925,11 +1969,23 @@ ResourceCachePayloadStatus ResourceRegistry::RecordCachePayloadRejected(
         ++cache_payload_snapshot_.capacity_rejected_payload_count;
         if (request.payload_byte_count > MAX_RESOURCE_CACHE_PAYLOAD_BYTES_PER_RECORD) {
             cache_payload_snapshot_.last_required_payload_byte_count = request.payload_byte_count;
+            RecordCachePayloadCapacityEntry(
+                cache_payload_snapshot_,
+                request,
+                request.payload_byte_count,
+                MAX_RESOURCE_CACHE_PAYLOAD_BYTES_PER_RECORD,
+                0U);
         }
 
         if (request.payload_byte_count <= MAX_RESOURCE_CACHE_PAYLOAD_BYTES_PER_RECORD) {
             cache_payload_snapshot_.last_required_payload_reference_count =
                 cache_payload_snapshot_.cached_payload_count + 1U;
+            RecordCachePayloadCapacityEntry(
+                cache_payload_snapshot_,
+                request,
+                request.payload_byte_count,
+                MAX_RESOURCE_CACHE_PAYLOAD_BYTES_PER_RECORD,
+                cache_payload_snapshot_.last_required_payload_reference_count);
         }
     }
 
@@ -1938,6 +1994,12 @@ ResourceCachePayloadStatus ResourceRegistry::RecordCachePayloadRejected(
         if (operation == ResourceCachePayloadOperation::Store) {
             cache_payload_snapshot_.last_required_payload_byte_count =
                 cache_payload_snapshot_.cached_byte_count + request.payload_byte_count;
+            RecordCachePayloadCapacityEntry(
+                cache_payload_snapshot_,
+                request,
+                request.payload_byte_count,
+                cache_payload_snapshot_.budget_byte_capacity,
+                0U);
         }
 
         if (operation == ResourceCachePayloadOperation::ConfigureBudget) {
@@ -1951,6 +2013,12 @@ ResourceCachePayloadStatus ResourceRegistry::RecordCachePayloadRejected(
         if (operation == ResourceCachePayloadOperation::Store) {
             cache_payload_snapshot_.last_required_payload_reference_count =
                 cache_payload_snapshot_.cached_payload_count + 1U;
+            RecordCachePayloadCapacityEntry(
+                cache_payload_snapshot_,
+                request,
+                request.payload_byte_count,
+                0U,
+                cache_payload_snapshot_.last_required_payload_reference_count);
         }
 
         if (operation == ResourceCachePayloadOperation::ConfigureBudget) {
@@ -1961,6 +2029,11 @@ ResourceCachePayloadStatus ResourceRegistry::RecordCachePayloadRejected(
 
     if (status == ResourceCachePayloadStatus::PayloadWindowOutOfBounds) {
         ++cache_payload_snapshot_.payload_window_rejected_count;
+    }
+
+    if (status == ResourceCachePayloadStatus::OutputBufferTooSmall) {
+        cache_payload_snapshot_.last_required_payload_byte_count = request.payload_byte_count;
+        RecordCachePayloadCapacityEntry(cache_payload_snapshot_, request, request.payload_byte_count, 0U, 0U);
     }
 
     ++snapshot_.failed_operation_count;
@@ -2002,6 +2075,7 @@ void ResourceRegistry::RecordCachePayloadSuccess(
     cache_payload_snapshot_.last_status = ResourceCachePayloadStatus::Success;
     cache_payload_snapshot_.last_required_payload_byte_count = 0U;
     cache_payload_snapshot_.last_required_payload_reference_count = 0U;
+    ClearCachePayloadCapacityEntry(cache_payload_snapshot_);
     cache_payload_snapshot_.last_resource = request.resource;
     cache_payload_snapshot_.last_payload_id = request.payload_id;
     cache_payload_snapshot_.last_payload_logical_byte_count = EffectivePayloadLogicalByteCount(
