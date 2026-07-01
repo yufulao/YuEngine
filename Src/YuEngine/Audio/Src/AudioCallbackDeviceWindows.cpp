@@ -190,9 +190,31 @@ struct AudioCallbackDeviceState final {
     bool com_initialized = false;
 #endif
 
+    void ClearSubmissionCapacityFailure() {
+        snapshot.last_failed_submission_sequence = 0U;
+        snapshot.last_failed_submission_buffer_capacity = 0U;
+        snapshot.last_failed_submission_queued_buffer_count = 0U;
+        snapshot.last_failed_submission_frame_count = 0U;
+        snapshot.last_failed_submission_sample_count = 0U;
+        snapshot.last_required_queued_buffer_count = 0U;
+    }
+
     AudioStatus SetLastStatus(AudioStatus status) {
+        ClearSubmissionCapacityFailure();
         snapshot.last_status = status;
         return status;
+    }
+
+    AudioStatus RecordSubmissionCapacityFailure(std::size_t frame_count, std::size_t sample_count) {
+        ++snapshot.failed_submission_count;
+        snapshot.last_failed_submission_sequence = next_sequence;
+        snapshot.last_failed_submission_buffer_capacity = snapshot.buffer_capacity;
+        snapshot.last_failed_submission_queued_buffer_count = snapshot.queued_buffer_count;
+        snapshot.last_failed_submission_frame_count = frame_count;
+        snapshot.last_failed_submission_sample_count = sample_count;
+        snapshot.last_required_queued_buffer_count = snapshot.queued_buffer_count + 1U;
+        snapshot.last_status = AudioStatus::CapacityExceeded;
+        return AudioStatus::CapacityExceeded;
     }
 
     void MergeCallbackEventsLocked() {
@@ -209,14 +231,14 @@ struct AudioCallbackDeviceState final {
 
             if (completion_count >= completions.size()) {
                 ++snapshot.failed_callback_count;
-                snapshot.last_status = AudioStatus::CallbackFailed;
+                SetLastStatus(AudioStatus::CallbackFailed);
                 continue;
             }
 
             completions[completion_count] = slot.pending_completion;
             ++completion_count;
             ++snapshot.completed_callback_count;
-            snapshot.last_status = AudioStatus::Success;
+            SetLastStatus(AudioStatus::Success);
         }
 
         const std::uint64_t shutdown_count = pending_shutdown_callback_count.exchange(0U, std::memory_order_acq_rel);
@@ -228,7 +250,7 @@ struct AudioCallbackDeviceState final {
         }
 
         snapshot.failed_callback_count += failed_count;
-        snapshot.last_status = AudioStatus::CallbackFailed;
+        SetLastStatus(AudioStatus::CallbackFailed);
     }
 
     void ReleaseNativeObjects() {
@@ -490,8 +512,7 @@ AudioStatus AudioCallbackDevice::SubmitS16Buffer(std::span<const std::int16_t> i
         }
 
         if (selected_slot == nullptr) {
-            ++state_->snapshot.failed_submission_count;
-            return state_->SetLastStatus(AudioStatus::CapacityExceeded);
+            return state_->RecordSubmissionCapacityFailure(frame_count, interleaved_samples.size());
         }
 
         std::copy(interleaved_samples.begin(), interleaved_samples.begin() + required_samples, selected_slot->samples.begin());
@@ -616,6 +637,7 @@ AudioStatus AudioCallbackDevice::DrainCompletions(AudioCallbackCompletion *compl
     state_->completion_count = remaining_count;
     if (state_->completion_count == 0U) {
         if (write_count == 0U) {
+            state_->ClearSubmissionCapacityFailure();
             return AudioStatus::Success;
         }
 

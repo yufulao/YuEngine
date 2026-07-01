@@ -106,6 +106,7 @@ constexpr const char* TEST_CALLBACK_UNSUPPORTED_FORMAT = "Audio_CallbackDevice_R
 constexpr const char* TEST_CALLBACK_INVALID_BUFFER_SHAPE = "Audio_CallbackDevice_RejectsInvalidBufferShapeBeforeHardware";
 constexpr const char* TEST_CALLBACK_UNINITIALIZED_OPERATIONS = "Audio_CallbackDevice_UninitializedOperationsReturnExplicitStatus";
 constexpr const char *TEST_CALLBACK_CONTROLLED_SUBMIT_DRAIN = "Audio_CallbackDevice_ControlledBackendSubmitsAndDrains";
+constexpr const char *TEST_CALLBACK_CONTROLLED_SUBMIT_CAPACITY = "Audio_CallbackDevice_ControlledBackendSubmitCapacityRecordsRejectedEntry";
 constexpr const char *TEST_CALLBACK_CONTROLLED_STATUS_SPLIT = "Audio_CallbackDevice_ControlledBackendSplitsUnavailableAndBackendError";
 constexpr const char *TEST_CALLBACK_CONTROLLED_SUBMIT_ERROR = "Audio_CallbackDevice_ControlledBackendSubmitErrorRollsBack";
 constexpr const char *TEST_CALLBACK_CONTROLLED_CALLBACK_ERROR = "Audio_CallbackDevice_ControlledBackendCallbackErrorReportsFailure";
@@ -268,11 +269,41 @@ bool CallbackSnapshotsEqual(const AudioCallbackSnapshot &left, const AudioCallba
            left.shutdown_callback_count == right.shutdown_callback_count &&
            left.queued_buffer_count == right.queued_buffer_count &&
            left.max_queued_buffer_count == right.max_queued_buffer_count &&
+           left.last_failed_submission_sequence == right.last_failed_submission_sequence &&
+           left.last_failed_submission_buffer_capacity == right.last_failed_submission_buffer_capacity &&
+           left.last_failed_submission_queued_buffer_count == right.last_failed_submission_queued_buffer_count &&
+           left.last_failed_submission_frame_count == right.last_failed_submission_frame_count &&
+           left.last_failed_submission_sample_count == right.last_failed_submission_sample_count &&
+           left.last_required_queued_buffer_count == right.last_required_queued_buffer_count &&
            left.drained_completion_count == right.drained_completion_count &&
            left.last_status == right.last_status &&
            left.initialized == right.initialized &&
            left.started == right.started &&
            left.shutdown == right.shutdown;
+}
+
+bool CallbackSubmissionCapacityFieldsAreClear(const AudioCallbackSnapshot &snapshot) {
+    return snapshot.last_failed_submission_sequence == 0U &&
+           snapshot.last_failed_submission_buffer_capacity == 0U &&
+           snapshot.last_failed_submission_queued_buffer_count == 0U &&
+           snapshot.last_failed_submission_frame_count == 0U &&
+           snapshot.last_failed_submission_sample_count == 0U &&
+           snapshot.last_required_queued_buffer_count == 0U;
+}
+
+bool CallbackSubmissionCapacityFieldsMatch(const AudioCallbackSnapshot &snapshot,
+                                           std::uint64_t sequence,
+                                           std::size_t buffer_capacity,
+                                           std::size_t queued_buffer_count,
+                                           std::size_t frame_count,
+                                           std::size_t sample_count,
+                                           std::size_t required_queued_buffer_count) {
+    return snapshot.last_failed_submission_sequence == sequence &&
+           snapshot.last_failed_submission_buffer_capacity == buffer_capacity &&
+           snapshot.last_failed_submission_queued_buffer_count == queued_buffer_count &&
+           snapshot.last_failed_submission_frame_count == frame_count &&
+           snapshot.last_failed_submission_sample_count == sample_count &&
+           snapshot.last_required_queued_buffer_count == required_queued_buffer_count;
 }
 
 AudioPcmSamplePacketRequest BasicPcmSamplePacketRequest(std::uint32_t packet_id) {
@@ -2629,6 +2660,105 @@ int AudioCallbackDeviceControlledBackendSubmitsAndDrains() {
     return 0;
 }
 
+int AudioCallbackDeviceControlledBackendSubmitCapacityRecordsRejectedEntry() {
+    yuengine::audio::AudioCallbackDeviceBackendTestConfig config{};
+    config.enabled = true;
+    config.complete_submitted_buffer = false;
+    ScopedAudioCallbackBackendTestConfig scoped_config(config);
+
+    AudioCallbackDeviceDesc desc{};
+    desc.buffer_count = AudioCallbackDeviceDesc::MIN_BUFFER_COUNT;
+    desc.frames_per_buffer = AudioCallbackDeviceDesc::MIN_FRAMES_PER_BUFFER;
+    AudioCallbackDevice device;
+    if (device.Initialize(desc) != AudioStatus::Success) {
+        return Fail("controlled callback capacity initialize failed");
+    }
+
+    if (device.Start() != AudioStatus::Success) {
+        return FailAfterShutdown(device, "controlled callback capacity start failed");
+    }
+
+    constexpr std::size_t SAMPLE_COUNT = AudioCallbackDeviceDesc::MIN_FRAMES_PER_BUFFER * CHANNEL_COUNT;
+    std::array<std::int16_t, SAMPLE_COUNT> samples{};
+    for (std::size_t index = 0U; index < desc.buffer_count; ++index) {
+        samples[0U] = static_cast<std::int16_t>(index + 1U);
+        const std::span<const std::int16_t> submit_samples(samples.data(), samples.size());
+        if (device.SubmitS16Buffer(submit_samples, desc.frames_per_buffer) != AudioStatus::Success) {
+            return FailAfterShutdown(device, "controlled callback capacity setup submit failed");
+        }
+    }
+
+    const std::span<const std::int16_t> rejected_samples(samples.data(), samples.size());
+    if (device.SubmitS16Buffer(rejected_samples, desc.frames_per_buffer) != AudioStatus::CapacityExceeded) {
+        return FailAfterShutdown(device, "controlled callback capacity status changed");
+    }
+
+    const AudioCallbackSnapshot capacity_snapshot = device.Snapshot();
+    const std::uint64_t expected_sequence = static_cast<std::uint64_t>(desc.buffer_count) + 1U;
+    const std::size_t required_queued_buffer_count = desc.buffer_count + 1U;
+    if (!CallbackSubmissionCapacityFieldsMatch(capacity_snapshot,
+                                               expected_sequence,
+                                               desc.buffer_count,
+                                               desc.buffer_count,
+                                               desc.frames_per_buffer,
+                                               samples.size(),
+                                               required_queued_buffer_count)) {
+        return FailAfterShutdown(device, "controlled callback capacity identity changed");
+    }
+
+    if (capacity_snapshot.failed_submission_count != 1U) {
+        return FailAfterShutdown(device, "controlled callback capacity failure count changed");
+    }
+
+    if (capacity_snapshot.queued_buffer_count != desc.buffer_count) {
+        return FailAfterShutdown(device, "controlled callback capacity queued count changed");
+    }
+
+    const std::size_t invalid_frame_count = desc.frames_per_buffer - 1U;
+    if (device.SubmitS16Buffer(rejected_samples, invalid_frame_count) != AudioStatus::InvalidDescriptor) {
+        return FailAfterShutdown(device, "controlled callback invalid submit status changed");
+    }
+
+    const AudioCallbackSnapshot invalid_snapshot = device.Snapshot();
+    if (!CallbackSubmissionCapacityFieldsAreClear(invalid_snapshot)) {
+        return FailAfterShutdown(device, "controlled callback invalid submit kept capacity identity");
+    }
+
+    if (device.SubmitS16Buffer(rejected_samples, desc.frames_per_buffer) != AudioStatus::CapacityExceeded) {
+        return FailAfterShutdown(device, "controlled callback second capacity status changed");
+    }
+
+    std::array<AudioCallbackCompletion, AudioCallbackDeviceDesc::MAX_BUFFER_COUNT> completions{};
+    std::size_t completion_count = 99U;
+    if (device.DrainCompletions(completions.data(), completions.size(), completion_count) != AudioStatus::Success) {
+        return FailAfterShutdown(device, "controlled callback empty drain status changed");
+    }
+
+    if (completion_count != 0U) {
+        return FailAfterShutdown(device, "controlled callback empty drain count changed");
+    }
+
+    const AudioCallbackSnapshot drain_snapshot = device.Snapshot();
+    if (!CallbackSubmissionCapacityFieldsAreClear(drain_snapshot)) {
+        return FailAfterShutdown(device, "controlled callback empty drain kept capacity identity");
+    }
+
+    if (device.SubmitS16Buffer(rejected_samples, desc.frames_per_buffer) != AudioStatus::CapacityExceeded) {
+        return FailAfterShutdown(device, "controlled callback shutdown capacity status changed");
+    }
+
+    if (device.Shutdown() != AudioStatus::ShutdownComplete) {
+        return Fail("controlled callback capacity shutdown failed");
+    }
+
+    const AudioCallbackSnapshot shutdown_snapshot = device.Snapshot();
+    if (!CallbackSubmissionCapacityFieldsAreClear(shutdown_snapshot)) {
+        return Fail("controlled callback shutdown kept capacity identity");
+    }
+
+    return 0;
+}
+
 int AudioCallbackDeviceControlledBackendSplitsUnavailableAndBackendError() {
     AudioCallbackDeviceDesc desc{};
 
@@ -2711,6 +2841,10 @@ int AudioCallbackDeviceControlledBackendSubmitErrorRollsBack() {
 
     if (snapshot.last_status != AudioStatus::BackendError) {
         return FailAfterShutdown(device, "controlled callback failed submit last status changed");
+    }
+
+    if (!CallbackSubmissionCapacityFieldsAreClear(snapshot)) {
+        return FailAfterShutdown(device, "controlled callback failed submit kept capacity identity");
     }
 
     if (device.Shutdown() != AudioStatus::ShutdownComplete) {
@@ -2818,6 +2952,7 @@ int main(int argc, char** argv) {
         {TEST_CALLBACK_INVALID_BUFFER_SHAPE, AudioCallbackDeviceRejectsInvalidBufferShapeBeforeHardware},
         {TEST_CALLBACK_UNINITIALIZED_OPERATIONS, AudioCallbackDeviceUninitializedOperationsReturnExplicitStatus},
         {TEST_CALLBACK_CONTROLLED_SUBMIT_DRAIN, AudioCallbackDeviceControlledBackendSubmitsAndDrains},
+        {TEST_CALLBACK_CONTROLLED_SUBMIT_CAPACITY, AudioCallbackDeviceControlledBackendSubmitCapacityRecordsRejectedEntry},
         {TEST_CALLBACK_CONTROLLED_STATUS_SPLIT, AudioCallbackDeviceControlledBackendSplitsUnavailableAndBackendError},
         {TEST_CALLBACK_CONTROLLED_SUBMIT_ERROR, AudioCallbackDeviceControlledBackendSubmitErrorRollsBack},
         {TEST_CALLBACK_CONTROLLED_CALLBACK_ERROR, AudioCallbackDeviceControlledBackendCallbackErrorReportsFailure},

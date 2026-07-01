@@ -30,6 +30,12 @@ struct AudioCallbackSnapshot final {
     std::uint64_t shutdown_callback_count = 0U;
     std::size_t queued_buffer_count = 0U;
     std::size_t max_queued_buffer_count = 0U;
+    std::uint64_t last_failed_submission_sequence = 0U;
+    std::size_t last_failed_submission_buffer_capacity = 0U;
+    std::size_t last_failed_submission_queued_buffer_count = 0U;
+    std::size_t last_failed_submission_frame_count = 0U;
+    std::size_t last_failed_submission_sample_count = 0U;
+    std::size_t last_required_queued_buffer_count = 0U;
     std::size_t drained_completion_count = 0U;
     AudioStatus last_status = AudioStatus::NotInitialized;
     bool initialized = false;
