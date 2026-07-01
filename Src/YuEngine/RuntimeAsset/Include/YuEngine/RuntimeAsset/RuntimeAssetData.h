@@ -54,6 +54,7 @@
 #include "YuEngine/Rhi/RhiStatus.h"
 #include "YuEngine/Rhi/RhiTextureDesc.h"
 #include "YuEngine/Streaming/ResourceDecodedTextureBridgeStatus.h"
+#include "YuEngine/World/WorldSceneAuthoringDocument.h"
 #include "YuEngine/World/WorldObjectId.h"
 #include "YuEngine/World/WorldTransformState.h"
 
@@ -425,6 +426,17 @@ struct RuntimeAssetDataAssetDependencyBatchResult final {
     yuengine::asset::AssetStatus asset_status = yuengine::asset::AssetStatus::Success;
     std::uint32_t committed_dependency_edge_count = 0U;
     std::uint32_t first_failed_dependency_index = 0U;
+};
+
+/**
+ * @brief Caller-owned asset handles paired with WorldSceneAuthoring runtime export rows.
+ */
+struct RuntimeAssetDataWorldSceneAuthoringAssetDependencyBatchRequest final {
+    yuengine::asset::AssetManager *asset_manager = nullptr;
+    const yuengine::world::WorldSceneAuthoringRuntimeExport *runtime_export = nullptr;
+    yuengine::asset::AssetHandle dependent_asset;
+    const yuengine::asset::AssetHandle *dependency_assets = nullptr;
+    std::uint32_t dependency_asset_count = 0U;
 };
 
 /**
@@ -1303,6 +1315,15 @@ RuntimeAssetDataStatus CommitRuntimeAssetDataAssetDependencyBatch(
     yuengine::asset::AssetManager *asset_manager,
     const RuntimeAssetDataAssetDependencyRecord *records,
     std::uint32_t record_count,
+    RuntimeAssetDataAssetDependencyBatchResult *out_result);
+/**
+ * @brief Commits WorldSceneAuthoring runtime export dependency rows through RuntimeAssetData.
+ * @param request Input runtime export and caller-owned asset handles.
+ * @param out_result Output batch diagnostics.
+ * @return Explicit RuntimeAssetData status.
+ */
+RuntimeAssetDataStatus CommitRuntimeAssetDataWorldSceneAuthoringAssetDependencyBatch(
+    const RuntimeAssetDataWorldSceneAuthoringAssetDependencyBatchRequest &request,
     RuntimeAssetDataAssetDependencyBatchResult *out_result);
 /**
  * @brief Loads a runtime asset graph from File/VFS into Resource and Asset records.

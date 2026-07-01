@@ -9662,6 +9662,77 @@ RuntimeAssetDataStatus CommitRuntimeAssetDataAssetDependencyBatch(
     return result.status;
 }
 
+RuntimeAssetDataStatus CommitRuntimeAssetDataWorldSceneAuthoringAssetDependencyBatch(
+    const RuntimeAssetDataWorldSceneAuthoringAssetDependencyBatchRequest &request,
+    RuntimeAssetDataAssetDependencyBatchResult *out_result) {
+    if (out_result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    RuntimeAssetDataAssetDependencyBatchResult result{};
+    *out_result = result;
+    if (request.asset_manager == nullptr) {
+        return result.status;
+    }
+
+    if (request.runtime_export == nullptr) {
+        return result.status;
+    }
+
+    const yuengine::world::WorldSceneAuthoringRuntimeExport &runtime_export =
+        *request.runtime_export;
+    if (runtime_export.dependency_count == nullptr) {
+        return result.status;
+    }
+
+    const std::uint32_t dependency_count = *runtime_export.dependency_count;
+    if (dependency_count > yuengine::asset::MAX_ASSET_DEPENDENCY_EDGE_COUNT) {
+        result.status = RuntimeAssetDataStatus::CapacityExceeded;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (runtime_export.dependency_capacity < dependency_count) {
+        result.status = RuntimeAssetDataStatus::CapacityExceeded;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (dependency_count > 0U && runtime_export.dependency_records == nullptr) {
+        return result.status;
+    }
+
+    if (dependency_count > 0U && request.dependency_assets == nullptr) {
+        return result.status;
+    }
+
+    if (request.dependency_asset_count < dependency_count) {
+        result.status = RuntimeAssetDataStatus::CapacityExceeded;
+        *out_result = result;
+        return result.status;
+    }
+
+    std::array<
+        RuntimeAssetDataAssetDependencyRecord,
+        yuengine::asset::MAX_ASSET_DEPENDENCY_EDGE_COUNT> records{};
+    for (std::uint32_t index = 0U; index < dependency_count; ++index) {
+        const yuengine::world::WorldSceneAuthoringDependencyRecord &dependency =
+            runtime_export.dependency_records[index];
+        RuntimeAssetDataAssetDependencyRecord &record = records[index];
+        record.stable_resource_id = dependency.stable_resource_id;
+        record.dependent_asset = request.dependent_asset;
+        record.dependency_asset = request.dependency_assets[index];
+        record.expected_resource = dependency.resource_handle;
+        record.expected_resource_type = dependency.expected_resource_type;
+    }
+
+    return CommitRuntimeAssetDataAssetDependencyBatch(
+        request.asset_manager,
+        records.data(),
+        dependency_count,
+        out_result);
+}
+
 RuntimeAssetDataStatus LoadRuntimeAssetDataGraph(
     const RuntimeAssetGraphLoadRequest &request,
     RuntimeAssetGraphLoadResult *out_result) {
