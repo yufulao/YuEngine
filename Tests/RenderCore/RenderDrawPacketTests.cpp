@@ -21,6 +21,8 @@
 using RenderDrawPacket = yuengine::rendercore::RenderDrawPacket;
 using RenderDrawPacketDesc = yuengine::rendercore::RenderDrawPacketDesc;
 using RenderDrawPacketRequest = yuengine::rendercore::RenderDrawPacketRequest;
+using RenderDrawPacketResult = yuengine::rendercore::RenderDrawPacketResult;
+using RenderDrawPacketSnapshot = yuengine::rendercore::RenderDrawPacketSnapshot;
 using yuengine::rendercore::RenderDrawPacketStatus;
 using RenderFixturePassRequest = yuengine::rendercore::RenderFixturePassRequest;
 using RhiBufferHandle = yuengine::rhi::RhiBufferHandle;
@@ -126,6 +128,67 @@ bool PassRequestHasDrawFields(const RenderFixturePassRequest &request) {
     return request.draw.index_count == 3U;
 }
 
+bool DrawCapacityFailureIsClear(const RenderDrawPacketSnapshot &snapshot) {
+    if (snapshot.last_capacity_entry_draw_record_capacity != 0U ||
+        snapshot.last_capacity_entry_current_draw_record_count != 0U ||
+        snapshot.last_capacity_entry_required_draw_record_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_failed_entry_index != 0U ||
+        snapshot.last_capacity_entry_index_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_draw_id != 0U ||
+        snapshot.last_capacity_entry_pass_id != 0U ||
+        snapshot.last_capacity_entry_material_id != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_status != RenderDrawPacketStatus::Success) {
+        return false;
+    }
+
+    if (snapshot.last_failed_entry_index != 0U ||
+        snapshot.last_failed_draw_id != 0U) {
+        return false;
+    }
+
+    return snapshot.last_failed_pass_id == 0U &&
+        snapshot.last_failed_material_id == 0U;
+}
+
+bool DrawCapacityFailureMatches(
+    const RenderDrawPacketSnapshot &snapshot,
+    const RenderDrawPacketResult &result) {
+    if (snapshot.last_capacity_entry_draw_record_capacity != result.draw_record_capacity ||
+        snapshot.last_capacity_entry_current_draw_record_count != result.current_draw_record_count ||
+        snapshot.last_capacity_entry_required_draw_record_count != result.required_draw_record_count) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_failed_entry_index != result.failed_entry_index ||
+        snapshot.last_capacity_entry_index_count != result.index_count) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_draw_id != result.failed_draw_id ||
+        snapshot.last_capacity_entry_pass_id != result.failed_pass_id ||
+        snapshot.last_capacity_entry_material_id != result.failed_material_id ||
+        snapshot.last_capacity_entry_status != result.status) {
+        return false;
+    }
+
+    if (snapshot.last_failed_entry_index != result.failed_entry_index ||
+        snapshot.last_failed_draw_id != result.failed_draw_id) {
+        return false;
+    }
+
+    return snapshot.last_failed_pass_id == result.failed_pass_id &&
+        snapshot.last_failed_material_id == result.failed_material_id;
+}
+
 int RenderCoreDrawPacketBuildsPassGeometry() {
     RenderDrawPacket packet;
     RenderFixturePassRequest pass_request = SentinelPassRequest();
@@ -199,6 +262,14 @@ int RenderCoreDrawPacketRejectsInvalidDrawRangeWithoutOutputMutation() {
         return Fail("draw packet accepted invalid draw range");
     }
 
+    const auto snapshot = packet.Snapshot();
+    if (result.failed_entry_index != 0U ||
+        result.failed_draw_id != 0U ||
+        snapshot.draw_capacity_rejected_count != 0U ||
+        !DrawCapacityFailureIsClear(snapshot)) {
+        return Fail("draw packet invalid draw reported capacity entry");
+    }
+
     if (!PassRequestMatchesSentinel(pass_request)) {
         return Fail("draw packet mutated output after invalid draw range");
     }
@@ -217,6 +288,14 @@ int RenderCoreDrawPacketRejectsDuplicateDrawId() {
     const auto result = packet.BuildPassRequest(DefaultRequest(), &rejected_request);
     if (result.status != RenderDrawPacketStatus::DuplicateDrawId) {
         return Fail("draw packet accepted duplicate draw id");
+    }
+
+    const auto snapshot = packet.Snapshot();
+    if (result.failed_entry_index != 0U ||
+        result.failed_draw_id != 0U ||
+        snapshot.draw_capacity_rejected_count != 0U ||
+        !DrawCapacityFailureIsClear(snapshot)) {
+        return Fail("draw packet duplicate id reported capacity entry");
     }
 
     if (!PassRequestMatchesSentinel(rejected_request)) {
@@ -238,22 +317,56 @@ int RenderCoreDrawPacketRejectsCapacityExceeded() {
 
     RenderDrawPacketRequest request = DefaultRequest();
     request.draw_id = NEXT_DRAW_ID;
+    request.pass_id = PASS_ID + 1U;
+    request.material_id = MATERIAL_ID + 1U;
     RenderFixturePassRequest rejected_request = SentinelPassRequest();
     const auto result = packet.BuildPassRequest(request, &rejected_request);
     if (result.status != RenderDrawPacketStatus::DrawCapacityExceeded) {
         return Fail("draw packet accepted capacity overflow");
     }
 
+    constexpr std::size_t expected_current_draw_record_count = 1U;
+    constexpr std::size_t expected_required_draw_record_count = 2U;
+    if (result.draw_record_capacity != desc.draw_record_capacity ||
+        result.current_draw_record_count != expected_current_draw_record_count ||
+        result.required_draw_record_count != expected_required_draw_record_count) {
+        return Fail("draw packet capacity result count mismatch");
+    }
+
     const auto snapshot = packet.Snapshot();
-    if (result.required_draw_record_count != 2U ||
-        snapshot.required_draw_record_count != 2U ||
+    if (snapshot.draw_record_capacity != desc.draw_record_capacity ||
+        snapshot.required_draw_record_count != expected_required_draw_record_count ||
         snapshot.draw_capacity_rejected_count != 1U ||
-        snapshot.draw_record_count != 1U) {
+        snapshot.draw_record_count != expected_current_draw_record_count) {
         return Fail("draw packet capacity required count mismatch");
+    }
+
+    if (result.failed_entry_index != 1U ||
+        result.failed_draw_id != NEXT_DRAW_ID ||
+        result.failed_pass_id != request.pass_id ||
+        result.failed_material_id != request.material_id) {
+        return Fail("draw packet capacity failed result identity mismatch");
+    }
+
+    if (!DrawCapacityFailureMatches(snapshot, result) ||
+        snapshot.failed_validation_count != 0U ||
+        snapshot.duplicate_draw_id_count != 0U) {
+        return Fail("draw packet capacity failed snapshot identity mismatch");
     }
 
     if (!PassRequestMatchesSentinel(rejected_request)) {
         return Fail("draw packet mutated output after capacity overflow");
+    }
+
+    request.draw.index_count = 0U;
+    const auto clear_result = packet.BuildPassRequest(request, &rejected_request);
+    if (clear_result.status != RenderDrawPacketStatus::InvalidDraw) {
+        return Fail("draw packet capacity stale clear setup failed");
+    }
+
+    const auto clear_snapshot = packet.Snapshot();
+    if (!DrawCapacityFailureIsClear(clear_snapshot)) {
+        return Fail("draw packet non-capacity result did not clear capacity entry");
     }
 
     return 0;

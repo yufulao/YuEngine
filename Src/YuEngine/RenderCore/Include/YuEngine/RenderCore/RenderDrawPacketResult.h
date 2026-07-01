@@ -18,6 +18,12 @@ struct RenderDrawPacketResult final {
     std::uint32_t pass_id = 0U;
     std::uint32_t material_id = 0U;
     std::uint32_t index_count = 0U;
+    std::size_t draw_record_capacity = 0U;
+    std::size_t current_draw_record_count = 0U;
     std::size_t required_draw_record_count = 0U;
+    std::size_t failed_entry_index = 0U;
+    std::uint32_t failed_draw_id = 0U;
+    std::uint32_t failed_pass_id = 0U;
+    std::uint32_t failed_material_id = 0U;
 };
 }

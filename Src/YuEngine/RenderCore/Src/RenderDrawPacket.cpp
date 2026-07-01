@@ -89,6 +89,43 @@ bool IsDrawValid(
 
     return IsDrawRangeValid(index_buffer, draw);
 }
+
+void ClearDrawCapacityFailure(RenderDrawPacketSnapshot &snapshot) {
+    snapshot.last_capacity_entry_draw_record_capacity = 0U;
+    snapshot.last_capacity_entry_current_draw_record_count = 0U;
+    snapshot.last_capacity_entry_required_draw_record_count = 0U;
+    snapshot.last_capacity_entry_failed_entry_index = 0U;
+    snapshot.last_capacity_entry_draw_id = 0U;
+    snapshot.last_capacity_entry_pass_id = 0U;
+    snapshot.last_capacity_entry_material_id = 0U;
+    snapshot.last_capacity_entry_index_count = 0U;
+    snapshot.last_capacity_entry_status = RenderDrawPacketStatus::Success;
+    snapshot.last_failed_entry_index = 0U;
+    snapshot.last_failed_draw_id = 0U;
+    snapshot.last_failed_pass_id = 0U;
+    snapshot.last_failed_material_id = 0U;
+}
+
+void RecordDrawCapacityFailure(
+    RenderDrawPacketSnapshot &snapshot,
+    const RenderDrawPacketResult &result) {
+    snapshot.last_capacity_entry_draw_record_capacity =
+        result.draw_record_capacity;
+    snapshot.last_capacity_entry_current_draw_record_count =
+        result.current_draw_record_count;
+    snapshot.last_capacity_entry_required_draw_record_count =
+        result.required_draw_record_count;
+    snapshot.last_capacity_entry_failed_entry_index = result.failed_entry_index;
+    snapshot.last_capacity_entry_draw_id = result.failed_draw_id;
+    snapshot.last_capacity_entry_pass_id = result.failed_pass_id;
+    snapshot.last_capacity_entry_material_id = result.failed_material_id;
+    snapshot.last_capacity_entry_index_count = result.index_count;
+    snapshot.last_capacity_entry_status = result.status;
+    snapshot.last_failed_entry_index = result.failed_entry_index;
+    snapshot.last_failed_draw_id = result.failed_draw_id;
+    snapshot.last_failed_pass_id = result.failed_pass_id;
+    snapshot.last_failed_material_id = result.failed_material_id;
+}
 }
 
 RenderDrawPacket::RenderDrawPacket(const RenderDrawPacketDesc &desc)
@@ -123,9 +160,15 @@ RenderDrawPacketResult RenderDrawPacket::BuildPassRequest(
         return result;
     }
 
+    result.draw_record_capacity = desc_.draw_record_capacity;
+    result.current_draw_record_count = snapshot_.draw_record_count;
     result.required_draw_record_count = RequiredDrawRecordCount();
     if (!HasRecordCapacity()) {
         result.status = RenderDrawPacketStatus::DrawCapacityExceeded;
+        result.failed_entry_index = snapshot_.draw_record_count;
+        result.failed_draw_id = request.draw_id;
+        result.failed_pass_id = request.pass_id;
+        result.failed_material_id = request.material_id;
         RecordRejectedDraw(result);
         return result;
     }
@@ -213,6 +256,7 @@ void RenderDrawPacket::RecordAcceptedDraw(
         return;
     }
 
+    ClearDrawCapacityFailure(snapshot_);
     Record record{};
     record.draw_id = request.draw_id;
     record.pass_id = request.pass_id;
@@ -238,6 +282,7 @@ void RenderDrawPacket::RecordAcceptedDraw(
 }
 
 void RenderDrawPacket::RecordRejectedDraw(const RenderDrawPacketResult &result) {
+    ClearDrawCapacityFailure(snapshot_);
     snapshot_.last_draw_id = result.draw_id;
     snapshot_.last_pass_id = result.pass_id;
     snapshot_.last_material_id = result.material_id;
@@ -253,6 +298,7 @@ void RenderDrawPacket::RecordRejectedDraw(const RenderDrawPacketResult &result) 
     }
 
     if (result.status == RenderDrawPacketStatus::DrawCapacityExceeded) {
+        RecordDrawCapacityFailure(snapshot_, result);
         ++snapshot_.draw_capacity_rejected_count;
         return;
     }
