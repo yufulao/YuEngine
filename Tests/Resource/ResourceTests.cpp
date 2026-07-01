@@ -56,6 +56,7 @@ using yuengine::resource::ResourceDependencyRequest;
 using yuengine::resource::ResourceDescriptorBatchLookupResult;
 using yuengine::resource::ResourceDescriptorBatchResult;
 using yuengine::resource::ResourceDescriptorBatchTypeCountSnapshotResult;
+using yuengine::resource::ResourceDescriptorBatchTypeEnumerationResult;
 using yuengine::resource::ResourceDescriptor;
 using yuengine::resource::ResourceDescriptorLookupQuery;
 using yuengine::resource::ResourceDescriptorLookupRecord;
@@ -130,6 +131,8 @@ constexpr const char *TEST_DESCRIPTOR_TYPE_COUNT =
     "Resource_DescriptorTypeCountSnapshotMatchesEnumeration";
 constexpr const char *TEST_DESCRIPTOR_BATCH_TYPE_COUNT =
     "Resource_DescriptorBatchTypeCountSnapshotReturnsAtomicRows";
+constexpr const char *TEST_DESCRIPTOR_BATCH_TYPE_ENUMERATION =
+    "Resource_DescriptorBatchTypeEnumerationReturnsAtomicRows";
 constexpr const char* TEST_INVALID_DESCRIPTOR =
     "Resource_RegisterRejectsInvalidDescriptorWithoutMutation";
 constexpr const char* TEST_DUPLICATE = "Resource_RegisterDuplicate_ReturnsExplicitStatus";
@@ -2399,6 +2402,218 @@ int ResourceDescriptorBatchTypeCountSnapshotReturnsAtomicRows() {
             &empty_output_count);
     if (!empty_result.Succeeded() || empty_output_count != 0U) {
         return Fail("descriptor batch type count empty batch did not succeed");
+    }
+
+    return 0;
+}
+
+int ResourceDescriptorBatchTypeEnumerationReturnsAtomicRows() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult first_texture_result = registry.RegisterSyntheticDescriptor(
+        DescriptorWithReferenceCount(TYPE_TEXTURE, "batch_type_enum_texture_a", 2U));
+    if (!first_texture_result.Succeeded()) {
+        return Fail("descriptor batch type enumeration first texture registration failed");
+    }
+
+    const ResourceRegistrationResult material_result = registry.RegisterSyntheticDescriptor(
+        DescriptorWithReferenceCount(TYPE_MATERIAL, "batch_type_enum_material", 1U));
+    if (!material_result.Succeeded()) {
+        return Fail("descriptor batch type enumeration material registration failed");
+    }
+
+    const ResourceRegistrationResult audio_result = registry.RegisterSyntheticDescriptor(
+        DescriptorWithReferenceCount(TYPE_AUDIO, "batch_type_enum_audio", 3U));
+    if (!audio_result.Succeeded()) {
+        return Fail("descriptor batch type enumeration audio registration failed");
+    }
+
+    const ResourceRegistrationResult second_texture_result = registry.RegisterSyntheticDescriptor(
+        DescriptorWithReferenceCount(TYPE_TEXTURE, "batch_type_enum_texture_b", 4U));
+    if (!second_texture_result.Succeeded()) {
+        return Fail("descriptor batch type enumeration second texture registration failed");
+    }
+
+    const std::array<ResourceTypeId, 4U> success_types{{
+        TYPE_TEXTURE,
+        TYPE_MATERIAL,
+        TYPE_EFFECT,
+        TYPE_TEXTURE}};
+    std::array<ResourceDescriptorLookupRecord, 5U> output_records{};
+    std::uint32_t output_record_count = 99U;
+    const ResourceSnapshot before_success_snapshot = registry.Snapshot();
+    const ResourceDescriptorBatchTypeEnumerationResult success_result =
+        registry.EnumerateSyntheticDescriptorsByType(
+            success_types.data(),
+            static_cast<std::uint32_t>(success_types.size()),
+            output_records.data(),
+            static_cast<std::uint32_t>(output_records.size()),
+            &output_record_count);
+    if (!success_result.Succeeded() ||
+        success_result.matched_descriptor_count != 5U ||
+        output_record_count != 5U) {
+        return Fail("descriptor batch type enumeration success returned wrong output count");
+    }
+
+    const bool first_record_matches = LookupRecordMatches(
+        output_records[0U],
+        first_texture_result.handle,
+        TYPE_TEXTURE,
+        "batch_type_enum_texture_a",
+        2U);
+    const bool second_record_matches = LookupRecordMatches(
+        output_records[1U],
+        second_texture_result.handle,
+        TYPE_TEXTURE,
+        "batch_type_enum_texture_b",
+        4U);
+    const bool third_record_matches = LookupRecordMatches(
+        output_records[2U],
+        material_result.handle,
+        TYPE_MATERIAL,
+        "batch_type_enum_material",
+        1U);
+    const bool fourth_record_matches = LookupRecordMatches(
+        output_records[3U],
+        first_texture_result.handle,
+        TYPE_TEXTURE,
+        "batch_type_enum_texture_a",
+        2U);
+    const bool fifth_record_matches = LookupRecordMatches(
+        output_records[4U],
+        second_texture_result.handle,
+        TYPE_TEXTURE,
+        "batch_type_enum_texture_b",
+        4U);
+    if (!first_record_matches ||
+        !second_record_matches ||
+        !third_record_matches ||
+        !fourth_record_matches ||
+        !fifth_record_matches) {
+        return Fail("descriptor batch type enumeration did not preserve input and registry order");
+    }
+
+    const ResourceSnapshot after_success_snapshot = registry.Snapshot();
+    if (after_success_snapshot.registered_resource_count != before_success_snapshot.registered_resource_count ||
+        after_success_snapshot.type_count != before_success_snapshot.type_count ||
+        after_success_snapshot.dependency_validation_count != before_success_snapshot.dependency_validation_count) {
+        return Fail("descriptor batch type enumeration success mutated counters");
+    }
+
+    const std::array<ResourceDescriptorLookupRecord, 5U> stable_records = output_records;
+    const std::uint32_t stable_output_record_count = output_record_count;
+    const ResourceDescriptorBatchTypeEnumerationResult capacity_result =
+        registry.EnumerateSyntheticDescriptorsByType(
+            success_types.data(),
+            static_cast<std::uint32_t>(success_types.size()),
+            output_records.data(),
+            4U,
+            &output_record_count);
+    if (capacity_result.status != ResourceStatus::CapacityExceeded ||
+        capacity_result.required_descriptor_count != 5U ||
+        output_record_count != stable_output_record_count) {
+        return Fail("descriptor batch type enumeration capacity failure missed required count or mutated count");
+    }
+
+    const bool capacity_first_preserved = LookupRecordEquals(output_records[0U], stable_records[0U]);
+    const bool capacity_second_preserved = LookupRecordEquals(output_records[1U], stable_records[1U]);
+    const bool capacity_third_preserved = LookupRecordEquals(output_records[2U], stable_records[2U]);
+    const bool capacity_fourth_preserved = LookupRecordEquals(output_records[3U], stable_records[3U]);
+    const bool capacity_fifth_preserved = LookupRecordEquals(output_records[4U], stable_records[4U]);
+    if (!capacity_first_preserved ||
+        !capacity_second_preserved ||
+        !capacity_third_preserved ||
+        !capacity_fourth_preserved ||
+        !capacity_fifth_preserved) {
+        return Fail("descriptor batch type enumeration capacity failure mutated output rows");
+    }
+
+    const ResourceSnapshot after_capacity_snapshot = registry.Snapshot();
+    if (after_capacity_snapshot.registered_resource_count != after_success_snapshot.registered_resource_count ||
+        after_capacity_snapshot.type_count != after_success_snapshot.type_count ||
+        after_capacity_snapshot.dependency_validation_count != after_success_snapshot.dependency_validation_count ||
+        after_capacity_snapshot.last_required_resource_count != 5U) {
+        return Fail("descriptor batch type enumeration capacity failure mutated counters or missed snapshot count");
+    }
+
+    const ResourceTypeId invalid_type{};
+    const std::array<ResourceTypeId, 2U> invalid_types{{
+        TYPE_TEXTURE,
+        invalid_type}};
+    const ResourceDescriptorBatchTypeEnumerationResult invalid_type_result =
+        registry.EnumerateSyntheticDescriptorsByType(
+            invalid_types.data(),
+            static_cast<std::uint32_t>(invalid_types.size()),
+            output_records.data(),
+            static_cast<std::uint32_t>(output_records.size()),
+            &output_record_count);
+    if (invalid_type_result.status != ResourceStatus::InvalidDescriptor ||
+        invalid_type_result.failed_type_index != 1U ||
+        output_record_count != stable_output_record_count) {
+        return Fail("descriptor batch type enumeration invalid type missed failed index or mutated count");
+    }
+
+    const bool invalid_first_preserved = LookupRecordEquals(output_records[0U], stable_records[0U]);
+    const bool invalid_second_preserved = LookupRecordEquals(output_records[1U], stable_records[1U]);
+    const bool invalid_third_preserved = LookupRecordEquals(output_records[2U], stable_records[2U]);
+    const bool invalid_fourth_preserved = LookupRecordEquals(output_records[3U], stable_records[3U]);
+    const bool invalid_fifth_preserved = LookupRecordEquals(output_records[4U], stable_records[4U]);
+    if (!invalid_first_preserved ||
+        !invalid_second_preserved ||
+        !invalid_third_preserved ||
+        !invalid_fourth_preserved ||
+        !invalid_fifth_preserved) {
+        return Fail("descriptor batch type enumeration invalid type mutated output rows");
+    }
+
+    const ResourceDescriptorBatchTypeEnumerationResult null_types_result =
+        registry.EnumerateSyntheticDescriptorsByType(
+            nullptr,
+            static_cast<std::uint32_t>(success_types.size()),
+            output_records.data(),
+            static_cast<std::uint32_t>(output_records.size()),
+            &output_record_count);
+    if (null_types_result.status != ResourceStatus::InvalidDescriptor ||
+        output_record_count != stable_output_record_count) {
+        return Fail("descriptor batch type enumeration null types mutated count");
+    }
+
+    const ResourceDescriptorBatchTypeEnumerationResult null_output_result =
+        registry.EnumerateSyntheticDescriptorsByType(
+            success_types.data(),
+            static_cast<std::uint32_t>(success_types.size()),
+            nullptr,
+            static_cast<std::uint32_t>(output_records.size()),
+            &output_record_count);
+    if (null_output_result.status != ResourceStatus::InvalidHandle ||
+        output_record_count != stable_output_record_count) {
+        return Fail("descriptor batch type enumeration null output mutated count");
+    }
+
+    const std::array<ResourceTypeId, 1U> missing_types{{TYPE_EFFECT}};
+    std::uint32_t missing_output_count = 55U;
+    const ResourceDescriptorBatchTypeEnumerationResult missing_type_result =
+        registry.EnumerateSyntheticDescriptorsByType(
+            missing_types.data(),
+            static_cast<std::uint32_t>(missing_types.size()),
+            nullptr,
+            0U,
+            &missing_output_count);
+    if (!missing_type_result.Succeeded() ||
+        missing_type_result.matched_descriptor_count != 0U ||
+        missing_output_count != 0U) {
+        return Fail("descriptor batch type enumeration missing type did not return empty success");
+    }
+
+    std::uint32_t empty_output_count = 44U;
+    const ResourceDescriptorBatchTypeEnumerationResult empty_result =
+        registry.EnumerateSyntheticDescriptorsByType(
+            nullptr,
+            0U,
+            nullptr,
+            0U,
+            &empty_output_count);
+    if (!empty_result.Succeeded() || empty_output_count != 0U) {
+        return Fail("descriptor batch type enumeration empty batch did not succeed");
     }
 
     return 0;
@@ -9332,6 +9547,7 @@ int main(int argc, char** argv) {
         {TEST_DESCRIPTOR_TYPE_ENUMERATION, ResourceDescriptorTypeEnumerationReturnsMatchingDescriptors},
         {TEST_DESCRIPTOR_TYPE_COUNT, ResourceDescriptorTypeCountSnapshotMatchesEnumeration},
         {TEST_DESCRIPTOR_BATCH_TYPE_COUNT, ResourceDescriptorBatchTypeCountSnapshotReturnsAtomicRows},
+        {TEST_DESCRIPTOR_BATCH_TYPE_ENUMERATION, ResourceDescriptorBatchTypeEnumerationReturnsAtomicRows},
         {TEST_INVALID_DESCRIPTOR, ResourceRegisterRejectsInvalidDescriptorWithoutMutation},
         {TEST_DUPLICATE, ResourceRegisterDuplicateReturnsExplicitStatus},
         {TEST_CAPACITY, ResourceRegistryRejectsCapacityOverflowWithoutMutation},
