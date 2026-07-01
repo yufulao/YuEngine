@@ -39,6 +39,9 @@ struct ThreadWorkerSnapshot {
     TaskStatus last_failed_completion_status = TaskStatus::Created;
     std::size_t last_failed_completion_queue_capacity = 0U;
     std::size_t last_failed_completion_pending_count = 0U;
+    std::size_t last_failed_drain_completion_index = 0U;
+    TaskId last_failed_drain_completion_id{0U};
+    TaskStatus last_failed_drain_completion_status = TaskStatus::Created;
     ShutdownPolicy shutdown_policy = ShutdownPolicy::DrainQueued;
     ThreadWorkerStatus last_status = ThreadWorkerStatus::NotInitialized;
     bool is_initialized = false;

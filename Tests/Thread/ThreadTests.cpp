@@ -53,6 +53,8 @@ constexpr const char* TEST_WORKER_COMPLETION_CAPACITY = "Thread_WorkerCompletion
 constexpr const char* TEST_WORKER_COMPLETION_CAPACITY_ENTRY =
     "Thread_WorkerCompletionCapacityEntry_ClearsOnNonQueueCapacity";
 constexpr const char* TEST_WORKER_COMPLETION_DRAIN = "Thread_WorkerCompletionDrain_UsesCallerStorageLimit";
+constexpr const char* TEST_WORKER_COMPLETION_DRAIN_ENTRY =
+    "Thread_WorkerCompletionDrainOutputEntry_RecordsFirstUnfitCompletion";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr std::size_t SMALL_CAPACITY = 2U;
@@ -949,6 +951,14 @@ int ThreadWorkerCompletionCapacityRejectsWithoutMutation() {
         return Fail("completion capacity did not report required completion count");
     }
 
+    if (rejected_snapshot.last_failed_drain_completion_id.value != 0U) {
+        return Fail("submit completion capacity reported drain output identity");
+    }
+
+    if (rejected_snapshot.last_failed_drain_completion_status != TaskStatus::Created) {
+        return Fail("submit completion capacity reported drain output status");
+    }
+
     if (rejected_snapshot.completed_count != 0U) {
         return Fail("completion capacity rejection changed completed count");
     }
@@ -1228,6 +1238,153 @@ int ThreadWorkerCompletionDrainUsesCallerStorageLimit() {
 
     return 0;
 }
+
+int ThreadWorkerCompletionDrainOutputEntryRecordsFirstUnfitCompletion() {
+    ThreadWorker worker;
+    ThreadWorkerDesc desc;
+    desc.work_capacity = LARGE_CAPACITY;
+    desc.completion_capacity = LARGE_CAPACITY;
+
+    const ThreadWorkerStatus init_status = worker.Initialize(desc);
+    if (init_status != ThreadWorkerStatus::Success) {
+        return Fail("worker initialize failed");
+    }
+
+    const ThreadWorkerStatus start_status = worker.Start();
+    if (start_status != ThreadWorkerStatus::Success) {
+        return Fail("worker start failed");
+    }
+
+    FixedTraceBuffer trace;
+    ThreadTestContext first_context{&trace, FIRST_VALUE, false};
+    ThreadTestContext second_context{&trace, SECOND_VALUE, false};
+    TaskId first_task_id{0U};
+    TaskId second_task_id{0U};
+    const ThreadWorkerStatus first_submit_status = worker.Submit(&RecordTask, &first_context, &first_task_id);
+    if (first_submit_status != ThreadWorkerStatus::Success) {
+        return Fail("first submit failed");
+    }
+
+    const ThreadWorkerStatus second_submit_status = worker.Submit(&RecordTask, &second_context, &second_task_id);
+    if (second_submit_status != ThreadWorkerStatus::Success) {
+        return Fail("second submit failed");
+    }
+
+    worker.Shutdown(ShutdownPolicy::DrainQueued);
+
+    const ThreadWorkerCompletion sentinel{TaskId{9001U}, TaskStatus::Rejected};
+    std::array<ThreadWorkerCompletion, 1U> first_drain{sentinel};
+    std::size_t first_written_count = 77U;
+    const ThreadWorkerStatus first_drain_status = worker.DrainCompletions(
+        first_drain.data(),
+        first_drain.size(),
+        &first_written_count);
+    if (first_drain_status != ThreadWorkerStatus::CompletionQueueFull) {
+        return Fail("small completion drain did not reject capacity");
+    }
+
+    if (first_written_count != 77U) {
+        return Fail("small completion drain changed written count");
+    }
+
+    if (first_drain[0U].task_id.value != sentinel.task_id.value) {
+        return Fail("small completion drain changed output task id");
+    }
+
+    if (first_drain[0U].status != sentinel.status) {
+        return Fail("small completion drain changed output status");
+    }
+
+    const auto rejected_snapshot = worker.Snapshot();
+    if (rejected_snapshot.completion_pending_count != 2U) {
+        return Fail("small completion drain changed pending count");
+    }
+
+    if (rejected_snapshot.last_required_completion_count != 2U) {
+        return Fail("small completion drain lost required completion count");
+    }
+
+    if (rejected_snapshot.last_failed_drain_completion_index != 1U) {
+        return Fail("small completion drain reported wrong failed index");
+    }
+
+    if (rejected_snapshot.last_failed_drain_completion_id.value != second_task_id.value) {
+        return Fail("small completion drain reported wrong failed task id");
+    }
+
+    if (rejected_snapshot.last_failed_drain_completion_status != TaskStatus::Completed) {
+        return Fail("small completion drain reported wrong failed status");
+    }
+
+    ThreadTestContext rejected_context{&trace, THIRD_VALUE, false};
+    TaskId rejected_task_id{9002U};
+    const ThreadWorkerStatus stopped_submit_status = worker.Submit(
+        &RecordTask,
+        &rejected_context,
+        &rejected_task_id);
+    if (stopped_submit_status != ThreadWorkerStatus::StopRequested) {
+        return Fail("submit after shutdown did not return stop requested");
+    }
+
+    const auto stopped_submit_snapshot = worker.Snapshot();
+    if (stopped_submit_snapshot.last_failed_drain_completion_id.value != 0U) {
+        return Fail("submit rejection kept drain output identity");
+    }
+
+    if (stopped_submit_snapshot.last_failed_drain_completion_status != TaskStatus::Created) {
+        return Fail("submit rejection kept drain output status");
+    }
+
+    if (stopped_submit_snapshot.completion_pending_count != 2U) {
+        return Fail("submit rejection changed completion pending count");
+    }
+
+    first_written_count = 77U;
+    const ThreadWorkerStatus second_reject_status = worker.DrainCompletions(
+        first_drain.data(),
+        first_drain.size(),
+        &first_written_count);
+    if (second_reject_status != ThreadWorkerStatus::CompletionQueueFull) {
+        return Fail("second small completion drain did not reject capacity");
+    }
+
+    std::array<ThreadWorkerCompletion, 2U> final_drain{};
+    std::size_t final_written_count = 0U;
+    const ThreadWorkerStatus final_drain_status = worker.DrainCompletions(
+        final_drain.data(),
+        final_drain.size(),
+        &final_written_count);
+    if (final_drain_status != ThreadWorkerStatus::Success) {
+        return Fail("final completion drain failed");
+    }
+
+    if (final_written_count != final_drain.size()) {
+        return Fail("final completion drain wrote wrong count");
+    }
+
+    if (final_drain[0U].task_id.value != first_task_id.value) {
+        return Fail("final completion drain returned wrong first task id");
+    }
+
+    if (final_drain[1U].task_id.value != second_task_id.value) {
+        return Fail("final completion drain returned wrong second task id");
+    }
+
+    const auto final_snapshot = worker.Snapshot();
+    if (final_snapshot.last_failed_drain_completion_id.value != 0U) {
+        return Fail("successful completion drain kept failed task id");
+    }
+
+    if (final_snapshot.last_failed_drain_completion_status != TaskStatus::Created) {
+        return Fail("successful completion drain kept failed status");
+    }
+
+    if (final_snapshot.last_failed_drain_completion_index != 0U) {
+        return Fail("successful completion drain kept failed index");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv) {
@@ -1252,7 +1409,8 @@ int main(int argc, char** argv) {
         {TEST_WORKER_CANCEL, ThreadWorkerCancelShutdownCancelsQueuedWork},
         {TEST_WORKER_COMPLETION_CAPACITY, ThreadWorkerCompletionCapacityRejectsWithoutMutation},
         {TEST_WORKER_COMPLETION_CAPACITY_ENTRY, ThreadWorkerCompletionCapacityEntryClearsOnNonQueueCapacity},
-        {TEST_WORKER_COMPLETION_DRAIN, ThreadWorkerCompletionDrainUsesCallerStorageLimit}};
+        {TEST_WORKER_COMPLETION_DRAIN, ThreadWorkerCompletionDrainUsesCallerStorageLimit},
+        {TEST_WORKER_COMPLETION_DRAIN_ENTRY, ThreadWorkerCompletionDrainOutputEntryRecordsFirstUnfitCompletion}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);

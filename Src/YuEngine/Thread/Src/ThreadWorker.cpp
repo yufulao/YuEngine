@@ -52,6 +52,17 @@ void ClearCompletionQueueCapacityEntryLocked(ThreadWorkerState &state) {
     state.snapshot.last_failed_completion_pending_count = 0U;
 }
 
+void ClearCompletionDrainOutputEntryLocked(ThreadWorkerState &state) {
+    state.snapshot.last_failed_drain_completion_index = 0U;
+    state.snapshot.last_failed_drain_completion_id = TaskId{INVALID_TASK_ID};
+    state.snapshot.last_failed_drain_completion_status = TaskStatus::Created;
+}
+
+void ClearCompletionFailureEntriesLocked(ThreadWorkerState &state) {
+    ClearCompletionQueueCapacityEntryLocked(state);
+    ClearCompletionDrainOutputEntryLocked(state);
+}
+
 void SetCompletionQueueFullLocked(ThreadWorkerState &state, std::size_t required_completion_count) {
     state.snapshot.last_required_completion_count = required_completion_count;
     ClearCompletionQueueCapacityEntryLocked(state);
@@ -71,12 +82,21 @@ void RecordCompletionQueueCapacityEntryLocked(
     SetLastStatusLocked(state, ThreadWorkerStatus::CompletionQueueFull);
 }
 
+void SetCompletionDrainOutputEntryLocked(ThreadWorkerState& state, std::size_t output_capacity) {
+    const std::size_t failed_record_index = (state.completion_head + output_capacity) % state.completion_records.size();
+    const ThreadWorkerCompletion &failed_completion = state.completion_records[failed_record_index];
+    state.snapshot.last_failed_drain_completion_index = output_capacity;
+    state.snapshot.last_failed_drain_completion_id = failed_completion.task_id;
+    state.snapshot.last_failed_drain_completion_status = failed_completion.status;
+}
+
 ThreadWorkerStatus RejectSubmitLocked(ThreadWorkerState& state, ThreadWorkerStatus status) {
     ++state.snapshot.rejected_count;
     if (status != ThreadWorkerStatus::CompletionQueueFull) {
         ClearCompletionQueueCapacityEntryLocked(state);
     }
 
+    ClearCompletionDrainOutputEntryLocked(state);
     SetLastStatusLocked(state, status);
     return status;
 }
@@ -104,6 +124,7 @@ bool PushCompletionLocked(ThreadWorkerState &state, TaskId task_id, TaskStatus s
     if (state.snapshot.completion_pending_count >= state.completion_records.size()) {
         const std::size_t required_completion_count = state.snapshot.completion_pending_count + 1U;
         RecordCompletionQueueCapacityEntryLocked(state, task_id, status, required_completion_count);
+        ClearCompletionDrainOutputEntryLocked(state);
         return false;
     }
 
@@ -115,7 +136,7 @@ bool PushCompletionLocked(ThreadWorkerState &state, TaskId task_id, TaskStatus s
         state.snapshot.max_completion_depth = state.snapshot.completion_pending_count;
     }
 
-    ClearCompletionQueueCapacityEntryLocked(state);
+    ClearCompletionFailureEntriesLocked(state);
     return true;
 }
 
@@ -259,12 +280,12 @@ ThreadWorkerStatus ThreadWorker::Start() {
     {
         std::lock_guard<std::mutex> lock(state_->mutex);
         if (state_->snapshot.is_started) {
-            ClearCompletionQueueCapacityEntryLocked(*state_);
+            ClearCompletionFailureEntriesLocked(*state_);
             return ThreadWorkerStatus::AlreadyStarted;
         }
 
         if (state_->snapshot.is_shutdown) {
-            ClearCompletionQueueCapacityEntryLocked(*state_);
+            ClearCompletionFailureEntriesLocked(*state_);
             return ThreadWorkerStatus::StopRequested;
         }
     }
@@ -275,7 +296,7 @@ ThreadWorkerStatus ThreadWorker::Start() {
         std::lock_guard<std::mutex> lock(state_->mutex);
         state_->snapshot.is_started = true;
         state_->snapshot.is_joined = false;
-        ClearCompletionQueueCapacityEntryLocked(*state_);
+        ClearCompletionFailureEntriesLocked(*state_);
         SetLastStatusLocked(*state_, ThreadWorkerStatus::Success);
     }
 
@@ -294,7 +315,7 @@ ThreadWorkerStatus ThreadWorker::Submit(TaskCallback callback, void* context, Ta
 
     if (callback == nullptr) {
         std::lock_guard<std::mutex> lock(state_->mutex);
-        ClearCompletionQueueCapacityEntryLocked(*state_);
+        ClearCompletionFailureEntriesLocked(*state_);
         SetLastStatusLocked(*state_, ThreadWorkerStatus::InvalidArgument);
         return ThreadWorkerStatus::InvalidArgument;
     }
@@ -340,7 +361,7 @@ ThreadWorkerStatus ThreadWorker::Submit(TaskCallback callback, void* context, Ta
         *task_id = new_task_id;
     }
 
-    ClearCompletionQueueCapacityEntryLocked(*state_);
+    ClearCompletionFailureEntriesLocked(*state_);
     SetLastStatusLocked(*state_, ThreadWorkerStatus::Success);
     state_->condition.notify_one();
     return ThreadWorkerStatus::Success;
@@ -353,13 +374,13 @@ ThreadWorkerStatus ThreadWorker::RequestStop(ShutdownPolicy policy) {
 
     std::lock_guard<std::mutex> lock(state_->mutex);
     if (!state_->snapshot.is_started) {
-        ClearCompletionQueueCapacityEntryLocked(*state_);
+        ClearCompletionFailureEntriesLocked(*state_);
         SetLastStatusLocked(*state_, ThreadWorkerStatus::NotStarted);
         return ThreadWorkerStatus::NotStarted;
     }
 
     if (state_->snapshot.is_shutdown) {
-        ClearCompletionQueueCapacityEntryLocked(*state_);
+        ClearCompletionFailureEntriesLocked(*state_);
         SetLastStatusLocked(*state_, ThreadWorkerStatus::StopRequested);
         return ThreadWorkerStatus::StopRequested;
     }
@@ -371,7 +392,7 @@ ThreadWorkerStatus ThreadWorker::RequestStop(ShutdownPolicy policy) {
         CancelQueuedTasksLocked(*state_);
     }
 
-    ClearCompletionQueueCapacityEntryLocked(*state_);
+    ClearCompletionFailureEntriesLocked(*state_);
     SetLastStatusLocked(*state_, ThreadWorkerStatus::Success);
     state_->condition.notify_all();
     return ThreadWorkerStatus::Success;
@@ -385,19 +406,19 @@ ThreadWorkerStatus ThreadWorker::Join() {
     {
         std::lock_guard<std::mutex> lock(state_->mutex);
         if (!state_->snapshot.is_started && state_->snapshot.is_joined) {
-            ClearCompletionQueueCapacityEntryLocked(*state_);
+            ClearCompletionFailureEntriesLocked(*state_);
             SetLastStatusLocked(*state_, ThreadWorkerStatus::ShutdownComplete);
             return ThreadWorkerStatus::ShutdownComplete;
         }
 
         if (!state_->snapshot.is_started) {
-            ClearCompletionQueueCapacityEntryLocked(*state_);
+            ClearCompletionFailureEntriesLocked(*state_);
             SetLastStatusLocked(*state_, ThreadWorkerStatus::NotStarted);
             return ThreadWorkerStatus::NotStarted;
         }
 
         if (!state_->snapshot.is_shutdown) {
-            ClearCompletionQueueCapacityEntryLocked(*state_);
+            ClearCompletionFailureEntriesLocked(*state_);
             SetLastStatusLocked(*state_, ThreadWorkerStatus::StopRequired);
             return ThreadWorkerStatus::StopRequired;
         }
@@ -414,7 +435,7 @@ ThreadWorkerStatus ThreadWorker::Join() {
         state_->snapshot.is_joined = true;
         state_->snapshot.work_capacity_after_shutdown = state_->work_records.capacity();
         state_->snapshot.completion_capacity_after_shutdown = state_->completion_records.capacity();
-        ClearCompletionQueueCapacityEntryLocked(*state_);
+        ClearCompletionFailureEntriesLocked(*state_);
         SetLastStatusLocked(*state_, ThreadWorkerStatus::ShutdownComplete);
     }
 
@@ -442,14 +463,12 @@ ThreadWorkerStatus ThreadWorker::DrainCompletions(
     if (written_count == nullptr) {
         if (state_ != nullptr) {
             std::lock_guard<std::mutex> lock(state_->mutex);
-            ClearCompletionQueueCapacityEntryLocked(*state_);
+            ClearCompletionFailureEntriesLocked(*state_);
             SetLastStatusLocked(*state_, ThreadWorkerStatus::InvalidArgument);
         }
 
         return ThreadWorkerStatus::InvalidArgument;
     }
-
-    *written_count = 0U;
 
     if (state_ == nullptr) {
         return ThreadWorkerStatus::NotInitialized;
@@ -457,7 +476,7 @@ ThreadWorkerStatus ThreadWorker::DrainCompletions(
 
     if (output_capacity > 0U && output_records == nullptr) {
         std::lock_guard<std::mutex> lock(state_->mutex);
-        ClearCompletionQueueCapacityEntryLocked(*state_);
+        ClearCompletionFailureEntriesLocked(*state_);
         SetLastStatusLocked(*state_, ThreadWorkerStatus::InvalidArgument);
         return ThreadWorkerStatus::InvalidArgument;
     }
@@ -467,30 +486,36 @@ ThreadWorkerStatus ThreadWorker::DrainCompletions(
     const std::size_t required_completion_count = state_->snapshot.completion_pending_count;
     if (required_completion_count > output_capacity) {
         SetCompletionQueueFullLocked(*state_, required_completion_count);
+        SetCompletionDrainOutputEntryLocked(*state_, output_capacity);
         return ThreadWorkerStatus::CompletionQueueFull;
     }
 
-    while (state_->snapshot.completion_pending_count > 0U && *written_count < output_capacity) {
-        output_records[*written_count] = state_->completion_records[state_->completion_head];
+    std::size_t written_records = 0U;
+    while (state_->snapshot.completion_pending_count > 0U && written_records < output_capacity) {
+        output_records[written_records] = state_->completion_records[state_->completion_head];
         state_->completion_records[state_->completion_head] = ThreadWorkerCompletion{};
         state_->completion_head = (state_->completion_head + 1U) % state_->completion_records.size();
         --state_->snapshot.completion_pending_count;
         ++state_->snapshot.drained_completion_count;
-        ++(*written_count);
+        ++written_records;
     }
+
+    *written_count = written_records;
 
     if (state_->snapshot.completion_pending_count > 0U) {
         SetLastStatusLocked(*state_, ThreadWorkerStatus::CompletionQueueFull);
         return ThreadWorkerStatus::CompletionQueueFull;
     }
 
+    ClearCompletionDrainOutputEntryLocked(*state_);
+
     if (*written_count > 0U && ShouldPreserveStatusAfterDrain(status_before_drain)) {
-        ClearCompletionQueueCapacityEntryLocked(*state_);
+        ClearCompletionFailureEntriesLocked(*state_);
         SetLastStatusLocked(*state_, status_before_drain);
         return ThreadWorkerStatus::Success;
     }
 
-    ClearCompletionQueueCapacityEntryLocked(*state_);
+    ClearCompletionFailureEntriesLocked(*state_);
     SetLastStatusLocked(*state_, ThreadWorkerStatus::Success);
     return ThreadWorkerStatus::Success;
 }
