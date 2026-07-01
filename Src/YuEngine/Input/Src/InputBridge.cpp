@@ -215,6 +215,7 @@ InputStatus InputBridge::DrainEvents(InputBridgeEvent *events, std::size_t event
     }
 
     if (event_capacity < event_count_) {
+        snapshot_.required_output_event_count = event_count_;
         return RecordStatus(InputStatus::OutputBufferFull);
     }
 
@@ -229,6 +230,7 @@ InputStatus InputBridge::DrainEvents(InputBridgeEvent *events, std::size_t event
     read_index_ = 0U;
     out_event_count = drain_count;
     snapshot_.queued_event_count = event_count_;
+    snapshot_.required_output_event_count = event_count_;
     snapshot_.drained_event_count += drain_count;
     return RecordStatus(InputStatus::Success);
 }
@@ -405,6 +407,7 @@ InputStatus InputBridge::AcceptEvent(const InputBridgeEvent &event) {
     ++event_count_;
     ++snapshot_.accepted_event_count;
     snapshot_.queued_event_count = event_count_;
+    snapshot_.required_output_event_count = event_count_;
     if (snapshot_.queued_event_count > snapshot_.max_queued_event_count) {
         snapshot_.max_queued_event_count = snapshot_.queued_event_count;
     }
@@ -465,6 +468,7 @@ void InputBridge::ClearQueuedEvents() {
     write_index_ = 0U;
     event_count_ = 0U;
     snapshot_.queued_event_count = 0U;
+    snapshot_.required_output_event_count = 0U;
 }
 
 std::size_t InputBridge::CountGamepadStateEvents(const InputGamepadState &state) const {

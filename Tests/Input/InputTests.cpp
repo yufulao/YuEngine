@@ -1000,6 +1000,10 @@ int InputBridgeSubmitAndDrainRecordsKeyboardMouseWheel() {
         return Fail("bridge drained count mismatch");
     }
 
+    if (snapshot.required_output_event_count != 0U) {
+        return Fail("bridge drain left required output count");
+    }
+
     if (snapshot.queued_event_count != 0U) {
         return Fail("bridge queue was not drained");
     }
@@ -1103,8 +1107,17 @@ int InputBridgeDrainRejectsSmallOutputWithoutMutation() {
         return Fail("undersized drain wrote event count");
     }
 
-    if (bridge.Snapshot().queued_event_count != 2U) {
+    const auto rejected_snapshot = bridge.Snapshot();
+    if (rejected_snapshot.queued_event_count != 2U) {
         return Fail("undersized drain mutated queue");
+    }
+
+    if (rejected_snapshot.required_output_event_count != 2U) {
+        return Fail("undersized drain did not record required output count");
+    }
+
+    if (rejected_snapshot.last_status != InputStatus::OutputBufferFull) {
+        return Fail("undersized drain did not record last status");
     }
 
     std::array<InputBridgeEvent, 2U> events{};
@@ -1115,6 +1128,11 @@ int InputBridgeDrainRejectsSmallOutputWithoutMutation() {
 
     if (event_count != 2U) {
         return Fail("bridge full drain count mismatch");
+    }
+
+    const auto drained_snapshot = bridge.Snapshot();
+    if (drained_snapshot.required_output_event_count != 0U) {
+        return Fail("full drain did not clear required output count");
     }
 
     return 0;
