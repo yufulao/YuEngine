@@ -286,6 +286,7 @@ using yuengine::runtimeasset::RuntimeAssetDataAssetDependencyExactLookupRequest;
 using yuengine::runtimeasset::RuntimeAssetDataAssetDependencyExactLookupResult;
 using yuengine::runtimeasset::RuntimeAssetDataAssetDependencyRecord;
 using yuengine::runtimeasset::RuntimeAssetDataAssetDependencyTraverseResult;
+using yuengine::runtimeasset::RuntimeAssetDataAssetDependencyTypeCountSnapshotResult;
 using yuengine::runtimeasset::RuntimeAssetDataAssetDependencyTypeEnumerationRequest;
 using yuengine::runtimeasset::RuntimeAssetDataAssetDependencyTypeEnumerationResult;
 using yuengine::runtimeasset::RuntimeAssetDataWorldSceneAuthoringAssetDependencyBatchRequest;
@@ -324,6 +325,7 @@ using yuengine::runtimeasset::RuntimeAssetVisualProofRequest;
 using yuengine::runtimeasset::RuntimeAssetVisualProofResult;
 using yuengine::runtimeasset::RunRuntimeAssetPackagedEntryPoint;
 using yuengine::runtimeasset::RunRuntimeAssetPackageArtifactProductCommand;
+using yuengine::runtimeasset::SnapshotRuntimeAssetDataAssetDependencyTypeCount;
 using yuengine::runtimeasset::TraverseRuntimeAssetDataAssetDependencies;
 using yuengine::runtimeasset::ValidateRuntimeAssetDataBytes;
 using yuengine::streaming::ResourceDecodedTextureBridge;
@@ -635,6 +637,8 @@ constexpr const char *TEST_RUNTIME_DEPENDENCY_EXACT_LOOKUP =
     "RuntimeAssetData_AssetDependencyExactLookupIsDirectAndReadOnly";
 constexpr const char *TEST_RUNTIME_DEPENDENCY_TYPE_ENUMERATION =
     "RuntimeAssetData_AssetDependencyTypeEnumerationIsDirectAndAtomic";
+constexpr const char *TEST_RUNTIME_DEPENDENCY_TYPE_COUNT =
+    "RuntimeAssetData_AssetDependencyTypeCountSnapshotMatchesEnumeration";
 constexpr const char *TEST_RUNTIME_DEPENDENCIES =
     "RuntimeAssetData_LoadRegistersResourceAndAssetDependencyEdges";
 constexpr const char *TEST_LOAD_RENDER =
@@ -14563,6 +14567,272 @@ int RuntimeAssetDataAssetDependencyTypeEnumerationIsDirectAndAtomic() {
     return 0;
 }
 
+int RuntimeAssetDataAssetDependencyTypeCountSnapshotMatchesEnumeration() {
+    ResourceRegistry registry;
+    ResourceDescriptor document_resource_desc{};
+    document_resource_desc.type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    document_resource_desc.logical_key = ResourceLogicalKey("runtime_asset_type_count_document");
+    const ResourceRegistrationResult document_resource =
+        registry.RegisterSyntheticDescriptor(document_resource_desc);
+
+    ResourceDescriptor texture_a_resource_desc{};
+    texture_a_resource_desc.type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    texture_a_resource_desc.logical_key = ResourceLogicalKey("runtime_asset_type_count_texture_a");
+    const ResourceRegistrationResult texture_a_resource =
+        registry.RegisterSyntheticDescriptor(texture_a_resource_desc);
+
+    ResourceDescriptor shader_resource_desc{};
+    shader_resource_desc.type = ResourceTypeId{RESOURCE_TYPE_SHADER};
+    shader_resource_desc.logical_key = ResourceLogicalKey("runtime_asset_type_count_shader");
+    const ResourceRegistrationResult shader_resource =
+        registry.RegisterSyntheticDescriptor(shader_resource_desc);
+
+    ResourceDescriptor texture_c_resource_desc{};
+    texture_c_resource_desc.type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    texture_c_resource_desc.logical_key = ResourceLogicalKey("runtime_asset_type_count_texture_c");
+    const ResourceRegistrationResult texture_c_resource =
+        registry.RegisterSyntheticDescriptor(texture_c_resource_desc);
+
+    ResourceDescriptor transitive_resource_desc{};
+    transitive_resource_desc.type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    transitive_resource_desc.logical_key = ResourceLogicalKey("runtime_asset_type_count_transitive");
+    const ResourceRegistrationResult transitive_resource =
+        registry.RegisterSyntheticDescriptor(transitive_resource_desc);
+    if (!document_resource.Succeeded() ||
+        !texture_a_resource.Succeeded() ||
+        !shader_resource.Succeeded() ||
+        !texture_c_resource.Succeeded() ||
+        !transitive_resource.Succeeded()) {
+        return Fail("runtime asset type count resource registration failed");
+    }
+
+    AssetManager manager;
+    AssetDescriptor document_asset_desc{};
+    document_asset_desc.stable_id = 9001U;
+    document_asset_desc.asset_type = AssetTypeId{ASSET_TYPE_TEXTURE};
+    document_asset_desc.resource = document_resource.handle;
+    document_asset_desc.resource_type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    const AssetRegistrationResult document_asset =
+        manager.RegisterRuntimeAsset(&registry, document_asset_desc);
+
+    AssetDescriptor texture_a_asset_desc{};
+    texture_a_asset_desc.stable_id = 9002U;
+    texture_a_asset_desc.asset_type = AssetTypeId{ASSET_TYPE_TEXTURE};
+    texture_a_asset_desc.resource = texture_a_resource.handle;
+    texture_a_asset_desc.resource_type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    const AssetRegistrationResult texture_a_asset =
+        manager.RegisterRuntimeAsset(&registry, texture_a_asset_desc);
+
+    AssetDescriptor shader_asset_desc{};
+    shader_asset_desc.stable_id = 9003U;
+    shader_asset_desc.asset_type = AssetTypeId{ASSET_TYPE_SHADER};
+    shader_asset_desc.resource = shader_resource.handle;
+    shader_asset_desc.resource_type = ResourceTypeId{RESOURCE_TYPE_SHADER};
+    const AssetRegistrationResult shader_asset =
+        manager.RegisterRuntimeAsset(&registry, shader_asset_desc);
+
+    AssetDescriptor texture_c_asset_desc{};
+    texture_c_asset_desc.stable_id = 9004U;
+    texture_c_asset_desc.asset_type = AssetTypeId{ASSET_TYPE_TEXTURE};
+    texture_c_asset_desc.resource = texture_c_resource.handle;
+    texture_c_asset_desc.resource_type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    const AssetRegistrationResult texture_c_asset =
+        manager.RegisterRuntimeAsset(&registry, texture_c_asset_desc);
+
+    AssetDescriptor transitive_asset_desc{};
+    transitive_asset_desc.stable_id = 9005U;
+    transitive_asset_desc.asset_type = AssetTypeId{ASSET_TYPE_TEXTURE};
+    transitive_asset_desc.resource = transitive_resource.handle;
+    transitive_asset_desc.resource_type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    const AssetRegistrationResult transitive_asset =
+        manager.RegisterRuntimeAsset(&registry, transitive_asset_desc);
+    if (!document_asset.Succeeded() ||
+        !texture_a_asset.Succeeded() ||
+        !shader_asset.Succeeded() ||
+        !texture_c_asset.Succeeded() ||
+        !transitive_asset.Succeeded()) {
+        return Fail("runtime asset type count asset registration failed");
+    }
+
+    std::array<RuntimeAssetDataAssetDependencyRecord, 4U> records{};
+    records[0U].stable_resource_id = 9002U;
+    records[0U].dependent_asset = document_asset.handle;
+    records[0U].dependency_asset = texture_a_asset.handle;
+    records[0U].expected_resource = texture_a_resource.handle;
+    records[0U].expected_resource_type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    records[1U].stable_resource_id = 9003U;
+    records[1U].dependent_asset = document_asset.handle;
+    records[1U].dependency_asset = shader_asset.handle;
+    records[1U].expected_resource = shader_resource.handle;
+    records[1U].expected_resource_type = ResourceTypeId{RESOURCE_TYPE_SHADER};
+    records[2U].stable_resource_id = 9004U;
+    records[2U].dependent_asset = document_asset.handle;
+    records[2U].dependency_asset = texture_c_asset.handle;
+    records[2U].expected_resource = texture_c_resource.handle;
+    records[2U].expected_resource_type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    records[3U].stable_resource_id = 9005U;
+    records[3U].dependent_asset = texture_a_asset.handle;
+    records[3U].dependency_asset = transitive_asset.handle;
+    records[3U].expected_resource = transitive_resource.handle;
+    records[3U].expected_resource_type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+
+    RuntimeAssetDataAssetDependencyBatchResult batch_result{};
+    const RuntimeAssetDataStatus batch_status =
+        CommitRuntimeAssetDataAssetDependencyBatch(
+            &manager,
+            records.data(),
+            static_cast<std::uint32_t>(records.size()),
+            &batch_result);
+    if (batch_status != RuntimeAssetDataStatus::Success ||
+        batch_result.status != RuntimeAssetDataStatus::Success ||
+        batch_result.committed_dependency_edge_count != 4U) {
+        return Fail("runtime asset type count batch commit failed");
+    }
+
+    RuntimeAssetDataAssetDependencyTypeEnumerationRequest request{};
+    request.asset_manager = &manager;
+    request.dependent_asset = document_asset.handle;
+    request.expected_resource_type = ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+
+    std::array<RuntimeAssetDataAssetDependencyRecord, 3U> enumerated_records{};
+    std::uint32_t enumerated_count = 0U;
+    RuntimeAssetDataAssetDependencyTypeEnumerationResult enumeration_result{};
+    RuntimeAssetDataStatus enum_status =
+        EnumerateRuntimeAssetDataAssetDependenciesByType(
+            request,
+            enumerated_records.data(),
+            static_cast<std::uint32_t>(enumerated_records.size()),
+            &enumerated_count,
+            &enumeration_result);
+    if (enum_status != RuntimeAssetDataStatus::Success ||
+        enumeration_result.status != RuntimeAssetDataStatus::Success ||
+        enumerated_count != 2U) {
+        return Fail("runtime asset type count baseline enumeration mismatch");
+    }
+
+    const AssetSnapshot before_count_snapshot = manager.Snapshot();
+    std::uint32_t snapshot_count = 77U;
+    RuntimeAssetDataAssetDependencyTypeCountSnapshotResult count_result{};
+    RuntimeAssetDataStatus count_status =
+        SnapshotRuntimeAssetDataAssetDependencyTypeCount(
+            request,
+            &snapshot_count,
+            &count_result);
+    if (count_status != RuntimeAssetDataStatus::Success ||
+        count_result.status != RuntimeAssetDataStatus::Success ||
+        count_result.asset_status != AssetStatus::Success ||
+        count_result.dependency_count != enumerated_count ||
+        snapshot_count != enumerated_count) {
+        return Fail("runtime asset type count success mismatch");
+    }
+
+    RuntimeAssetDataAssetDependencyTypeEnumerationRequest invalid_handle_request = request;
+    invalid_handle_request.dependent_asset = AssetHandle{};
+    RuntimeAssetDataAssetDependencyTypeCountSnapshotResult invalid_handle_result{};
+    count_status =
+        SnapshotRuntimeAssetDataAssetDependencyTypeCount(
+            invalid_handle_request,
+            &snapshot_count,
+            &invalid_handle_result);
+    if (count_status != RuntimeAssetDataStatus::AssetDependencyFailed ||
+        invalid_handle_result.status != RuntimeAssetDataStatus::AssetDependencyFailed ||
+        invalid_handle_result.asset_status != AssetStatus::InvalidHandle ||
+        snapshot_count != enumerated_count) {
+        return Fail("runtime asset type count invalid handle status mismatch");
+    }
+
+    RuntimeAssetDataAssetDependencyTypeEnumerationRequest invalid_type_request = request;
+    invalid_type_request.expected_resource_type = ResourceTypeId{};
+    RuntimeAssetDataAssetDependencyTypeCountSnapshotResult invalid_type_result{};
+    count_status =
+        SnapshotRuntimeAssetDataAssetDependencyTypeCount(
+            invalid_type_request,
+            &snapshot_count,
+            &invalid_type_result);
+    if (count_status != RuntimeAssetDataStatus::InvalidArgument ||
+        invalid_type_result.status != RuntimeAssetDataStatus::InvalidArgument ||
+        invalid_type_result.asset_status != AssetStatus::InvalidArgument ||
+        snapshot_count != enumerated_count) {
+        return Fail("runtime asset type count invalid type status mismatch");
+    }
+
+    RuntimeAssetDataAssetDependencyTypeEnumerationRequest shader_request = request;
+    shader_request.expected_resource_type = ResourceTypeId{RESOURCE_TYPE_SHADER};
+    RuntimeAssetDataAssetDependencyTypeCountSnapshotResult shader_count_result{};
+    count_status =
+        SnapshotRuntimeAssetDataAssetDependencyTypeCount(
+            shader_request,
+            &snapshot_count,
+            &shader_count_result);
+    if (count_status != RuntimeAssetDataStatus::Success ||
+        shader_count_result.status != RuntimeAssetDataStatus::Success ||
+        shader_count_result.dependency_count != 1U ||
+        snapshot_count != 1U) {
+        return Fail("runtime asset type count shader count mismatch");
+    }
+
+    const AssetSnapshot after_count_snapshot = manager.Snapshot();
+    if (after_count_snapshot.active_dependency_edge_count != before_count_snapshot.active_dependency_edge_count ||
+        after_count_snapshot.accepted_operation_count != before_count_snapshot.accepted_operation_count ||
+        after_count_snapshot.failed_operation_count != before_count_snapshot.failed_operation_count) {
+        return Fail("runtime asset type count mutated asset manager diagnostics");
+    }
+
+    std::array<AssetHandle, 5U> traversed_assets{};
+    std::uint32_t traversed_count = 0U;
+    RuntimeAssetDataAssetDependencyTraverseResult traverse_result{};
+    RuntimeAssetDataStatus traverse_status =
+        TraverseRuntimeAssetDataAssetDependencies(
+            &manager,
+            document_asset.handle,
+            traversed_assets.data(),
+            static_cast<std::uint32_t>(traversed_assets.size()),
+            &traversed_count,
+            &traverse_result);
+    if (traverse_status != RuntimeAssetDataStatus::Success ||
+        traverse_result.status != RuntimeAssetDataStatus::Success) {
+        return Fail("runtime asset type count first traversal failed");
+    }
+
+    traversed_count = 0U;
+    traverse_status =
+        TraverseRuntimeAssetDataAssetDependencies(
+            &manager,
+            document_asset.handle,
+            traversed_assets.data(),
+            static_cast<std::uint32_t>(traversed_assets.size()),
+            &traversed_count,
+            &traverse_result);
+    if (traverse_status != RuntimeAssetDataStatus::Success ||
+        traverse_result.status != RuntimeAssetDataStatus::Success) {
+        return Fail("runtime asset type count repeat traversal failed");
+    }
+
+    const AssetSnapshot after_traverse_snapshot = manager.Snapshot();
+    snapshot_count = 44U;
+    RuntimeAssetDataAssetDependencyTypeCountSnapshotResult repeat_count_result{};
+    count_status =
+        SnapshotRuntimeAssetDataAssetDependencyTypeCount(
+            request,
+            &snapshot_count,
+            &repeat_count_result);
+    if (count_status != RuntimeAssetDataStatus::Success ||
+        repeat_count_result.status != RuntimeAssetDataStatus::Success ||
+        repeat_count_result.dependency_count != enumerated_count ||
+        snapshot_count != enumerated_count) {
+        return Fail("runtime asset type count after traversal mismatch");
+    }
+
+    const AssetSnapshot final_snapshot = manager.Snapshot();
+    if (final_snapshot.active_dependency_edge_count != after_traverse_snapshot.active_dependency_edge_count ||
+        final_snapshot.accepted_operation_count != after_traverse_snapshot.accepted_operation_count ||
+        final_snapshot.failed_operation_count != after_traverse_snapshot.failed_operation_count) {
+        return Fail("runtime asset type count after traversal mutated diagnostics");
+    }
+
+    return 0;
+}
+
 int RuntimeAssetDataLoadRegistersResourceAndAssetDependencyEdges() {
     MountTable table;
     if (!CreateMountedTable(TestRoot("DependencyEdges"), &table)) {
@@ -16415,6 +16685,8 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
      RuntimeAssetDataAssetDependencyExactLookupIsDirectAndReadOnly},
     {TEST_RUNTIME_DEPENDENCY_TYPE_ENUMERATION,
      RuntimeAssetDataAssetDependencyTypeEnumerationIsDirectAndAtomic},
+    {TEST_RUNTIME_DEPENDENCY_TYPE_COUNT,
+     RuntimeAssetDataAssetDependencyTypeCountSnapshotMatchesEnumeration},
     {TEST_RUNTIME_DEPENDENCIES, RuntimeAssetDataLoadRegistersResourceAndAssetDependencyEdges},
     {TEST_LOAD_RENDER, RuntimeAssetDataRenderClosedLoopCapturesCubeCylinderConeThroughRhi},
     {TEST_CPU_ORACLE, RuntimeAssetDataCpuPpmOracleDoesNotBypassRhiRenderCore},

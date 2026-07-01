@@ -9918,6 +9918,49 @@ RuntimeAssetDataStatus EnumerateRuntimeAssetDataAssetDependenciesByType(
     return result.status;
 }
 
+RuntimeAssetDataStatus SnapshotRuntimeAssetDataAssetDependencyTypeCount(
+    const RuntimeAssetDataAssetDependencyTypeEnumerationRequest &request,
+    std::uint32_t *output_dependency_count,
+    RuntimeAssetDataAssetDependencyTypeCountSnapshotResult *out_result) {
+    if (out_result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    RuntimeAssetDataAssetDependencyTypeCountSnapshotResult result{};
+    *out_result = result;
+    if (output_dependency_count == nullptr) {
+        result.asset_status = yuengine::asset::AssetStatus::InvalidArgument;
+        *out_result = result;
+        return result.status;
+    }
+
+    std::array<
+        RuntimeAssetDataAssetDependencyRecord,
+        yuengine::asset::MAX_ASSET_DEPENDENCY_EDGE_COUNT> staged_records{};
+    std::uint32_t staged_record_count = 0U;
+    RuntimeAssetDataAssetDependencyTypeEnumerationResult enumeration_result{};
+    const RuntimeAssetDataStatus enumeration_status =
+        EnumerateRuntimeAssetDataAssetDependenciesByType(
+            request,
+            staged_records.data(),
+            static_cast<std::uint32_t>(staged_records.size()),
+            &staged_record_count,
+            &enumeration_result);
+    result.status = enumeration_result.status;
+    result.asset_status = enumeration_result.asset_status;
+    if (enumeration_status != RuntimeAssetDataStatus::Success) {
+        *out_result = result;
+        return result.status;
+    }
+
+    *output_dependency_count = staged_record_count;
+    result.status = RuntimeAssetDataStatus::Success;
+    result.asset_status = yuengine::asset::AssetStatus::Success;
+    result.dependency_count = staged_record_count;
+    *out_result = result;
+    return result.status;
+}
+
 RuntimeAssetDataStatus LookupRuntimeAssetDataAssetDependencyExact(
     const RuntimeAssetDataAssetDependencyExactLookupRequest &request,
     RuntimeAssetDataAssetDependencyRecord *out_record,

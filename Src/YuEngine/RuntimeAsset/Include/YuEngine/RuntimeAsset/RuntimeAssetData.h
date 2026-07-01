@@ -458,6 +458,15 @@ struct RuntimeAssetDataAssetDependencyTypeEnumerationResult final {
 };
 
 /**
+ * @brief Count-only snapshot diagnostics for RuntimeAsset asset dependency type filters.
+ */
+struct RuntimeAssetDataAssetDependencyTypeCountSnapshotResult final {
+    RuntimeAssetDataStatus status = RuntimeAssetDataStatus::InvalidArgument;
+    yuengine::asset::AssetStatus asset_status = yuengine::asset::AssetStatus::Success;
+    std::uint32_t dependency_count = 0U;
+};
+
+/**
  * @brief Exact lookup key for a committed RuntimeAsset asset dependency row.
  */
 struct RuntimeAssetDataAssetDependencyExactLookupRequest final {
@@ -1403,6 +1412,17 @@ RuntimeAssetDataStatus EnumerateRuntimeAssetDataAssetDependenciesByType(
     std::uint32_t output_record_capacity,
     std::uint32_t *output_record_count,
     RuntimeAssetDataAssetDependencyTypeEnumerationResult *out_result);
+/**
+ * @brief Counts direct RuntimeAsset asset dependency rows by dependency ResourceType.
+ * @param request Input manager, dependent asset, and ResourceType filter.
+ * @param output_dependency_count Caller-owned output count.
+ * @param out_result Output count snapshot diagnostics.
+ * @return Explicit RuntimeAssetData status.
+ */
+RuntimeAssetDataStatus SnapshotRuntimeAssetDataAssetDependencyTypeCount(
+    const RuntimeAssetDataAssetDependencyTypeEnumerationRequest &request,
+    std::uint32_t *output_dependency_count,
+    RuntimeAssetDataAssetDependencyTypeCountSnapshotResult *out_result);
 /**
  * @brief Looks up one exact committed RuntimeAsset asset dependency row.
  * @param request Input manager and explicit dependency row key.
