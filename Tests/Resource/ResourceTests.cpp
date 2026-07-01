@@ -128,6 +128,8 @@ constexpr const char *TEST_DEPENDENCY_EDGE_EXACT_LOOKUP =
     "Resource_DependencyEdgeExactLookupFindsDirectEdge";
 constexpr const char *TEST_DEPENDENCY_EDGE_COUNT =
     "Resource_DependencyEdgeCountSnapshotMatchesDirectEdges";
+constexpr const char *TEST_DEPENDENCY_TRAVERSAL =
+    "Resource_DependencyTraversalReturnsExplicitClosureHandles";
 constexpr const char* TEST_NO_FILE_PACKAGE = "Resource_NoFileOrPackageDependency_ForHandleRegistry";
 constexpr const char* TEST_DISABLED_DIAGNOSTICS = "Resource_DisabledDiagnosticsDoesNotChangeResults";
 constexpr const char* TEST_NO_HIDDEN_ALLOCATION = "Resource_NoHiddenAllocation_UsesYuMemorySignal";
@@ -2196,6 +2198,84 @@ int ResourceDependencyEdgeCountSnapshotMatchesDirectEdges() {
     const ResourceStatus after_lookup_status = registry.CountDependencyEdges(&after_lookup_count);
     if (after_lookup_status != ResourceStatus::Success || after_lookup_count != stable_count_snapshot) {
         return Fail("dependency edge count changed after direct lookup");
+    }
+
+    return 0;
+}
+
+int ResourceDependencyTraversalReturnsExplicitClosureHandles() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult root = Register(registry, TYPE_MATERIAL, "material_root");
+    const ResourceRegistrationResult texture = Register(registry, TYPE_TEXTURE, "texture_dependency");
+    const ResourceRegistrationResult effect = Register(registry, TYPE_EFFECT, "effect_dependency");
+    if (!root.Succeeded()) {
+        return Fail("dependency traversal root registration failed");
+    }
+
+    if (!texture.Succeeded()) {
+        return Fail("dependency traversal texture registration failed");
+    }
+
+    if (!effect.Succeeded()) {
+        return Fail("dependency traversal effect registration failed");
+    }
+
+    if (registry.AddDependency(root.handle, texture.handle) != ResourceStatus::Success) {
+        return Fail("dependency traversal direct edge failed");
+    }
+
+    if (registry.AddDependency(texture.handle, effect.handle) != ResourceStatus::Success) {
+        return Fail("dependency traversal transitive edge failed");
+    }
+
+    std::array<ResourceHandle, 2U> dependencies{};
+    std::uint32_t dependency_count = 0U;
+    const ResourceStatus traverse_status = registry.TraverseDependencies(
+        root.handle,
+        dependencies.data(),
+        static_cast<std::uint32_t>(dependencies.size()),
+        &dependency_count);
+    if (traverse_status != ResourceStatus::Success) {
+        return Fail("dependency traversal failed");
+    }
+
+    if (dependency_count != 2U) {
+        return Fail("dependency traversal returned wrong count");
+    }
+
+    if (dependencies[0U].slot != texture.handle.slot ||
+        dependencies[0U].generation != texture.handle.generation) {
+        return Fail("dependency traversal missed direct handle");
+    }
+
+    if (dependencies[1U].slot != effect.handle.slot ||
+        dependencies[1U].generation != effect.handle.generation) {
+        return Fail("dependency traversal missed transitive handle");
+    }
+
+    std::array<ResourceHandle, 1U> small_dependencies{};
+    std::uint32_t required_dependency_count = 0U;
+    const ResourceSnapshot before_small_snapshot = registry.Snapshot();
+    const ResourceStatus small_status = registry.TraverseDependencies(
+        root.handle,
+        small_dependencies.data(),
+        static_cast<std::uint32_t>(small_dependencies.size()),
+        &required_dependency_count);
+    if (small_status != ResourceStatus::CapacityExceeded) {
+        return Fail("dependency traversal small buffer did not fail deterministically");
+    }
+
+    if (required_dependency_count != 2U) {
+        return Fail("dependency traversal small buffer missed required count");
+    }
+
+    const ResourceSnapshot after_small_snapshot = registry.Snapshot();
+    if (after_small_snapshot.dependency_edge_count != before_small_snapshot.dependency_edge_count) {
+        return Fail("dependency traversal small buffer mutated edge count");
+    }
+
+    if (after_small_snapshot.last_required_dependency_edge_count != 2U) {
+        return Fail("dependency traversal small buffer missed snapshot required count");
     }
 
     return 0;
@@ -7874,6 +7954,7 @@ int main(int argc, char** argv) {
         {TEST_DEPENDENCY_CYCLE, ResourceDependencyValidationRejectsCycle},
         {TEST_DEPENDENCY_EDGE_EXACT_LOOKUP, ResourceDependencyEdgeExactLookupFindsDirectEdge},
         {TEST_DEPENDENCY_EDGE_COUNT, ResourceDependencyEdgeCountSnapshotMatchesDirectEdges},
+        {TEST_DEPENDENCY_TRAVERSAL, ResourceDependencyTraversalReturnsExplicitClosureHandles},
         {TEST_NO_FILE_PACKAGE, ResourceNoFileOrPackageDependencyForHandleRegistry},
         {TEST_DISABLED_DIAGNOSTICS, ResourceDisabledDiagnosticsDoesNotChangeResults},
         {TEST_NO_HIDDEN_ALLOCATION, ResourceNoHiddenAllocationUsesYuMemorySignal},

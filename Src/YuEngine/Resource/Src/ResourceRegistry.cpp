@@ -516,6 +516,101 @@ ResourceStatus ResourceRegistry::CountDependencyEdges(std::uint32_t *output_depe
     return ResourceStatus::Success;
 }
 
+ResourceStatus ResourceRegistry::TraverseDependencies(
+    ResourceHandle root,
+    ResourceHandle *output_dependencies,
+    std::uint32_t output_dependency_capacity,
+    std::uint32_t *output_dependency_count) {
+    ++snapshot_.dependency_validation_count;
+
+    if (output_dependency_count == nullptr) {
+        return RecordFailure(ResourceStatus::InvalidHandle);
+    }
+
+    *output_dependency_count = 0U;
+    if (output_dependency_capacity > 0U && output_dependencies == nullptr) {
+        return RecordFailure(ResourceStatus::InvalidHandle);
+    }
+
+    std::size_t root_index = 0U;
+    const ResourceStatus root_status = ResolveHandle(root, root_index);
+    if (root_status != ResourceStatus::Success) {
+        return RecordFailure(root_status);
+    }
+
+    std::array<std::uint32_t, MAX_RESOURCE_COUNT> pending_slots{};
+    std::array<bool, MAX_RESOURCE_COUNT> visited_slots{};
+    std::array<ResourceHandle, MAX_RESOURCE_COUNT> staged_dependencies{};
+    std::uint32_t read_index = 0U;
+    std::uint32_t pending_count = 1U;
+    std::uint32_t staged_dependency_count = 0U;
+    pending_slots[0U] = static_cast<std::uint32_t>(root_index);
+    visited_slots[root_index] = true;
+
+    while (read_index < pending_count) {
+        const std::uint32_t current_slot = pending_slots[read_index];
+        ++read_index;
+
+        for (const ResourceDependencyEdge &edge : dependency_edges_) {
+            if (!edge.is_active) {
+                continue;
+            }
+
+            if (edge.dependent_slot != current_slot) {
+                continue;
+            }
+
+            if (edge.dependency_slot >= snapshot_.resource_capacity) {
+                continue;
+            }
+
+            if (!slots_[edge.dependency_slot].is_active) {
+                continue;
+            }
+
+            if (visited_slots[edge.dependency_slot]) {
+                continue;
+            }
+
+            if (staged_dependency_count >= MAX_RESOURCE_COUNT) {
+                const ResourceStatus status = RecordFailure(ResourceStatus::CapacityExceeded);
+                snapshot_.last_required_dependency_edge_count = staged_dependency_count + 1U;
+                return status;
+            }
+
+            if (pending_count >= MAX_RESOURCE_COUNT) {
+                const ResourceStatus status = RecordFailure(ResourceStatus::CapacityExceeded);
+                snapshot_.last_required_dependency_edge_count = staged_dependency_count + 1U;
+                return status;
+            }
+
+            staged_dependencies[staged_dependency_count] = ResourceHandle{
+                edge.dependency_slot,
+                slots_[edge.dependency_slot].generation};
+            ++staged_dependency_count;
+            visited_slots[edge.dependency_slot] = true;
+            pending_slots[pending_count] = edge.dependency_slot;
+            ++pending_count;
+        }
+    }
+
+    *output_dependency_count = staged_dependency_count;
+    if (staged_dependency_count > output_dependency_capacity) {
+        const ResourceStatus status = RecordFailure(ResourceStatus::CapacityExceeded);
+        snapshot_.last_required_dependency_edge_count = staged_dependency_count;
+        return status;
+    }
+
+    for (std::uint32_t dependency_index = 0U;
+        dependency_index < staged_dependency_count;
+        ++dependency_index) {
+        output_dependencies[dependency_index] = staged_dependencies[dependency_index];
+    }
+
+    RecordSuccess();
+    return ResourceStatus::Success;
+}
+
 ResourceStatus ResourceRegistry::Acquire(ResourceHandle handle, ResourceTypeId expected_type) {
     std::size_t slot_index = 0U;
     const ResourceStatus handle_status = ResolveHandle(handle, slot_index);
