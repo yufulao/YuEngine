@@ -6,7 +6,10 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "YuEngine/Input/InputActionId.h"
 #include "YuEngine/Input/InputAccountingStatus.h"
+#include "YuEngine/Input/InputControlId.h"
+#include "YuEngine/Input/InputDeviceId.h"
 #include "YuEngine/Input/InputStatus.h"
 
 namespace yuengine::input {
@@ -26,6 +29,12 @@ struct InputReplaySnapshot final {
     std::uint64_t apply_count = 0U;
     std::uint64_t reset_count = 0U;
     std::uint64_t failed_operation_count = 0U;
+    InputDeviceId last_failed_binding_device{};
+    InputControlId last_failed_binding_control{};
+    InputActionId last_failed_binding_action{};
+    std::size_t last_failed_binding_capacity = 0U;
+    std::size_t last_failed_binding_count = 0U;
+    std::size_t last_required_binding_count = 0U;
     InputStatus last_status = InputStatus::Success;
     InputStatus last_apply_status = InputStatus::Success;
     InputAccountingStatus allocation_accounting_status = InputAccountingStatus::DeferredUntilYuMemoryIntegration;

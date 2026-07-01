@@ -36,7 +36,7 @@ InputBindingResult InputReplay::RegisterActionBinding(InputDeviceId device, Inpu
     }
 
     if (binding_count_ >= bindings_.size()) {
-        return InputBindingResult{RecordFailure(InputStatus::CapacityExceeded), action};
+        return RecordBindingCapacityFailure(device, control, action);
     }
 
     bindings_[binding_count_] = InputActionBinding{device, control, action};
@@ -48,8 +48,8 @@ InputBindingResult InputReplay::RegisterActionBinding(InputDeviceId device, Inpu
         ++snapshot_.action_count;
     }
 
-    snapshot_.last_status = InputStatus::Success;
-    return InputBindingResult{InputStatus::Success, action};
+    RecordSuccess();
+    return InputBindingResult{InputStatus::Success, action, device, control, 0U, 0U, 0U};
 }
 
 InputStatus InputReplay::RecordReplayEvent(std::size_t frame_index, InputEvent event) {
@@ -85,7 +85,7 @@ InputStatus InputReplay::RecordReplayEvent(std::size_t frame_index, InputEvent e
         recorded_frame_count_ = recorded_frame_count;
     }
 
-    snapshot_.last_status = InputStatus::Success;
+    RecordSuccess();
     return InputStatus::Success;
 }
 
@@ -137,6 +137,9 @@ InputApplyResult InputReplay::ApplyNextFrame() {
     ++snapshot_.apply_count;
     snapshot_.last_apply_status = frame_status;
     snapshot_.replay_storage_capacity_after_last_frame = ReplayStorageCapacity();
+    if (frame_status == InputStatus::Success) {
+        ClearBindingCapacityEntry();
+    }
 
     const std::size_t applied_frame_index = next_frame_index_;
     ++next_frame_index_;
@@ -151,7 +154,7 @@ InputStatus InputReplay::ResetFrameState() {
 
     snapshot_.changed_action_count = 0U;
     ++snapshot_.reset_count;
-    snapshot_.last_status = InputStatus::Success;
+    RecordSuccess();
     return InputStatus::Success;
 }
 
@@ -179,7 +182,33 @@ std::size_t InputReplay::EventCountForFrame(std::size_t frame_index) const {
     return frames_[frame_index].event_count;
 }
 
+InputBindingResult InputReplay::RecordBindingCapacityFailure(
+    InputDeviceId device,
+    InputControlId control,
+    InputActionId action) {
+    ++snapshot_.failed_operation_count;
+    const std::size_t binding_capacity = bindings_.size();
+    const std::size_t binding_count = binding_count_;
+    const std::size_t required_binding_count = binding_count + 1U;
+    snapshot_.last_failed_binding_device = device;
+    snapshot_.last_failed_binding_control = control;
+    snapshot_.last_failed_binding_action = action;
+    snapshot_.last_failed_binding_capacity = binding_capacity;
+    snapshot_.last_failed_binding_count = binding_count;
+    snapshot_.last_required_binding_count = required_binding_count;
+    snapshot_.last_status = InputStatus::CapacityExceeded;
+    return InputBindingResult{
+        InputStatus::CapacityExceeded,
+        action,
+        device,
+        control,
+        binding_capacity,
+        binding_count,
+        required_binding_count};
+}
+
 InputStatus InputReplay::RecordFailure(InputStatus status) {
+    ClearBindingCapacityEntry();
     ++snapshot_.failed_operation_count;
     snapshot_.last_status = status;
     return status;
@@ -188,6 +217,20 @@ InputStatus InputReplay::RecordFailure(InputStatus status) {
 InputStatus InputReplay::RejectReplayEvent(InputStatus status) {
     ++snapshot_.rejected_event_count;
     return RecordFailure(status);
+}
+
+void InputReplay::RecordSuccess() {
+    ClearBindingCapacityEntry();
+    snapshot_.last_status = InputStatus::Success;
+}
+
+void InputReplay::ClearBindingCapacityEntry() {
+    snapshot_.last_failed_binding_device = InputDeviceId{};
+    snapshot_.last_failed_binding_control = InputControlId{};
+    snapshot_.last_failed_binding_action = InputActionId{};
+    snapshot_.last_failed_binding_capacity = 0U;
+    snapshot_.last_failed_binding_count = 0U;
+    snapshot_.last_required_binding_count = 0U;
 }
 
 bool InputReplay::IsDeviceValid(InputDeviceId device) const {

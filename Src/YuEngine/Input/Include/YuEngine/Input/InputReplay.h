@@ -69,8 +69,14 @@ public:
     std::size_t EventCountForFrame(std::size_t frame_index) const;
 
 private:
+    InputBindingResult RecordBindingCapacityFailure(
+        InputDeviceId device,
+        InputControlId control,
+        InputActionId action);
     InputStatus RecordFailure(InputStatus status);
     InputStatus RejectReplayEvent(InputStatus status);
+    void RecordSuccess();
+    void ClearBindingCapacityEntry();
     bool IsDeviceValid(InputDeviceId device) const;
     bool IsActionInRange(InputActionId action) const;
     bool IsEventTypeKnown(InputEventType type) const;

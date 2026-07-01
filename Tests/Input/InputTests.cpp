@@ -30,6 +30,7 @@
 using yuengine::input::InputActionId;
 using yuengine::input::InputActionState;
 using yuengine::input::InputBackendKind;
+using yuengine::input::InputBindingResult;
 using yuengine::input::InputBridge;
 using yuengine::input::InputBridgeDesc;
 using yuengine::input::InputBridgeEvent;
@@ -74,6 +75,7 @@ constexpr const char* TEST_REGISTER_BINDING = "Input_RegisterActionBinding_Retur
 constexpr const char* TEST_DUPLICATE_CONTROL = "Input_RegisterControlAlreadyBound_ReturnsDuplicateStatus";
 constexpr const char* TEST_MULTI_CONTROL_ORDER = "Input_MultipleControlsForOneAction_UsesInsertionOrder";
 constexpr const char* TEST_BINDING_CAPACITY = "Input_BindingCapacityOverflow_DoesNotMutate";
+constexpr const char *TEST_BINDING_CAPACITY_ENTRY = "Input_BindingCapacityOverflow_ReportsRejectedEntry";
 constexpr const char* TEST_PRESS_RELEASE = "Input_ReplayFrame_AppliesButtonPressAndRelease";
 constexpr const char* TEST_EVENT_ORDER = "Input_ReplayFrame_EventOrderIsDeterministic";
 constexpr const char* TEST_LAST_VALID_WINS = "Input_ReplayFrame_EventOrderLastValidValueWins";
@@ -351,6 +353,99 @@ bool SnapshotCountersEqual(const InputReplaySnapshot& left, const InputReplaySna
     return left.changed_action_count == right.changed_action_count;
 }
 
+int RequireBindingCapacityEntry(const InputReplaySnapshot &snapshot,
+    InputDeviceId device,
+    InputControlId control,
+    InputActionId action,
+    std::size_t binding_capacity,
+    std::size_t binding_count,
+    std::size_t required_binding_count,
+    const char *message) {
+    if (snapshot.last_failed_binding_device.value != device.value) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_binding_control.value != control.value) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_binding_action.value != action.value) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_binding_capacity != binding_capacity) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_binding_count != binding_count) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_required_binding_count != required_binding_count) {
+        return Fail(message);
+    }
+
+    return 0;
+}
+
+int RequireBindingResultEntry(const InputBindingResult &result,
+    InputDeviceId device,
+    InputControlId control,
+    std::size_t binding_capacity,
+    std::size_t binding_count,
+    std::size_t required_binding_count,
+    const char *message) {
+    if (result.device.value != device.value) {
+        return Fail(message);
+    }
+
+    if (result.control.value != control.value) {
+        return Fail(message);
+    }
+
+    if (result.binding_capacity != binding_capacity) {
+        return Fail(message);
+    }
+
+    if (result.binding_count != binding_count) {
+        return Fail(message);
+    }
+
+    if (result.required_binding_count != required_binding_count) {
+        return Fail(message);
+    }
+
+    return 0;
+}
+
+int RequireBindingCapacityEntryCleared(const InputReplaySnapshot &snapshot, const char *message) {
+    if (snapshot.last_failed_binding_device.value != InputDeviceId{}.value) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_binding_control.value != InputControlId{}.value) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_binding_action.value != InputActionId{}.value) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_binding_capacity != 0U) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_failed_binding_count != 0U) {
+        return Fail(message);
+    }
+
+    if (snapshot.last_required_binding_count != 0U) {
+        return Fail(message);
+    }
+
+    return 0;
+}
+
 int InputRegisterActionBindingReturnsStableActionId() {
     InputReplay replay;
     const auto result = replay.RegisterActionBinding(DEVICE_A, CONTROL_A, ACTION_A);
@@ -472,6 +567,166 @@ int InputBindingCapacityOverflowDoesNotMutate() {
 
     if (after_snapshot.last_apply_status != before_snapshot.last_apply_status) {
         return Fail("binding overflow changed apply status");
+    }
+
+    return 0;
+}
+
+int InputBindingCapacityOverflowReportsRejectedEntry() {
+    InputReplay replay;
+    const InputControlId first_control{0U};
+    for (std::size_t index = 0U; index < MAX_INPUT_BINDINGS; ++index) {
+        const std::uint32_t control_value = static_cast<std::uint32_t>(index);
+        const InputControlId control{control_value};
+        const InputBindingResult result = replay.RegisterActionBinding(DEVICE_A, control, ACTION_A);
+        if (result.status != InputStatus::Success) {
+            return Fail("binding entry setup failed before capacity");
+        }
+    }
+
+    const InputReplaySnapshot before_snapshot = replay.Snapshot();
+    const InputControlId overflow_control{999U};
+    const std::size_t binding_capacity = MAX_INPUT_BINDINGS;
+    const std::size_t binding_count = before_snapshot.binding_count;
+    const std::size_t required_binding_count = MAX_INPUT_BINDINGS + 1U;
+    const InputBindingResult overflow_result = replay.RegisterActionBinding(DEVICE_A, overflow_control, ACTION_B);
+    if (overflow_result.status != InputStatus::CapacityExceeded) {
+        return Fail("binding entry overflow returned wrong status");
+    }
+
+    if (overflow_result.action.value != ACTION_B.value) {
+        return Fail("binding entry overflow returned wrong action");
+    }
+
+    const int overflow_result_entry = RequireBindingResultEntry(
+        overflow_result,
+        DEVICE_A,
+        overflow_control,
+        binding_capacity,
+        binding_count,
+        required_binding_count,
+        "binding entry overflow result missed rejected binding");
+    if (overflow_result_entry != 0) {
+        return 1;
+    }
+
+    const InputReplaySnapshot overflow_snapshot = replay.Snapshot();
+    if (overflow_snapshot.binding_count != before_snapshot.binding_count) {
+        return Fail("binding entry overflow mutated binding count");
+    }
+
+    if (overflow_snapshot.last_status != InputStatus::CapacityExceeded) {
+        return Fail("binding entry overflow did not record status");
+    }
+
+    const int overflow_snapshot_entry = RequireBindingCapacityEntry(
+        overflow_snapshot,
+        DEVICE_A,
+        overflow_control,
+        ACTION_B,
+        binding_capacity,
+        binding_count,
+        required_binding_count,
+        "binding entry overflow snapshot missed rejected binding");
+    if (overflow_snapshot_entry != 0) {
+        return 1;
+    }
+
+    const InputBindingResult duplicate_result = replay.RegisterActionBinding(DEVICE_A, first_control, ACTION_B);
+    if (duplicate_result.status != InputStatus::DuplicateBinding) {
+        return Fail("binding entry duplicate returned wrong status");
+    }
+
+    const InputReplaySnapshot duplicate_snapshot = replay.Snapshot();
+    const int duplicate_clear_result = RequireBindingCapacityEntryCleared(
+        duplicate_snapshot,
+        "binding entry duplicate did not clear stale capacity entry");
+    if (duplicate_clear_result != 0) {
+        return 1;
+    }
+
+    const InputBindingResult second_overflow_result = replay.RegisterActionBinding(DEVICE_A, overflow_control, ACTION_B);
+    if (second_overflow_result.status != InputStatus::CapacityExceeded) {
+        return Fail("binding entry second overflow returned wrong status");
+    }
+
+    const InputBindingResult unknown_device_result =
+        replay.RegisterActionBinding(UNKNOWN_DEVICE, overflow_control, ACTION_B);
+    if (unknown_device_result.status != InputStatus::UnknownDeviceControl) {
+        return Fail("binding entry unknown device returned wrong status");
+    }
+
+    const InputReplaySnapshot unknown_device_snapshot = replay.Snapshot();
+    const int unknown_device_clear_result = RequireBindingCapacityEntryCleared(
+        unknown_device_snapshot,
+        "binding entry unknown device did not clear stale capacity entry");
+    if (unknown_device_clear_result != 0) {
+        return 1;
+    }
+
+    const InputBindingResult third_overflow_result = replay.RegisterActionBinding(DEVICE_A, overflow_control, ACTION_B);
+    if (third_overflow_result.status != InputStatus::CapacityExceeded) {
+        return Fail("binding entry third overflow returned wrong status");
+    }
+
+    const InputBindingResult unknown_action_result =
+        replay.RegisterActionBinding(DEVICE_A, overflow_control, UNKNOWN_ACTION);
+    if (unknown_action_result.status != InputStatus::UnknownAction) {
+        return Fail("binding entry unknown action returned wrong status");
+    }
+
+    const InputReplaySnapshot unknown_action_snapshot = replay.Snapshot();
+    const int unknown_action_clear_result = RequireBindingCapacityEntryCleared(
+        unknown_action_snapshot,
+        "binding entry unknown action did not clear stale capacity entry");
+    if (unknown_action_clear_result != 0) {
+        return 1;
+    }
+
+    for (std::size_t index = 0U; index < MAX_EVENTS_PER_FRAME; ++index) {
+        const InputEvent event = ButtonPress(DEVICE_A, first_control);
+        const InputStatus status = replay.RecordReplayEvent(0U, event);
+        if (status != InputStatus::Success) {
+            return Fail("binding entry event setup failed before capacity");
+        }
+    }
+
+    const InputBindingResult fourth_overflow_result = replay.RegisterActionBinding(DEVICE_A, overflow_control, ACTION_B);
+    if (fourth_overflow_result.status != InputStatus::CapacityExceeded) {
+        return Fail("binding entry fourth overflow returned wrong status");
+    }
+
+    const InputEvent capacity_event = ButtonRelease(DEVICE_A, first_control);
+    const InputStatus capacity_event_status = replay.RecordReplayEvent(0U, capacity_event);
+    if (capacity_event_status != InputStatus::CapacityExceeded) {
+        return Fail("binding entry replay capacity returned wrong status");
+    }
+
+    const InputReplaySnapshot event_capacity_snapshot = replay.Snapshot();
+    const int event_capacity_clear_result = RequireBindingCapacityEntryCleared(
+        event_capacity_snapshot,
+        "binding entry replay capacity did not clear stale capacity entry");
+    if (event_capacity_clear_result != 0) {
+        return 1;
+    }
+
+    const InputBindingResult final_overflow_result = replay.RegisterActionBinding(DEVICE_A, overflow_control, ACTION_B);
+    if (final_overflow_result.status != InputStatus::CapacityExceeded) {
+        return Fail("binding entry final overflow returned wrong status");
+    }
+
+    const InputEvent success_event = ButtonPress(DEVICE_A, first_control);
+    const InputStatus success_event_status = replay.RecordReplayEvent(1U, success_event);
+    if (success_event_status != InputStatus::Success) {
+        return Fail("binding entry success event failed");
+    }
+
+    const InputReplaySnapshot success_snapshot = replay.Snapshot();
+    const int success_clear_result = RequireBindingCapacityEntryCleared(
+        success_snapshot,
+        "binding entry success did not clear stale capacity entry");
+    if (success_clear_result != 0) {
+        return 1;
     }
 
     return 0;
@@ -1979,6 +2234,7 @@ int main(int argc, char** argv) {
         {TEST_DUPLICATE_CONTROL, InputRegisterControlAlreadyBoundReturnsDuplicateStatus},
         {TEST_MULTI_CONTROL_ORDER, InputMultipleControlsForOneActionUsesInsertionOrder},
         {TEST_BINDING_CAPACITY, InputBindingCapacityOverflowDoesNotMutate},
+        {TEST_BINDING_CAPACITY_ENTRY, InputBindingCapacityOverflowReportsRejectedEntry},
         {TEST_PRESS_RELEASE, InputReplayFrameAppliesButtonPressAndRelease},
         {TEST_EVENT_ORDER, InputReplayFrameEventOrderIsDeterministic},
         {TEST_LAST_VALID_WINS, InputReplayFrameEventOrderLastValidValueWins},
