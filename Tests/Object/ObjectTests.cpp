@@ -27,7 +27,8 @@ constexpr const char* TEST_CREATE = "Object_CreateSyntheticObject_ReturnsGenerat
 constexpr const char* TEST_INVALID_TYPE = "Object_CreateRejectsInvalidTypeWithoutMutation";
 constexpr const char* TEST_CAPACITY = "Object_RegistryCapacityOverflow_DoesNotMutate";
 constexpr const char* TEST_TYPE_CAPACITY = "Object_TypeCapacityOverflow_DoesNotMutate";
-constexpr const char *TEST_TYPE_CAPACITY_ENTRY = "Object_TypeCapacityOverflow_RecordsRejectedTypeEntry";
+constexpr const char* TEST_TYPE_CAPACITY_ENTRY = "Object_TypeCapacityOverflow_RecordsRejectedTypeEntry";
+constexpr const char* TEST_CAPACITY_ENTRY = "Object_CapacityOverflowReportsRejectedDescriptor";
 constexpr const char* TEST_VALIDATE_STALE = "Object_ValidateRejectsInvalidOrStaleHandle";
 constexpr const char* TEST_STALE_OPERATIONS = "Object_InvalidOrStaleHandleOperations_ReturnExplicitStatusWithoutMutation";
 constexpr const char* TEST_DESTROY_GENERATION = "Object_DestroyIncrementsGenerationAndInvalidatesOldHandle";
@@ -78,6 +79,115 @@ ObjectDescriptor DescriptorWithReferenceCount(ObjectTypeId type, std::uint32_t r
 
 ObjectRegistrationResult Create(ObjectRegistry& registry, ObjectTypeId type) {
     return registry.CreateSyntheticObject(Descriptor(type));
+}
+
+bool DescriptorMatches(
+    const ObjectDescriptor &descriptor,
+    ObjectTypeId type,
+    std::uint32_t initial_reference_count) {
+    if (descriptor.type.value != type.value) {
+        return false;
+    }
+
+    return descriptor.initial_reference_count == initial_reference_count;
+}
+
+bool DescriptorCleared(const ObjectDescriptor &descriptor) {
+    if (descriptor.type.IsValid()) {
+        return false;
+    }
+
+    return descriptor.initial_reference_count == 0U;
+}
+
+bool CapacityEntryResultMatches(
+    const ObjectRegistrationResult &result,
+    std::uint32_t object_capacity,
+    std::uint32_t current_object_count,
+    std::uint32_t required_object_count,
+    std::uint32_t type_capacity,
+    std::uint32_t current_type_count,
+    std::uint32_t required_type_count) {
+    if (result.capacity_entry_object_capacity != object_capacity) {
+        return false;
+    }
+
+    if (result.capacity_entry_object_count != current_object_count) {
+        return false;
+    }
+
+    if (result.required_object_count != required_object_count) {
+        return false;
+    }
+
+    if (result.capacity_entry_type_capacity != type_capacity) {
+        return false;
+    }
+
+    if (result.capacity_entry_type_count != current_type_count) {
+        return false;
+    }
+
+    return result.required_type_count == required_type_count;
+}
+
+bool CapacityEntrySnapshotMatches(
+    const ObjectSnapshot &snapshot,
+    std::uint32_t object_capacity,
+    std::uint32_t current_object_count,
+    std::uint32_t required_object_count,
+    std::uint32_t type_capacity,
+    std::uint32_t current_type_count,
+    std::uint32_t required_type_count) {
+    if (snapshot.last_capacity_entry_object_capacity != object_capacity) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_object_count != current_object_count) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_required_object_count != required_object_count) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_type_capacity != type_capacity) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_type_count != current_type_count) {
+        return false;
+    }
+
+    return snapshot.last_capacity_entry_required_type_count == required_type_count;
+}
+
+bool CapacityEntrySnapshotCleared(const ObjectSnapshot &snapshot) {
+    if (snapshot.last_capacity_entry_object_capacity != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_object_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_required_object_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_type_capacity != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_type_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_capacity_entry_required_type_count != 0U) {
+        return false;
+    }
+
+    return DescriptorCleared(snapshot.last_capacity_entry_descriptor);
 }
 
 bool RuntimeCountsMatch(const ObjectSnapshot& left, const ObjectSnapshot& right) {
@@ -387,6 +497,93 @@ int ObjectTypeCapacityOverflowRecordsRejectedTypeEntry() {
 
     if (!TypeCapacitySnapshotFieldsAreClear(object_capacity_registry.Snapshot())) {
         return Fail("object capacity snapshot recorded type capacity entry");
+    }
+
+    return 0;
+}
+
+int ObjectCapacityOverflowReportsRejectedDescriptor() {
+    ObjectRegistry object_registry(ObjectRegistryDesc{1U, 4U});
+    const ObjectRegistrationResult first_object_result = Create(object_registry, TYPE_ACTOR);
+    if (!first_object_result.Succeeded()) {
+        return Fail("object capacity fixture creation failed");
+    }
+
+    const ObjectDescriptor object_failure_descriptor = DescriptorWithReferenceCount(TYPE_CAMERA, 7U);
+    const ObjectRegistrationResult object_failure_result =
+        object_registry.CreateSyntheticObject(object_failure_descriptor);
+    if (object_failure_result.status != ObjectStatus::CapacityExceeded) {
+        return Fail("object capacity entry did not return explicit status");
+    }
+
+    if (!DescriptorMatches(object_failure_result.capacity_entry_descriptor, TYPE_CAMERA, 7U)) {
+        return Fail("object capacity result did not report failed descriptor");
+    }
+
+    if (!CapacityEntryResultMatches(object_failure_result, 1U, 1U, 2U, 4U, 1U, 2U)) {
+        return Fail("object capacity result did not report capacity entry counts");
+    }
+
+    const ObjectSnapshot object_failure_snapshot = object_registry.Snapshot();
+    if (!DescriptorMatches(object_failure_snapshot.last_capacity_entry_descriptor, TYPE_CAMERA, 7U)) {
+        return Fail("object capacity snapshot did not report failed descriptor");
+    }
+
+    if (!CapacityEntrySnapshotMatches(object_failure_snapshot, 1U, 1U, 2U, 4U, 1U, 2U)) {
+        return Fail("object capacity snapshot did not report capacity entry counts");
+    }
+
+    const ObjectDescriptor invalid_descriptor = Descriptor(ObjectTypeId{});
+    const ObjectRegistrationResult invalid_result =
+        object_registry.CreateSyntheticObject(invalid_descriptor);
+    if (invalid_result.status != ObjectStatus::InvalidType) {
+        return Fail("invalid type after capacity did not return explicit status");
+    }
+
+    const ObjectSnapshot invalid_snapshot = object_registry.Snapshot();
+    if (!CapacityEntrySnapshotCleared(invalid_snapshot)) {
+        return Fail("invalid failure did not clear failed descriptor");
+    }
+
+    ObjectRegistry type_registry(ObjectRegistryDesc{4U, 1U});
+    const ObjectRegistrationResult first_type_result = Create(type_registry, TYPE_ACTOR);
+    if (!first_type_result.Succeeded()) {
+        return Fail("type capacity fixture creation failed");
+    }
+
+    const ObjectDescriptor type_failure_descriptor = DescriptorWithReferenceCount(TYPE_CAMERA, 9U);
+    const ObjectRegistrationResult type_failure_result =
+        type_registry.CreateSyntheticObject(type_failure_descriptor);
+    if (type_failure_result.status != ObjectStatus::CapacityExceeded) {
+        return Fail("type capacity entry did not return explicit status");
+    }
+
+    if (!DescriptorMatches(type_failure_result.capacity_entry_descriptor, TYPE_CAMERA, 9U)) {
+        return Fail("type capacity result did not report failed descriptor");
+    }
+
+    if (!CapacityEntryResultMatches(type_failure_result, 4U, 1U, 2U, 1U, 1U, 2U)) {
+        return Fail("type capacity result did not report capacity entry counts");
+    }
+
+    const ObjectSnapshot type_failure_snapshot = type_registry.Snapshot();
+    if (!DescriptorMatches(type_failure_snapshot.last_capacity_entry_descriptor, TYPE_CAMERA, 9U)) {
+        return Fail("type capacity snapshot did not report failed descriptor");
+    }
+
+    if (!CapacityEntrySnapshotMatches(type_failure_snapshot, 4U, 1U, 2U, 1U, 1U, 2U)) {
+        return Fail("type capacity snapshot did not report capacity entry counts");
+    }
+
+    const ObjectRegistrationResult retry_result = Create(type_registry, TYPE_ACTOR);
+    if (!retry_result.Succeeded()) {
+        return Fail("success after type capacity failed");
+    }
+
+    const ObjectSnapshot retry_snapshot = type_registry.Snapshot();
+    if (!DescriptorCleared(retry_result.capacity_entry_descriptor) ||
+        !CapacityEntrySnapshotCleared(retry_snapshot)) {
+        return Fail("success did not clear failed descriptor");
     }
 
     return 0;
@@ -891,6 +1088,7 @@ int main(int argc, char** argv) {
         {TEST_CAPACITY, ObjectRegistryCapacityOverflowDoesNotMutate},
         {TEST_TYPE_CAPACITY, ObjectTypeCapacityOverflowDoesNotMutate},
         {TEST_TYPE_CAPACITY_ENTRY, ObjectTypeCapacityOverflowRecordsRejectedTypeEntry},
+        {TEST_CAPACITY_ENTRY, ObjectCapacityOverflowReportsRejectedDescriptor},
         {TEST_VALIDATE_STALE, ObjectValidateRejectsInvalidOrStaleHandle},
         {TEST_STALE_OPERATIONS, ObjectInvalidOrStaleHandleOperationsReturnExplicitStatusWithoutMutation},
         {TEST_DESTROY_GENERATION, ObjectDestroyIncrementsGenerationAndInvalidatesOldHandle},

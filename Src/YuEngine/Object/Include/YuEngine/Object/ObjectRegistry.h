@@ -74,13 +74,14 @@ public:
     ObjectSnapshot Snapshot() const;
 
 private:
-    void ClearTypeCapacityFailure();
     ObjectStatus RecordFailure(ObjectStatus status);
-    ObjectStatus RecordTypeCapacityFailure(
-        ObjectTypeId type,
+    ObjectRegistrationResult RecordCapacityFailure(
+        const ObjectDescriptor &descriptor,
         std::uint32_t required_object_count,
-        std::uint32_t required_type_count);
+        std::uint32_t required_type_count,
+        bool record_type_capacity_entry);
     void RecordSuccess();
+    void ClearCapacityFailureSnapshot();
     ObjectStatus ResolveHandle(ObjectHandle handle, std::size_t& out_index) const;
     ObjectStatus RegisterTypeIfNeeded(ObjectTypeId type);
     bool HasType(ObjectTypeId type) const;

@@ -6,6 +6,7 @@
 #include <cstdint>
 
 #include "YuEngine/Memory/MemoryAccountingStatus.h"
+#include "YuEngine/Object/ObjectDescriptor.h"
 #include "YuEngine/Object/ObjectStatus.h"
 #include "YuEngine/Object/ObjectTypeId.h"
 
@@ -18,6 +19,13 @@ struct ObjectSnapshot final {
     std::uint32_t type_count;
     std::uint32_t last_required_object_count;
     std::uint32_t last_required_type_count;
+    std::uint32_t last_capacity_entry_object_capacity;
+    std::uint32_t last_capacity_entry_object_count;
+    std::uint32_t last_capacity_entry_required_object_count;
+    std::uint32_t last_capacity_entry_type_capacity;
+    std::uint32_t last_capacity_entry_type_count;
+    std::uint32_t last_capacity_entry_required_type_count;
+    ObjectDescriptor last_capacity_entry_descriptor;
     ObjectTypeId last_failed_type_capacity_type;
     std::uint32_t last_failed_type_capacity;
     std::uint32_t last_failed_type_count;
