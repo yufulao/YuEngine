@@ -999,6 +999,45 @@ RuntimeAssetDataStatus ValidateAnimationTargetBindingOutputRequest(
     return RuntimeAssetDataStatus::Success;
 }
 
+RuntimeAssetTargetIdentityRecord RuntimeAssetTargetIdentityCapacityEntryRecord(
+    const RuntimeAssetSceneLoaderStage &stage,
+    std::uint32_t target_identity_capacity) {
+    RuntimeAssetTargetIdentityRecord record{};
+    if (stage.target_identity_count == 0U) {
+        return record;
+    }
+
+    std::uint32_t failed_index = target_identity_capacity;
+    if (failed_index >= stage.target_identity_count) {
+        failed_index = stage.target_identity_count - 1U;
+    }
+
+    record = stage.target_identities[failed_index];
+    return record;
+}
+
+void RecordRuntimeAssetTargetIdentityCapacityEntry(
+    const RuntimeAssetGraphLoadRequest &request,
+    const RuntimeAssetSceneLoaderStage &stage,
+    RuntimeAssetGraphLoadResult *result) {
+    if (result == nullptr) {
+        return;
+    }
+
+    result->last_failed_target_identity =
+        RuntimeAssetTargetIdentityCapacityEntryRecord(stage, request.target_identity_capacity);
+    result->last_failed_target_identity_scene_stable_id = request.scene_stable_id;
+    result->last_failed_target_identity_resource_type = request.scene_resource_type;
+    result->last_failed_target_identity_asset_type = request.scene_asset_type;
+    result->last_failed_target_identity_table_capacity = request.target_identity_capacity;
+    result->last_failed_target_identity_current_count = request.target_identity_capacity;
+    if (result->last_failed_target_identity_current_count > stage.target_identity_count) {
+        result->last_failed_target_identity_current_count = stage.target_identity_count;
+    }
+
+    result->last_required_target_identity_count = stage.target_identity_count;
+}
+
 void CommitTargetIdentityRecords(
     const RuntimeAssetGraphLoadRequest &request,
     const RuntimeAssetSceneLoaderStage &stage) {
@@ -5688,7 +5727,8 @@ RuntimeAssetDataStatus BuildSceneLoaderStage(
     const RuntimeAssetGraphLoadRequest &request,
     std::string_view scene_text,
     std::string_view animation_text,
-    RuntimeAssetSceneLoaderStage *out_stage) {
+    RuntimeAssetSceneLoaderStage *out_stage,
+    RuntimeAssetGraphLoadResult *out_result) {
     if (out_stage == nullptr) {
         return RuntimeAssetDataStatus::InvalidArgument;
     }
@@ -5753,6 +5793,10 @@ RuntimeAssetDataStatus BuildSceneLoaderStage(
 
     status = ValidateTargetIdentityOutputRequest(request, stage.target_identity_count);
     if (status != RuntimeAssetDataStatus::Success) {
+        if (status == RuntimeAssetDataStatus::CapacityExceeded) {
+            RecordRuntimeAssetTargetIdentityCapacityEntry(request, stage, out_result);
+        }
+
         return status;
     }
 
@@ -6289,7 +6333,8 @@ RuntimeAssetDataStatus BuildRuntimeAssetGraphTransactionPlan(
             request,
             transaction->scene_text,
             transaction->animation_text,
-            &transaction->scene_stage);
+            &transaction->scene_stage,
+            &transaction->result);
         RecordSceneLoaderAnimationDiagnostics(transaction->scene_stage, &transaction->result);
         if (status != RuntimeAssetDataStatus::Success) {
             SetTransactionFailure(transaction, status, RuntimeAssetLoadTransactionPhase::StageSceneOutput);

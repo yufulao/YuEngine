@@ -738,6 +738,7 @@ struct BoundedLoadedGraph final {
     std::array<AnimationRuntimeKeyframeRecord, 6U> animation_keyframes{};
     RuntimeAssetLoadedFile scene_asset{};
     RuntimeAssetSceneLoaderOutput scene_output{};
+    RuntimeAssetGraphLoadResult load_result{};
     RenderSceneRuntimeFrameResult frame_result{};
     std::size_t render_result_count = 0U;
     std::size_t capture_bytes_written = 0U;
@@ -3386,6 +3387,7 @@ bool LoadBoundedRuntimeAssetRecords(
     }
 
     graph.scene_asset = load_result.scene;
+    graph.load_result = load_result;
     *out_graph = graph;
     return true;
 }
@@ -3529,6 +3531,51 @@ bool BoundedTargetIdentityOutputTableMatches(const BoundedLoadedGraph &graph) {
         skeleton_joint.ordinal != 5U ||
         !skeleton_joint.is_valid) {
         return FailStep("bounded skeleton joint target identity changed");
+    }
+
+    return true;
+}
+
+bool RuntimeAssetTargetIdentityCapacityEntryCleared(const RuntimeAssetGraphLoadResult &result) {
+    const RuntimeAssetTargetIdentityRecord &identity = result.last_failed_target_identity;
+    if (identity.kind != RuntimeAssetTargetIdentityKind::Unknown ||
+        identity.target_id != 0U ||
+        identity.parent_target_id != 0U ||
+        identity.scene_entity_id != 0U ||
+        identity.ordinal != 0U ||
+        identity.is_valid ||
+        result.last_failed_target_identity_scene_stable_id != 0U ||
+        result.last_failed_target_identity_resource_type.value != 0U ||
+        result.last_failed_target_identity_asset_type.value != 0U ||
+        result.last_failed_target_identity_table_capacity != 0U ||
+        result.last_failed_target_identity_current_count != 0U ||
+        result.last_required_target_identity_count != 0U) {
+        return FailStep("target identity capacity entry was not cleared");
+    }
+
+    return true;
+}
+
+bool BoundedTargetIdentityCapacityEntryMatches(const RuntimeAssetGraphLoadResult &result) {
+    if (result.status != RuntimeAssetDataStatus::CapacityExceeded ||
+        result.transaction_plan.phase != RuntimeAssetLoadTransactionPhase::StageSceneOutput ||
+        result.last_failed_target_identity_scene_stable_id != 6002U ||
+        result.last_failed_target_identity_resource_type.value != RESOURCE_TYPE_SCENE ||
+        result.last_failed_target_identity_asset_type.value != ASSET_TYPE_SCENE ||
+        result.last_failed_target_identity_table_capacity != 2U ||
+        result.last_failed_target_identity_current_count != 2U ||
+        result.last_required_target_identity_count != 3U) {
+        return FailStep("target identity capacity entry counts changed");
+    }
+
+    const RuntimeAssetTargetIdentityRecord &identity = result.last_failed_target_identity;
+    if (identity.kind != RuntimeAssetTargetIdentityKind::SkeletonJoint ||
+        identity.target_id != 3001U ||
+        identity.parent_target_id != 2001U ||
+        identity.scene_entity_id != 0U ||
+        identity.ordinal != 5U ||
+        !identity.is_valid) {
+        return FailStep("target identity capacity entry identity changed");
     }
 
     return true;
@@ -4644,7 +4691,8 @@ bool ProbeBoundedFailureCase(
     RuntimeAssetDataStatus expected_status,
     std::uint32_t target_identity_capacity = 0U,
     std::uint32_t animation_target_binding_capacity = 0U,
-    std::uint32_t runtime_instance_mapping_capacity = 0U) {
+    std::uint32_t runtime_instance_mapping_capacity = 0U,
+    RuntimeAssetGraphLoadResult *out_load_result = nullptr) {
     MountTable table;
     if (!CreateMountedTable(TestRoot(root_name), &table)) {
         return FailStep("bounded failure case mount setup failed");
@@ -4674,7 +4722,7 @@ bool ProbeBoundedFailureCase(
         0U,
         target_identity_capacity,
         animation_target_binding_capacity,
-        nullptr,
+        out_load_result,
         HALF_SECOND_NANOSECONDS,
         0U,
         runtime_instance_mapping_capacity);
@@ -11403,6 +11451,10 @@ int RuntimeAssetDataTargetIdentityTableLoadsSceneModelAndSkeletonJointIds() {
         return Fail("bounded target identity table changed");
     }
 
+    if (!RuntimeAssetTargetIdentityCapacityEntryCleared(graph.load_result)) {
+        return Fail("success retained target identity capacity entry");
+    }
+
     if (graph.animation_tracks[0U].target.value != 101U ||
         graph.animation_tracks[1U].target.value != 104U) {
         return Fail("target identity table changed scene_entity animation binding");
@@ -11414,13 +11466,21 @@ int RuntimeAssetDataTargetIdentityTableLoadsSceneModelAndSkeletonJointIds() {
 int RuntimeAssetDataTargetIdentityTableRejectsDuplicateIdWithoutMutation() {
     const std::string scene =
         ReplaceFirst(BoundedSceneBytes(), "target_identity2=id=3001", "target_identity2=id=2001");
+    RuntimeAssetGraphLoadResult load_result{};
     if (!ProbeBoundedFailureCase(
             "BoundedTargetIdentityDuplicateNoMutation",
             scene,
             BoundedAnimationBytes(),
             RuntimeAssetDataStatus::DuplicateDependency,
-            3U)) {
+            3U,
+            0U,
+            0U,
+            &load_result)) {
         return Fail("bounded duplicate target identity failure mutated outputs");
+    }
+
+    if (!RuntimeAssetTargetIdentityCapacityEntryCleared(load_result)) {
+        return Fail("duplicate target identity retained capacity entry");
     }
 
     return 0;
@@ -11428,13 +11488,21 @@ int RuntimeAssetDataTargetIdentityTableRejectsDuplicateIdWithoutMutation() {
 
 int RuntimeAssetDataTargetIdentityTableRejectsMissingParentWithoutMutation() {
     const std::string scene = ReplaceFirst(BoundedSceneBytes(), "parent=1001", "parent=9001");
+    RuntimeAssetGraphLoadResult load_result{};
     if (!ProbeBoundedFailureCase(
             "BoundedTargetIdentityMissingParentNoMutation",
             scene,
             BoundedAnimationBytes(),
             RuntimeAssetDataStatus::MissingDependency,
-            3U)) {
+            3U,
+            0U,
+            0U,
+            &load_result)) {
         return Fail("bounded missing parent target identity failure mutated outputs");
+    }
+
+    if (!RuntimeAssetTargetIdentityCapacityEntryCleared(load_result)) {
+        return Fail("missing parent target identity retained capacity entry");
     }
 
     return 0;
@@ -11450,6 +11518,7 @@ int RuntimeAssetDataTargetIdentityTableRejectsCapacityOverflowWithoutMutation() 
         return Fail("bounded fixture write failed");
     }
 
+    RuntimeAssetGraphLoadResult load_result{};
     if (!ProbeBoundedSceneLoaderFailureWithoutOutputMutation(
             table,
             RuntimeAssetDataStatus::CapacityExceeded,
@@ -11460,8 +11529,14 @@ int RuntimeAssetDataTargetIdentityTableRejectsCapacityOverflowWithoutMutation() 
             0U,
             0U,
             0U,
-            2U)) {
+            2U,
+            0U,
+            &load_result)) {
         return Fail("bounded target identity capacity overflow mutated outputs");
+    }
+
+    if (!BoundedTargetIdentityCapacityEntryMatches(load_result)) {
+        return Fail("bounded target identity capacity entry mismatch");
     }
 
     return 0;

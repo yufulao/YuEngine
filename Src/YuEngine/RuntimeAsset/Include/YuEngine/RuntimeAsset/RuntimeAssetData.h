@@ -647,6 +647,13 @@ struct RuntimeAssetGraphLoadResult final {
         yuengine::animation::AnimationRuntimeStatus::MissingClip;
     yuengine::animation::AnimationRuntimeStatus animation_apply_status =
         yuengine::animation::AnimationRuntimeStatus::MissingSample;
+    RuntimeAssetTargetIdentityRecord last_failed_target_identity{};
+    std::uint64_t last_failed_target_identity_scene_stable_id = 0U;
+    yuengine::resource::ResourceTypeId last_failed_target_identity_resource_type{};
+    yuengine::asset::AssetTypeId last_failed_target_identity_asset_type{};
+    std::uint32_t last_failed_target_identity_table_capacity = 0U;
+    std::uint32_t last_failed_target_identity_current_count = 0U;
+    std::uint32_t last_required_target_identity_count = 0U;
     bool scene_registered = false;
     bool scene_references_runtime_asset_families = false;
 };
