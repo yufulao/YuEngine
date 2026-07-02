@@ -185,6 +185,28 @@ void SetTimelineSurfaceRequiredCounts(
     }
 }
 
+std::size_t CountTimelineKeyframes(
+    const AnimationRuntimeClipRecord &clip,
+    std::span<const AnimationRuntimeTrackRecord> tracks) {
+    std::size_t keyframe_count = 0U;
+    for (std::size_t track_offset = 0U; track_offset < clip.track_count; ++track_offset) {
+        const std::size_t track_index = clip.first_track_index + track_offset;
+        if (track_index >= tracks.size()) {
+            return keyframe_count;
+        }
+
+        const AnimationRuntimeTrackRecord &track = tracks[track_index];
+        if (keyframe_count >
+            std::numeric_limits<std::size_t>::max() - track.keyframe_count) {
+            return std::numeric_limits<std::size_t>::max();
+        }
+
+        keyframe_count += track.keyframe_count;
+    }
+
+    return keyframe_count;
+}
+
 AnimationEditorTimelineClipRow BuildClipRow(
     const AnimationRuntimeClipRecord &clip) {
     AnimationEditorTimelineClipRow row{};
@@ -537,6 +559,21 @@ bool IsEventMarkerForClip(
     return event_marker.clip_id == clip_id;
 }
 
+std::size_t CountEventMarkersForClip(
+    std::span<const AnimationEditorEventMarkerRecord> event_markers,
+    std::uint32_t clip_id) {
+    std::size_t event_count = 0U;
+    for (const AnimationEditorEventMarkerRecord &event_marker : event_markers) {
+        if (!IsEventMarkerForClip(event_marker, clip_id)) {
+            continue;
+        }
+
+        ++event_count;
+    }
+
+    return event_count;
+}
+
 bool IsEventMarkerRecordValid(
     const AnimationEditorEventMarkerRecord &event_marker,
     const AnimationRuntimeClipRecord &clip) {
@@ -746,7 +783,13 @@ AnimationEditorSurfaceStatus BuildAnimationEditorTimelineSurface(
     const bool preview_feedback_requested =
         request.require_preview_feedback || !request.preview_feedback_output.empty();
     if (clip->track_count > MAX_ANIMATION_EDITOR_TIMELINE_TRACKS) {
-        SetTimelineSurfaceRequiredCounts(*clip, 0U, preview_feedback_requested, &result);
+        const std::size_t required_keyframe_count =
+            CountTimelineKeyframes(*clip, request.tracks);
+        SetTimelineSurfaceRequiredCounts(
+            *clip,
+            required_keyframe_count,
+            preview_feedback_requested,
+            &result);
         result.status = AnimationEditorSurfaceStatus::OutputCapacityExceeded;
         result.blocked_layer = AnimationEditorSurfaceBlockedLayer::TimelineOutput;
         *out_result = result;
@@ -1173,6 +1216,8 @@ AnimationEditorSurfaceStatus BuildAnimationEditorStateEventPlaybackWorkflow(
 
     result.bound_state_to_clip = true;
 
+    const std::size_t required_event_count =
+        CountEventMarkersForClip(request.event_markers, state->clip_id);
     std::size_t event_count = 0U;
     for (const AnimationEditorEventMarkerRecord &event_marker : request.event_markers) {
         if (!IsEventMarkerForClip(event_marker, state->clip_id)) {
@@ -1182,7 +1227,7 @@ AnimationEditorSurfaceStatus BuildAnimationEditorStateEventPlaybackWorkflow(
         result.consumed_event_records = true;
         if (event_count >= MAX_ANIMATION_EDITOR_EVENT_MARKERS) {
             result.state_row_count = 1U;
-            result.event_row_count = event_count + 1U;
+            result.event_row_count = required_event_count;
             result.status = AnimationEditorSurfaceStatus::OutputCapacityExceeded;
             result.blocked_layer = AnimationEditorSurfaceBlockedLayer::EventRecords;
             *out_result = result;

@@ -42,6 +42,8 @@ using yuengine::animationeditor::AnimationEditorStatePreviewRecord;
 using yuengine::animationeditor::BuildAnimationEditorStateEventPlaybackWorkflow;
 using yuengine::animationeditor::BuildAnimationEditorTimelineSurface;
 using yuengine::animationeditor::BuildAnimationEditorTimelineWorkflow;
+using yuengine::animationeditor::MAX_ANIMATION_EDITOR_EVENT_MARKERS;
+using yuengine::animationeditor::MAX_ANIMATION_EDITOR_TIMELINE_TRACKS;
 using yuengine::kernel::RuntimeFrameContext;
 using yuengine::kernel::RuntimeFrameMode;
 using yuengine::previewhost::PreviewHostTransformFeedback;
@@ -55,6 +57,8 @@ constexpr const char *TEST_PREVIEW =
     "AnimationEditorSurface_ConsumesPreviewHostTransformFeedbackForScrub";
 constexpr const char *TEST_NO_MUTATION =
     "AnimationEditorSurface_RejectsMissingPreviewFeedbackWithoutMutation";
+constexpr const char *TEST_SURFACE_TRACK_OVERFLOW =
+    "AnimationEditorSurface_TrackOverflowReportsRequiredCounts";
 constexpr const char *TEST_WORKFLOW_SCRUB =
     "AnimationEditorWorkflow_ScrubUpdatesSampleTimeAndSelectedFeedback";
 constexpr const char *TEST_WORKFLOW_PLAYBACK =
@@ -75,6 +79,8 @@ constexpr const char *TEST_STATE_EVENT_INVALID_EVENT =
     "AnimationEditorStateEventWorkflow_InvalidEventDoesNotMutateOutputs";
 constexpr const char *TEST_STATE_EVENT_SMALL_OUTPUT =
     "AnimationEditorStateEventWorkflow_OutputCapacityFailureDoesNotMutateOutputs";
+constexpr const char *TEST_STATE_EVENT_OVERFLOW =
+    "AnimationEditorStateEventWorkflow_EventOverflowReportsRequiredCounts";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr std::uint32_t CLIP_ID = 4101U;
@@ -505,6 +511,71 @@ int AnimationEditorSurfaceRejectsMissingPreviewFeedbackWithoutMutation() {
         !SentinelKeyframeUnchanged(keyframe_markers[0U]) ||
         !SentinelPreviewUnchanged(preview_output[0U])) {
         return Fail("animation editor missing preview feedback mutated output");
+    }
+
+    return 0;
+}
+
+int AnimationEditorSurfaceTrackOverflowReportsRequiredCounts() {
+    constexpr std::size_t TRACK_COUNT = MAX_ANIMATION_EDITOR_TIMELINE_TRACKS + 1U;
+    const std::array<AnimationRuntimeClipRecord, 1U> clips{ClipRecord(TRACK_COUNT)};
+    std::array<AnimationRuntimeTrackRecord, TRACK_COUNT> tracks{};
+    std::array<AnimationRuntimeKeyframeRecord, TRACK_COUNT> keyframes{};
+    for (std::size_t index = 0U; index < TRACK_COUNT; ++index) {
+        tracks[index] = TrackRecord(AnimationRuntimeChannel::TranslationX, index, 1U);
+        const float keyframe_value = static_cast<float>(index);
+        keyframes[index] = Keyframe(0.0F, keyframe_value);
+    }
+
+    const std::array<PreviewHostTransformFeedback, 1U> preview_feedback{
+        PreviewFeedback()};
+    std::array<AnimationEditorTimelineClipRow, 1U> clip_rows{
+        AnimationEditorTimelineClipRow{9001U, 0.0F, 0U, 77U, 0U, false, false}};
+    std::array<AnimationEditorTimelineTrackRow, TRACK_COUNT> track_rows{};
+    track_rows[0U].track_id = 9002U;
+    track_rows[0U].keyframe_count = 88U;
+    track_rows[0U].active = false;
+    std::array<AnimationEditorTimelineKeyframeMarker, TRACK_COUNT> keyframe_markers{};
+    keyframe_markers[0U].track_id = 9003U;
+    keyframe_markers[0U].keyframe_index = 99U;
+    keyframe_markers[0U].valid = false;
+    std::array<AnimationEditorPreviewFeedbackRecord, TRACK_COUNT> preview_output{};
+    preview_output[0U].track_id = 9004U;
+    preview_output[0U].matched_preview_host_feedback = false;
+
+    AnimationEditorTimelineSurfaceResult result{};
+    const AnimationEditorSurfaceStatus status =
+        BuildAnimationEditorTimelineSurface(
+            SurfaceRequest(
+                clips,
+                tracks,
+                keyframes,
+                preview_feedback,
+                clip_rows,
+                track_rows,
+                keyframe_markers,
+                preview_output),
+            &result);
+    if (status != AnimationEditorSurfaceStatus::OutputCapacityExceeded) {
+        return Fail("animation editor surface track overflow status mismatch");
+    }
+
+    if (result.blocked_layer != AnimationEditorSurfaceBlockedLayer::TimelineOutput) {
+        return Fail("animation editor surface track overflow layer mismatch");
+    }
+
+    if (result.clip_row_count != 1U ||
+        result.track_row_count != TRACK_COUNT ||
+        result.keyframe_marker_count != TRACK_COUNT ||
+        result.preview_feedback_count != TRACK_COUNT) {
+        return Fail("animation editor surface track overflow counts mismatch");
+    }
+
+    if (!SentinelClipUnchanged(clip_rows[0U]) ||
+        !SentinelTrackUnchanged(track_rows[0U]) ||
+        !SentinelKeyframeUnchanged(keyframe_markers[0U]) ||
+        !SentinelPreviewUnchanged(preview_output[0U])) {
+        return Fail("animation editor surface track overflow mutated output");
     }
 
     return 0;
@@ -1345,6 +1416,98 @@ int AnimationEditorStateEventWorkflowOutputCapacityFailureDoesNotMutateOutputs()
     return 0;
 }
 
+int AnimationEditorStateEventWorkflowEventOverflowReportsRequiredCounts() {
+    constexpr std::size_t EVENT_COUNT = MAX_ANIMATION_EDITOR_EVENT_MARKERS + 2U;
+    const std::array<AnimationRuntimeClipRecord, 1U> clips{ClipRecord(1U)};
+    const std::array<AnimationRuntimeTrackRecord, 1U> tracks{
+        TrackRecord(AnimationRuntimeChannel::TranslationX, 0U)};
+    const std::array<AnimationRuntimeKeyframeRecord, 2U> keyframes{
+        Keyframe(0.0F, 0.0F),
+        Keyframe(1.0F, 10.0F)};
+    const std::array<AnimationEditorStatePreviewRecord, 1U> states{StateRecord()};
+    std::array<AnimationEditorEventMarkerRecord, EVENT_COUNT> events{};
+    for (std::size_t index = 0U; index < EVENT_COUNT; ++index) {
+        const std::uint32_t event_offset = static_cast<std::uint32_t>(index);
+        events[index] = EventMarker(0.50F, event_offset);
+    }
+
+    const std::array<PreviewHostTransformFeedback, 1U> preview_feedback{
+        PreviewFeedback()};
+    std::array<AnimationEditorStatePlaybackRow, 1U> state_rows{};
+    state_rows[0U].state_id = 9006U;
+    state_rows[0U].event_marker_count = 55U;
+    state_rows[0U].active = false;
+    std::array<AnimationEditorEventMarkerRow, EVENT_COUNT> event_rows{};
+    event_rows[0U].event_id = 9007U;
+    event_rows[0U].payload_id = 9008U;
+    event_rows[0U].visible_on_timeline = false;
+    std::array<AnimationEditorTimelineClipRow, 1U> clip_rows{
+        AnimationEditorTimelineClipRow{9001U, 0.0F, 0U, 77U, 0U, false, false}};
+    std::array<AnimationEditorTimelineTrackRow, 1U> track_rows{};
+    track_rows[0U].track_id = 9002U;
+    track_rows[0U].keyframe_count = 88U;
+    track_rows[0U].active = false;
+    std::array<AnimationEditorTimelineKeyframeMarker, 2U> keyframe_markers{};
+    keyframe_markers[0U].track_id = 9003U;
+    keyframe_markers[0U].keyframe_index = 99U;
+    keyframe_markers[0U].valid = false;
+    std::array<AnimationEditorPreviewFeedbackRecord, 1U> preview_output{};
+    preview_output[0U].track_id = 9004U;
+    preview_output[0U].matched_preview_host_feedback = false;
+    std::array<AnimationEditorTimelineSelectionFeedbackRecord, 1U> selection_output{};
+    selection_output[0U].track_id = 9005U;
+    selection_output[0U].selected_track = false;
+    selection_output[0U].selected_keyframe = false;
+
+    AnimationEditorStateEventPlaybackWorkflowResult result{};
+    const AnimationEditorSurfaceStatus status =
+        BuildAnimationEditorStateEventPlaybackWorkflow(
+            StateEventWorkflowRequest(
+                states,
+                events,
+                clips,
+                tracks,
+                keyframes,
+                preview_feedback,
+                state_rows,
+                event_rows,
+                clip_rows,
+                track_rows,
+                keyframe_markers,
+                preview_output,
+                selection_output,
+                FrameContextAt(HALF_SECOND_NANOSECONDS),
+                AnimationEditorTimelineWorkflowCommand::Scrub,
+                0.0F,
+                0.5F,
+                TRACK_ID,
+                0U),
+            &result);
+    if (status != AnimationEditorSurfaceStatus::OutputCapacityExceeded) {
+        return Fail("animation editor state event overflow status mismatch");
+    }
+
+    if (result.blocked_layer != AnimationEditorSurfaceBlockedLayer::EventRecords) {
+        return Fail("animation editor state event overflow layer mismatch");
+    }
+
+    if (result.state_row_count != 1U || result.event_row_count != EVENT_COUNT) {
+        return Fail("animation editor state event overflow counts mismatch");
+    }
+
+    if (!SentinelStateUnchanged(state_rows[0U]) ||
+        !SentinelEventUnchanged(event_rows[0U]) ||
+        !SentinelClipUnchanged(clip_rows[0U]) ||
+        !SentinelTrackUnchanged(track_rows[0U]) ||
+        !SentinelKeyframeUnchanged(keyframe_markers[0U]) ||
+        !SentinelPreviewUnchanged(preview_output[0U]) ||
+        !SentinelSelectionUnchanged(selection_output[0U])) {
+        return Fail("animation editor state event overflow mutated output");
+    }
+
+    return 0;
+}
+
 int RunNamedTest(std::string_view name) {
     if (name == TEST_TIMELINE) {
         return AnimationEditorSurfaceBuildsClipTrackTimelineFromRuntimeRecords();
@@ -1356,6 +1519,10 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_NO_MUTATION) {
         return AnimationEditorSurfaceRejectsMissingPreviewFeedbackWithoutMutation();
+    }
+
+    if (name == TEST_SURFACE_TRACK_OVERFLOW) {
+        return AnimationEditorSurfaceTrackOverflowReportsRequiredCounts();
     }
 
     if (name == TEST_WORKFLOW_SCRUB) {
@@ -1396,6 +1563,10 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_STATE_EVENT_SMALL_OUTPUT) {
         return AnimationEditorStateEventWorkflowOutputCapacityFailureDoesNotMutateOutputs();
+    }
+
+    if (name == TEST_STATE_EVENT_OVERFLOW) {
+        return AnimationEditorStateEventWorkflowEventOverflowReportsRequiredCounts();
     }
 
     return Fail(ERROR_UNKNOWN_TEST_NAME);
