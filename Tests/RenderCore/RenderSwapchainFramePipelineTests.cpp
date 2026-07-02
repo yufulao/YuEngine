@@ -43,6 +43,7 @@ using yuengine::rhi::RhiDeviceDesc;
 using yuengine::rhi::RhiDeviceSnapshot;
 using yuengine::rhi::RhiDrawDesc;
 using yuengine::rhi::RhiDrawIndexedDesc;
+using yuengine::rhi::RhiExtent2D;
 using yuengine::rhi::RhiFenceHandle;
 using yuengine::rhi::RhiFormat;
 using yuengine::rhi::RhiIndexBufferView;
@@ -75,6 +76,8 @@ constexpr const char *TEST_RESIZES = "RenderCore_SwapchainFramePipeline_ResizesB
 constexpr const char *TEST_DUPLICATE = "RenderCore_SwapchainFramePipeline_RejectsDuplicateFrameIdWithoutMutation";
 constexpr const char *TEST_INVALID_SWAPCHAIN = "RenderCore_SwapchainFramePipeline_RejectsInvalidSwapchainWithoutMutation";
 constexpr const char *TEST_RHI_FAILURE = "RenderCore_SwapchainFramePipeline_TracksRhiFailureWithoutCapture";
+constexpr const char *TEST_CAPTURE_CAPACITY =
+    "RenderCore_SwapchainFramePipeline_PropagatesCaptureCapacityFailureContract";
 constexpr const char *TEST_CAPACITY = "RenderCore_SwapchainFramePipeline_RejectsCommandCapacityWithoutRhiMutation";
 constexpr const char *TEST_FRAME_RECORD_CAPACITY =
     "RenderCore_SwapchainFramePipeline_RejectsFrameRecordCapacityWithRequiredCount";
@@ -106,6 +109,75 @@ bool TextureHandlesMatch(RhiTextureHandle left, RhiTextureHandle right) {
 
 std::size_t CaptureByteCount(std::uint16_t width, std::uint16_t height) {
     return static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * RGBA8_BYTES_PER_PIXEL;
+}
+
+void ClearCaptureCapacityFailure(RhiDeviceSnapshot &snapshot) {
+    snapshot.last_failed_capture_byte_capacity = 0U;
+    snapshot.last_failed_capture_current_byte_count = 0U;
+    snapshot.last_failed_capture_required_byte_count = 0U;
+    snapshot.last_failed_capture_extent = RhiExtent2D{};
+    snapshot.last_failed_capture_target = RhiTextureHandle{};
+}
+
+RhiCaptureResult MakeCaptureCapacityFailureResult(
+    std::size_t capture_byte_capacity,
+    std::size_t required_byte_count,
+    RhiExtent2D extent,
+    RhiTextureHandle target) {
+    RhiCaptureResult result{};
+    result.status = RhiStatus::CapacityExceeded;
+    result.capture_byte_capacity = capture_byte_capacity;
+    result.current_byte_count = 0U;
+    result.required_byte_count = required_byte_count;
+    result.extent = extent;
+    result.target = target;
+    return result;
+}
+
+void RecordCaptureCapacityFailure(RhiDeviceSnapshot &snapshot, const RhiCaptureResult &result) {
+    snapshot.last_failed_capture_byte_capacity = result.capture_byte_capacity;
+    snapshot.last_failed_capture_current_byte_count = result.current_byte_count;
+    snapshot.last_failed_capture_required_byte_count = result.required_byte_count;
+    snapshot.last_failed_capture_extent = result.extent;
+    snapshot.last_failed_capture_target = result.target;
+}
+
+bool CaptureBufferUnchanged(const std::vector<std::uint8_t> &capture) {
+    for (std::uint8_t value : capture) {
+        if (value != SENTINEL_BYTE) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool CaptureFailureCleared(const RenderSwapchainFramePipelineSnapshot &snapshot) {
+    if (snapshot.last_failed_capture_byte_capacity != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_capture_current_byte_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_capture_required_byte_count != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_capture_extent.width != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_capture_extent.height != 0U) {
+        return false;
+    }
+
+    if (snapshot.last_failed_capture_target.slot != 0U) {
+        return false;
+    }
+
+    return snapshot.last_failed_capture_target.generation == 0U;
 }
 
 class FakeSwapchainRhiDevice final : public IRhiDevice {
@@ -265,6 +337,7 @@ public:
     RhiCaptureResult CapturePresentedTarget(std::span<std::uint8_t> destination) override {
         if (!presented_) {
             ++snapshot_.failed_operation_count;
+            ClearCaptureCapacityFailure(snapshot_);
             return RhiCaptureResult{RhiStatus::InvalidLifecycle, 0U};
         }
 
@@ -273,7 +346,13 @@ public:
             snapshot_.swapchain.extent.height);
         if (destination.size() < byte_count) {
             ++snapshot_.failed_operation_count;
-            return RhiCaptureResult{RhiStatus::CapacityExceeded, 0U};
+            const RhiCaptureResult result = MakeCaptureCapacityFailureResult(
+                destination.size(),
+                byte_count,
+                snapshot_.swapchain.extent,
+                swapchain_target_);
+            RecordCaptureCapacityFailure(snapshot_, result);
+            return result;
         }
 
         for (std::size_t index = 0U; index < byte_count; index += RGBA8_BYTES_PER_PIXEL) {
@@ -286,6 +365,7 @@ public:
         ++snapshot_.capture_count;
         snapshot_.last_capture_bytes_written = byte_count;
         snapshot_.last_capture_extent = snapshot_.swapchain.extent;
+        ClearCaptureCapacityFailure(snapshot_);
         return RhiCaptureResult{RhiStatus::Success, byte_count, snapshot_.swapchain.extent};
     }
 
@@ -627,6 +707,92 @@ int RenderCoreSwapchainFramePipelineTracksRhiFailureWithoutCapture() {
     return 0;
 }
 
+int RenderCoreSwapchainFramePipelinePropagatesCaptureCapacityFailureContract() {
+    const std::size_t required_byte_count = CaptureByteCount(DEFAULT_EXTENT, DEFAULT_EXTENT);
+    const RhiTextureHandle expected_target{1U, 1U};
+
+    FakeSwapchainRhiDevice device;
+    std::vector<std::uint8_t> capture(required_byte_count - 1U, SENTINEL_BYTE);
+    RenderSwapchainFramePipeline pipeline;
+
+    const auto result = pipeline.Execute(MakeRequest(device, capture));
+    if (result.status != RenderSwapchainFramePipelineStatus::RhiFailure) {
+        return Fail("swapchain frame pipeline did not expose capture capacity as rhi failure");
+    }
+
+    if (result.rhi_status != RhiStatus::CapacityExceeded) {
+        return Fail("swapchain frame pipeline did not expose capture capacity rhi status");
+    }
+
+    if (result.capture_byte_capacity != capture.size()) {
+        return Fail("capture capacity result missed caller owned byte capacity");
+    }
+
+    if (result.capture_current_byte_count != 0U) {
+        return Fail("capture capacity result reported unexpected current byte count");
+    }
+
+    if (result.capture_required_byte_count != required_byte_count) {
+        return Fail("capture capacity result missed required byte count");
+    }
+
+    if (result.capture_extent.width != DEFAULT_EXTENT ||
+        result.capture_extent.height != DEFAULT_EXTENT) {
+        return Fail("capture capacity result missed capture extent");
+    }
+
+    if (!TextureHandlesMatch(result.capture_target, expected_target)) {
+        return Fail("capture capacity result missed target identity");
+    }
+
+    if (!CaptureBufferUnchanged(capture)) {
+        return Fail("capture capacity failure wrote caller owned buffer");
+    }
+
+    const RenderSwapchainFramePipelineSnapshot capacity_snapshot = pipeline.Snapshot();
+    if (capacity_snapshot.rhi_failure_count != 1U ||
+        capacity_snapshot.completed_frame_count != 0U ||
+        capacity_snapshot.capture_count != 0U) {
+        return Fail("capture capacity snapshot counters were wrong");
+    }
+
+    if (capacity_snapshot.last_failed_capture_byte_capacity != capture.size()) {
+        return Fail("capture capacity snapshot missed caller owned byte capacity");
+    }
+
+    if (capacity_snapshot.last_failed_capture_current_byte_count != 0U) {
+        return Fail("capture capacity snapshot reported unexpected current byte count");
+    }
+
+    if (capacity_snapshot.last_failed_capture_required_byte_count != required_byte_count) {
+        return Fail("capture capacity snapshot missed required byte count");
+    }
+
+    if (capacity_snapshot.last_failed_capture_extent.width != DEFAULT_EXTENT ||
+        capacity_snapshot.last_failed_capture_extent.height != DEFAULT_EXTENT) {
+        return Fail("capture capacity snapshot missed capture extent");
+    }
+
+    if (!TextureHandlesMatch(capacity_snapshot.last_failed_capture_target, expected_target)) {
+        return Fail("capture capacity snapshot missed target identity");
+    }
+
+    std::vector<std::uint8_t> accepted_capture(required_byte_count, SENTINEL_BYTE);
+    const RenderSwapchainFramePipelineRequest accepted_request =
+        MakeRequest(device, accepted_capture, NEXT_FRAME_ID);
+    const auto accepted_result = pipeline.Execute(accepted_request);
+    if (accepted_result.status != RenderSwapchainFramePipelineStatus::Success) {
+        return Fail("capture capacity stale clear frame failed");
+    }
+
+    const RenderSwapchainFramePipelineSnapshot success_snapshot = pipeline.Snapshot();
+    if (!CaptureFailureCleared(success_snapshot)) {
+        return Fail("successful frame kept stale capture capacity identity");
+    }
+
+    return 0;
+}
+
 int RenderCoreSwapchainFramePipelineRejectsCommandCapacityWithoutRhiMutation() {
     constexpr std::size_t EXPECTED_REQUIRED_COMMAND_COUNT = 3U;
     constexpr std::size_t EXPECTED_FAILED_COMMAND_INDEX = 2U;
@@ -837,6 +1003,10 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_RHI_FAILURE) {
         return RenderCoreSwapchainFramePipelineTracksRhiFailureWithoutCapture();
+    }
+
+    if (name == TEST_CAPTURE_CAPACITY) {
+        return RenderCoreSwapchainFramePipelinePropagatesCaptureCapacityFailureContract();
     }
 
     if (name == TEST_CAPACITY) {

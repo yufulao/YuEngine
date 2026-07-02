@@ -31,7 +31,11 @@ struct RenderSwapchainFramePipelineResult final {
     std::size_t failed_frame_record_index = 0U;
     std::uint32_t failed_frame_id = 0U;
     std::size_t capture_bytes_written = 0U;
+    std::size_t capture_byte_capacity = 0U;
+    std::size_t capture_current_byte_count = 0U;
+    std::size_t capture_required_byte_count = 0U;
     yuengine::rhi::RhiExtent2D capture_extent{};
+    yuengine::rhi::RhiTextureHandle capture_target{};
     bool resize_requested = false;
     bool resized = false;
 };

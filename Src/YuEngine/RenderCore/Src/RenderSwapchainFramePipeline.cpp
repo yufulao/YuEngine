@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <span>
 
+#include "YuEngine/Rhi/RhiCaptureResult.h"
 #include "YuEngine/Rhi/RhiDeviceSnapshot.h"
 
 namespace yuengine::rendercore {
@@ -48,6 +49,42 @@ bool IsSwapchainValid(const yuengine::rhi::RhiSwapchainSnapshot &snapshot) {
     }
 
     return snapshot.color_target.generation != 0U;
+}
+
+void StoreCaptureResult(
+    RenderSwapchainFramePipelineResult &result,
+    const yuengine::rhi::RhiCaptureResult &capture_result) {
+    result.rhi_status = capture_result.status;
+    result.capture_bytes_written = capture_result.bytes_written;
+    result.capture_byte_capacity = capture_result.capture_byte_capacity;
+    result.capture_current_byte_count = capture_result.current_byte_count;
+    result.capture_required_byte_count = capture_result.required_byte_count;
+    result.capture_extent = capture_result.extent;
+    result.capture_target = capture_result.target;
+}
+
+void StoreLastCaptureFailure(
+    RenderSwapchainFramePipelineSnapshot &snapshot,
+    const RenderSwapchainFramePipelineResult &result) {
+    snapshot.last_failed_capture_byte_capacity = 0U;
+    snapshot.last_failed_capture_current_byte_count = 0U;
+    snapshot.last_failed_capture_required_byte_count = 0U;
+    snapshot.last_failed_capture_extent = yuengine::rhi::RhiExtent2D{};
+    snapshot.last_failed_capture_target = yuengine::rhi::RhiTextureHandle{};
+
+    if (result.rhi_status != yuengine::rhi::RhiStatus::CapacityExceeded) {
+        return;
+    }
+
+    if (result.capture_required_byte_count == 0U) {
+        return;
+    }
+
+    snapshot.last_failed_capture_byte_capacity = result.capture_byte_capacity;
+    snapshot.last_failed_capture_current_byte_count = result.capture_current_byte_count;
+    snapshot.last_failed_capture_required_byte_count = result.capture_required_byte_count;
+    snapshot.last_failed_capture_extent = result.capture_extent;
+    snapshot.last_failed_capture_target = result.capture_target;
 }
 }
 
@@ -164,9 +201,7 @@ RenderSwapchainFramePipelineResult RenderSwapchainFramePipeline::Execute(
 
     std::span<std::uint8_t> capture_span(request.capture_output.data(), request.capture_byte_budget);
     const yuengine::rhi::RhiCaptureResult capture_result = request.rhi_device->CapturePresentedTarget(capture_span);
-    result.rhi_status = capture_result.status;
-    result.capture_bytes_written = capture_result.bytes_written;
-    result.capture_extent = capture_result.extent;
+    StoreCaptureResult(result, capture_result);
     if (capture_result.status != yuengine::rhi::RhiStatus::Success) {
         result.status = RenderSwapchainFramePipelineStatus::RhiFailure;
         RecordRhiFailureResult(result);
@@ -307,6 +342,7 @@ void RenderSwapchainFramePipeline::StoreLastResult(
     snapshot_.last_failed_frame_id = result.failed_frame_id;
     snapshot_.last_capture_bytes_written = result.capture_bytes_written;
     snapshot_.last_capture_extent = result.capture_extent;
+    StoreLastCaptureFailure(snapshot_, result);
     snapshot_.last_status = result.status;
     snapshot_.last_rhi_status = result.rhi_status;
     snapshot_.last_swapchain_snapshot = result.swapchain_snapshot;
