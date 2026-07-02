@@ -7,6 +7,7 @@
 #include <span>
 
 #include "YuEngine/Asset/AssetHandle.h"
+#include "YuEngine/Asset/AssetStatus.h"
 #include "YuEngine/Resource/ResourceHandle.h"
 #include "YuEngine/ResourceBrowser/ResourceBrowserDiagnostics.h"
 #include "YuEngine/RuntimeAsset/RuntimeAssetData.h"
@@ -83,6 +84,15 @@ enum class ResourceBrowserImporterCommitWorkflowStatus {
     InvalidImportSettings,
     Rejected,
     RuntimeLoadFailed
+};
+
+enum class ResourceBrowserAssetManagementLoopStatus {
+    Success,
+    InvalidArgument,
+    OutputCapacityExceeded,
+    ImporterCommitFailed,
+    AssetQueryFailed,
+    DependencyQueryFailed
 };
 
 enum class ResourceBrowserImporterCommitRejectedLayer {
@@ -568,6 +578,77 @@ struct ResourceBrowserImporterCommitWorkflowResult final {
     }
 };
 
+struct ResourceBrowserManagedAssetRow final {
+    const char *source_path = nullptr;
+    yuengine::runtimeasset::RuntimeAssetFileKind runtime_kind =
+        yuengine::runtimeasset::RuntimeAssetFileKind::Unknown;
+    ResourceBrowserSurfaceDocumentKind preview_document_kind =
+        ResourceBrowserSurfaceDocumentKind::None;
+    ResourceBrowserSurfacePreviewState preview_state =
+        ResourceBrowserSurfacePreviewState::Unknown;
+    yuengine::resource::ResourceHandle resource;
+    yuengine::asset::AssetHandle asset;
+    yuengine::resource::ResourceTypeId resource_type;
+    yuengine::asset::AssetTypeId asset_type;
+    yuengine::asset::AssetStatus asset_query_status =
+        yuengine::asset::AssetStatus::InvalidArgument;
+    std::uint64_t stable_id = 0U;
+    std::uint64_t source_hash = 0U;
+    std::uint64_t payload_hash = 0U;
+    std::uint32_t row_index = 0U;
+    std::uint32_t scene_dependency_index = 0U;
+    bool selected = false;
+    bool listed = false;
+    bool source_path_associated = false;
+    bool resource_asset_associated = false;
+    bool asset_query_succeeded = false;
+    bool referenced_by_scene = false;
+};
+
+struct ResourceBrowserAssetManagementLoopRequest final {
+    ResourceBrowserImporterCommitWorkflowRequest importer_commit{};
+    std::span<ResourceBrowserManagedAssetRow> managed_asset_rows{};
+    std::span<yuengine::asset::AssetHandle> dependency_assets{};
+};
+
+struct ResourceBrowserAssetManagementLoopResult final {
+    ResourceBrowserAssetManagementLoopStatus status =
+        ResourceBrowserAssetManagementLoopStatus::InvalidArgument;
+    ResourceBrowserImporterCommitWorkflowStatus importer_commit_status =
+        ResourceBrowserImporterCommitWorkflowStatus::InvalidArgument;
+    yuengine::runtimeasset::RuntimeAssetDataStatus runtime_status =
+        yuengine::runtimeasset::RuntimeAssetDataStatus::InvalidArgument;
+    yuengine::asset::AssetStatus selected_asset_query_status =
+        yuengine::asset::AssetStatus::InvalidArgument;
+    yuengine::asset::AssetStatus dependency_query_status =
+        yuengine::asset::AssetStatus::InvalidArgument;
+    ResourceBrowserImporterCommitWorkflowResult importer_commit_result{};
+    std::uint32_t row_count = 0U;
+    std::uint32_t listed_asset_count = 0U;
+    std::uint32_t asset_query_success_count = 0U;
+    std::uint32_t source_path_association_count = 0U;
+    std::uint32_t resource_asset_association_count = 0U;
+    std::uint32_t scene_dependency_asset_count = 0U;
+    std::uint32_t mesh_count = 0U;
+    std::uint32_t material_count = 0U;
+    std::uint32_t texture_count = 0U;
+    std::uint32_t shader_count = 0U;
+    std::uint32_t animation_count = 0U;
+    std::uint32_t camera_count = 0U;
+    bool committed_resource_registry = false;
+    bool committed_asset_manager = false;
+    bool imported_assets = false;
+    bool listed_assets = false;
+    bool queried_selected_asset = false;
+    bool associated_source_paths = false;
+    bool associated_resource_assets = false;
+    bool queried_scene_dependencies = false;
+
+    bool Succeeded() const {
+        return status == ResourceBrowserAssetManagementLoopStatus::Success;
+    }
+};
+
 ResourceBrowserSurfaceStatus BuildResourceBrowserNativeSurface(
     const ResourceBrowserSurfaceRequest &request,
     ResourceBrowserSurfaceResult *out_result);
@@ -587,5 +668,9 @@ ResourceBrowserDepthWorkflowStatus BuildResourceBrowserDepthWorkflowSurface(
 ResourceBrowserImporterCommitWorkflowStatus BuildResourceBrowserImporterCommitWorkflow(
     const ResourceBrowserImporterCommitWorkflowRequest &request,
     ResourceBrowserImporterCommitWorkflowResult *out_result);
+
+ResourceBrowserAssetManagementLoopStatus BuildResourceBrowserAssetManagementLoop(
+    const ResourceBrowserAssetManagementLoopRequest &request,
+    ResourceBrowserAssetManagementLoopResult *out_result);
 
 }

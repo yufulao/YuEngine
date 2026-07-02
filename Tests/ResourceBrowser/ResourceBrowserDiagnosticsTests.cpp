@@ -21,8 +21,10 @@
 #include "YuEngine/RuntimeAsset/RuntimeAssetData.h"
 
 namespace {
+using yuengine::asset::AssetHandle;
 using yuengine::asset::AssetManager;
 using yuengine::asset::AssetSnapshot;
+using yuengine::asset::AssetStatus;
 using yuengine::asset::AssetTypeId;
 using yuengine::externalauthoring::BuildExternalAuthoringRuntimeAssetImportBridge;
 using yuengine::externalauthoring::ExternalAuthoringBridgeBlockedLayer;
@@ -61,8 +63,12 @@ using yuengine::resourcebrowser::ResourceBrowserSurfaceStatus;
 using yuengine::resourcebrowser::BuildResourceBrowserVisibleWorkflowSurface;
 using yuengine::resourcebrowser::BuildResourceBrowserDepthWorkflowSurface;
 using yuengine::resourcebrowser::BuildResourceBrowserImporterCommitWorkflow;
+using yuengine::resourcebrowser::BuildResourceBrowserAssetManagementLoop;
 using yuengine::resourcebrowser::ResourceBrowserAssetManagerGap;
 using yuengine::resourcebrowser::ResourceBrowserAssetManagerGapRow;
+using yuengine::resourcebrowser::ResourceBrowserAssetManagementLoopRequest;
+using yuengine::resourcebrowser::ResourceBrowserAssetManagementLoopResult;
+using yuengine::resourcebrowser::ResourceBrowserAssetManagementLoopStatus;
 using yuengine::resourcebrowser::ResourceBrowserDepthCatalogRow;
 using yuengine::resourcebrowser::ResourceBrowserDepthSelectionLedgerRecord;
 using yuengine::resourcebrowser::ResourceBrowserDepthWorkflowRequest;
@@ -76,6 +82,7 @@ using yuengine::resourcebrowser::ResourceBrowserImporterCommitWorkflowResult;
 using yuengine::resourcebrowser::ResourceBrowserImporterCommitWorkflowStatus;
 using yuengine::resourcebrowser::ResourceBrowserImporterBoundaryRow;
 using yuengine::resourcebrowser::ResourceBrowserImporterReadiness;
+using yuengine::resourcebrowser::ResourceBrowserManagedAssetRow;
 using yuengine::resourcebrowser::ResourceBrowserSourceBoundary;
 using yuengine::resourcebrowser::ResourceBrowserVisibleDiagnosticRow;
 using yuengine::resourcebrowser::ResourceBrowserVisibleImportSettingRow;
@@ -167,6 +174,14 @@ struct ImporterCommitBuffers final {
     std::array<ResourceBrowserImporterCommitSelectionLedgerRecord, 1U> ledger{};
 };
 
+struct AssetManagementLoopBuffers final {
+    ImporterCommitBuffers importer{};
+    std::array<ResourceBrowserManagedAssetRow, yuengine::runtimeasset::RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT>
+        managed_rows{};
+    std::array<AssetHandle, yuengine::runtimeasset::RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT>
+        dependency_assets{};
+};
+
 using TestFunction = int (*)();
 
 constexpr const char *TEST_ENTRIES_FROM_RUNTIME_PATH =
@@ -213,6 +228,10 @@ constexpr const char *TEST_IMPORTER_COMMIT_EXTERNAL_READY =
     "ResourceBrowserImporterCommitWorkflow_CommitsExternalManifestReadyRuntimeAssetGraph";
 constexpr const char *TEST_IMPORTER_COMMIT_BRIDGE_ROWS =
     "ResourceBrowserImporterCommitWorkflow_CommitsExternalAuthoringBridgeRowsThroughRuntimeAssetGraph";
+constexpr const char *TEST_ASSET_MANAGEMENT_LOOP =
+    "ResourceBrowserAssetManagementLoop_ImportsListsQueriesAndLinksAssets";
+constexpr const char *TEST_ASSET_MANAGEMENT_LOOP_CAPACITY =
+    "ResourceBrowserAssetManagementLoop_RejectsSmallManagedOutputWithoutMutation";
 constexpr const char *TEST_IMPORTER_COMMIT_ORIGINAL_PACKAGE =
     "ResourceBrowserImporterCommitWorkflow_BlocksOriginalPackageWithoutMutation";
 constexpr const char *TEST_IMPORTER_COMMIT_UNSUPPORTED_EXTERNAL =
@@ -1610,6 +1629,94 @@ ResourceBrowserImporterCommitWorkflowResult BuildImporterCommitWorkflow(
     return result;
 }
 
+ResourceBrowserAssetManagementLoopResult BuildAssetManagementLoop(
+    ImportCookFixture &fixture,
+    ResourceRegistry &registry,
+    AssetManager &manager,
+    std::uint32_t selected_index,
+    const ResourceBrowserImportSettings &import_settings,
+    std::span<const ResourceBrowserExternalAuthoringSourceRow> external_rows,
+    AssetManagementLoopBuffers *buffers) {
+    ResourceBrowserAssetManagementLoopResult empty_result{};
+    if (buffers == nullptr) {
+        return empty_result;
+    }
+
+    ResourceBrowserImporterCommitWorkflowRequest commit_request{};
+    commit_request.mount_table = &fixture.table;
+    commit_request.mount = MountId(MOUNT_ID);
+    commit_request.import_cook_result = &fixture.command;
+    commit_request.scene = fixture.command.fixture.cooked_scene;
+    commit_request.files =
+        std::span<const RuntimeAssetFileDesc>(fixture.cooked_files.data(), fixture.cooked_files.size());
+    commit_request.external_source_rows = external_rows;
+    commit_request.resource_registry = &registry;
+    commit_request.asset_manager = &manager;
+    commit_request.import_settings = import_settings;
+    commit_request.selected_index = selected_index;
+    commit_request.validate_import_settings = true;
+    commit_request.entries =
+        std::span<ResourceBrowserResourceEntry>(
+            buffers->importer.entries.data(),
+            buffers->importer.entries.size());
+    commit_request.diagnostics =
+        std::span<ResourceBrowserDiagnosticRecord>(
+            buffers->importer.diagnostics.data(),
+            buffers->importer.diagnostics.size());
+    commit_request.loaded_files =
+        std::span<RuntimeAssetLoadedFile>(
+            buffers->importer.loaded_files.data(),
+            buffers->importer.loaded_files.size());
+    commit_request.scene_resource_refs =
+        std::span<RuntimeAssetSceneResourceRef>(
+            buffers->importer.scene_resource_refs.data(),
+            buffers->importer.scene_resource_refs.size());
+    commit_request.scene_cameras =
+        std::span<RuntimeAssetSceneCameraRecord>(
+            buffers->importer.scene_cameras.data(),
+            buffers->importer.scene_cameras.size());
+    commit_request.scene_entities =
+        std::span<RuntimeAssetSceneEntityRecord>(
+            buffers->importer.scene_entities.data(),
+            buffers->importer.scene_entities.size());
+    commit_request.scene_transforms =
+        std::span<RuntimeAssetSceneTransformOutputRecord>(
+            buffers->importer.scene_transforms.data(),
+            buffers->importer.scene_transforms.size());
+    commit_request.scene_output = &buffers->importer.scene_output;
+    commit_request.catalog_rows =
+        std::span<ResourceBrowserDepthCatalogRow>(
+            buffers->importer.catalog_rows.data(),
+            buffers->importer.catalog_rows.size());
+    commit_request.importer_rows =
+        std::span<ResourceBrowserImporterBoundaryRow>(
+            buffers->importer.importer_rows.data(),
+            buffers->importer.importer_rows.size());
+    commit_request.asset_gap_rows =
+        std::span<ResourceBrowserAssetManagerGapRow>(
+            buffers->importer.asset_gap_rows.data(),
+            buffers->importer.asset_gap_rows.size());
+    commit_request.selection_ledger =
+        std::span<ResourceBrowserImporterCommitSelectionLedgerRecord>(
+            buffers->importer.ledger.data(),
+            buffers->importer.ledger.size());
+
+    ResourceBrowserAssetManagementLoopRequest request{};
+    request.importer_commit = commit_request;
+    request.managed_asset_rows =
+        std::span<ResourceBrowserManagedAssetRow>(
+            buffers->managed_rows.data(),
+            buffers->managed_rows.size());
+    request.dependency_assets =
+        std::span<AssetHandle>(
+            buffers->dependency_assets.data(),
+            buffers->dependency_assets.size());
+
+    ResourceBrowserAssetManagementLoopResult result{};
+    BuildResourceBrowserAssetManagementLoop(request, &result);
+    return result;
+}
+
 bool BuildCanonicalResourceBrowserInputs(
     std::string_view test_name,
     MountTable *table,
@@ -2501,6 +2608,212 @@ int ResourceBrowserImporterCommitWorkflowCommitsExternalAuthoringBridgeRowsThrou
     return 0;
 }
 
+int ResourceBrowserAssetManagementLoopImportsListsQueriesAndLinksAssets() {
+    ImportCookFixture fixture{};
+    if (!ExecuteImportCookFixture("AssetManagementLoopReady", &fixture)) {
+        return Fail("failed to execute asset management import cook fixture");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    constexpr std::uint32_t SELECTED_MATERIAL = 3U;
+    ResourceBrowserExternalAuthoringSourceRow external =
+        ExternalSourceRowFor(fixture.cooked_files[SELECTED_MATERIAL], SELECTED_MATERIAL);
+    std::array<ResourceBrowserExternalAuthoringSourceRow, 1U> external_rows{external};
+    ResourceBrowserImportSettings import_settings{};
+    import_settings.source_path = external.source_path;
+    import_settings.target_kind = external.target_kind;
+    import_settings.resource_type = fixture.cooked_files[SELECTED_MATERIAL].resource_type;
+    import_settings.asset_type = fixture.cooked_files[SELECTED_MATERIAL].asset_type;
+    import_settings.stable_id = external.stable_id;
+    import_settings.importer_version = 1U;
+    import_settings.expected_schema_version = 1U;
+
+    AssetManagementLoopBuffers buffers{};
+    const ResourceBrowserAssetManagementLoopResult result =
+        BuildAssetManagementLoop(
+            fixture,
+            registry,
+            manager,
+            SELECTED_MATERIAL,
+            import_settings,
+            std::span<const ResourceBrowserExternalAuthoringSourceRow>(
+                external_rows.data(),
+                external_rows.size()),
+            &buffers);
+    if (!result.Succeeded() ||
+        result.importer_commit_status != ResourceBrowserImporterCommitWorkflowStatus::Success ||
+        result.runtime_status != RuntimeAssetDataStatus::Success ||
+        result.selected_asset_query_status != AssetStatus::Success ||
+        result.dependency_query_status != AssetStatus::Success ||
+        result.row_count != FIXTURE_FILE_COUNT ||
+        result.listed_asset_count != FIXTURE_FILE_COUNT ||
+        result.asset_query_success_count != FIXTURE_FILE_COUNT ||
+        result.source_path_association_count != FIXTURE_FILE_COUNT ||
+        result.resource_asset_association_count != FIXTURE_FILE_COUNT ||
+        result.scene_dependency_asset_count != FIXTURE_FILE_COUNT ||
+        result.mesh_count < 1U ||
+        result.material_count < 1U ||
+        result.texture_count < 1U ||
+        !result.imported_assets ||
+        !result.listed_assets ||
+        !result.queried_selected_asset ||
+        !result.associated_source_paths ||
+        !result.associated_resource_assets ||
+        !result.queried_scene_dependencies) {
+        return Fail("asset management loop did not import list query and link assets");
+    }
+
+    const ResourceBrowserManagedAssetRow &selected = buffers.managed_rows[SELECTED_MATERIAL];
+    if (!selected.selected ||
+        selected.runtime_kind != RuntimeAssetFileKind::Material ||
+        selected.preview_document_kind != ResourceBrowserSurfaceDocumentKind::Resource ||
+        selected.asset_query_status != AssetStatus::Success ||
+        !selected.listed ||
+        !selected.source_path_associated ||
+        !selected.resource_asset_associated ||
+        !selected.asset_query_succeeded ||
+        !selected.referenced_by_scene ||
+        !AssetHandleSame(selected.asset, buffers.importer.loaded_files[SELECTED_MATERIAL].asset)) {
+        return Fail("asset management selected material row mismatch");
+    }
+
+    bool found_material_dependency = false;
+    bool found_texture_dependency = false;
+    bool found_mesh_dependency = false;
+    for (std::uint32_t dependency_index = 0U;
+         dependency_index < result.scene_dependency_asset_count;
+         ++dependency_index) {
+        const AssetHandle dependency = buffers.dependency_assets[dependency_index];
+        if (AssetHandleSame(dependency, buffers.managed_rows[SELECTED_MATERIAL].asset)) {
+            found_material_dependency = true;
+        }
+
+        if (AssetHandleSame(dependency, buffers.managed_rows[4U].asset)) {
+            found_texture_dependency = true;
+        }
+
+        if (AssetHandleSame(dependency, buffers.managed_rows[0U].asset)) {
+            found_mesh_dependency = true;
+        }
+    }
+
+    if (!found_material_dependency ||
+        !found_texture_dependency ||
+        !found_mesh_dependency) {
+        return Fail("asset management loop did not expose scene dependency assets");
+    }
+
+    return 0;
+}
+
+int ResourceBrowserAssetManagementLoopRejectsSmallManagedOutputWithoutMutation() {
+    ImportCookFixture fixture{};
+    if (!ExecuteImportCookFixture("AssetManagementLoopSmallOutput", &fixture)) {
+        return Fail("failed to execute small output import cook fixture");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    const ResourceSnapshot resource_before = registry.Snapshot();
+    const AssetSnapshot asset_before = manager.Snapshot();
+    constexpr std::uint32_t SELECTED_TEXTURE = 4U;
+    ResourceBrowserExternalAuthoringSourceRow external =
+        ExternalSourceRowFor(fixture.cooked_files[SELECTED_TEXTURE], SELECTED_TEXTURE);
+    std::array<ResourceBrowserExternalAuthoringSourceRow, 1U> external_rows{external};
+    ResourceBrowserImportSettings import_settings{};
+    import_settings.source_path = external.source_path;
+    import_settings.target_kind = external.target_kind;
+    import_settings.resource_type = fixture.cooked_files[SELECTED_TEXTURE].resource_type;
+    import_settings.asset_type = fixture.cooked_files[SELECTED_TEXTURE].asset_type;
+    import_settings.stable_id = external.stable_id;
+    import_settings.importer_version = 1U;
+    import_settings.expected_schema_version = 1U;
+
+    ImporterCommitBuffers importer{};
+    ResourceBrowserImporterCommitWorkflowRequest commit_request{};
+    commit_request.mount_table = &fixture.table;
+    commit_request.mount = MountId(MOUNT_ID);
+    commit_request.import_cook_result = &fixture.command;
+    commit_request.scene = fixture.command.fixture.cooked_scene;
+    commit_request.files =
+        std::span<const RuntimeAssetFileDesc>(fixture.cooked_files.data(), fixture.cooked_files.size());
+    commit_request.external_source_rows =
+        std::span<const ResourceBrowserExternalAuthoringSourceRow>(
+            external_rows.data(),
+            external_rows.size());
+    commit_request.resource_registry = &registry;
+    commit_request.asset_manager = &manager;
+    commit_request.import_settings = import_settings;
+    commit_request.selected_index = SELECTED_TEXTURE;
+    commit_request.validate_import_settings = true;
+    commit_request.entries =
+        std::span<ResourceBrowserResourceEntry>(importer.entries.data(), importer.entries.size());
+    commit_request.diagnostics =
+        std::span<ResourceBrowserDiagnosticRecord>(
+            importer.diagnostics.data(),
+            importer.diagnostics.size());
+    commit_request.loaded_files =
+        std::span<RuntimeAssetLoadedFile>(importer.loaded_files.data(), importer.loaded_files.size());
+    commit_request.scene_resource_refs =
+        std::span<RuntimeAssetSceneResourceRef>(
+            importer.scene_resource_refs.data(),
+            importer.scene_resource_refs.size());
+    commit_request.scene_cameras =
+        std::span<RuntimeAssetSceneCameraRecord>(
+            importer.scene_cameras.data(),
+            importer.scene_cameras.size());
+    commit_request.scene_entities =
+        std::span<RuntimeAssetSceneEntityRecord>(
+            importer.scene_entities.data(),
+            importer.scene_entities.size());
+    commit_request.scene_transforms =
+        std::span<RuntimeAssetSceneTransformOutputRecord>(
+            importer.scene_transforms.data(),
+            importer.scene_transforms.size());
+    commit_request.scene_output = &importer.scene_output;
+    commit_request.catalog_rows =
+        std::span<ResourceBrowserDepthCatalogRow>(
+            importer.catalog_rows.data(),
+            importer.catalog_rows.size());
+    commit_request.importer_rows =
+        std::span<ResourceBrowserImporterBoundaryRow>(
+            importer.importer_rows.data(),
+            importer.importer_rows.size());
+    commit_request.asset_gap_rows =
+        std::span<ResourceBrowserAssetManagerGapRow>(
+            importer.asset_gap_rows.data(),
+            importer.asset_gap_rows.size());
+    commit_request.selection_ledger =
+        std::span<ResourceBrowserImporterCommitSelectionLedgerRecord>(
+            importer.ledger.data(),
+            importer.ledger.size());
+
+    std::array<ResourceBrowserManagedAssetRow, 1U> small_rows{};
+    std::array<AssetHandle, FIXTURE_FILE_COUNT> dependency_assets{};
+    ResourceBrowserAssetManagementLoopRequest request{};
+    request.importer_commit = commit_request;
+    request.managed_asset_rows =
+        std::span<ResourceBrowserManagedAssetRow>(small_rows.data(), small_rows.size());
+    request.dependency_assets =
+        std::span<AssetHandle>(dependency_assets.data(), dependency_assets.size());
+
+    ResourceBrowserAssetManagementLoopResult result{};
+    BuildResourceBrowserAssetManagementLoop(request, &result);
+    if (result.status != ResourceBrowserAssetManagementLoopStatus::OutputCapacityExceeded ||
+        result.importer_commit_status !=
+            ResourceBrowserImporterCommitWorkflowStatus::OutputCapacityExceeded ||
+        result.runtime_status != RuntimeAssetDataStatus::CapacityExceeded ||
+        result.row_count != 0U ||
+        result.listed_asset_count != 0U ||
+        !ResourceSnapshotSame(resource_before, registry.Snapshot()) ||
+        !AssetSnapshotSame(asset_before, manager.Snapshot())) {
+        return Fail("asset management loop small output mutated runtime state");
+    }
+
+    return 0;
+}
+
 int ResourceBrowserImporterCommitWorkflowBlocksOriginalPackageWithoutMutation() {
     ImportCookFixture fixture{};
     if (!ExecuteImportCookFixture("ImporterCommitOriginalPackage", &fixture)) {
@@ -2827,6 +3140,10 @@ const std::unordered_map<std::string_view, TestFunction> &Tests() {
          ResourceBrowserImporterCommitWorkflowCommitsExternalManifestReadyRuntimeAssetGraph},
         {TEST_IMPORTER_COMMIT_BRIDGE_ROWS,
          ResourceBrowserImporterCommitWorkflowCommitsExternalAuthoringBridgeRowsThroughRuntimeAssetGraph},
+        {TEST_ASSET_MANAGEMENT_LOOP,
+         ResourceBrowserAssetManagementLoopImportsListsQueriesAndLinksAssets},
+        {TEST_ASSET_MANAGEMENT_LOOP_CAPACITY,
+         ResourceBrowserAssetManagementLoopRejectsSmallManagedOutputWithoutMutation},
         {TEST_IMPORTER_COMMIT_ORIGINAL_PACKAGE,
          ResourceBrowserImporterCommitWorkflowBlocksOriginalPackageWithoutMutation},
         {TEST_IMPORTER_COMMIT_UNSUPPORTED_EXTERNAL,

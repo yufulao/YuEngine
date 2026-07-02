@@ -5,8 +5,12 @@
 
 #include <cstdint>
 
+#include "YuEngine/Asset/AssetManager.h"
+#include "YuEngine/Asset/AssetRecord.h"
+
 namespace yuengine::resourcebrowser {
 namespace {
+using AssetStatus = yuengine::asset::AssetStatus;
 using RuntimeAssetDataStatus = yuengine::runtimeasset::RuntimeAssetDataStatus;
 using RuntimeAssetFileKind = yuengine::runtimeasset::RuntimeAssetFileKind;
 
@@ -1143,6 +1147,227 @@ ResourceBrowserImporterCommitRejectedLayer RejectedLayerForSelectedPreflight(
     return ResourceBrowserImporterCommitRejectedLayer::None;
 }
 
+bool IsAssetHandleSame(
+    yuengine::asset::AssetHandle left,
+    yuengine::asset::AssetHandle right) {
+    return left.slot == right.slot && left.generation == right.generation;
+}
+
+bool IsValidAssetManagementLoopRequest(
+    const ResourceBrowserAssetManagementLoopRequest &request) {
+    if (!IsValidImporterCommitWorkflowRequest(request.importer_commit)) {
+        return false;
+    }
+
+    if (!request.managed_asset_rows.empty() &&
+        request.managed_asset_rows.data() == nullptr) {
+        return false;
+    }
+
+    if (!request.dependency_assets.empty() &&
+        request.dependency_assets.data() == nullptr) {
+        return false;
+    }
+
+    return true;
+}
+
+bool HasAssetManagementLoopOutputCapacity(
+    const ResourceBrowserAssetManagementLoopRequest &request) {
+    if (!HasImporterCommitOutputCapacity(request.importer_commit)) {
+        return false;
+    }
+
+    if (request.managed_asset_rows.size() < request.importer_commit.files.size()) {
+        return false;
+    }
+
+    if (request.dependency_assets.size() < request.importer_commit.files.size()) {
+        return false;
+    }
+
+    return true;
+}
+
+void CountManagedAssetKind(
+    RuntimeAssetFileKind kind,
+    ResourceBrowserAssetManagementLoopResult *result) {
+    if (result == nullptr) {
+        return;
+    }
+
+    switch (kind) {
+        case RuntimeAssetFileKind::Mesh:
+            ++result->mesh_count;
+            return;
+        case RuntimeAssetFileKind::Material:
+            ++result->material_count;
+            return;
+        case RuntimeAssetFileKind::Texture:
+            ++result->texture_count;
+            return;
+        case RuntimeAssetFileKind::Shader:
+            ++result->shader_count;
+            return;
+        case RuntimeAssetFileKind::Animation:
+            ++result->animation_count;
+            return;
+        case RuntimeAssetFileKind::Camera:
+            ++result->camera_count;
+            return;
+        case RuntimeAssetFileKind::Scene:
+        case RuntimeAssetFileKind::Unknown:
+            break;
+    }
+}
+
+ResourceBrowserManagedAssetRow BuildManagedAssetRow(
+    const ResourceBrowserResourceEntry &entry,
+    const ResourceBrowserSurfaceRow &surface_row,
+    const yuengine::runtimeasset::RuntimeAssetLoadedFile &loaded_file,
+    AssetStatus asset_query_status,
+    std::uint32_t row_index,
+    std::uint32_t selected_index) {
+    ResourceBrowserManagedAssetRow row{};
+    row.source_path = surface_row.locator_path;
+    row.runtime_kind = loaded_file.kind;
+    row.preview_document_kind = surface_row.preview_document_kind;
+    row.preview_state = surface_row.preview_state;
+    row.resource = loaded_file.resource;
+    row.asset = loaded_file.asset;
+    row.resource_type = loaded_file.resource_type;
+    row.asset_type = loaded_file.asset_type;
+    row.asset_query_status = asset_query_status;
+    row.stable_id = loaded_file.stable_id;
+    row.source_hash = loaded_file.source_hash;
+    row.payload_hash = loaded_file.payload_hash;
+    row.row_index = row_index;
+    row.selected = row_index == selected_index;
+    row.listed = true;
+    row.source_path_associated = IsStringPresent(surface_row.locator_path);
+    row.resource_asset_associated =
+        entry.from_resource_registry &&
+        entry.from_asset_record &&
+        loaded_file.resource.IsValid() &&
+        loaded_file.asset.IsValid();
+    row.asset_query_succeeded = asset_query_status == AssetStatus::Success;
+    return row;
+}
+
+ResourceBrowserAssetManagementLoopStatus EmitManagedAssetRows(
+    const ResourceBrowserAssetManagementLoopRequest &request,
+    const ResourceBrowserImporterCommitWorkflowResult &commit_result,
+    ResourceBrowserAssetManagementLoopResult *result) {
+    if (result == nullptr) {
+        return ResourceBrowserAssetManagementLoopStatus::InvalidArgument;
+    }
+
+    ResourceBrowserSurfaceRequest surface_request{};
+    surface_request.entries =
+        std::span<const ResourceBrowserResourceEntry>(
+            request.importer_commit.entries.data(),
+            request.importer_commit.files.size());
+    surface_request.diagnostics =
+        std::span<const ResourceBrowserDiagnosticRecord>(
+            request.importer_commit.diagnostics.data(),
+            commit_result.diagnostic_count);
+
+    for (std::uint32_t index = 0U; index < request.importer_commit.files.size(); ++index) {
+        const ResourceBrowserResourceEntry &entry = request.importer_commit.entries[index];
+        yuengine::asset::AssetRecord asset_record{};
+        const AssetStatus asset_status =
+            request.importer_commit.asset_manager->QueryAsset(entry.asset, &asset_record);
+        const ResourceBrowserSurfaceRow surface_row = BuildRow(surface_request, entry, index);
+        request.managed_asset_rows[index] =
+            BuildManagedAssetRow(
+                entry,
+                surface_row,
+                request.importer_commit.loaded_files[index],
+                asset_status,
+                index,
+                request.importer_commit.selected_index);
+
+        ++result->row_count;
+        ++result->listed_asset_count;
+        CountManagedAssetKind(request.managed_asset_rows[index].runtime_kind, result);
+        if (request.managed_asset_rows[index].source_path_associated) {
+            ++result->source_path_association_count;
+        }
+
+        if (request.managed_asset_rows[index].resource_asset_associated) {
+            ++result->resource_asset_association_count;
+        }
+
+        if (asset_status == AssetStatus::Success) {
+            ++result->asset_query_success_count;
+        }
+
+        if (index == request.importer_commit.selected_index) {
+            result->selected_asset_query_status = asset_status;
+            result->queried_selected_asset = asset_status == AssetStatus::Success;
+        }
+
+        if (asset_status != AssetStatus::Success) {
+            return ResourceBrowserAssetManagementLoopStatus::AssetQueryFailed;
+        }
+    }
+
+    return ResourceBrowserAssetManagementLoopStatus::Success;
+}
+
+void MarkManagedAssetDependencyRows(
+    const ResourceBrowserAssetManagementLoopRequest &request,
+    std::uint32_t dependency_asset_count,
+    ResourceBrowserAssetManagementLoopResult *result) {
+    if (result == nullptr) {
+        return;
+    }
+
+    for (std::uint32_t dependency_index = 0U;
+         dependency_index < dependency_asset_count;
+         ++dependency_index) {
+        const yuengine::asset::AssetHandle dependency =
+            request.dependency_assets[dependency_index];
+        for (std::uint32_t row_index = 0U;
+             row_index < request.importer_commit.files.size();
+             ++row_index) {
+            ResourceBrowserManagedAssetRow &row = request.managed_asset_rows[row_index];
+            if (!IsAssetHandleSame(row.asset, dependency)) {
+                continue;
+            }
+
+            row.referenced_by_scene = true;
+            row.scene_dependency_index = dependency_index;
+            ++result->scene_dependency_asset_count;
+        }
+    }
+}
+
+ResourceBrowserAssetManagementLoopStatus QueryManagedAssetDependencies(
+    const ResourceBrowserAssetManagementLoopRequest &request,
+    const ResourceBrowserImporterCommitWorkflowResult &commit_result,
+    ResourceBrowserAssetManagementLoopResult *result) {
+    if (result == nullptr) {
+        return ResourceBrowserAssetManagementLoopStatus::InvalidArgument;
+    }
+
+    std::uint32_t dependency_asset_count = 0U;
+    const AssetStatus dependency_status =
+        request.importer_commit.asset_manager->TraverseDependencies(
+            commit_result.graph_load_result.scene.asset,
+            request.dependency_assets.data(),
+            static_cast<std::uint32_t>(request.dependency_assets.size()),
+            &dependency_asset_count);
+    result->dependency_query_status = dependency_status;
+    if (dependency_status != AssetStatus::Success) {
+        return ResourceBrowserAssetManagementLoopStatus::DependencyQueryFailed;
+    }
+
+    result->queried_scene_dependencies = true;
+    MarkManagedAssetDependencyRows(request, dependency_asset_count, result);
+    return ResourceBrowserAssetManagementLoopStatus::Success;
+}
+
 }
 
 ResourceBrowserSurfaceStatus BuildResourceBrowserNativeSurface(
@@ -1658,6 +1883,75 @@ ResourceBrowserImporterCommitWorkflowStatus BuildResourceBrowserImporterCommitWo
         result.status,
         result.rejected_layer,
         &result);
+    *out_result = result;
+    return result.status;
+}
+
+ResourceBrowserAssetManagementLoopStatus BuildResourceBrowserAssetManagementLoop(
+    const ResourceBrowserAssetManagementLoopRequest &request,
+    ResourceBrowserAssetManagementLoopResult *out_result) {
+    if (out_result == nullptr) {
+        return ResourceBrowserAssetManagementLoopStatus::InvalidArgument;
+    }
+
+    ResourceBrowserAssetManagementLoopResult result{};
+    if (!IsValidAssetManagementLoopRequest(request)) {
+        *out_result = result;
+        return result.status;
+    }
+
+    if (request.importer_commit.files.empty() ||
+        request.importer_commit.selected_index >= request.importer_commit.files.size()) {
+        result.status = ResourceBrowserAssetManagementLoopStatus::InvalidArgument;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (!HasAssetManagementLoopOutputCapacity(request)) {
+        result.status = ResourceBrowserAssetManagementLoopStatus::OutputCapacityExceeded;
+        result.importer_commit_status =
+            ResourceBrowserImporterCommitWorkflowStatus::OutputCapacityExceeded;
+        result.runtime_status = RuntimeAssetDataStatus::CapacityExceeded;
+        *out_result = result;
+        return result.status;
+    }
+
+    ResourceBrowserImporterCommitWorkflowResult commit_result{};
+    BuildResourceBrowserImporterCommitWorkflow(request.importer_commit, &commit_result);
+    result.importer_commit_result = commit_result;
+    result.importer_commit_status = commit_result.status;
+    result.runtime_status = commit_result.runtime_status;
+    result.committed_resource_registry = commit_result.committed_resource_registry;
+    result.committed_asset_manager = commit_result.committed_asset_manager;
+    result.imported_assets =
+        commit_result.committed_resource_registry && commit_result.committed_asset_manager;
+    if (commit_result.status != ResourceBrowserImporterCommitWorkflowStatus::Success) {
+        result.status = ResourceBrowserAssetManagementLoopStatus::ImporterCommitFailed;
+        *out_result = result;
+        return result.status;
+    }
+
+    ResourceBrowserAssetManagementLoopStatus row_status =
+        EmitManagedAssetRows(request, commit_result, &result);
+    if (row_status != ResourceBrowserAssetManagementLoopStatus::Success) {
+        result.status = row_status;
+        *out_result = result;
+        return result.status;
+    }
+
+    const ResourceBrowserAssetManagementLoopStatus dependency_status =
+        QueryManagedAssetDependencies(request, commit_result, &result);
+    if (dependency_status != ResourceBrowserAssetManagementLoopStatus::Success) {
+        result.status = dependency_status;
+        *out_result = result;
+        return result.status;
+    }
+
+    result.status = ResourceBrowserAssetManagementLoopStatus::Success;
+    result.listed_assets = result.listed_asset_count == result.row_count;
+    result.associated_source_paths = result.source_path_association_count == result.row_count;
+    result.associated_resource_assets =
+        result.resource_asset_association_count == result.row_count;
     *out_result = result;
     return result.status;
 }
