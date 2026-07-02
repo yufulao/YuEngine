@@ -27,9 +27,11 @@ struct InputCommandMapperSnapshot final {
     std::size_t last_failed_binding_capacity = 0U;
     std::size_t last_failed_binding_count = 0U;
     std::size_t last_failed_command_output_capacity = 0U;
+    std::size_t last_failed_action_snapshot_output_capacity = 0U;
     std::size_t last_required_context_count = 0U;
     std::size_t last_required_binding_count = 0U;
     std::size_t last_required_command_count = 0U;
+    std::size_t last_required_action_snapshot_count = 0U;
     std::uint64_t build_count = 0U;
     std::uint64_t accepted_event_count = 0U;
     std::uint64_t rejected_event_count = 0U;

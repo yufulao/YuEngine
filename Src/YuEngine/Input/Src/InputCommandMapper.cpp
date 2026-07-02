@@ -13,9 +13,11 @@ void ClearCommandMapperCapacityEntry(InputCommandMapperSnapshot &snapshot) {
     snapshot.last_failed_binding_capacity = 0U;
     snapshot.last_failed_binding_count = 0U;
     snapshot.last_failed_command_output_capacity = 0U;
+    snapshot.last_failed_action_snapshot_output_capacity = 0U;
     snapshot.last_required_context_count = 0U;
     snapshot.last_required_binding_count = 0U;
     snapshot.last_required_command_count = 0U;
+    snapshot.last_required_action_snapshot_count = 0U;
 }
 }
 
@@ -127,6 +129,49 @@ InputStatus InputCommandMapper::BuildSnapshot(
     return RecordStatus(InputStatus::Success);
 }
 
+InputActionStateSnapshotResult InputCommandMapper::BuildActionStateSnapshot(
+    std::span<InputActionStateSnapshotRecord> output_records) {
+    const std::size_t output_capacity = output_records.size();
+    if (output_capacity > 0U && output_records.data() == nullptr) {
+        return RecordActionSnapshotFailure(InputStatus::NullPointer, output_capacity, 0U);
+    }
+
+    if (!active_context_set_) {
+        return RecordActionSnapshotFailure(InputStatus::UnknownContext, output_capacity, 0U);
+    }
+
+    if (!HasContext(snapshot_.active_context)) {
+        return RecordActionSnapshotFailure(InputStatus::UnknownContext, output_capacity, 0U);
+    }
+
+    const std::size_t required_action_count = RequiredActionStateSnapshotCount();
+    if (output_capacity < required_action_count) {
+        return RecordActionSnapshotCapacityFailure(output_capacity, required_action_count);
+    }
+
+    std::size_t output_index = 0U;
+    for (std::size_t action_index = 0U; action_index < MAX_INPUT_ACTIONS; ++action_index) {
+        if (!active_actions_[action_index]) {
+            continue;
+        }
+
+        const InputActionId action{static_cast<std::uint32_t>(action_index)};
+        const InputCommandBinding *binding = FindBindingForAction(snapshot_.active_context, action);
+        if (binding == nullptr) {
+            continue;
+        }
+
+        InputActionStateSnapshotRecord &record = output_records[output_index];
+        record.context = snapshot_.active_context;
+        record.action = action;
+        record.state = actions_[action_index];
+        ++output_index;
+    }
+
+    const InputStatus status = RecordStatus(InputStatus::Success);
+    return InputActionStateSnapshotResult{status, output_capacity, required_action_count, output_index};
+}
+
 InputCommandMapperSnapshot InputCommandMapper::Snapshot() const {
     return snapshot_;
 }
@@ -174,6 +219,23 @@ InputStatus InputCommandMapper::RecordCommandCapacityFailure(
     snapshot_.last_failed_command_output_capacity = output_capacity;
     snapshot_.last_required_command_count = required_command_count;
     return status;
+}
+
+InputActionStateSnapshotResult InputCommandMapper::RecordActionSnapshotFailure(
+    InputStatus status,
+    std::size_t output_capacity,
+    std::size_t required_action_count) {
+    const InputStatus recorded_status = RecordFailure(status);
+    return InputActionStateSnapshotResult{recorded_status, output_capacity, required_action_count, 0U};
+}
+
+InputActionStateSnapshotResult InputCommandMapper::RecordActionSnapshotCapacityFailure(
+    std::size_t output_capacity,
+    std::size_t required_action_count) {
+    const InputStatus status = RecordFailure(InputStatus::CapacityExceeded);
+    snapshot_.last_failed_action_snapshot_output_capacity = output_capacity;
+    snapshot_.last_required_action_snapshot_count = required_action_count;
+    return InputActionStateSnapshotResult{status, output_capacity, required_action_count, 0U};
 }
 
 InputStatus InputCommandMapper::RejectOperation(InputStatus status) {
@@ -333,6 +395,24 @@ InputStatus InputCommandMapper::ValidateEvents(std::span<const InputEvent> event
     }
 
     return InputStatus::Success;
+}
+
+std::size_t InputCommandMapper::RequiredActionStateSnapshotCount() const {
+    std::size_t required_action_count = 0U;
+    for (std::size_t action_index = 0U; action_index < MAX_INPUT_ACTIONS; ++action_index) {
+        if (!active_actions_[action_index]) {
+            continue;
+        }
+
+        const InputActionId action{static_cast<std::uint32_t>(action_index)};
+        if (FindBindingForAction(snapshot_.active_context, action) == nullptr) {
+            continue;
+        }
+
+        ++required_action_count;
+    }
+
+    return required_action_count;
 }
 
 InputStatus InputCommandMapper::EmitActiveCommands(InputCommandSnapshot *snapshot) {

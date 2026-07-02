@@ -9,6 +9,8 @@
 #include <span>
 
 #include "YuEngine/Input/InputActionState.h"
+#include "YuEngine/Input/InputActionStateSnapshotRecord.h"
+#include "YuEngine/Input/InputActionStateSnapshotResult.h"
 #include "YuEngine/Input/InputCommandBinding.h"
 #include "YuEngine/Input/InputCommandMapperSnapshot.h"
 #include "YuEngine/Input/InputCommandSnapshot.h"
@@ -59,6 +61,13 @@ public:
         std::uint64_t frame_index,
         std::span<const InputEvent> events,
         InputCommandSnapshot *snapshot);
+    /**
+     * @comment Builds a caller-owned action state snapshot for the active input context.
+     * @param output_records Caller-owned output records.
+     * @return Explicit operation result.
+     */
+    InputActionStateSnapshotResult BuildActionStateSnapshot(
+        std::span<InputActionStateSnapshotRecord> output_records);
 
     /**
      * @comment 返回 mapper 当前状态快照。
@@ -75,6 +84,13 @@ private:
         const InputCommandBinding &binding,
         std::size_t output_capacity,
         std::size_t required_command_count);
+    InputActionStateSnapshotResult RecordActionSnapshotFailure(
+        InputStatus status,
+        std::size_t output_capacity,
+        std::size_t required_action_count);
+    InputActionStateSnapshotResult RecordActionSnapshotCapacityFailure(
+        std::size_t output_capacity,
+        std::size_t required_action_count);
     InputStatus RejectOperation(InputStatus status);
     bool IsContextInRange(InputContextId context) const;
     bool IsActionInRange(InputActionId action) const;
@@ -89,6 +105,7 @@ private:
     const InputCommandBinding *FindBinding(InputContextId context, InputDeviceId device, InputControlId control) const;
     InputStatus ValidateBinding(InputCommandBinding binding) const;
     InputStatus ValidateEvents(std::span<const InputEvent> events) const;
+    std::size_t RequiredActionStateSnapshotCount() const;
     InputStatus EmitActiveCommands(InputCommandSnapshot *snapshot);
     void ResetFrameFlags();
     void ApplyEvent(const InputEvent &event);

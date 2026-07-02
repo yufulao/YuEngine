@@ -29,6 +29,8 @@
 
 using yuengine::input::InputActionId;
 using yuengine::input::InputActionState;
+using yuengine::input::InputActionStateSnapshotRecord;
+using yuengine::input::InputActionStateSnapshotResult;
 using yuengine::input::InputBackendKind;
 using yuengine::input::InputBindingResult;
 using yuengine::input::InputBridge;
@@ -116,6 +118,10 @@ constexpr const char *TEST_COMMAND_FOCUS = "Input_CommandMapper_FocusRejectsInpu
 constexpr const char *TEST_COMMAND_INVALID = "Input_CommandMapper_InvalidEventDoesNotMutateHeldState";
 constexpr const char *TEST_COMMAND_SETUP_REJECTION = "Input_CommandMapper_SetupFailuresDoNotCountRejectedEvents";
 constexpr const char *TEST_COMMAND_CAPACITY_ENTRY = "Input_CommandMapper_CapacityFailuresRecordEntryIdentity";
+constexpr const char *TEST_COMMAND_ACTION_STATE_SNAPSHOT =
+    "Input_CommandMapper_ActionStateSnapshotWritesCallerOwnedRecords";
+constexpr const char *TEST_COMMAND_ACTION_STATE_SNAPSHOT_CAPACITY =
+    "Input_CommandMapper_ActionStateSnapshotCapacityFailureDoesNotMutateOutput";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 
@@ -456,6 +462,10 @@ bool CommandMapperCapacityEntryIsClear(const InputCommandMapperSnapshot &snapsho
         return false;
     }
 
+    if (snapshot.last_failed_action_snapshot_output_capacity != 0U) {
+        return false;
+    }
+
     if (snapshot.last_required_context_count != 0U) {
         return false;
     }
@@ -464,7 +474,11 @@ bool CommandMapperCapacityEntryIsClear(const InputCommandMapperSnapshot &snapsho
         return false;
     }
 
-    return snapshot.last_required_command_count == 0U;
+    if (snapshot.last_required_command_count != 0U) {
+        return false;
+    }
+
+    return snapshot.last_required_action_snapshot_count == 0U;
 }
 
 bool StateEquals(const InputActionState& left, const InputActionState& right) {
@@ -2745,6 +2759,144 @@ int InputCommandMapperCapacityFailuresRecordEntryIdentity() {
 
     return 0;
 }
+
+int InputCommandMapperActionStateSnapshotWritesCallerOwnedRecords() {
+    InputCommandMapper mapper;
+    if (!RegisterCommandContext(mapper)) {
+        return Fail("action state snapshot context registration failed");
+    }
+
+    const InputControlId gamepad_axis{GAMEPAD_LEFT_THUMB_X_CONTROL};
+    if (mapper.RegisterBinding(ButtonCommandBinding(CONTEXT_A, DEVICE_A, CONTROL_A, ACTION_A)) != InputStatus::Success) {
+        return Fail("action state snapshot button binding failed");
+    }
+
+    if (mapper.RegisterBinding(AxisCommandBinding(CONTEXT_A, DEVICE_B, gamepad_axis, ACTION_B)) != InputStatus::Success) {
+        return Fail("action state snapshot axis binding failed");
+    }
+
+    std::array<InputEvent, 2U> events{
+        ButtonPress(DEVICE_A, CONTROL_A),
+        Axis(DEVICE_B, gamepad_axis, AXIS_NEGATIVE)};
+    InputCommandSnapshot command_snapshot{};
+    const InputStatus command_status = mapper.BuildSnapshot(
+        101U,
+        std::span<const InputEvent>(events.data(), events.size()),
+        &command_snapshot);
+    if (command_status != InputStatus::Success) {
+        return Fail("action state snapshot source build failed");
+    }
+
+    std::array<InputActionStateSnapshotRecord, 2U> records{};
+    const InputActionStateSnapshotResult result = mapper.BuildActionStateSnapshot(
+        std::span<InputActionStateSnapshotRecord>(records.data(), records.size()));
+    if (result.status != InputStatus::Success) {
+        return Fail("action state snapshot did not return success");
+    }
+
+    if (result.output_capacity != records.size()) {
+        return Fail("action state snapshot output capacity mismatch");
+    }
+
+    if (result.required_action_count != 2U || result.written_action_count != 2U) {
+        return Fail("action state snapshot count mismatch");
+    }
+
+    if (records[0U].context.value != CONTEXT_A.value || records[0U].action.value != ACTION_A.value) {
+        return Fail("action state snapshot first identity mismatch");
+    }
+
+    if (!records[0U].state.is_pressed || !records[0U].state.changed_this_frame) {
+        return Fail("action state snapshot first button state mismatch");
+    }
+
+    if (records[1U].context.value != CONTEXT_A.value || records[1U].action.value != ACTION_B.value) {
+        return Fail("action state snapshot second identity mismatch");
+    }
+
+    if (records[1U].state.axis_value != AXIS_NEGATIVE || !records[1U].state.changed_this_frame) {
+        return Fail("action state snapshot second axis state mismatch");
+    }
+
+    if (!CommandMapperCapacityEntryIsClear(mapper.Snapshot())) {
+        return Fail("action state snapshot success kept capacity entry");
+    }
+
+    return 0;
+}
+
+int InputCommandMapperActionStateSnapshotCapacityFailureDoesNotMutateOutput() {
+    InputCommandMapper mapper;
+    if (!RegisterCommandContext(mapper)) {
+        return Fail("action state snapshot capacity context registration failed");
+    }
+
+    if (mapper.RegisterBinding(ButtonCommandBinding(CONTEXT_A, DEVICE_A, CONTROL_A, ACTION_A)) != InputStatus::Success) {
+        return Fail("action state snapshot capacity first binding failed");
+    }
+
+    if (mapper.RegisterBinding(ButtonCommandBinding(CONTEXT_A, DEVICE_A, CONTROL_B, ACTION_B)) != InputStatus::Success) {
+        return Fail("action state snapshot capacity second binding failed");
+    }
+
+    std::array<InputEvent, 1U> press_events{ButtonPress(DEVICE_A, CONTROL_A)};
+    InputCommandSnapshot command_snapshot{};
+    if (mapper.BuildSnapshot(
+            102U,
+            std::span<const InputEvent>(press_events.data(), press_events.size()),
+            &command_snapshot) != InputStatus::Success) {
+        return Fail("action state snapshot capacity source build failed");
+    }
+
+    std::array<InputActionStateSnapshotRecord, 1U> records{};
+    records[0U].context = CONTEXT_B;
+    records[0U].action = UNKNOWN_ACTION;
+    records[0U].state.is_pressed = true;
+    records[0U].state.changed_this_frame = true;
+    records[0U].state.axis_value = AXIS_POSITIVE;
+    const InputActionStateSnapshotRecord before = records[0U];
+
+    const InputActionStateSnapshotResult result = mapper.BuildActionStateSnapshot(
+        std::span<InputActionStateSnapshotRecord>(records.data(), records.size()));
+    if (result.status != InputStatus::CapacityExceeded) {
+        return Fail("action state snapshot capacity did not return capacity status");
+    }
+
+    if (result.output_capacity != records.size()) {
+        return Fail("action state snapshot capacity output size mismatch");
+    }
+
+    if (result.required_action_count != 2U || result.written_action_count != 0U) {
+        return Fail("action state snapshot capacity count mismatch");
+    }
+
+    if (records[0U].context.value != before.context.value) {
+        return Fail("action state snapshot capacity mutated context");
+    }
+
+    if (records[0U].action.value != before.action.value) {
+        return Fail("action state snapshot capacity mutated action");
+    }
+
+    if (!StateEquals(records[0U].state, before.state)) {
+        return Fail("action state snapshot capacity mutated state");
+    }
+
+    const InputCommandMapperSnapshot mapper_snapshot = mapper.Snapshot();
+    if (mapper_snapshot.last_failed_action_snapshot_output_capacity != records.size()) {
+        return Fail("action state snapshot capacity missed output capacity");
+    }
+
+    if (mapper_snapshot.last_required_action_snapshot_count != 2U) {
+        return Fail("action state snapshot capacity missed required count");
+    }
+
+    if (mapper_snapshot.last_status != InputStatus::CapacityExceeded) {
+        return Fail("action state snapshot capacity did not record last status");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv) {
@@ -2796,7 +2948,10 @@ int main(int argc, char** argv) {
         {TEST_COMMAND_FOCUS, InputCommandMapperFocusRejectsInputWithoutMutation},
         {TEST_COMMAND_INVALID, InputCommandMapperInvalidEventDoesNotMutateHeldState},
         {TEST_COMMAND_SETUP_REJECTION, InputCommandMapperSetupFailuresDoNotCountRejectedEvents},
-        {TEST_COMMAND_CAPACITY_ENTRY, InputCommandMapperCapacityFailuresRecordEntryIdentity}};
+        {TEST_COMMAND_CAPACITY_ENTRY, InputCommandMapperCapacityFailuresRecordEntryIdentity},
+        {TEST_COMMAND_ACTION_STATE_SNAPSHOT, InputCommandMapperActionStateSnapshotWritesCallerOwnedRecords},
+        {TEST_COMMAND_ACTION_STATE_SNAPSHOT_CAPACITY,
+            InputCommandMapperActionStateSnapshotCapacityFailureDoesNotMutateOutput}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);
