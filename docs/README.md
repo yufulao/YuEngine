@@ -2,7 +2,7 @@
 
 Status: canonical documentation handoff
 Owner: Architect
-Last major planning sync: `origin/main@afdca68851a4bd88762400101e896c238b37fbfd`
+Last major planning sync: `origin/main@96f0bf0eaed6d2847b4128cd31146340ccc07a0d`
 
 ## 1. Read This First
 
@@ -64,10 +64,11 @@ At the latest handoff:
   returned `1167 / ERROR_DEVICE_NOT_CONNECTED` until DualSenseX exposed an
   XInput controller;
 - the current repo baseline is clean:
-  `HEAD == origin/main == afdca68851a4bd88762400101e896c238b37fbfd`
-  after the `bcfd6eaad3fc198eb4dbba4e31e49c1eed68c0db`
-  WorldSceneAuthoring Asset-edge WorldObject snapshot handoff evidence and the
-  `afdca68851a4bd88762400101e896c238b37fbfd` worktree-isolation baseline;
+  `HEAD == origin/main == 96f0bf0eaed6d2847b4128cd31146340ccc07a0d`
+  after the `bd1c4ce76534ba454deb72eda9db7b0c32fe256b` AFDCA68 docs
+  reconcile baseline and the `96f0bf0eaed6d2847b4128cd31146340ccc07a0d`
+  WorldSceneAuthoring Asset-edge WorldObject snapshot failure-status
+  implementation evidence;
 - active workspace tasks, timers, and coordinator goals were empty at the final
   L0/L1 handoff;
 - the next mainline is RuntimeAsset production spine continuation, starting from
@@ -416,30 +417,36 @@ At the latest handoff:
 - exact docs-only VQ marker labels for the `50ff335` evidence ledger are
   `RuntimeAssetWorldObjectAdapter`, `RuntimeAssetWorldObjectRestoreHandoff`, and
   `payload_window`;
-- current canonical HEAD is `afdca68851a4bd88762400101e896c238b37fbfd`;
-  the RuntimeAsset production-spine functional evidence immediately before it is
-  `bcfd6eaad3fc198eb4dbba4e31e49c1eed68c0db`, which records
-  `RTSPINE-WORLDSCENEAUTHORING-ASSET-EDGE-WORLDOBJECT-SNAPSHOT-HANDOFF-U64-001`
-  as implementation/focused evidence, not a VQ-closed gate: task
-  `e5b2a316-da0b-438f-8073-9315b362d304` is COMPLETE-PASS / committed, changed
-  only `RuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTest.cpp`,
-  kept `CMakeLists.txt` unchanged, passed `YuRuntimeAssetWorldAdapterHandoffTests`,
-  the exact Asset-edge row, authoring `4/4`, same-module `27/27`, Asset `9/9`,
-  RuntimeAssetData dependency/resource/package `34/34`, `git diff --check`, and
-  commit path audit; the proof validates WorldObject identity and transform
-  snapshot counts plus RuntimeAssetWorldAdapter restored identity/transform
-  counts after the Asset-edge handoff; `afdca68` itself only adds the worktree
-  ignore baseline; direct WorldObject/editor/GameAdapter/UI/gameplay, broad
-  Resource/File/VFS, Asset auto-lookup, production Asset Manager
-  dependency-edge follow-through, and production module gates remain separate;
-  read-only scout `96c21317-8d03-4a8d-b2e1-a9b3beaa7887` is COMPLETE-PASS /
-  `RTSPINE-CANONICAL-DOCS-HEAD-RECONCILE-AFDCA68-001-NEXT-GATE-MATRIX-READY`
-  and selects
-  `RTSPINE-WORLDSCENEAUTHORING-ASSET-EDGE-WORLDOBJECT-SNAPSHOT-FAILURE-STATUS-U64-001`
-  as the next narrow tests-only gate, now released separately as implementation
-  task `6b8c3bdd-0398-44ec-a3ea-4adc116d2afe`; the old
-  `a5aad608`/`50FF335`/`ee1a0b35` target-family recommendation is not reopened
-  because later target-family PASS evidence already exists;
+- current canonical HEAD is `96f0bf0eaed6d2847b4128cd31146340ccc07a0d`;
+  `bd1c4ce76534ba454deb72eda9db7b0c32fe256b` records the AFDCA68 docs
+  VQ-ready baseline that consumed scout `96c21317-8d03-4a8d-b2e1-a9b3beaa7887`,
+  and `96f0bf0eaed6d2847b4128cd31146340ccc07a0d` records implementation and
+  focused proof for
+  `RTSPINE-WORLDSCENEAUTHORING-ASSET-EDGE-WORLDOBJECT-SNAPSHOT-FAILURE-STATUS-U64-001`;
+  implementation task `6b8c3bdd-0398-44ec-a3ea-4adc116d2afe` is COMPLETE-PASS /
+  committed, changed only `CMakeLists.txt` and
+  `RuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTest.cpp`, passed
+  `YuRuntimeAssetWorldAdapterHandoffTests`, the new
+  `RuntimeAssetWorldObjectAuthoringRuntimeExportHandoff_RejectsAssetEdgeWorldObjectSnapshotFailureWithoutMutation`
+  row `1/1`, authoring handoff subset `5/5`, `git diff --check`, and clean
+  worktree checks; the proof removes the Model WorldObject before restore,
+  expects `GateFailed` / `ProofFailed` / `PlanFailed` with adapter, assembly,
+  and restore statuses still successful, preserves identity/transform,
+  attachment/binding, and Asset dependency-edge snapshots, and records zero
+  accepted/emitted/restored rows with one failed/rejected handoff; VQ guard
+  `6df0cd23-9120-42c3-826e-6de352582130` is COMPLETE-PASS /
+  `RTSPINE-WORLDSCENEAUTHORING-ASSET-EDGE-WORLDOBJECT-SNAPSHOT-FAILURE-STATUS-U64-001-VQ-READY`,
+  so the failure-status row is VQ-ready at `96f0bf0`; read-only scout
+  `70161a82-87d2-4408-b8de-cd3ec1af5b00` is COMPLETE-PASS /
+  `RTSPINE-CANONICAL-DOCS-HEAD-RECONCILE-96F0BF0-001-NEXT-GATE-MATRIX-READY`
+  and records
+  `NO_SAFE_WRITE_FRONTIER_REASON / POST-96F0BF0-NARROW-RUNTIMEASSETWORLDADAPTER-SPINE-EXHAUSTED_WITHOUT_BROAD_SCOPE`;
+  the successor implementation is the direct
+  `RTSPINE-RUNTIMEASSET-WORLDOBJECT-TRANSFORM-APPLICATION-U64-001` gate,
+  released as task `f939ed81-da4a-4474-8399-6faf7cc9fde9`; editor/GameAdapter/
+  UI/gameplay, broad Resource/File/VFS, Asset auto-lookup, production Asset
+  Manager dependency-edge follow-through, and production module gates remain
+  separate;
 - L0-RES-001 File/VFS loose read/write policy closure is PASS at
   `43cfc18fec4c4c5a5135e4ed15da64c8308247ff`; focused QA task
   `5020f3d6-a492-4138-b81f-c5e80cdd92e2` reports test-only
@@ -633,12 +640,16 @@ RuntimeAsset container and family identity
 -> WorldSceneAuthoring Asset-edge WorldObject snapshot handoff implemented as
    focused evidence at `bcfd6ea`
 -> worktree isolation baseline at `afdca68`
+-> AFDCA68 docs reconcile baseline committed at `bd1c4ce`
+-> Asset-edge WorldObject snapshot failure/no-mutation implementation evidence
+   landed at `96f0bf0`; VQ guard `6df0cd23` is COMPLETE-PASS / VQ-READY
 -> Resource/Streaming payload-window follow-through as narrow evidence already
    landed through `50ff335`
--> Asset-edge WorldObject snapshot failure/no-mutation gate selected by scout
-   `96c21317` and released as separate implementation task `6b8c3bdd`
--> direct WorldObject/editor/GameAdapter binding or broader Resource/File/VFS expansion only
-   after their own gates are released
+-> read-only scout `70161a82` marks the narrow RuntimeAssetWorldAdapter spine
+   exhausted and releases direct RuntimeAsset WorldObject transform application
+   as task `f939ed81`
+-> editor/GameAdapter binding or broader Resource/File/VFS expansion only after
+   their own gates are released
 -> editor/importer authoring surfaces after runtime contracts pass
 ```
 

@@ -162,34 +162,36 @@ destination range consumer. This is a HEAD evidence ledger, not a blanket
 stage-close VQ: each later lane must cite its own workspace VQ before being
 called VQ-closed.
 
-Current HEAD `afdca68851a4bd88762400101e896c238b37fbfd` records the worktree
-isolation baseline. The current RuntimeAsset production-spine functional
-evidence immediately before that is
-`bcfd6eaad3fc198eb4dbba4e31e49c1eed68c0db`, which records implementation and
-focused proof for
-`RTSPINE-WORLDSCENEAUTHORING-ASSET-EDGE-WORLDOBJECT-SNAPSHOT-HANDOFF-U64-001`
-after the VQ-closed `58021419256fc68cd7a84692fd42dbc7a3d0f08e` Asset-edge
-handoff. Implementation task `e5b2a316-da0b-438f-8073-9315b362d304` is
-COMPLETE-PASS / committed; the commit touched only
-`RuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTest.cpp` and left
-`CMakeLists.txt` unchanged. Focused build `YuRuntimeAssetWorldAdapterHandoffTests`
-PASS, the exact Asset-edge row PASS, authoring rows pass `4/4`, same-module
-RuntimeAssetWorldObject/RuntimeAssetWorldAdapter rows pass `27/27`, Asset rows
-pass `9/9`, and RuntimeAssetData dependency/resource/package rows pass `34/34`.
-The fixture now checks WorldObject identity and transform snapshot counts plus
-RuntimeAssetWorldAdapter restored identity/transform counts after the
-caller-owned Asset-edge handoff. Direct WorldObject/editor, GameAdapter/UI/gameplay,
-broad Resource/File/VFS, Asset auto-lookup, production Asset Manager
-dependency-edge follow-through, and production RuntimeAsset/RuntimeAssetWorldAdapter/
-World/Resource/Asset module changes remain closed. Read-only scout
-`96c21317-8d03-4a8d-b2e1-a9b3beaa7887` is COMPLETE-PASS /
-`RTSPINE-CANONICAL-DOCS-HEAD-RECONCILE-AFDCA68-001-NEXT-GATE-MATRIX-READY`
-and selects
+Current HEAD `96f0bf0eaed6d2847b4128cd31146340ccc07a0d` records
+implementation/focused proof for
 `RTSPINE-WORLDSCENEAUTHORING-ASSET-EDGE-WORLDOBJECT-SNAPSHOT-FAILURE-STATUS-U64-001`
-as the next narrow tests-only gate, released separately as implementation task
-`6b8c3bdd-0398-44ec-a3ea-4adc116d2afe`; stale
-`a5aad608`/`50FF335`/`ee1a0b35` target-family recommendations are not reopened
-because later target-family PASS evidence already exists.
+after the `bd1c4ce76534ba454deb72eda9db7b0c32fe256b` AFDCA68 docs baseline and
+the `bcfd6eaad3fc198eb4dbba4e31e49c1eed68c0db` snapshot handoff evidence.
+Implementation task `6b8c3bdd-0398-44ec-a3ea-4adc116d2afe` is COMPLETE-PASS /
+committed; the commit touched exactly `CMakeLists.txt` and
+`RuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTest.cpp`. Focused
+build `YuRuntimeAssetWorldAdapterHandoffTests` PASS, the new
+`RuntimeAssetWorldObjectAuthoringRuntimeExportHandoff_RejectsAssetEdgeWorldObjectSnapshotFailureWithoutMutation`
+row passes `1/1`, authoring handoff subset passes `5/5`, and `git diff --check`
+plus clean worktree checks pass. The fixture removes the Model WorldObject before
+the caller-owned Asset-edge restore, returns `GateFailed` / `ProofFailed` /
+`PlanFailed`, leaves adapter/assembly/restore statuses successful, preserves
+identity/transform, attachment/binding, and Asset dependency-edge destinations,
+and records zero accepted/emitted/restored rows plus one failed/rejected handoff.
+Direct WorldObject/editor, GameAdapter/UI/gameplay, broad Resource/File/VFS,
+Asset auto-lookup, production Asset Manager dependency-edge follow-through, and
+production RuntimeAsset/RuntimeAssetWorldAdapter/World/Resource/Asset module
+changes remain closed. VQ task `6df0cd23-9120-42c3-826e-6de352582130` is
+COMPLETE-PASS /
+`RTSPINE-WORLDSCENEAUTHORING-ASSET-EDGE-WORLDOBJECT-SNAPSHOT-FAILURE-STATUS-U64-001-VQ-READY`.
+Read-only next-gate scout `70161a82-87d2-4408-b8de-cd3ec1af5b00` is
+COMPLETE-PASS /
+`RTSPINE-CANONICAL-DOCS-HEAD-RECONCILE-96F0BF0-001-NEXT-GATE-MATRIX-READY`,
+records
+`NO_SAFE_WRITE_FRONTIER_REASON / POST-96F0BF0-NARROW-RUNTIMEASSETWORLDADAPTER-SPINE-EXHAUSTED_WITHOUT_BROAD_SCOPE`,
+and leaves the next implementation to
+`RTSPINE-RUNTIMEASSET-WORLDOBJECT-TRANSFORM-APPLICATION-U64-001` task
+`f939ed81-da4a-4474-8399-6faf7cc9fde9`.
 
 The `296100b3bda25e962c3a3a503f9f78f0160083ce` evidence records VQ-closed
 RuntimeAssetWorldAdapter target-family alias handoff for
