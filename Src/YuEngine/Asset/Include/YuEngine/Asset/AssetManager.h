@@ -9,10 +9,12 @@
 
 #include "YuEngine/Asset/AssetDependencyEdge.h"
 #include "YuEngine/Asset/AssetDescriptor.h"
+#include "YuEngine/Asset/AssetHandle.h"
 #include "YuEngine/Asset/AssetManagerDesc.h"
 #include "YuEngine/Asset/AssetRegistrationResult.h"
 #include "YuEngine/Asset/AssetSlot.h"
 #include "YuEngine/Asset/AssetSnapshot.h"
+#include "YuEngine/Asset/AssetStatus.h"
 #include "YuEngine/AudioResource/AudioResourcePcmPacketImportRecord.h"
 #include "YuEngine/Resource/ResourceDecodedPayloadRecord.h"
 #include "YuEngine/Resource/ResourceHandle.h"
