@@ -12,11 +12,9 @@
 #include <unordered_map>
 #include <vector>
 
-#include "YuEngine/File/AsyncFileReadQueue.h"
+#include "YuEngine/File/FileContract.h"
 #include "YuEngine/File/FileConstants.h"
 #include "YuEngine/File/LooseFileSource.h"
-#include "YuEngine/File/MountTable.h"
-#include "YuEngine/File/NormalizedPath.h"
 #include "YuEngine/Memory/MemoryAccountingStatus.h"
 
 using yuengine::file::FileStatus;
@@ -26,11 +24,16 @@ using AsyncFileReadRequest = yuengine::file::AsyncFileReadRequest;
 using AsyncFileReadResult = yuengine::file::AsyncFileReadResult;
 using yuengine::file::AsyncFileReadStatus;
 using FileReadRequest = yuengine::file::FileReadRequest;
+using FileReadResult = yuengine::file::FileReadResult;
+using FileSnapshot = yuengine::file::FileSnapshot;
 using LooseFileSource = yuengine::file::LooseFileSource;
 using yuengine::memory::MemoryAccountingStatus;
 using MountId = yuengine::file::MountId;
 using MountTable = yuengine::file::MountTable;
 using NormalizedPath = yuengine::file::NormalizedPath;
+using FileWriteRequest = yuengine::file::FileWriteRequest;
+using FileWriteResult = yuengine::file::FileWriteResult;
+using PathNormalizationResult = yuengine::file::PathNormalizationResult;
 using VirtualPath = yuengine::file::VirtualPath;
 using yuengine::file::MAX_VIRTUAL_PATH_LENGTH;
 
@@ -53,6 +56,7 @@ constexpr const char* TEST_WRITE_REJECTS = "File_LooseFixtureWrite_RejectsForged
 constexpr const char* TEST_MOUNT_WRITE = "File_MountTableWrite_RecordsSnapshotAndMissingMount";
 constexpr const char* TEST_SNAPSHOT = "File_ReadSnapshot_RecordsCountsAndBytes";
 constexpr const char* TEST_DISABLED_DIAGNOSTICS = "File_DiagnosticsDisabled_DoesNotChangeBehavior";
+constexpr const char* TEST_CONTRACT_HEADERS = "File_ContractHeaders_ExposeMountTableAndAsyncReadBoundaries";
 constexpr const char* TEST_ASYNC_READ = "File_AsyncReadQueue_ReadsFixtureIntoCallerStorage";
 constexpr const char* TEST_ASYNC_CAPACITY = "File_AsyncReadQueue_RejectsCapacityOverflow";
 constexpr const char* TEST_ASYNC_CAPACITY_ENTRY =
@@ -995,6 +999,79 @@ int FileDiagnosticsDisabledDoesNotChangeBehavior() {
     return 0;
 }
 
+int FileContractHeadersExposeMountTableAndAsyncReadBoundaries() {
+    MountTable table;
+    const MountId primary_mount(PRIMARY_MOUNT);
+    const std::filesystem::path mount_root = FixtureRoot() / "Primary";
+    const FileStatus mount_status = table.RegisterLooseMount(primary_mount, mount_root);
+    if (mount_status != FileStatus::Success) {
+        return Fail("contract mount registration failed");
+    }
+
+    FileReadRequest read_request;
+    read_request.mount = primary_mount;
+    read_request.path = VirtualPath(NORMALIZED_PATH);
+
+    const FileReadResult read_result = table.Read(read_request);
+    if (!read_result.Succeeded()) {
+        return Fail("contract read result failed");
+    }
+
+    const PathNormalizationResult normalization_result = table.Normalize(read_request.path);
+    if (!normalization_result.Succeeded()) {
+        return Fail("contract normalization result failed");
+    }
+
+    const FileSnapshot file_snapshot = table.Snapshot();
+    constexpr std::size_t EXPECTED_MOUNT_COUNT = 1U;
+    if (file_snapshot.mount_count != EXPECTED_MOUNT_COUNT) {
+        return Fail("contract snapshot mount count was wrong");
+    }
+
+    const FileReadResult failed_read_result = FileReadResult::Failure(FileStatus::FileNotFound);
+    if (failed_read_result.Succeeded()) {
+        return Fail("contract read failure result succeeded");
+    }
+
+    FileWriteRequest write_request;
+    write_request.mount = primary_mount;
+    write_request.path = VirtualPath("ContractWriteProbe.txt");
+    write_request.bytes = read_result.bytes.data();
+    write_request.byte_count = read_result.bytes.size();
+    if (write_request.byte_count == 0U) {
+        return Fail("contract write request had empty input");
+    }
+
+    const FileWriteResult failed_write_result = FileWriteResult::Failure(FileStatus::WriteFailure);
+    if (failed_write_result.Succeeded()) {
+        return Fail("contract write failure result succeeded");
+    }
+
+    std::array<std::uint8_t, ASYNC_OUTPUT_CAPACITY> output_bytes{};
+    AsyncFileReadRequest async_request;
+    async_request.mount_table = &table;
+    async_request.read_request = read_request;
+    async_request.request_index = 1ULL;
+    async_request.output_bytes = output_bytes.data();
+    async_request.output_capacity = output_bytes.size();
+    if (async_request.mount_table == nullptr) {
+        return Fail("contract async request lost mount table");
+    }
+
+    AsyncFileReadResult async_result;
+    if (async_result.status != AsyncFileReadStatus::NotInitialized) {
+        return Fail("contract async result default status was wrong");
+    }
+
+    AsyncFileReadQueue queue;
+    const AsyncFileReadQueueSnapshot queue_snapshot = queue.Snapshot();
+    if (queue_snapshot.last_status != AsyncFileReadStatus::NotInitialized) {
+        return Fail("contract async snapshot default status was wrong");
+    }
+
+    return 0;
+}
+
 int FileAsyncReadQueueReadsFixtureIntoCallerStorage() {
     MountTable table = CreateMountedTable();
     AsyncFileReadQueue queue;
@@ -1800,6 +1877,7 @@ int main(int argc, char** argv) {
         {TEST_MOUNT_WRITE, FileMountTableWriteRecordsSnapshotAndMissingMount},
         {TEST_SNAPSHOT, FileReadSnapshotRecordsCountsAndBytes},
         {TEST_DISABLED_DIAGNOSTICS, FileDiagnosticsDisabledDoesNotChangeBehavior},
+        {TEST_CONTRACT_HEADERS, FileContractHeadersExposeMountTableAndAsyncReadBoundaries},
         {TEST_ASYNC_READ, FileAsyncReadQueueReadsFixtureIntoCallerStorage},
         {TEST_ASYNC_CAPACITY, FileAsyncReadQueueRejectsCapacityOverflow},
         {TEST_ASYNC_CAPACITY_ENTRY, FileAsyncReadQueueCapacityEntryRecordsRejectedRequestAndClears},
