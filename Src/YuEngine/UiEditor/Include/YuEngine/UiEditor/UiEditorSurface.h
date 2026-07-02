@@ -211,9 +211,16 @@ struct UiEditorPreviewFeedbackRecord final {
         yuengine::previewhost::PreviewHostFrameFormat::Unknown;
     std::size_t diagnostic_count = 0U;
     std::size_t capture_bytes_written = 0U;
+    std::size_t preview_component_count = 0U;
+    std::size_t preview_component_kind_count = 0U;
+    std::size_t text_component_count = 0U;
+    std::size_t image_component_count = 0U;
+    std::size_t button_component_count = 0U;
+    std::size_t slider_component_count = 0U;
     bool preview_frame_built = false;
     bool headless_output = false;
     bool feedback_from_preview_host = false;
+    bool multi_component_preview_layout = false;
 };
 
 struct UiEditorDesignSurfaceRow final {

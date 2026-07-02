@@ -142,6 +142,95 @@ bool IsComponentKindValid(UiEditorComponentKind kind) {
     return false;
 }
 
+bool IsPreviewComponentKind(UiEditorComponentKind kind) {
+    switch (kind) {
+        case UiEditorComponentKind::Text:
+        case UiEditorComponentKind::Image:
+        case UiEditorComponentKind::Button:
+        case UiEditorComponentKind::Slider:
+            return true;
+        case UiEditorComponentKind::Panel:
+        case UiEditorComponentKind::Unknown:
+            break;
+    }
+
+    return false;
+}
+
+void AddPreviewComponentCount(
+    UiEditorPreviewFeedbackRecord *record,
+    UiEditorComponentKind kind) {
+    if (record == nullptr) {
+        return;
+    }
+
+    if (kind == UiEditorComponentKind::Text) {
+        ++record->text_component_count;
+    }
+
+    if (kind == UiEditorComponentKind::Image) {
+        ++record->image_component_count;
+    }
+
+    if (kind == UiEditorComponentKind::Button) {
+        ++record->button_component_count;
+    }
+
+    if (kind == UiEditorComponentKind::Slider) {
+        ++record->slider_component_count;
+    }
+}
+
+std::size_t CountPreviewComponentKinds(
+    const UiEditorPreviewFeedbackRecord &record) {
+    std::size_t count = 0U;
+    if (record.text_component_count > 0U) {
+        ++count;
+    }
+
+    if (record.image_component_count > 0U) {
+        ++count;
+    }
+
+    if (record.button_component_count > 0U) {
+        ++count;
+    }
+
+    if (record.slider_component_count > 0U) {
+        ++count;
+    }
+
+    return count;
+}
+
+void FillPreviewComponentCounts(
+    std::span<const UiEditorRuntimeNodeRecord> nodes,
+    std::uint32_t node_count,
+    UiEditorPreviewFeedbackRecord *record) {
+    if (record == nullptr) {
+        return;
+    }
+
+    for (std::uint32_t index = 0U; index < node_count; ++index) {
+        const UiEditorRuntimeNodeRecord &node = nodes[index];
+        if (!node.visible || !node.runtime_exported) {
+            continue;
+        }
+
+        if (!IsPreviewComponentKind(node.component_kind)) {
+            continue;
+        }
+
+        ++record->preview_component_count;
+        AddPreviewComponentCount(record, node.component_kind);
+    }
+
+    record->preview_component_kind_count = CountPreviewComponentKinds(*record);
+    record->multi_component_preview_layout =
+        record->preview_component_kind_count >= 2U &&
+        record->preview_frame_built;
+}
+
 bool IsHeaderValid(const UiEditorRuntimeDocumentHeader &header) {
     if (!header.is_valid) {
         return false;
@@ -241,6 +330,7 @@ UiEditorHierarchyRow BuildHierarchyRow(
 
 UiEditorPreviewFeedbackRecord BuildPreviewFeedback(
     const UiEditorRuntimeDocumentHeader &header,
+    std::span<const UiEditorRuntimeNodeRecord> nodes,
     UiNodeId selected_node_id,
     const PreviewHostFrameResult &preview_frame) {
     UiEditorPreviewFeedbackRecord record{};
@@ -256,6 +346,7 @@ UiEditorPreviewFeedbackRecord BuildPreviewFeedback(
     record.preview_frame_built = preview_frame.submitted_render_scene_frame;
     record.headless_output = preview_frame.headless_output;
     record.feedback_from_preview_host = true;
+    FillPreviewComponentCounts(nodes, header.node_count, &record);
     return record;
 }
 
@@ -1429,7 +1520,11 @@ UiEditorSurfaceStatus BuildUiEditorRuntimeDocumentSurface(
         }
 
         staged_preview =
-            BuildPreviewFeedback(document.header, request.selected_node_id, *request.preview_frame);
+            BuildPreviewFeedback(
+                document.header,
+                document.nodes,
+                request.selected_node_id,
+                *request.preview_frame);
         result.preview_status = request.preview_frame->status;
         result.consumed_preview_host_feedback = true;
         preview_feedback_count = 1U;

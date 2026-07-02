@@ -75,6 +75,8 @@ constexpr const char *TEST_NO_MUTATION =
     "UiEditorSurface_RejectsMissingPreviewFeedbackWithoutMutation";
 constexpr const char *TEST_WORKFLOW_SELECTION =
     "UiEditorWorkflow_NodeSelectionBuildsDesignSurface";
+constexpr const char *TEST_WORKFLOW_LAYOUT_PREVIEW =
+    "UiEditorWorkflow_MultiComponentLayoutPreviewRecordsTextAndSlider";
 constexpr const char *TEST_WORKFLOW_INSPECTOR =
     "UiEditorWorkflow_InspectorRowsExposeComponentState";
 constexpr const char *TEST_WORKFLOW_EDIT =
@@ -135,6 +137,20 @@ UiRectTransform ChildTransform() {
     return transform;
 }
 
+UiRectTransform AbsoluteChildTransform(
+    float x,
+    float y,
+    float width,
+    float height) {
+    UiRectTransform transform{};
+    transform.anchor_min = {0.0F, 0.0F};
+    transform.anchor_max = {0.0F, 0.0F};
+    transform.offset_min = {x, y};
+    transform.offset_max = {x + width, y + height};
+    transform.pivot = {0.5F, 0.5F};
+    return transform;
+}
+
 UiEditorRuntimeDocumentHeader Header(std::uint32_t node_count=2U) {
     UiEditorRuntimeDocumentHeader header{};
     header.document_id = DOCUMENT_ID;
@@ -165,6 +181,28 @@ UiEditorRuntimeNodeRecord ChildNode() {
     record.component_kind = UiEditorComponentKind::Button;
     record.sibling_order = 0U;
     record.layer = 2;
+    return record;
+}
+
+UiEditorRuntimeNodeRecord TextNode() {
+    UiEditorRuntimeNodeRecord record{};
+    record.node_id = UiNodeId{3U};
+    record.parent_id = UiNodeId{1U};
+    record.rect_transform = AbsoluteChildTransform(32.0F, 420.0F, 360.0F, 48.0F);
+    record.component_kind = UiEditorComponentKind::Text;
+    record.sibling_order = 1U;
+    record.layer = 3;
+    return record;
+}
+
+UiEditorRuntimeNodeRecord SliderNode() {
+    UiEditorRuntimeNodeRecord record{};
+    record.node_id = UiNodeId{4U};
+    record.parent_id = UiNodeId{1U};
+    record.rect_transform = AbsoluteChildTransform(32.0F, 320.0F, 300.0F, 24.0F);
+    record.component_kind = UiEditorComponentKind::Slider;
+    record.sibling_order = 2U;
+    record.layer = 3;
     return record;
 }
 
@@ -641,6 +679,97 @@ int UiEditorWorkflowNodeSelectionBuildsDesignSurface() {
         ledger_output[0U].command_sequence != 3U ||
         ledger_output[0U].command_applied) {
         return Fail("ui editor workflow design selection output mismatch");
+    }
+
+    return 0;
+}
+
+int UiEditorWorkflowMultiComponentLayoutPreviewRecordsTextAndSlider() {
+    const std::array<UiEditorRuntimeNodeRecord, 3U> nodes{
+        RootNode(),
+        TextNode(),
+        SliderNode()};
+    const UiEditorRuntimeDocument document{Header(3U), nodes};
+    const PreviewHostFrameResult preview_frame = PreviewFrame();
+    std::array<UiEditorHierarchyRow, 3U> hierarchy_output{};
+    std::array<UiEditorDesignSurfaceRow, 3U> design_output{};
+    std::array<UiEditorInspectorFieldRow, 7U> inspector_output{};
+    std::array<UiEditorPreviewFeedbackRecord, 1U> preview_output{};
+    std::array<UiEditorRuntimeNodeRecord, 3U> staged_output{};
+    std::array<UiEditorDesignCommandLedgerRecord, 1U> ledger_output{};
+    UiEditorDesignCommand command{};
+
+    UiEditorDesignInspectorWorkflowResult result{};
+    const UiEditorDesignWorkflowStatus status =
+        BuildUiEditorDesignInspectorWorkflowSurface(
+            WorkflowRequest(
+                document,
+                UiNodeId{3U},
+                &preview_frame,
+                command,
+                hierarchy_output,
+                design_output,
+                inspector_output,
+                preview_output,
+                staged_output,
+                ledger_output),
+            &result);
+    if (status != UiEditorDesignWorkflowStatus::Success ||
+        !result.Succeeded()) {
+        return Fail("ui editor multi component preview workflow failed");
+    }
+
+    if (result.hierarchy_row_count != 3U ||
+        result.design_surface_row_count != 3U ||
+        result.preview_feedback_count != 1U ||
+        !result.built_design_surface ||
+        !result.consumed_preview_host_feedback) {
+        return Fail("ui editor multi component preview counters mismatch");
+    }
+
+    const UiEditorPreviewFeedbackRecord &preview = preview_output[0U];
+    if (preview.preview_component_count != 2U ||
+        preview.preview_component_kind_count != 2U ||
+        preview.text_component_count != 1U ||
+        preview.slider_component_count != 1U ||
+        preview.image_component_count != 0U ||
+        preview.button_component_count != 0U ||
+        !preview.multi_component_preview_layout ||
+        preview.frame_id != 71U ||
+        !preview.preview_frame_built ||
+        !preview.feedback_from_preview_host) {
+        return Fail("ui editor multi component preview feedback mismatch");
+    }
+
+    if (design_output[1U].node_id.value != 3U ||
+        design_output[1U].component_kind != UiEditorComponentKind::Text ||
+        !design_output[1U].selected ||
+        design_output[1U].preview_frame_id != 71U ||
+        !design_output[1U].preview_feedback_available) {
+        return Fail("ui editor text design preview row mismatch");
+    }
+
+    if (design_output[2U].node_id.value != 4U ||
+        design_output[2U].component_kind != UiEditorComponentKind::Slider ||
+        design_output[2U].selected ||
+        design_output[2U].preview_frame_id != 71U ||
+        !design_output[2U].preview_feedback_available) {
+        return Fail("ui editor slider design preview row mismatch");
+    }
+
+    if (!Approx(design_output[1U].world_rect.x, 32.0F) ||
+        !Approx(design_output[1U].world_rect.y, 420.0F) ||
+        !Approx(design_output[1U].world_rect.width, 360.0F) ||
+        !Approx(design_output[2U].world_rect.x, 32.0F) ||
+        !Approx(design_output[2U].world_rect.y, 320.0F) ||
+        !Approx(design_output[2U].world_rect.width, 300.0F)) {
+        return Fail("ui editor multi component layout rect mismatch");
+    }
+
+    if (inspector_output[0U].component_kind != UiEditorComponentKind::Text ||
+        staged_output[1U].component_kind != UiEditorComponentKind::Text ||
+        staged_output[2U].component_kind != UiEditorComponentKind::Slider) {
+        return Fail("ui editor multi component staged output mismatch");
     }
 
     return 0;
@@ -1609,6 +1738,10 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_WORKFLOW_SELECTION) {
         return UiEditorWorkflowNodeSelectionBuildsDesignSurface();
+    }
+
+    if (name == TEST_WORKFLOW_LAYOUT_PREVIEW) {
+        return UiEditorWorkflowMultiComponentLayoutPreviewRecordsTextAndSlider();
     }
 
     if (name == TEST_WORKFLOW_INSPECTOR) {
