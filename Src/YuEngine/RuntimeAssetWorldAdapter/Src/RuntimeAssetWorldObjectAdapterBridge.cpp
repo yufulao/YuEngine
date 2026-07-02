@@ -3,6 +3,7 @@
 
 #include "YuEngine/RuntimeAssetWorldAdapter/RuntimeAssetWorldObjectAdapterBridge.h"
 
+#include <cmath>
 #include <span>
 
 #include "YuEngine/Animation/AnimationRuntimeSampler.h"
@@ -12,6 +13,7 @@ using yuengine::animation::AnimationRuntimeSampleRequest;
 using yuengine::animation::AnimationRuntimeSampledValue;
 using yuengine::animation::AnimationRuntimeSampleResult;
 using yuengine::animation::AnimationRuntimeSampler;
+using yuengine::animation::AnimationRuntimeChannel;
 using yuengine::animation::AnimationRuntimeStatus;
 using yuengine::animation::AnimationRuntimeTransformApplyRequest;
 using yuengine::animation::AnimationRuntimeTransformApplyResult;
@@ -23,6 +25,9 @@ using yuengine::runtimeasset::RuntimeAssetTargetIdentityKind;
 using yuengine::world::WorldObjectId;
 using yuengine::world::WorldSceneObjectTransformRestoreIdentityRecord;
 using yuengine::world::WorldSceneObjectTransformRestoreTransformRecord;
+using yuengine::world::WorldTransformResult;
+using yuengine::world::WorldTransformState;
+using yuengine::world::WorldTransformStatus;
 
 namespace yuengine::runtimeassetworldadapter {
 namespace {
@@ -40,6 +45,86 @@ bool RuntimeAssetTargetKindIsSupported(RuntimeAssetTargetIdentityKind target_kin
     }
 
     return target_kind == RuntimeAssetTargetIdentityKind::SkeletonJoint;
+}
+
+bool RuntimeSampledTransformChannelIsSupported(AnimationRuntimeChannel channel) {
+    switch (channel) {
+    case AnimationRuntimeChannel::TranslationX:
+    case AnimationRuntimeChannel::TranslationY:
+    case AnimationRuntimeChannel::TranslationZ:
+    case AnimationRuntimeChannel::RotationX:
+    case AnimationRuntimeChannel::RotationY:
+    case AnimationRuntimeChannel::RotationZ:
+    case AnimationRuntimeChannel::RotationW:
+    case AnimationRuntimeChannel::ScaleX:
+    case AnimationRuntimeChannel::ScaleY:
+    case AnimationRuntimeChannel::ScaleZ:
+        return true;
+    default:
+        break;
+    }
+
+    return false;
+}
+
+RuntimeAssetWorldObjectAdapterStatus MapWorldTransformStatus(WorldTransformStatus status) {
+    if (status == WorldTransformStatus::Success) {
+        return RuntimeAssetWorldObjectAdapterStatus::Success;
+    }
+
+    if (status == WorldTransformStatus::InvalidWorldObjectId) {
+        return RuntimeAssetWorldObjectAdapterStatus::InvalidWorldObjectId;
+    }
+
+    if (status == WorldTransformStatus::TransformNotFound) {
+        return RuntimeAssetWorldObjectAdapterStatus::TransformTargetNotFound;
+    }
+
+    return RuntimeAssetWorldObjectAdapterStatus::TransformApplyFailed;
+}
+
+void ApplyRuntimeSampledTransformChannel(
+    AnimationRuntimeChannel channel,
+    float value,
+    WorldTransformState *transform_state) {
+    if (transform_state == nullptr) {
+        return;
+    }
+
+    switch (channel) {
+    case AnimationRuntimeChannel::TranslationX:
+        transform_state->translation_x = value;
+        break;
+    case AnimationRuntimeChannel::TranslationY:
+        transform_state->translation_y = value;
+        break;
+    case AnimationRuntimeChannel::TranslationZ:
+        transform_state->translation_z = value;
+        break;
+    case AnimationRuntimeChannel::RotationX:
+        transform_state->rotation_x = value;
+        break;
+    case AnimationRuntimeChannel::RotationY:
+        transform_state->rotation_y = value;
+        break;
+    case AnimationRuntimeChannel::RotationZ:
+        transform_state->rotation_z = value;
+        break;
+    case AnimationRuntimeChannel::RotationW:
+        transform_state->rotation_w = value;
+        break;
+    case AnimationRuntimeChannel::ScaleX:
+        transform_state->scale_x = value;
+        break;
+    case AnimationRuntimeChannel::ScaleY:
+        transform_state->scale_y = value;
+        break;
+    case AnimationRuntimeChannel::ScaleZ:
+        transform_state->scale_z = value;
+        break;
+    default:
+        break;
+    }
 }
 }
 
@@ -646,6 +731,63 @@ RuntimeAssetWorldObjectAdapterResult RuntimeAssetWorldObjectAdapterBridge::Apply
     return RecordTransformApplicationSuccess(state);
 }
 
+RuntimeAssetWorldObjectAdapterResult RuntimeAssetWorldObjectAdapterBridge::ApplyRuntimeSampledTransforms(
+    const RuntimeAssetWorldObjectRuntimeSampledTransformApplicationRequest &request) {
+    ++snapshot_.transform_application_attempt_count;
+
+    std::uint64_t failed_target_id = 0U;
+    const RuntimeAssetWorldObjectAdapterStatus request_status =
+        ValidateRuntimeSampledTransformApplicationRequest(request, &failed_target_id);
+    if (request_status != RuntimeAssetWorldObjectAdapterStatus::Success) {
+        RuntimeAssetWorldObjectAdapterResult result = RecordFailure(request_status);
+        result.failed_target_id = failed_target_id;
+        return result;
+    }
+
+    RuntimeAssetWorldObjectAdapterState state{};
+    state.input_mapping_count = request.runtime_instance_mapping_count;
+
+    std::uint32_t sampled_value_index = 0U;
+    while (sampled_value_index < request.sampled_value_count) {
+        const RuntimeAssetWorldObjectRuntimeSampledTransformValue &sampled_value =
+            request.sampled_values[sampled_value_index];
+        WorldObjectId world_object_id{};
+        if (!ResolveRuntimeSampledTransformTarget(request, sampled_value.target_id, &world_object_id)) {
+            RuntimeAssetWorldObjectAdapterResult result =
+                RecordFailure(RuntimeAssetWorldObjectAdapterStatus::TransformTargetNotFound);
+            result.failed_target_id = sampled_value.target_id;
+            return result;
+        }
+
+        const WorldTransformResult query_result = request.transform_destination->Query(world_object_id);
+        RuntimeAssetWorldObjectAdapterStatus adapter_status = MapWorldTransformStatus(query_result.status);
+        if (adapter_status != RuntimeAssetWorldObjectAdapterStatus::Success) {
+            RuntimeAssetWorldObjectAdapterResult result = RecordFailure(adapter_status);
+            result.failed_target_id = sampled_value.target_id;
+            return result;
+        }
+
+        WorldTransformState transform_state = query_result.transform_state;
+        ApplyRuntimeSampledTransformChannel(sampled_value.channel, sampled_value.value, &transform_state);
+        const WorldTransformStatus world_status = request.transform_destination->Set(world_object_id, transform_state);
+        adapter_status = MapWorldTransformStatus(world_status);
+        if (adapter_status != RuntimeAssetWorldObjectAdapterStatus::Success) {
+            RuntimeAssetWorldObjectAdapterResult result = RecordFailure(adapter_status);
+            result.failed_target_id = sampled_value.target_id;
+            return result;
+        }
+
+        ++state.applied_transform_value_count;
+        if (IsFirstRuntimeSampledTransformTargetOccurrence(request, sampled_value_index)) {
+            ++state.updated_world_object_count;
+        }
+
+        ++sampled_value_index;
+    }
+
+    return RecordTransformApplicationSuccess(state);
+}
+
 RuntimeAssetWorldObjectAdapterResult RuntimeAssetWorldObjectAdapterBridge::PreflightSampledTransforms(
     const RuntimeAssetWorldObjectTransformApplicationRequest &request) {
     const RuntimeAssetWorldObjectAdapterStatus request_status =
@@ -884,6 +1026,53 @@ RuntimeAssetWorldObjectAdapterStatus RuntimeAssetWorldObjectAdapterBridge::Valid
     }
 
     return ValidateSampledTransformTargets(request);
+}
+
+RuntimeAssetWorldObjectAdapterStatus
+RuntimeAssetWorldObjectAdapterBridge::ValidateRuntimeSampledTransformApplicationRequest(
+    const RuntimeAssetWorldObjectRuntimeSampledTransformApplicationRequest &request,
+    std::uint64_t *out_failed_target_id) const {
+    if (out_failed_target_id != nullptr) {
+        *out_failed_target_id = 0U;
+    }
+
+    if (request.runtime_instance_mapping_count > 0U && request.runtime_instance_mappings == nullptr) {
+        return RuntimeAssetWorldObjectAdapterStatus::InvalidRuntimeInstanceInput;
+    }
+
+    if (request.runtime_instance_mapping_count > 0U && request.identity_records == nullptr) {
+        return RuntimeAssetWorldObjectAdapterStatus::InvalidIdentityInput;
+    }
+
+    if (request.transform_destination == nullptr) {
+        return RuntimeAssetWorldObjectAdapterStatus::InvalidTransformDestination;
+    }
+
+    if (request.sampled_value_count == 0U) {
+        return RuntimeAssetWorldObjectAdapterStatus::MissingSampledTransform;
+    }
+
+    if (request.sampled_values == nullptr) {
+        return RuntimeAssetWorldObjectAdapterStatus::InvalidSampledTransformInput;
+    }
+
+    std::uint32_t mapping_index = 0U;
+    while (mapping_index < request.runtime_instance_mapping_count) {
+        const RuntimeAssetWorldObjectAdapterStatus mapping_status = ValidateRuntimeInstanceMapping(
+            request,
+            mapping_index);
+        if (mapping_status != RuntimeAssetWorldObjectAdapterStatus::Success) {
+            if (out_failed_target_id != nullptr) {
+                *out_failed_target_id = request.runtime_instance_mappings[mapping_index].target_id;
+            }
+
+            return mapping_status;
+        }
+
+        ++mapping_index;
+    }
+
+    return ValidateRuntimeSampledTransformTargets(request, out_failed_target_id);
 }
 
 RuntimeAssetWorldObjectAdapterStatus RuntimeAssetWorldObjectAdapterBridge::ValidateTransformSamplerRequest(
@@ -1144,6 +1333,47 @@ RuntimeAssetWorldObjectAdapterStatus RuntimeAssetWorldObjectAdapterBridge::Valid
     return RuntimeAssetWorldObjectAdapterStatus::Success;
 }
 
+RuntimeAssetWorldObjectAdapterStatus RuntimeAssetWorldObjectAdapterBridge::ValidateRuntimeInstanceMapping(
+    const RuntimeAssetWorldObjectRuntimeSampledTransformApplicationRequest &request,
+    std::uint32_t mapping_index) const {
+    const RuntimeAssetRuntimeInstanceMappingRecord &mapping = request.runtime_instance_mappings[mapping_index];
+    if (!mapping.is_valid) {
+        return RuntimeAssetWorldObjectAdapterStatus::InvalidRuntimeInstanceMapping;
+    }
+
+    if (!RuntimeAssetTargetKindIsSupported(mapping.target_kind)) {
+        return RuntimeAssetWorldObjectAdapterStatus::UnsupportedTargetKind;
+    }
+
+    const RuntimeAssetWorldObjectAdapterIdentityRecord *identity_record =
+        FindIdentityRecord(request, mapping.target_id);
+    if (identity_record == nullptr) {
+        return RuntimeAssetWorldObjectAdapterStatus::MissingIdentityRecord;
+    }
+
+    if (!identity_record->world_object_id.IsValid()) {
+        return RuntimeAssetWorldObjectAdapterStatus::InvalidWorldObjectId;
+    }
+
+    if (!identity_record->object_handle.IsValid()) {
+        return RuntimeAssetWorldObjectAdapterStatus::InvalidObjectHandle;
+    }
+
+    if (HasDuplicateMappingTargetId(request, mapping_index)) {
+        return RuntimeAssetWorldObjectAdapterStatus::DuplicateTargetId;
+    }
+
+    if (HasDuplicateWorldObjectId(request, mapping_index, identity_record->world_object_id)) {
+        return RuntimeAssetWorldObjectAdapterStatus::DuplicateWorldObjectId;
+    }
+
+    if (HasDuplicateObjectHandle(request, mapping_index, identity_record->object_handle)) {
+        return RuntimeAssetWorldObjectAdapterStatus::DuplicateObjectHandle;
+    }
+
+    return RuntimeAssetWorldObjectAdapterStatus::Success;
+}
+
 RuntimeAssetWorldObjectAdapterStatus RuntimeAssetWorldObjectAdapterBridge::ValidateSampledTransformTargets(
     const RuntimeAssetWorldObjectTransformApplicationRequest &request) const {
     std::uint32_t sampled_value_index = 0U;
@@ -1158,6 +1388,46 @@ RuntimeAssetWorldObjectAdapterStatus RuntimeAssetWorldObjectAdapterBridge::Valid
         }
 
         ++sampled_value_index;
+    }
+
+    return RuntimeAssetWorldObjectAdapterStatus::Success;
+}
+
+RuntimeAssetWorldObjectAdapterStatus RuntimeAssetWorldObjectAdapterBridge::ValidateRuntimeSampledTransformTargets(
+    const RuntimeAssetWorldObjectRuntimeSampledTransformApplicationRequest &request,
+    std::uint64_t *out_failed_target_id) const {
+    std::uint32_t sampled_value_index = 0U;
+    while (sampled_value_index < request.sampled_value_count) {
+        const RuntimeAssetWorldObjectRuntimeSampledTransformValue &sampled_value =
+            request.sampled_values[sampled_value_index];
+        if (out_failed_target_id != nullptr) {
+            *out_failed_target_id = sampled_value.target_id;
+        }
+
+        WorldObjectId world_object_id{};
+        if (!ResolveRuntimeSampledTransformTarget(request, sampled_value.target_id, &world_object_id)) {
+            return RuntimeAssetWorldObjectAdapterStatus::TransformTargetNotFound;
+        }
+
+        if (!RuntimeSampledTransformChannelIsSupported(sampled_value.channel)) {
+            return RuntimeAssetWorldObjectAdapterStatus::UnsupportedSampledTransformChannel;
+        }
+
+        if (!std::isfinite(sampled_value.value)) {
+            return RuntimeAssetWorldObjectAdapterStatus::InvalidSampledTransformValue;
+        }
+
+        const WorldTransformResult query_result = request.transform_destination->Query(world_object_id);
+        const RuntimeAssetWorldObjectAdapterStatus query_status = MapWorldTransformStatus(query_result.status);
+        if (query_status != RuntimeAssetWorldObjectAdapterStatus::Success) {
+            return query_status;
+        }
+
+        ++sampled_value_index;
+    }
+
+    if (out_failed_target_id != nullptr) {
+        *out_failed_target_id = 0U;
     }
 
     return RuntimeAssetWorldObjectAdapterStatus::Success;
@@ -1197,6 +1467,40 @@ const RuntimeAssetWorldObjectAdapterIdentityRecord *RuntimeAssetWorldObjectAdapt
     return nullptr;
 }
 
+const RuntimeAssetWorldObjectAdapterIdentityRecord *RuntimeAssetWorldObjectAdapterBridge::FindIdentityRecord(
+    const RuntimeAssetWorldObjectRuntimeSampledTransformApplicationRequest &request,
+    std::uint64_t target_id) const {
+    std::uint32_t identity_index = 0U;
+    while (identity_index < request.identity_record_count) {
+        const RuntimeAssetWorldObjectAdapterIdentityRecord &identity_record =
+            request.identity_records[identity_index];
+        if (identity_record.target_id == target_id) {
+            return &identity_record;
+        }
+
+        ++identity_index;
+    }
+
+    return nullptr;
+}
+
+const RuntimeAssetRuntimeInstanceMappingRecord *RuntimeAssetWorldObjectAdapterBridge::FindRuntimeInstanceMapping(
+    const RuntimeAssetWorldObjectRuntimeSampledTransformApplicationRequest &request,
+    std::uint64_t target_id) const {
+    std::uint32_t mapping_index = 0U;
+    while (mapping_index < request.runtime_instance_mapping_count) {
+        const RuntimeAssetRuntimeInstanceMappingRecord &mapping =
+            request.runtime_instance_mappings[mapping_index];
+        if (mapping.target_id == target_id) {
+            return &mapping;
+        }
+
+        ++mapping_index;
+    }
+
+    return nullptr;
+}
+
 bool RuntimeAssetWorldObjectAdapterBridge::HasDuplicateMappingTargetId(
     const RuntimeAssetWorldObjectAdapterRequest &request,
     std::uint32_t mapping_index) const {
@@ -1217,6 +1521,24 @@ bool RuntimeAssetWorldObjectAdapterBridge::HasDuplicateMappingTargetId(
 
 bool RuntimeAssetWorldObjectAdapterBridge::HasDuplicateMappingTargetId(
     const RuntimeAssetWorldObjectTransformApplicationRequest &request,
+    std::uint32_t mapping_index) const {
+    const RuntimeAssetRuntimeInstanceMappingRecord &mapping = request.runtime_instance_mappings[mapping_index];
+    std::uint32_t other_index = mapping_index + 1U;
+    while (other_index < request.runtime_instance_mapping_count) {
+        const RuntimeAssetRuntimeInstanceMappingRecord &other_mapping =
+            request.runtime_instance_mappings[other_index];
+        if (other_mapping.target_id == mapping.target_id) {
+            return true;
+        }
+
+        ++other_index;
+    }
+
+    return false;
+}
+
+bool RuntimeAssetWorldObjectAdapterBridge::HasDuplicateMappingTargetId(
+    const RuntimeAssetWorldObjectRuntimeSampledTransformApplicationRequest &request,
     std::uint32_t mapping_index) const {
     const RuntimeAssetRuntimeInstanceMappingRecord &mapping = request.runtime_instance_mappings[mapping_index];
     std::uint32_t other_index = mapping_index + 1U;
@@ -1255,6 +1577,26 @@ bool RuntimeAssetWorldObjectAdapterBridge::HasDuplicateWorldObjectId(
 
 bool RuntimeAssetWorldObjectAdapterBridge::HasDuplicateWorldObjectId(
     const RuntimeAssetWorldObjectTransformApplicationRequest &request,
+    std::uint32_t mapping_index,
+    WorldObjectId world_object_id) const {
+    std::uint32_t other_index = mapping_index + 1U;
+    while (other_index < request.runtime_instance_mapping_count) {
+        const RuntimeAssetRuntimeInstanceMappingRecord &other_mapping =
+            request.runtime_instance_mappings[other_index];
+        const RuntimeAssetWorldObjectAdapterIdentityRecord *other_identity =
+            FindIdentityRecord(request, other_mapping.target_id);
+        if (other_identity != nullptr && WorldObjectIdsMatch(other_identity->world_object_id, world_object_id)) {
+            return true;
+        }
+
+        ++other_index;
+    }
+
+    return false;
+}
+
+bool RuntimeAssetWorldObjectAdapterBridge::HasDuplicateWorldObjectId(
+    const RuntimeAssetWorldObjectRuntimeSampledTransformApplicationRequest &request,
     std::uint32_t mapping_index,
     WorldObjectId world_object_id) const {
     std::uint32_t other_index = mapping_index + 1U;
@@ -1295,6 +1637,26 @@ bool RuntimeAssetWorldObjectAdapterBridge::HasDuplicateObjectHandle(
 
 bool RuntimeAssetWorldObjectAdapterBridge::HasDuplicateObjectHandle(
     const RuntimeAssetWorldObjectTransformApplicationRequest &request,
+    std::uint32_t mapping_index,
+    ObjectHandle object_handle) const {
+    std::uint32_t other_index = mapping_index + 1U;
+    while (other_index < request.runtime_instance_mapping_count) {
+        const RuntimeAssetRuntimeInstanceMappingRecord &other_mapping =
+            request.runtime_instance_mappings[other_index];
+        const RuntimeAssetWorldObjectAdapterIdentityRecord *other_identity =
+            FindIdentityRecord(request, other_mapping.target_id);
+        if (other_identity != nullptr && ObjectHandlesMatch(other_identity->object_handle, object_handle)) {
+            return true;
+        }
+
+        ++other_index;
+    }
+
+    return false;
+}
+
+bool RuntimeAssetWorldObjectAdapterBridge::HasDuplicateObjectHandle(
+    const RuntimeAssetWorldObjectRuntimeSampledTransformApplicationRequest &request,
     std::uint32_t mapping_index,
     ObjectHandle object_handle) const {
     std::uint32_t other_index = mapping_index + 1U;
@@ -1329,6 +1691,51 @@ bool RuntimeAssetWorldObjectAdapterBridge::HasMappedWorldObject(
     }
 
     return false;
+}
+
+bool RuntimeAssetWorldObjectAdapterBridge::ResolveRuntimeSampledTransformTarget(
+    const RuntimeAssetWorldObjectRuntimeSampledTransformApplicationRequest &request,
+    std::uint64_t target_id,
+    WorldObjectId *out_world_object_id) const {
+    if (out_world_object_id == nullptr) {
+        return false;
+    }
+
+    const RuntimeAssetRuntimeInstanceMappingRecord *mapping = FindRuntimeInstanceMapping(request, target_id);
+    if (mapping == nullptr) {
+        return false;
+    }
+
+    const RuntimeAssetWorldObjectAdapterIdentityRecord *identity_record =
+        FindIdentityRecord(request, mapping->target_id);
+    if (identity_record == nullptr) {
+        return false;
+    }
+
+    if (!identity_record->world_object_id.IsValid()) {
+        return false;
+    }
+
+    *out_world_object_id = identity_record->world_object_id;
+    return true;
+}
+
+bool RuntimeAssetWorldObjectAdapterBridge::IsFirstRuntimeSampledTransformTargetOccurrence(
+    const RuntimeAssetWorldObjectRuntimeSampledTransformApplicationRequest &request,
+    std::uint32_t sampled_value_index) const {
+    const RuntimeAssetWorldObjectRuntimeSampledTransformValue &current =
+        request.sampled_values[sampled_value_index];
+    std::uint32_t index = 0U;
+    while (index < sampled_value_index) {
+        const RuntimeAssetWorldObjectRuntimeSampledTransformValue &candidate = request.sampled_values[index];
+        if (candidate.target_id == current.target_id) {
+            return false;
+        }
+
+        ++index;
+    }
+
+    return true;
 }
 
 bool RuntimeAssetWorldObjectAdapterBridge::ObjectHandlesMatch(

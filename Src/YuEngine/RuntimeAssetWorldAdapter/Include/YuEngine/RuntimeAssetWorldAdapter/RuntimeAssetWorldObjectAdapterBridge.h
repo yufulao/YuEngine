@@ -92,6 +92,13 @@ public:
     RuntimeAssetWorldObjectAdapterResult ApplySampledTransforms(
         const RuntimeAssetWorldObjectTransformApplicationRequest &request);
     /**
+     * @comment Applies RuntimeAsset target id sampled transform values to caller-owned World transform bridge.
+     * @param request RuntimeAsset mapping, identity, and target id sampled transform inputs.
+     * @return Explicit operation result.
+     */
+    RuntimeAssetWorldObjectAdapterResult ApplyRuntimeSampledTransforms(
+        const RuntimeAssetWorldObjectRuntimeSampledTransformApplicationRequest &request);
+    /**
      * @comment 在调用方持有的 World transform records 写入前校验 RuntimeAsset sampled transform 目标。
      * @param request RuntimeAsset mapping、identity 和 sampled transform 输入。
      * @return 显式操作结果。
@@ -128,6 +135,9 @@ private:
         std::uint32_t *out_required_transform_output_count) const;
     RuntimeAssetWorldObjectAdapterStatus ValidateTransformApplicationRequest(
         const RuntimeAssetWorldObjectTransformApplicationRequest &request) const;
+    RuntimeAssetWorldObjectAdapterStatus ValidateRuntimeSampledTransformApplicationRequest(
+        const RuntimeAssetWorldObjectRuntimeSampledTransformApplicationRequest &request,
+        std::uint64_t *out_failed_target_id) const;
     RuntimeAssetWorldObjectAdapterStatus ValidateTransformSamplerRequest(
         const RuntimeAssetWorldObjectTransformSamplerBridgeRequest &request,
         const RuntimeAssetWorldObjectTransformApplicationRequest *out_request) const;
@@ -151,19 +161,34 @@ private:
     RuntimeAssetWorldObjectAdapterStatus ValidateRuntimeInstanceMapping(
         const RuntimeAssetWorldObjectTransformApplicationRequest &request,
         std::uint32_t mapping_index) const;
+    RuntimeAssetWorldObjectAdapterStatus ValidateRuntimeInstanceMapping(
+        const RuntimeAssetWorldObjectRuntimeSampledTransformApplicationRequest &request,
+        std::uint32_t mapping_index) const;
     RuntimeAssetWorldObjectAdapterStatus ValidateSampledTransformTargets(
         const RuntimeAssetWorldObjectTransformApplicationRequest &request) const;
+    RuntimeAssetWorldObjectAdapterStatus ValidateRuntimeSampledTransformTargets(
+        const RuntimeAssetWorldObjectRuntimeSampledTransformApplicationRequest &request,
+        std::uint64_t *out_failed_target_id) const;
     const RuntimeAssetWorldObjectAdapterIdentityRecord *FindIdentityRecord(
         const RuntimeAssetWorldObjectAdapterRequest &request,
         std::uint64_t target_id) const;
     const RuntimeAssetWorldObjectAdapterIdentityRecord *FindIdentityRecord(
         const RuntimeAssetWorldObjectTransformApplicationRequest &request,
+        std::uint64_t target_id) const;
+    const RuntimeAssetWorldObjectAdapterIdentityRecord *FindIdentityRecord(
+        const RuntimeAssetWorldObjectRuntimeSampledTransformApplicationRequest &request,
+        std::uint64_t target_id) const;
+    const yuengine::runtimeasset::RuntimeAssetRuntimeInstanceMappingRecord *FindRuntimeInstanceMapping(
+        const RuntimeAssetWorldObjectRuntimeSampledTransformApplicationRequest &request,
         std::uint64_t target_id) const;
     bool HasDuplicateMappingTargetId(
         const RuntimeAssetWorldObjectAdapterRequest &request,
         std::uint32_t mapping_index) const;
     bool HasDuplicateMappingTargetId(
         const RuntimeAssetWorldObjectTransformApplicationRequest &request,
+        std::uint32_t mapping_index) const;
+    bool HasDuplicateMappingTargetId(
+        const RuntimeAssetWorldObjectRuntimeSampledTransformApplicationRequest &request,
         std::uint32_t mapping_index) const;
     bool HasDuplicateWorldObjectId(
         const RuntimeAssetWorldObjectAdapterRequest &request,
@@ -171,6 +196,10 @@ private:
         yuengine::world::WorldObjectId world_object_id) const;
     bool HasDuplicateWorldObjectId(
         const RuntimeAssetWorldObjectTransformApplicationRequest &request,
+        std::uint32_t mapping_index,
+        yuengine::world::WorldObjectId world_object_id) const;
+    bool HasDuplicateWorldObjectId(
+        const RuntimeAssetWorldObjectRuntimeSampledTransformApplicationRequest &request,
         std::uint32_t mapping_index,
         yuengine::world::WorldObjectId world_object_id) const;
     bool HasDuplicateObjectHandle(
@@ -179,11 +208,22 @@ private:
         yuengine::object::ObjectHandle object_handle) const;
     bool HasDuplicateObjectHandle(
         const RuntimeAssetWorldObjectTransformApplicationRequest &request,
+        std::uint32_t mapping_index,
+        yuengine::object::ObjectHandle object_handle) const;
+    bool HasDuplicateObjectHandle(
+        const RuntimeAssetWorldObjectRuntimeSampledTransformApplicationRequest &request,
         std::uint32_t mapping_index,
         yuengine::object::ObjectHandle object_handle) const;
     bool HasMappedWorldObject(
         const RuntimeAssetWorldObjectTransformApplicationRequest &request,
         yuengine::world::WorldObjectId world_object_id) const;
+    bool ResolveRuntimeSampledTransformTarget(
+        const RuntimeAssetWorldObjectRuntimeSampledTransformApplicationRequest &request,
+        std::uint64_t target_id,
+        yuengine::world::WorldObjectId *out_world_object_id) const;
+    bool IsFirstRuntimeSampledTransformTargetOccurrence(
+        const RuntimeAssetWorldObjectRuntimeSampledTransformApplicationRequest &request,
+        std::uint32_t sampled_value_index) const;
     bool ObjectHandlesMatch(
         yuengine::object::ObjectHandle left,
         yuengine::object::ObjectHandle right) const;
