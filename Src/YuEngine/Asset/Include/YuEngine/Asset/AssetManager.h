@@ -15,7 +15,9 @@
 #include "YuEngine/Asset/AssetSnapshot.h"
 #include "YuEngine/AudioResource/AudioResourcePcmPacketImportRecord.h"
 #include "YuEngine/Resource/ResourceDecodedPayloadRecord.h"
+#include "YuEngine/Resource/ResourceHandle.h"
 #include "YuEngine/Resource/ResourceResidencyState.h"
+#include "YuEngine/Resource/ResourceTypeId.h"
 #include "YuEngine/Streaming/ResourceDecodedTextureBridgeResult.h"
 
 namespace yuengine::resource {
@@ -23,6 +25,20 @@ class ResourceRegistry;
 }
 
 namespace yuengine::asset {
+struct AssetAuthoringDependencyEdge final {
+    std::uint64_t stable_resource_id = 0U;
+    AssetHandle dependent{};
+    AssetHandle dependency{};
+    yuengine::resource::ResourceHandle expected_resource{};
+    yuengine::resource::ResourceTypeId expected_resource_type{};
+};
+
+struct AssetAuthoringDependencyBatchResult final {
+    AssetStatus status = AssetStatus::Success;
+    std::uint32_t committed_edge_count = 0U;
+    std::uint32_t failed_edge_index = 0U;
+};
+
 class AssetManager final {
 public:
     /**
@@ -73,6 +89,21 @@ public:
      */
     AssetStatus AddDependency(AssetHandle dependent, AssetHandle dependency);
     /**
+     * @comment 校验 authoring dependency 输入后添加 asset 依赖边。
+     * @param edge 输入 authoring dependency 边。
+     * @return 显式操作状态。
+     */
+    AssetStatus AddAuthoringDependency(const AssetAuthoringDependencyEdge &edge);
+    /**
+     * @comment 按输入顺序批量提交 authoring dependency 边。
+     * @param edges 输入 authoring dependency 边数组。
+     * @param edge_count 输入 authoring dependency 边数量。
+     * @return 批量操作结果。
+     */
+    AssetAuthoringDependencyBatchResult AddAuthoringDependencies(
+        const AssetAuthoringDependencyEdge *edges,
+        std::uint32_t edge_count);
+    /**
      * @comment 按确定顺序遍历 root asset 的依赖闭包。
      * @param root 输入 root asset。
      * @param output_assets 输出 asset handle 存储。
@@ -85,6 +116,26 @@ public:
         AssetHandle *output_assets,
         std::uint32_t output_asset_capacity,
         std::uint32_t *output_asset_count);
+    /**
+     * @comment 无副作用枚举 dependent asset 的直接依赖边。
+     * @param dependent 输入 dependent asset。
+     * @param output_dependencies 输出 dependency asset 存储。
+     * @param output_dependency_capacity 输出存储容量。
+     * @param output_dependency_count 输出 dependency asset 数量。
+     * @return 显式操作状态。
+     */
+    AssetStatus EnumerateDirectDependencies(
+        AssetHandle dependent,
+        AssetHandle *output_dependencies,
+        std::uint32_t output_dependency_capacity,
+        std::uint32_t *output_dependency_count) const;
+    /**
+     * @comment 无副作用检查直接依赖边是否存在。
+     * @param dependent 输入 dependent asset。
+     * @param dependency 输入 dependency asset。
+     * @return 直接依赖边存在时返回 true。
+     */
+    bool HasDependencyEdge(AssetHandle dependent, AssetHandle dependency) const;
     /**
      * @comment 将 asset 标记为 loading。
      * @param handle 输入 asset handle。
@@ -135,6 +186,13 @@ public:
      */
     AssetStatus QueryAsset(AssetHandle handle, AssetRecord *output_record);
     /**
+     * @comment 无副作用查询 active asset 记录。
+     * @param handle 输入 asset handle。
+     * @param output_record 输出记录。
+     * @return 显式操作状态。
+     */
+    AssetStatus GetAssetRecord(AssetHandle handle, AssetRecord *output_record) const;
+    /**
      * @comment 返回当前状态快照。
      * @return 快照值。
      */
@@ -162,7 +220,6 @@ private:
     bool ValidateDescriptor(const AssetDescriptor &descriptor, AssetStatus *output_status) const;
     bool HasType(AssetTypeId type) const;
     bool HasDuplicateActiveAsset(const AssetDescriptor &descriptor) const;
-    bool HasDependencyEdge(AssetHandle dependent, AssetHandle dependency) const;
     bool HasDependencyPath(std::uint32_t start_slot, std::uint32_t target_slot) const;
     bool IsResourceResidentState(yuengine::resource::ResourceResidencyState state) const;
     bool DoResourceHandlesMatch(

@@ -345,6 +345,67 @@ AssetStatus AssetManager::AddDependency(AssetHandle dependent, AssetHandle depen
     return AssetStatus::Success;
 }
 
+AssetStatus AssetManager::AddAuthoringDependency(const AssetAuthoringDependencyEdge &edge) {
+    if (edge.stable_resource_id == 0U) {
+        return RecordFailure(AssetStatus::InvalidAssetId);
+    }
+
+    if (!edge.expected_resource.IsValid()) {
+        return RecordFailure(AssetStatus::InvalidArgument);
+    }
+
+    if (!edge.expected_resource_type.IsValid()) {
+        return RecordFailure(AssetStatus::InvalidArgument);
+    }
+
+    std::size_t dependency_index = 0U;
+    const AssetStatus dependency_status = ResolveHandle(edge.dependency, dependency_index);
+    if (dependency_status != AssetStatus::Success) {
+        return RecordFailure(dependency_status);
+    }
+
+    const AssetRecord &dependency_record = slots_[dependency_index].record;
+    if (!DoResourceHandlesMatch(dependency_record.resource, edge.expected_resource)) {
+        return RecordFailure(AssetStatus::ReadyRecordMismatch);
+    }
+
+    if (!DoResourceTypesMatch(dependency_record.resource_type, edge.expected_resource_type)) {
+        return RecordFailure(AssetStatus::ReadyRecordMismatch);
+    }
+
+    return AddDependency(edge.dependent, edge.dependency);
+}
+
+AssetAuthoringDependencyBatchResult AssetManager::AddAuthoringDependencies(
+    const AssetAuthoringDependencyEdge *edges,
+    std::uint32_t edge_count) {
+    AssetAuthoringDependencyBatchResult result{};
+    if (edge_count == 0U) {
+        RecordSuccess();
+        return result;
+    }
+
+    if (edges == nullptr) {
+        result.status = RecordFailure(AssetStatus::InvalidArgument);
+        return result;
+    }
+
+    for (std::uint32_t edge_index = 0U; edge_index < edge_count; ++edge_index) {
+        const AssetStatus edge_status = AddAuthoringDependency(edges[edge_index]);
+        if (edge_status != AssetStatus::Success) {
+            result.status = edge_status;
+            result.failed_edge_index = edge_index;
+            return result;
+        }
+
+        ++result.committed_edge_count;
+    }
+
+    result.status = AssetStatus::Success;
+    result.failed_edge_index = 0U;
+    return result;
+}
+
 AssetStatus AssetManager::TraverseDependencies(
     AssetHandle root,
     AssetHandle *output_assets,
@@ -642,6 +703,68 @@ AssetStatus AssetManager::QueryAsset(AssetHandle handle, AssetRecord *output_rec
 
     *output_record = slots_[slot_index].record;
     RecordSuccess();
+    return AssetStatus::Success;
+}
+
+AssetStatus AssetManager::GetAssetRecord(AssetHandle handle, AssetRecord *output_record) const {
+    if (output_record == nullptr) {
+        return AssetStatus::InvalidArgument;
+    }
+
+    std::size_t slot_index = 0U;
+    const AssetStatus handle_status = ResolveHandle(handle, slot_index);
+    if (handle_status != AssetStatus::Success) {
+        return handle_status;
+    }
+
+    *output_record = slots_[slot_index].record;
+    return AssetStatus::Success;
+}
+
+AssetStatus AssetManager::EnumerateDirectDependencies(
+    AssetHandle dependent,
+    AssetHandle *output_dependencies,
+    std::uint32_t output_dependency_capacity,
+    std::uint32_t *output_dependency_count) const {
+    if (output_dependency_count == nullptr) {
+        return AssetStatus::InvalidArgument;
+    }
+
+    *output_dependency_count = 0U;
+    if (output_dependency_capacity > 0U && output_dependencies == nullptr) {
+        return AssetStatus::InvalidArgument;
+    }
+
+    std::size_t dependent_index = 0U;
+    const AssetStatus dependent_status = ResolveHandle(dependent, dependent_index);
+    if (dependent_status != AssetStatus::Success) {
+        return dependent_status;
+    }
+
+    std::array<AssetHandle, MAX_ASSET_DEPENDENCY_EDGE_COUNT> staged_dependencies{};
+    std::uint32_t staged_dependency_count = 0U;
+    for (const AssetDependencyEdge &edge : dependency_edges_) {
+        if (!edge.is_active) {
+            continue;
+        }
+
+        if (edge.dependent.slot != dependent.slot || edge.dependent.generation != dependent.generation) {
+            continue;
+        }
+
+        if (staged_dependency_count >= output_dependency_capacity) {
+            return AssetStatus::OutputBufferTooSmall;
+        }
+
+        staged_dependencies[staged_dependency_count] = edge.dependency;
+        ++staged_dependency_count;
+    }
+
+    for (std::uint32_t index = 0U; index < staged_dependency_count; ++index) {
+        output_dependencies[index] = staged_dependencies[index];
+    }
+
+    *output_dependency_count = staged_dependency_count;
     return AssetStatus::Success;
 }
 

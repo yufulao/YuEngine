@@ -19,6 +19,8 @@
 #include "YuEngine/Rhi/RhiTextureHandle.h"
 
 using yuengine::asset::AssetDescriptor;
+using yuengine::asset::AssetAuthoringDependencyBatchResult;
+using yuengine::asset::AssetAuthoringDependencyEdge;
 using yuengine::asset::AssetHandle;
 using yuengine::asset::AssetLoadState;
 using AssetManager = yuengine::asset::AssetManager;
@@ -69,6 +71,10 @@ constexpr const char *TEST_REGISTRATION_CAPACITY_ENTRY =
 constexpr const char *TEST_DEPENDENCIES = "Asset_DependenciesTraverseBoundedAndRejectCycle";
 constexpr const char *TEST_DEPENDENCY_OUTPUT_CAPACITY_ENTRY =
     "Asset_DependencyOutputCapacityReportsEntryIdentity";
+constexpr const char *TEST_AUTHORING_DEPENDENCY =
+    "Asset_AuthoringDependencyEdgeRequiresExplicitHandleAndMatchesResource";
+constexpr const char *TEST_AUTHORING_DEPENDENCY_BATCH =
+    "Asset_AuthoringDependencyBatchStopsAtFirstFailureWithCommittedCount";
 constexpr const char *TEST_TEXTURE_READY =
     "Asset_TextureReadyRecordUsesStreamingResultWithoutOwningDevice";
 constexpr const char *TEST_AUDIO_READY =
@@ -161,6 +167,18 @@ bool IsDependencyOutputCapacityEntryClear(const AssetSnapshot &snapshot) {
     }
 
     return !snapshot.last_failed_dependency_output_dependency.IsValid();
+}
+
+bool DidOperationDiagnosticsMatch(const AssetSnapshot &left, const AssetSnapshot &right) {
+    if (left.accepted_operation_count != right.accepted_operation_count) {
+        return false;
+    }
+
+    if (left.failed_operation_count != right.failed_operation_count) {
+        return false;
+    }
+
+    return left.last_status == right.last_status;
 }
 
 int ExpectSmallDependencyOutputFailure(
@@ -933,6 +951,273 @@ int AssetDependencyOutputCapacityReportsEntryIdentity() {
     return 0;
 }
 
+int AssetAuthoringDependencyEdgeRequiresExplicitHandleAndMatchesResource() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult document_resource = RegisterResource(registry, 24U, RESOURCE_TYPE_TEXTURE);
+    const ResourceRegistrationResult dependency_resource = RegisterResource(registry, 25U, RESOURCE_TYPE_TEXTURE);
+    const ResourceRegistrationResult mismatch_resource = RegisterResource(registry, 26U, RESOURCE_TYPE_AUDIO);
+    if (!document_resource.Succeeded() || !dependency_resource.Succeeded() || !mismatch_resource.Succeeded()) {
+        return Fail("authoring dependency resource registration failed");
+    }
+
+    AssetManager manager(AssetManagerDesc{4U, 2U, 2U});
+    const AssetRegistrationResult document_asset =
+        RegisterAsset(manager, registry, 2401U, ASSET_TYPE_TEXTURE, document_resource.handle, RESOURCE_TYPE_TEXTURE);
+    const AssetRegistrationResult dependency_asset =
+        RegisterAsset(manager, registry, 2402U, ASSET_TYPE_TEXTURE, dependency_resource.handle, RESOURCE_TYPE_TEXTURE);
+    if (!document_asset.Succeeded() || !dependency_asset.Succeeded()) {
+        return Fail("authoring dependency asset registration failed");
+    }
+
+    AssetAuthoringDependencyEdge edge{};
+    edge.stable_resource_id = 0U;
+    edge.dependent = document_asset.handle;
+    edge.dependency = dependency_asset.handle;
+    edge.expected_resource = dependency_resource.handle;
+    edge.expected_resource_type = RESOURCE_TYPE_TEXTURE;
+    if (manager.AddAuthoringDependency(edge) != AssetStatus::InvalidAssetId) {
+        return Fail("authoring dependency accepted missing stable resource id");
+    }
+
+    AssetSnapshot snapshot = manager.Snapshot();
+    if (snapshot.active_dependency_edge_count != 0U) {
+        return Fail("authoring dependency missing stable id mutated edge count");
+    }
+
+    edge.stable_resource_id = 9101U;
+    edge.dependency = AssetHandle{};
+    if (manager.AddAuthoringDependency(edge) != AssetStatus::InvalidHandle) {
+        return Fail("authoring dependency accepted missing explicit asset handle");
+    }
+
+    snapshot = manager.Snapshot();
+    if (snapshot.active_dependency_edge_count != 0U) {
+        return Fail("authoring dependency missing explicit handle mutated edge count");
+    }
+
+    edge.dependency = dependency_asset.handle;
+    edge.expected_resource = mismatch_resource.handle;
+    edge.expected_resource_type = RESOURCE_TYPE_AUDIO;
+    if (manager.AddAuthoringDependency(edge) != AssetStatus::ReadyRecordMismatch) {
+        return Fail("authoring dependency accepted mismatched resource record");
+    }
+
+    snapshot = manager.Snapshot();
+    if (snapshot.active_dependency_edge_count != 0U) {
+        return Fail("authoring dependency mismatch mutated edge count");
+    }
+
+    edge.expected_resource = dependency_resource.handle;
+    edge.expected_resource_type = RESOURCE_TYPE_TEXTURE;
+    if (manager.AddAuthoringDependency(edge) != AssetStatus::Success) {
+        return Fail("authoring dependency edge commit failed");
+    }
+
+    snapshot = manager.Snapshot();
+    if (snapshot.active_dependency_edge_count != 1U) {
+        return Fail("authoring dependency edge commit count mismatch");
+    }
+
+    AssetRecord dependency_record{};
+    const AssetStatus record_status = manager.GetAssetRecord(dependency_asset.handle, &dependency_record);
+    if (record_status != AssetStatus::Success) {
+        return Fail("authoring dependency read-only asset record failed");
+    }
+
+    if (!DoResourceHandlesMatch(dependency_record.resource, dependency_resource.handle)) {
+        return Fail("authoring dependency read-only asset record resource mismatch");
+    }
+
+    AssetSnapshot read_snapshot = manager.Snapshot();
+    if (!DidOperationDiagnosticsMatch(snapshot, read_snapshot)) {
+        return Fail("read-only asset record changed diagnostics");
+    }
+
+    std::array<AssetHandle, 1U> dependencies{};
+    std::uint32_t dependency_count = 0U;
+    const AssetStatus direct_status =
+        manager.EnumerateDirectDependencies(document_asset.handle, dependencies.data(), 1U, &dependency_count);
+    if (direct_status != AssetStatus::Success) {
+        return Fail("authoring dependency direct enumeration failed");
+    }
+
+    if (dependency_count != 1U) {
+        return Fail("authoring dependency direct enumeration count mismatch");
+    }
+
+    if (!DoAssetHandlesMatch(dependencies[0U], dependency_asset.handle)) {
+        return Fail("authoring dependency direct enumeration output mismatch");
+    }
+
+    read_snapshot = manager.Snapshot();
+    if (!DidOperationDiagnosticsMatch(snapshot, read_snapshot)) {
+        return Fail("direct dependency enumeration changed diagnostics");
+    }
+
+    if (!manager.HasDependencyEdge(document_asset.handle, dependency_asset.handle)) {
+        return Fail("authoring dependency exact edge lookup failed");
+    }
+
+    if (manager.HasDependencyEdge(dependency_asset.handle, document_asset.handle)) {
+        return Fail("authoring dependency exact edge lookup reversed edge");
+    }
+
+    read_snapshot = manager.Snapshot();
+    if (!DidOperationDiagnosticsMatch(snapshot, read_snapshot)) {
+        return Fail("exact dependency lookup changed diagnostics");
+    }
+
+    const AssetHandle sentinel_dependency{99U, 77U};
+    dependencies[0U] = sentinel_dependency;
+    dependency_count = 123U;
+    const AssetStatus small_direct_status =
+        manager.EnumerateDirectDependencies(document_asset.handle, dependencies.data(), 0U, &dependency_count);
+    if (small_direct_status != AssetStatus::OutputBufferTooSmall) {
+        return Fail("authoring dependency direct enumeration accepted small output");
+    }
+
+    if (dependency_count != 0U) {
+        return Fail("authoring dependency direct enumeration failure count mismatch");
+    }
+
+    if (!DoAssetHandlesMatch(dependencies[0U], sentinel_dependency)) {
+        return Fail("authoring dependency direct enumeration failure mutated output");
+    }
+
+    read_snapshot = manager.Snapshot();
+    if (!DidOperationDiagnosticsMatch(snapshot, read_snapshot)) {
+        return Fail("small direct dependency enumeration changed diagnostics");
+    }
+
+    return 0;
+}
+
+int AssetAuthoringDependencyBatchStopsAtFirstFailureWithCommittedCount() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult document_resource = RegisterResource(registry, 27U, RESOURCE_TYPE_TEXTURE);
+    const ResourceRegistrationResult dependency_a_resource = RegisterResource(registry, 28U, RESOURCE_TYPE_TEXTURE);
+    const ResourceRegistrationResult dependency_b_resource = RegisterResource(registry, 29U, RESOURCE_TYPE_TEXTURE);
+    if (!document_resource.Succeeded() || !dependency_a_resource.Succeeded() ||
+        !dependency_b_resource.Succeeded()) {
+        return Fail("authoring dependency batch resource registration failed");
+    }
+
+    AssetManager manager(AssetManagerDesc{4U, 2U, 3U});
+    const AssetRegistrationResult document_asset =
+        RegisterAsset(manager, registry, 2701U, ASSET_TYPE_TEXTURE, document_resource.handle, RESOURCE_TYPE_TEXTURE);
+    const AssetRegistrationResult dependency_a_asset =
+        RegisterAsset(manager, registry, 2702U, ASSET_TYPE_TEXTURE, dependency_a_resource.handle, RESOURCE_TYPE_TEXTURE);
+    const AssetRegistrationResult dependency_b_asset =
+        RegisterAsset(manager, registry, 2703U, ASSET_TYPE_TEXTURE, dependency_b_resource.handle, RESOURCE_TYPE_TEXTURE);
+    if (!document_asset.Succeeded() || !dependency_a_asset.Succeeded() || !dependency_b_asset.Succeeded()) {
+        return Fail("authoring dependency batch asset registration failed");
+    }
+
+    const AssetAuthoringDependencyBatchResult null_result =
+        manager.AddAuthoringDependencies(nullptr, 1U);
+    if (null_result.status != AssetStatus::InvalidArgument) {
+        return Fail("authoring dependency batch accepted null input");
+    }
+
+    if (null_result.committed_edge_count != 0U || null_result.failed_edge_index != 0U) {
+        return Fail("authoring dependency batch null result counts mismatch");
+    }
+
+    if (manager.Snapshot().active_dependency_edge_count != 0U) {
+        return Fail("authoring dependency batch null input mutated edges");
+    }
+
+    std::array<AssetAuthoringDependencyEdge, 3U> edges{};
+    edges[0U].stable_resource_id = 9201U;
+    edges[0U].dependent = document_asset.handle;
+    edges[0U].dependency = dependency_a_asset.handle;
+    edges[0U].expected_resource = dependency_a_resource.handle;
+    edges[0U].expected_resource_type = RESOURCE_TYPE_TEXTURE;
+    edges[1U].stable_resource_id = 9202U;
+    edges[1U].dependent = document_asset.handle;
+    edges[1U].dependency = AssetHandle{};
+    edges[1U].expected_resource = dependency_b_resource.handle;
+    edges[1U].expected_resource_type = RESOURCE_TYPE_TEXTURE;
+    edges[2U].stable_resource_id = 9203U;
+    edges[2U].dependent = document_asset.handle;
+    edges[2U].dependency = dependency_b_asset.handle;
+    edges[2U].expected_resource = dependency_b_resource.handle;
+    edges[2U].expected_resource_type = RESOURCE_TYPE_TEXTURE;
+
+    const AssetAuthoringDependencyBatchResult failed_batch =
+        manager.AddAuthoringDependencies(edges.data(), static_cast<std::uint32_t>(edges.size()));
+    if (failed_batch.status != AssetStatus::InvalidHandle) {
+        return Fail("authoring dependency batch did not stop on missing explicit handle");
+    }
+
+    if (failed_batch.committed_edge_count != 1U || failed_batch.failed_edge_index != 1U) {
+        return Fail("authoring dependency batch failure result counts mismatch");
+    }
+
+    AssetSnapshot snapshot = manager.Snapshot();
+    if (snapshot.active_dependency_edge_count != 1U) {
+        return Fail("authoring dependency batch failure committed wrong edge count");
+    }
+
+    std::array<AssetHandle, 2U> dependencies{};
+    std::uint32_t dependency_count = 0U;
+    AssetStatus direct_status =
+        manager.EnumerateDirectDependencies(document_asset.handle, dependencies.data(), 2U, &dependency_count);
+    if (direct_status != AssetStatus::Success) {
+        return Fail("authoring dependency batch direct enumeration after failure failed");
+    }
+
+    if (dependency_count != 1U) {
+        return Fail("authoring dependency batch direct enumeration after failure count mismatch");
+    }
+
+    if (!DoAssetHandlesMatch(dependencies[0U], dependency_a_asset.handle)) {
+        return Fail("authoring dependency batch first committed output mismatch");
+    }
+
+    const AssetAuthoringDependencyBatchResult resume_batch =
+        manager.AddAuthoringDependencies(&edges[2U], 1U);
+    if (resume_batch.status != AssetStatus::Success) {
+        return Fail("authoring dependency batch resume failed");
+    }
+
+    if (resume_batch.committed_edge_count != 1U || resume_batch.failed_edge_index != 0U) {
+        return Fail("authoring dependency batch resume result counts mismatch");
+    }
+
+    snapshot = manager.Snapshot();
+    if (snapshot.active_dependency_edge_count != 2U) {
+        return Fail("authoring dependency batch resume committed wrong edge count");
+    }
+
+    dependency_count = 0U;
+    direct_status =
+        manager.EnumerateDirectDependencies(document_asset.handle, dependencies.data(), 2U, &dependency_count);
+    if (direct_status != AssetStatus::Success) {
+        return Fail("authoring dependency batch final direct enumeration failed");
+    }
+
+    if (dependency_count != 2U) {
+        return Fail("authoring dependency batch final direct enumeration count mismatch");
+    }
+
+    if (!DoAssetHandlesMatch(dependencies[1U], dependency_b_asset.handle)) {
+        return Fail("authoring dependency batch second committed output mismatch");
+    }
+
+    const AssetAuthoringDependencyBatchResult empty_batch =
+        manager.AddAuthoringDependencies(nullptr, 0U);
+    if (empty_batch.status != AssetStatus::Success) {
+        return Fail("authoring dependency batch empty input failed");
+    }
+
+    if (empty_batch.committed_edge_count != 0U || empty_batch.failed_edge_index != 0U) {
+        return Fail("authoring dependency batch empty result counts mismatch");
+    }
+
+    return 0;
+}
+
 int AssetTextureReadyRecordUsesStreamingResultWithoutOwningDevice() {
     ResourceRegistry registry;
     const ResourceRegistrationResult resource_result = RegisterResource(registry, 5U, RESOURCE_TYPE_TEXTURE);
@@ -1497,6 +1782,8 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_REGISTRATION_CAPACITY_ENTRY, AssetRegisterRuntimeAssetCapacityEntryPreservesRejectedIdentity},
     {TEST_DEPENDENCIES, AssetDependenciesTraverseBoundedAndRejectCycle},
     {TEST_DEPENDENCY_OUTPUT_CAPACITY_ENTRY, AssetDependencyOutputCapacityReportsEntryIdentity},
+    {TEST_AUTHORING_DEPENDENCY, AssetAuthoringDependencyEdgeRequiresExplicitHandleAndMatchesResource},
+    {TEST_AUTHORING_DEPENDENCY_BATCH, AssetAuthoringDependencyBatchStopsAtFirstFailureWithCommittedCount},
     {TEST_TEXTURE_READY, AssetTextureReadyRecordUsesStreamingResultWithoutOwningDevice},
     {TEST_AUDIO_READY, AssetAudioReadyRecordUsesImportRecordWithoutOwningDevice},
     {TEST_REFRESH_STATE, AssetRefreshStateFromResourceMapsUploadedResidentAndFailed},
