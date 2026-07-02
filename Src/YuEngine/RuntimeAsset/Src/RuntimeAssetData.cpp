@@ -5181,85 +5181,178 @@ RuntimeAssetDataStatus ValidateCookedProgramInputLayout(
     return RuntimeAssetDataStatus::Success;
 }
 
-RuntimeAssetDataStatus ValidateCookedShaderProgramRequest(
-    const RuntimeAssetCookedShaderProgramPipelineRequest &request,
+void SeedCookedShaderProgramPreflightResult(
+    const RuntimeAssetCookedProgramDesc *program,
+    RuntimeAssetCookedShaderProgramPreflightResult *result) {
+    if (result == nullptr) {
+        return;
+    }
+
+    result->required_stage_count = RUNTIME_ASSET_COOKED_SHADER_REQUIRED_STAGE_COUNT;
+    result->stage_capacity = RUNTIME_ASSET_COOKED_SHADER_STAGE_CAPACITY;
+    result->texture_slot_capacity =
+        static_cast<std::uint32_t>(yuengine::rhi::MAX_RHI_SAMPLED_TEXTURE_SLOTS);
+    result->sampler_slot_capacity =
+        static_cast<std::uint32_t>(yuengine::rhi::MAX_RHI_SAMPLER_SLOTS);
+    result->required_input_semantic_capacity =
+        static_cast<std::uint32_t>(yuengine::rhi::MAX_RHI_INPUT_ELEMENTS);
+    result->constant_range_capacity = RUNTIME_ASSET_COOKED_SHADER_CONSTANT_RANGE_CAPACITY;
+
+    if (program == nullptr) {
+        return;
+    }
+
+    result->program_id = program->program_id;
+    result->stage_count = program->stage_count;
+    result->texture_slot_count = program->texture_slot_count;
+    result->sampler_slot_count = program->sampler_slot_count;
+    result->required_input_semantic_count = program->required_input_semantic_count;
+    result->constant_range_count = program->constant_range_count;
+}
+
+void RecordCookedShaderStagePreflightFailure(
+    RuntimeAssetCookedShaderProgramPreflightResult *result,
+    std::uint32_t stage_index,
+    const RuntimeAssetCookedShaderStagePayloadDesc &stage,
+    RuntimeAssetDataStatus status) {
+    if (result == nullptr) {
+        return;
+    }
+
+    result->failed_stage_index = stage_index;
+    result->failed_stage = stage.stage;
+    result->failed_stage_status = status;
+}
+
+void RecordCookedShaderRequiredStageCount(
+    RuntimeAssetCookedShaderProgramPreflightResult *result) {
+    if (result == nullptr) {
+        return;
+    }
+
+    std::uint32_t missing_count = 0U;
+    if (!result->has_vertex_stage) {
+        ++missing_count;
+    }
+
+    if (!result->has_pixel_stage) {
+        ++missing_count;
+    }
+
+    result->missing_required_stage_count = missing_count;
+}
+
+RuntimeAssetDataStatus PreflightCookedShaderProgramPayload(
+    const RuntimeAssetCookedProgramDesc *program,
     const RuntimeAssetCookedShaderStagePayloadDesc **out_vertex_stage,
-    const RuntimeAssetCookedShaderStagePayloadDesc **out_pixel_stage) {
-    if (out_vertex_stage == nullptr || out_pixel_stage == nullptr) {
+    const RuntimeAssetCookedShaderStagePayloadDesc **out_pixel_stage,
+    RuntimeAssetCookedShaderProgramPreflightResult *result) {
+    if (out_vertex_stage == nullptr || out_pixel_stage == nullptr || result == nullptr) {
         return RuntimeAssetDataStatus::InvalidArgument;
     }
 
     *out_vertex_stage = nullptr;
     *out_pixel_stage = nullptr;
+    SeedCookedShaderProgramPreflightResult(program, result);
 
-    if (request.device == nullptr || request.program == nullptr) {
+    if (program == nullptr) {
         return RuntimeAssetDataStatus::InvalidArgument;
     }
 
-    const RuntimeAssetCookedProgramDesc &program = *request.program;
-    if (program.program_id == 0U) {
+    if (program->program_id == 0U) {
         return RuntimeAssetDataStatus::InvalidArgument;
     }
 
-    if (program.pipeline_class != RuntimeAssetCookedProgramPipelineClass::Graphics) {
+    if (program->pipeline_class != RuntimeAssetCookedProgramPipelineClass::Graphics) {
         return RuntimeAssetDataStatus::UnsupportedFieldValue;
     }
 
-    if (program.stages == nullptr) {
+    if (program->stages == nullptr) {
         return RuntimeAssetDataStatus::InvalidArgument;
     }
 
-    if (program.stage_count == 0U) {
+    if (program->stage_count == 0U) {
         return RuntimeAssetDataStatus::MissingDependency;
     }
 
-    if (program.stage_count > 2U) {
+    if (program->stage_count > RUNTIME_ASSET_COOKED_SHADER_STAGE_CAPACITY) {
         return RuntimeAssetDataStatus::CapacityExceeded;
     }
 
-    for (std::uint32_t index = 0U; index < program.stage_count; ++index) {
-        const RuntimeAssetCookedShaderStagePayloadDesc &stage = program.stages[index];
+    for (std::uint32_t index = 0U; index < program->stage_count; ++index) {
+        const RuntimeAssetCookedShaderStagePayloadDesc &stage = program->stages[index];
         const RuntimeAssetDataStatus stage_status = ValidateCookedShaderStagePayload(stage);
         if (stage_status != RuntimeAssetDataStatus::Success) {
+            RecordCookedShaderStagePreflightFailure(result, index, stage, stage_status);
             return stage_status;
         }
 
         if (stage.stage == yuengine::rhi::RhiShaderStage::Vertex) {
             if (*out_vertex_stage != nullptr) {
+                RecordCookedShaderStagePreflightFailure(
+                    result,
+                    index,
+                    stage,
+                    RuntimeAssetDataStatus::DuplicateDependency);
                 return RuntimeAssetDataStatus::DuplicateDependency;
             }
 
             *out_vertex_stage = &stage;
+            result->has_vertex_stage = true;
         }
 
         if (stage.stage == yuengine::rhi::RhiShaderStage::Pixel) {
             if (*out_pixel_stage != nullptr) {
+                RecordCookedShaderStagePreflightFailure(
+                    result,
+                    index,
+                    stage,
+                    RuntimeAssetDataStatus::DuplicateDependency);
                 return RuntimeAssetDataStatus::DuplicateDependency;
             }
 
             *out_pixel_stage = &stage;
+            result->has_pixel_stage = true;
         }
     }
 
+    RecordCookedShaderRequiredStageCount(result);
     if (*out_vertex_stage == nullptr || *out_pixel_stage == nullptr) {
         return RuntimeAssetDataStatus::MissingDependency;
     }
 
-    const RuntimeAssetDataStatus layout_status = ValidateCookedProgramInputLayout(program);
+    const RuntimeAssetDataStatus layout_status = ValidateCookedProgramInputLayout(*program);
     if (layout_status != RuntimeAssetDataStatus::Success) {
         return layout_status;
     }
 
-    if (program.texture_slot_count > yuengine::rhi::MAX_RHI_SAMPLED_TEXTURE_SLOTS ||
-        program.sampler_slot_count > yuengine::rhi::MAX_RHI_SAMPLER_SLOTS) {
+    if (program->texture_slot_count > yuengine::rhi::MAX_RHI_SAMPLED_TEXTURE_SLOTS ||
+        program->sampler_slot_count > yuengine::rhi::MAX_RHI_SAMPLER_SLOTS) {
         return RuntimeAssetDataStatus::CapacityExceeded;
     }
 
-    if (program.constant_range_count > 8U) {
+    if (program->constant_range_count > RUNTIME_ASSET_COOKED_SHADER_CONSTANT_RANGE_CAPACITY) {
         return RuntimeAssetDataStatus::CapacityExceeded;
     }
 
+    result->accepted = true;
     return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ValidateCookedShaderProgramRequest(
+    const RuntimeAssetCookedShaderProgramPipelineRequest &request,
+    const RuntimeAssetCookedShaderStagePayloadDesc **out_vertex_stage,
+    const RuntimeAssetCookedShaderStagePayloadDesc **out_pixel_stage,
+    RuntimeAssetCookedShaderProgramPreflightResult *out_preflight_result) {
+    if (request.device == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    return PreflightCookedShaderProgramPayload(
+        request.program,
+        out_vertex_stage,
+        out_pixel_stage,
+        out_preflight_result);
 }
 
 RuntimeAssetDataStatus ParseAnimationClipRecord(
@@ -10315,7 +10408,9 @@ RuntimeAssetDataStatus BuildRuntimeAssetCookedShaderProgramPipeline(
 
     const RuntimeAssetCookedShaderStagePayloadDesc *vertex_stage = nullptr;
     const RuntimeAssetCookedShaderStagePayloadDesc *pixel_stage = nullptr;
-    result.status = ValidateCookedShaderProgramRequest(request, &vertex_stage, &pixel_stage);
+    RuntimeAssetCookedShaderProgramPreflightResult preflight_result{};
+    result.status =
+        ValidateCookedShaderProgramRequest(request, &vertex_stage, &pixel_stage, &preflight_result);
     if (result.status != RuntimeAssetDataStatus::Success) {
         *out_result = result;
         return result.status;
@@ -10376,6 +10471,25 @@ RuntimeAssetDataStatus BuildRuntimeAssetCookedShaderProgramPipeline(
     result.pipeline_desc = pipeline_desc;
     result.published_handles = true;
     result.status = RuntimeAssetDataStatus::Success;
+    *out_result = result;
+    return result.status;
+}
+
+RuntimeAssetDataStatus PreflightRuntimeAssetCookedShaderProgramPayload(
+    const RuntimeAssetCookedShaderProgramPreflightRequest &request,
+    RuntimeAssetCookedShaderProgramPreflightResult *out_result) {
+    if (out_result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    RuntimeAssetCookedShaderProgramPreflightResult result{};
+    const RuntimeAssetCookedShaderStagePayloadDesc *vertex_stage = nullptr;
+    const RuntimeAssetCookedShaderStagePayloadDesc *pixel_stage = nullptr;
+    result.status = PreflightCookedShaderProgramPayload(
+        request.program,
+        &vertex_stage,
+        &pixel_stage,
+        &result);
     *out_result = result;
     return result.status;
 }

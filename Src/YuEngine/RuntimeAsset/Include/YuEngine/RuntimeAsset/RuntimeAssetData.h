@@ -951,6 +951,10 @@ enum class RuntimeAssetCookedProgramPipelineClass {
     Graphics
 };
 
+constexpr std::uint32_t RUNTIME_ASSET_COOKED_SHADER_REQUIRED_STAGE_COUNT = 2U;
+constexpr std::uint32_t RUNTIME_ASSET_COOKED_SHADER_STAGE_CAPACITY = 2U;
+constexpr std::uint32_t RUNTIME_ASSET_COOKED_SHADER_CONSTANT_RANGE_CAPACITY = 8U;
+
 /**
  * @brief One cooked shader stage payload row owned by RuntimeAsset data.
  */
@@ -987,6 +991,42 @@ struct RuntimeAssetCookedProgramDesc final {
         required_input_semantics{};
     std::uint32_t required_input_semantic_count = 0U;
     std::uint32_t constant_range_count = 0U;
+};
+
+/**
+ * @brief Requests a no-mutation preflight for cooked shader/program payload records.
+ */
+struct RuntimeAssetCookedShaderProgramPreflightRequest final {
+    const RuntimeAssetCookedProgramDesc *program = nullptr;
+};
+
+/**
+ * @brief Reports cooked shader/program payload capacity, required counts, and failed field identity.
+ */
+struct RuntimeAssetCookedShaderProgramPreflightResult final {
+    RuntimeAssetDataStatus status = RuntimeAssetDataStatus::InvalidArgument;
+    std::uint32_t program_id = 0U;
+    std::uint32_t required_stage_count = RUNTIME_ASSET_COOKED_SHADER_REQUIRED_STAGE_COUNT;
+    std::uint32_t stage_count = 0U;
+    std::uint32_t stage_capacity = RUNTIME_ASSET_COOKED_SHADER_STAGE_CAPACITY;
+    std::uint32_t missing_required_stage_count = RUNTIME_ASSET_COOKED_SHADER_REQUIRED_STAGE_COUNT;
+    std::uint32_t texture_slot_count = 0U;
+    std::uint32_t texture_slot_capacity =
+        static_cast<std::uint32_t>(yuengine::rhi::MAX_RHI_SAMPLED_TEXTURE_SLOTS);
+    std::uint32_t sampler_slot_count = 0U;
+    std::uint32_t sampler_slot_capacity =
+        static_cast<std::uint32_t>(yuengine::rhi::MAX_RHI_SAMPLER_SLOTS);
+    std::uint32_t required_input_semantic_count = 0U;
+    std::uint32_t required_input_semantic_capacity =
+        static_cast<std::uint32_t>(yuengine::rhi::MAX_RHI_INPUT_ELEMENTS);
+    std::uint32_t constant_range_count = 0U;
+    std::uint32_t constant_range_capacity = RUNTIME_ASSET_COOKED_SHADER_CONSTANT_RANGE_CAPACITY;
+    std::uint32_t failed_stage_index = 0U;
+    yuengine::rhi::RhiShaderStage failed_stage = yuengine::rhi::RhiShaderStage::Unsupported;
+    RuntimeAssetDataStatus failed_stage_status = RuntimeAssetDataStatus::InvalidArgument;
+    bool has_vertex_stage = false;
+    bool has_pixel_stage = false;
+    bool accepted = false;
 };
 
 /**
@@ -1495,6 +1535,15 @@ RuntimeAssetDataStatus BuildRuntimeAssetShaderProgramPipeline(
 RuntimeAssetDataStatus BuildRuntimeAssetCookedTextureMaterialBridge(
     const RuntimeAssetCookedTextureMaterialBridgeRequest &request,
     RuntimeAssetCookedTextureMaterialBridgeResult *out_result);
+/**
+ * @brief Preflights cooked shader/program payload records without creating RHI objects.
+ * @param request Input cooked program descriptor.
+ * @param out_result Output capacity, required-count, and failure-field diagnostics.
+ * @return Explicit preflight status.
+ */
+RuntimeAssetDataStatus PreflightRuntimeAssetCookedShaderProgramPayload(
+    const RuntimeAssetCookedShaderProgramPreflightRequest &request,
+    RuntimeAssetCookedShaderProgramPreflightResult *out_result);
 /**
  * @brief Creates RHI shader modules and a pipeline from cooked RuntimeAsset bytecode payload rows.
  * @param request Input cooked stage payloads, reflection, and RHI device.

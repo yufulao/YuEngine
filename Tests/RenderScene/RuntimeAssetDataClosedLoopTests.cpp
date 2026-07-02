@@ -256,12 +256,18 @@ using yuengine::runtimeasset::ExecuteRuntimeAssetImportCookCommand;
 using yuengine::runtimeasset::LoadRuntimeAssetDataGraph;
 using yuengine::runtimeasset::LookupRuntimeAssetDataAssetDependencyExact;
 using yuengine::runtimeasset::PackRuntimeAssetMaterialConstants;
+using yuengine::runtimeasset::PreflightRuntimeAssetCookedShaderProgramPayload;
 using yuengine::runtimeasset::RUNTIME_ASSET_PACKED_MATERIAL_CONSTANT_BYTES;
+using yuengine::runtimeasset::RUNTIME_ASSET_COOKED_SHADER_CONSTANT_RANGE_CAPACITY;
+using yuengine::runtimeasset::RUNTIME_ASSET_COOKED_SHADER_REQUIRED_STAGE_COUNT;
+using yuengine::runtimeasset::RUNTIME_ASSET_COOKED_SHADER_STAGE_CAPACITY;
 using yuengine::runtimeasset::RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT;
 using yuengine::runtimeasset::RuntimeAssetArtifactClass;
 using yuengine::runtimeasset::RuntimeAssetCookedMaterialSlotDesc;
 using yuengine::runtimeasset::RuntimeAssetCookedProgramDesc;
 using yuengine::runtimeasset::RuntimeAssetCookedProgramPipelineClass;
+using yuengine::runtimeasset::RuntimeAssetCookedShaderProgramPreflightRequest;
+using yuengine::runtimeasset::RuntimeAssetCookedShaderProgramPreflightResult;
 using yuengine::runtimeasset::RuntimeAssetCookedShaderBytecodeFormat;
 using yuengine::runtimeasset::RuntimeAssetCookedShaderProgramPipelineRequest;
 using yuengine::runtimeasset::RuntimeAssetCookedShaderProgramPipelineResult;
@@ -440,6 +446,10 @@ constexpr const char *TEST_COOKED_SHADER_STAGE_MODULES =
     "RuntimeAssetData_CookedShaderStagePayloadsCreateRhiModules";
 constexpr const char *TEST_COOKED_PROGRAM_PIPELINE_REFLECTION =
     "RuntimeAssetData_CookedProgramPipelineUsesLoadedReflectionAndInputLayout";
+constexpr const char *TEST_SHADER_PAYLOAD_PREFLIGHT_COUNTS =
+    "RuntimeAssetData_ShaderPayloadPreflightReportsCapacityAndRequiredCounts";
+constexpr const char *TEST_SHADER_PAYLOAD_PREFLIGHT_REJECTS =
+    "RuntimeAssetData_ShaderPayloadPreflightRejectsInvalidPayloadWithoutRhiMutation";
 constexpr const char *TEST_COOKED_SHADER_PAYLOAD_REJECTS =
     "RuntimeAssetData_CookedShaderPayloadRejectsStageBytecodeHashAndReflectionMismatchWithoutMutation";
 constexpr const char *TEST_COOKED_SHADER_PROGRAM_RHI_CLEANUP =
@@ -9694,6 +9704,28 @@ bool BuildCookedShaderProgram(
     return status == out_result->status;
 }
 
+RuntimeAssetCookedShaderProgramPreflightRequest CookedProgramPreflightRequest(
+    const RuntimeAssetCookedProgramDesc *program) {
+    RuntimeAssetCookedShaderProgramPreflightRequest request{};
+    request.program = program;
+    return request;
+}
+
+bool PreflightCookedShaderProgram(
+    const RuntimeAssetCookedProgramDesc &program,
+    RuntimeAssetCookedShaderProgramPreflightResult *out_result) {
+    if (out_result == nullptr) {
+        return false;
+    }
+
+    const RuntimeAssetCookedShaderProgramPreflightRequest request =
+        CookedProgramPreflightRequest(&program);
+    const RuntimeAssetDataStatus status =
+        PreflightRuntimeAssetCookedShaderProgramPayload(request, out_result);
+    return status == RuntimeAssetDataStatus::Success &&
+        out_result->status == RuntimeAssetDataStatus::Success;
+}
+
 int RuntimeAssetDataCookedShaderStagePayloadsCreateRhiModules() {
     RuntimeAssetRhiDevice device;
     if (device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
@@ -9772,6 +9804,95 @@ int RuntimeAssetDataCookedProgramPipelineUsesLoadedReflectionAndInputLayout() {
     if (result.vertex_bytecode_hash != stages[0U].bytecode_hash ||
         result.pixel_bytecode_hash != stages[1U].bytecode_hash) {
         return Fail("cooked program bridge did not report loaded stage hashes");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataShaderPayloadPreflightReportsCapacityAndRequiredCounts() {
+    const std::array<std::uint8_t, 8U> vertex_bytes{0x11U, 0x12U, 0x13U, 0x14U, 0x15U, 0x16U, 0x17U, 0x18U};
+    const std::array<std::uint8_t, 8U> pixel_bytes{0x21U, 0x22U, 0x23U, 0x24U, 0x25U, 0x26U, 0x27U, 0x28U};
+    const std::array<RuntimeAssetCookedShaderStagePayloadDesc, 2U> stages =
+        ValidCookedShaderStages(vertex_bytes, pixel_bytes);
+    const RuntimeAssetCookedProgramDesc program =
+        CookedProgramDescriptor(std::span<const RuntimeAssetCookedShaderStagePayloadDesc>(stages.data(), stages.size()));
+
+    RuntimeAssetCookedShaderProgramPreflightResult result{};
+    if (!PreflightCookedShaderProgram(program, &result) ||
+        result.status != RuntimeAssetDataStatus::Success ||
+        !result.accepted) {
+        return Fail("shader payload preflight rejected canonical cooked program");
+    }
+
+    if (result.program_id != program.program_id ||
+        result.stage_count != RUNTIME_ASSET_COOKED_SHADER_REQUIRED_STAGE_COUNT ||
+        result.required_stage_count != RUNTIME_ASSET_COOKED_SHADER_REQUIRED_STAGE_COUNT ||
+        result.stage_capacity != RUNTIME_ASSET_COOKED_SHADER_STAGE_CAPACITY ||
+        result.missing_required_stage_count != 0U ||
+        !result.has_vertex_stage ||
+        !result.has_pixel_stage) {
+        return Fail("shader payload preflight did not report required stage counts");
+    }
+
+    const std::uint32_t sampled_texture_slot_capacity =
+        static_cast<std::uint32_t>(yuengine::rhi::MAX_RHI_SAMPLED_TEXTURE_SLOTS);
+    const std::uint32_t sampler_slot_capacity =
+        static_cast<std::uint32_t>(yuengine::rhi::MAX_RHI_SAMPLER_SLOTS);
+    const std::uint32_t input_semantic_capacity =
+        static_cast<std::uint32_t>(yuengine::rhi::MAX_RHI_INPUT_ELEMENTS);
+    if (result.texture_slot_count != program.texture_slot_count ||
+        result.texture_slot_capacity != sampled_texture_slot_capacity ||
+        result.sampler_slot_count != program.sampler_slot_count ||
+        result.sampler_slot_capacity != sampler_slot_capacity ||
+        result.required_input_semantic_count != program.required_input_semantic_count ||
+        result.required_input_semantic_capacity != input_semantic_capacity ||
+        result.constant_range_count != program.constant_range_count ||
+        result.constant_range_capacity != RUNTIME_ASSET_COOKED_SHADER_CONSTANT_RANGE_CAPACITY) {
+        return Fail("shader payload preflight did not report capacity fields");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataShaderPayloadPreflightRejectsInvalidPayloadWithoutRhiMutation() {
+    const std::array<std::uint8_t, 8U> vertex_bytes{0x31U, 0x32U, 0x33U, 0x34U, 0x35U, 0x36U, 0x37U, 0x38U};
+    const std::array<std::uint8_t, 8U> pixel_bytes{0x41U, 0x42U, 0x43U, 0x44U, 0x45U, 0x46U, 0x47U, 0x48U};
+    std::array<RuntimeAssetCookedShaderStagePayloadDesc, 2U> stages =
+        ValidCookedShaderStages(vertex_bytes, pixel_bytes);
+    stages[1U].bytecode_hash = 1U;
+    const RuntimeAssetCookedProgramDesc program =
+        CookedProgramDescriptor(std::span<const RuntimeAssetCookedShaderStagePayloadDesc>(stages.data(), stages.size()));
+
+    RuntimeAssetRhiDevice device;
+    if (device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+        return Fail("rhi init failed");
+    }
+    const auto before = device.Snapshot();
+
+    RuntimeAssetCookedShaderProgramPreflightResult result{};
+    const RuntimeAssetCookedShaderProgramPreflightRequest request =
+        CookedProgramPreflightRequest(&program);
+    const RuntimeAssetDataStatus status =
+        PreflightRuntimeAssetCookedShaderProgramPayload(request, &result);
+    if (status != RuntimeAssetDataStatus::HashMismatch ||
+        result.status != RuntimeAssetDataStatus::HashMismatch ||
+        result.accepted) {
+        return Fail("shader payload preflight did not reject bytecode hash mismatch");
+    }
+
+    if (result.failed_stage_index != 1U ||
+        result.failed_stage != RhiShaderStage::Pixel ||
+        result.failed_stage_status != RuntimeAssetDataStatus::HashMismatch ||
+        !result.has_vertex_stage ||
+        result.has_pixel_stage) {
+        return Fail("shader payload preflight did not report failed shader stage");
+    }
+
+    const auto after = device.Snapshot();
+    if (after.resources.shader_module_count != before.resources.shader_module_count ||
+        after.resources.pipeline_count != before.resources.pipeline_count ||
+        after.failed_operation_count != before.failed_operation_count) {
+        return Fail("shader payload preflight mutated RHI state");
     }
 
     return 0;
@@ -16846,6 +16967,10 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_COOKED_SHADER_STAGE_MODULES, RuntimeAssetDataCookedShaderStagePayloadsCreateRhiModules},
     {TEST_COOKED_PROGRAM_PIPELINE_REFLECTION,
      RuntimeAssetDataCookedProgramPipelineUsesLoadedReflectionAndInputLayout},
+    {TEST_SHADER_PAYLOAD_PREFLIGHT_COUNTS,
+     RuntimeAssetDataShaderPayloadPreflightReportsCapacityAndRequiredCounts},
+    {TEST_SHADER_PAYLOAD_PREFLIGHT_REJECTS,
+     RuntimeAssetDataShaderPayloadPreflightRejectsInvalidPayloadWithoutRhiMutation},
     {TEST_COOKED_SHADER_PAYLOAD_REJECTS,
      RuntimeAssetDataCookedShaderPayloadRejectsStageBytecodeHashAndReflectionMismatchWithoutMutation},
     {TEST_COOKED_SHADER_PROGRAM_RHI_CLEANUP,
