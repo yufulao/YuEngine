@@ -9,7 +9,7 @@ Loader transaction plan: `docs/YUENGINE_RUNTIME_ASSET_V0_LOADER_TRANSACTION_PLAN
 Payload bridge RHI route: `docs/YUENGINE_RUNTIME_ASSET_V0_PAYLOAD_BRIDGE_RHI_ROUTE_PLAN.md`
 RAV1 evidence matrix: `docs/YUENGINE_RUNTIME_ASSET_V0_RAV1_EVIDENCE_MATRIX.md`
 Related gate: `docs/gates/L1_GATE_RUNTIME_ASSET_DATA_CLOSED_LOOP.md`
-Package/Resource pressure gate: `docs/gates/RTSPINE_008A_PACKAGE_RESOURCE_PRESSURE_CONTRACT.md`
+Package/Resource budget/capacity gate: `docs/gates/RTSPINE_008A_PACKAGE_RESOURCE_PRESSURE_CONTRACT.md`
 Resource Browser scope: `docs/YUENGINE_RESOURCE_BROWSER_IMPORT_COOK_DIAGNOSTICS_SCOPE.md`
 Canonical entry point: `docs/README.md`
 Parent plan: `docs/YUENGINE_LONG_PLAN_TEAM_EXECUTION.md`
@@ -47,12 +47,11 @@ evidence-approved package/parser gate.
 
 ## Production Target Alignment
 
-RuntimeAsset is part of the production spine for a native commercial game with
-multi-GB packed content. The local TouhouNewWorld package is the current
-practical reference bar: a small native runtime, explicit resource archives, an
-asset index/database surface, shader/config files, and resource data in the
-shipped-content-scale class. That shipped-content size is a pressure example
-used to choose explicit budget assumptions; it is not a hard byte target.
+RuntimeAsset is part of the production spine for a complete self-developed
+native commercial engine. The local TouhouNewWorld package is the current
+practical reference workload: a small native runtime, explicit resource
+archives, an asset index/database surface, shader/config files, and real-project
+packed-resource workflow. It is not a byte-size stress target.
 
 This plan therefore optimizes for:
 
@@ -82,16 +81,25 @@ Animation, model, scene, and shader work are not independent islands. They are
 families in one RuntimeAsset graph and must share identity, dependency, budget,
 hash, and no-mutation rules.
 
-## RTSPINE-008A Package/Resource Pressure Contract
+Shader is not an external DCC import asset. Shader capability is a code-like
+authoring path that depends on RuntimeAsset source/cooked records,
+Package/Resource payload and hash identity, RenderCore/RHI shader module and
+pipeline descriptor floors, and diagnostics/no-mutation failure contracts. It
+can advance as a vertical capability before the whole renderer or whole asset
+system is complete, but it must not create temporary camera control, viewport
+input, material graph editor, scene editor, or UI behavior.
 
-`docs/gates/RTSPINE_008A_PACKAGE_RESOURCE_PRESSURE_CONTRACT.md` defines the
-pressure vocabulary and sequencing for Package/Resource work. Later
+## RTSPINE-008A Package/Resource Budget And Capacity Contract
+
+`docs/gates/RTSPINE_008A_PACKAGE_RESOURCE_PRESSURE_CONTRACT.md` is the
+historical file name for Package/Resource budget and capacity sequencing. In
+the active plan this is not a byte-size stress goal. Later
 RuntimeAsset packaged-validation work must consume that gate instead of
 inventing a separate package-size target.
 
 RTSPINE-008A makes these decisions:
 
-- pressure examples are not hard byte targets;
+- scale examples are not hard byte targets;
 - future archive byte ranges use unsigned 64-bit offset and size values, with
   overflow and window-size rejection before state mutation;
 - required hash coverage is entry payload hash, entry metadata hash,
@@ -167,12 +175,12 @@ Package/File/Resource lower-module changes, and no broad/full CTest. It opens
 only the RuntimeAsset transaction rollback/proof gate; WorldObject/editor
 mapping and broader Resource/File/VFS follow-through remain separate gates.
 `archive_byte_offset` and `archive_byte_size` are the only authoritative
-shipped-content pressure byte range. `byte_offset` and `byte_size` may remain
+archive byte range. `byte_offset` and `byte_size` may remain
 as legacy mirrors while Streaming, RuntimeAsset, and existing tests still
-consume them, but they cannot be counted as pressure evidence.
+consume them, but they cannot be counted as budget/capacity evidence.
 
 The current Package/File/Resource fixture limits remain useful as deterministic
-unit-test caps. They do not prove shipped-content pressure until a follow-up
+unit-test caps. They do not prove budget/capacity coverage until a follow-up
 gate explicitly maps them to runtime caps, budget assumptions, or bounded
 windows.
 
@@ -442,7 +450,7 @@ C++ in-memory construction alone.
 | RuntimeAssetWorldAdapter target-family alias handoff | PASS | `origin/main@296100b3bda25e962c3a3a503f9f78f0160083ce` closes `RTSPINE-RUNTIMEASSETWORLDADAPTER-TARGET-FAMILY-ALIAS-HANDOFF-U64-001`; implementation task `77376606-d3d8-45de-8079-79121593b8e7` reports COMPLETE-PASS / committed and VQ task `5fb82855-a437-4eb7-b078-373069988b2d` reports COMPLETE-PASS / VQ-READY; exact scope is `CMakeLists.txt`, `RuntimeAssetWorldObjectAdapterBridge.cpp`, and `RuntimeAssetWorldObjectAdapterBridgeTest.cpp`; focused RuntimeAssetWorldObjectAdapter matrix reports `13/13` PASS including Model/Skeleton alias handoff; direct WorldObject/editor/GameAdapter and broader Resource/File/VFS closure remain separate gates |
 | RuntimeAssetWorldAdapter handoff target-family proof | PASS | `origin/main@54e02e049bb6f67fd15ca32d1675f1c61380ae70` closes `RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-TARGET-FAMILY-PROOF-U64-001`; implementation task `53b6d5dc-fd17-442c-b18b-9257c4f3650c` reports COMPLETE-PASS / committed and VQ task `8fbe251e-2c14-4786-a48c-5b8b0b6f8e14` reports COMPLETE-PASS / VQ-READY; exact scope is `CMakeLists.txt` and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`; focused RuntimeAssetWorldObjectRestoreHandoff discovery/execution reports `5/5` PASS including `RuntimeAssetWorldObjectRestoreHandoff_AppliesModelAndSkeletonTargetFamilyAliases`; the Unknown adapter-preflight negative row preserves no-mutation semantics; direct WorldObject/editor/GameAdapter and broader Resource/File/VFS closure remain separate gates |
 | RuntimeAssetWorldAdapter handoff attachment/resource binding sidecar proof | PASS | `origin/main@4d9f244ca373c466478b54b7fbc0dd91bf8b5720` closes `RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-ATTACHMENT-BINDING-GATE-PROOF-U64-001`; implementation task `3d8c0c2b-987c-4046-8f01-4e04f16f3715` reports COMPLETE-PASS / committed and VQ task `4607e700-6bd8-4f0d-a508-ac86b991e7e7` reports COMPLETE-PASS / VQ-READY; exact scope is `CMakeLists.txt` and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`; focused RuntimeAssetWorldObjectRestoreHandoff discovery/execution reports `6/6` PASS including `RuntimeAssetWorldObjectRestoreHandoff_CarriesAttachmentAndBindingGateRecordsForTargetAliases`; production handoff bridge/state files were unchanged; direct WorldObject/editor/GameAdapter/UI and broader Resource/File/VFS closure remain separate gates |
-| RuntimeAssetWorldAdapter handoff sidecar assembly restore | PASS | `origin/main@f85c67701f2ff90c94c84cdc2761e434524128d8` closes `RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-SIDECAR-ASSEMBLY-RESTORE-U64-001`; implementation task `81f4806a-cfc4-464b-a644-b163bfc0459f` reports COMPLETE-PASS / committed and VQ task `dac5643f-7225-4ba0-a76b-c063178dfb97` reports COMPLETE-PASS / VQ-READY; exact scope is `CMakeLists.txt`, `RuntimeAssetWorldObjectRestoreHandoffState.h`, `RuntimeAssetWorldObjectRestoreHandoffBridge.cpp`, and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`; focused RuntimeAssetWorldObjectRestoreHandoff discovery/execution reports `7/7` PASS including `RuntimeAssetWorldObjectRestoreHandoff_RestoresAttachmentAndBindingSidecarsThroughWorldAssembly`; RuntimeAssetWorldObject(Adapter|RestoreHandoff) rows report `20/20` PASS and WorldSceneAssemblyBridge rows report `27/27` PASS; handoff state records `restored_attachment_count` and `restored_binding_count`; direct WorldObject/editor/GameAdapter/UI and broader Resource/File/VFS closure remain separate gates |
+| RuntimeAssetWorldAdapter handoff sidecar assembly restore | PASS | `origin/main@f85c67701f2ff90c94c84cdc2761e434524128d8` closes `RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-SIDECAR-ASSEMBLY-RESTORE-U64-001`; implementation task `81f4806a-cfc4-464b-a644-b163bfc0459f` reports COMPLETE-PASS / committed and VQ task `dac5643f-7225-4ba0-a76b-c063178dfb97` reports COMPLETE-PASS / VQ-READY; exact scope is `CMakeLists.txt`, `RuntimeAssetWorldObjectRestoreHandoffState.h`, `RuntimeAssetWorldObjectRestoreHandoffBridge.cpp`, and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`; focused RuntimeAssetWorldObjectRestoreHandoff discovery/execution reports `7/7` PASS including `RuntimeAssetWorldObjectRestoreHandoff_RestoresAttachmentAndBindingSidecarsThroughWorldAssembly`; RuntimeAssetWorldObjectAdapter and RuntimeAssetWorldObjectRestoreHandoff rows report `20/20` PASS and WorldSceneAssemblyBridge rows report `27/27` PASS; handoff state records `restored_attachment_count` and `restored_binding_count`; direct WorldObject/editor/GameAdapter/UI and broader Resource/File/VFS closure remain separate gates |
 | RuntimeAssetWorldAdapter handoff sidecar failure status | PASS | `origin/main@4587c7d1f204663577950241d4c42a5b72ab03a1` closes `RTSPINE-RUNTIMEASSETWORLDADAPTER-HANDOFF-SIDECAR-FAILURE-STATUS-U64-001`; implementation task `ab4eb0f5-0350-49af-8da3-13b4c47dda8b` reports COMPLETE-PASS / committed and VQ task `f0c0c54e-32bd-4ee2-9dc2-b8c10c68c59a` reports COMPLETE-PASS / VQ-READY; exact scope is `CMakeLists.txt`, `RuntimeAssetWorldObjectRestoreHandoffBridge.h`, `RuntimeAssetWorldObjectRestoreHandoffResult.h`, `RuntimeAssetWorldObjectRestoreHandoffSnapshot.h`, `RuntimeAssetWorldObjectRestoreHandoffState.h`, `RuntimeAssetWorldObjectRestoreHandoffBridge.cpp`, and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`; `RuntimeAssetWorldObjectRestoreHandoffStatus.h` was allowed but unchanged; result/state/snapshot expose `WorldSceneAssemblyStatus`, assembly failure preserves `RestoreFailed`, focused RuntimeAssetWorldObjectRestoreHandoff rows report `8/8` PASS including `RuntimeAssetWorldObjectRestoreHandoff_ExposesSidecarAssemblyFailureStatus`, adapter plus handoff rows report `21/21` PASS, WorldSceneAssemblyBridge rows report `27/27` PASS, and direct WorldObject/editor/GameAdapter/UI plus broader Resource/File/VFS closure remain separate gates |
 | RuntimeAssetData to RuntimeAssetWorldAdapter handoff fixture | PASS | `origin/main@e512d3990412f90b38aee8469845c44e188dd275` closes `RTSPINE-RUNTIMEASSETDATA-TO-RUNTIMEASSETWORLDADAPTER-HANDOFF-U64-001`; implementation task `150e051b` reports COMPLETE-PASS / committed and VQ task `6f086b28-40e3-4574-bac5-33e587b2e91c` reports COMPLETE-PASS / VQ-READY; exact scope is `CMakeLists.txt`, `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, and `RuntimeAssetWorldObjectDataHandoffFixtureTest.cpp`; no production RuntimeAsset/RuntimeAssetWorldAdapter/World/Resource or docs/editor/GameAdapter/UI/broad File/VFS paths changed; focused `YuRuntimeAssetWorldAdapterHandoffTests` build PASS; new data handoff row reports `1/1` PASS; RuntimeAssetWorldObject Adapter/Handoff/DataHandoff rows report `22/22` PASS; RuntimeAssetData target/mapping rows report `14/14` PASS; World active gate/object restore rows report `34/34` PASS; RuntimeAssetData `runtime_instance_mappings`, `scene_entities`, and `scene_transforms` feed RuntimeAssetWorldAdapter restore handoff through caller-owned World/ObjectRegistry identity and transform destinations; object handles and world object ids remain caller-owned runtime identity, not asset-file data |
 | RuntimeAssetWorldAdapter World scene record-stream handoff | PASS | `origin/main@088f21eb313be7c0e6ff283af922f23ec335ee09` closes `RTSPINE-RUNTIMEASSETWORLDADAPTER-WORLD-SCENE-RECORD-STREAM-HANDOFF-U64-001`; implementation task `1ea59c46` reports COMPLETE-PASS / committed and VQ task `943f29a6-8a24-4a77-8e8a-4366285890b4` reports COMPLETE-PASS / VQ-READY; exact scope is `CMakeLists.txt`, `RuntimeAssetWorldObjectRecordStreamHandoffFixtureTest.cpp`, and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`; no docs or production RuntimeAsset/RuntimeAssetWorldAdapter/World/Resource paths changed; focused `YuRuntimeAssetWorldAdapterHandoffTests` build PASS; new record-stream row reports `1/1` PASS; RuntimeAssetWorldObject Adapter/Handoff/DataHandoff rows report `22/22` PASS; WorldScene stream/decoded-plan/proof rows report `143/143` PASS; WorldSceneActiveRestoreGate rows report `4/4` PASS; RuntimeAssetWorldAdapter handoff consumes caller-owned World scene record-stream and decoded-plan outputs through existing in-memory World value-stream, apply-time proof, and active-restore gate records without opening direct WorldObject/editor/GameAdapter/UI/gameplay or broader Resource/File/VFS |
@@ -743,7 +751,7 @@ Reviewers should answer these before the next implementation slice starts:
 6. What status names and no-mutation tests are mandatory before the next slice
    can keep `RUNTIME_ASSET_DATA_CLOSED_LOOP_CURRENT_SLICE_PASS`?
 7. Which package/index/hash/budget constraints must be checked against
-   shipped-content pressure examples and explicit budget assumptions?
+   observed product workload facts and explicit budget assumptions?
 
 ## Hard Blocks
 

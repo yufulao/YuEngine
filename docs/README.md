@@ -16,19 +16,29 @@ canonical documents explicitly points to them.
 
 ## 2. Current Product Target
 
-YuEngine is a small-team native commercial game engine. The current product
-reference bar is the shipped TouhouNewWorld class of engine:
+YuEngine's original target is unchanged: it is a complete, self-developed
+native commercial game engine for the team's games. UE and Unity, especially
+Unity editor workflow, are responsibility and workflow references; YuEngine is
+not a UE/Unity clone and must not copy their public ecosystem or source shape.
 
-- small native runtime binaries;
-- no Unity/UE runtime shape as the target architecture;
-- shipped-content-scale packed resources as a pressure example, not a hard byte
-  target;
-- long-session stability around the 20 hour gameplay class;
-- package/resource indexes, runtime asset records, diagnostics, and toolchain
-  evidence strong enough for a real shipped game.
+The current product target is:
 
-The goal is not broad UE/Unity feature parity. The goal is a narrower native
-engine that the team can ship, patch, diagnose, and maintain.
+- a native runtime, engine editor, asset pipeline, package path, and release
+  path owned by YuEngine;
+- external DCC import only for outside-authored content such as model, texture,
+  skeleton, animation, and audio data;
+- scene, UI, material-instance, level, and gameplay structure authored inside
+  the YuEngine editor;
+- shader authored like code or game logic: source, compile, reflect, bind, and
+  package through explicit shader/runtime contracts;
+- packaging as asset bundles plus script/logic/shader compile outputs and a
+  runnable product package;
+- real-project packed-resource compatibility, long-session stability,
+  package/resource indexes, runtime asset records, diagnostics, and toolchain
+  evidence strong enough for a shipped game.
+
+The local TouhouNewWorld package is an observed reference workload, not the
+project goal. YuEngine does not have a byte-size stress target.
 
 ## 3. Authoritative Current Documents
 
@@ -357,7 +367,7 @@ At the latest handoff:
   `ad1a7fb5b3dfa2e1f118103158b640a7111d767f`; the only current
   Package/Resource write lane is RTSPINE-008B Package byte-range/index;
 - RTSPINE-008B keeps `archive_byte_offset` and `archive_byte_size` as the
-  authoritative pressure byte range, with `byte_offset` and `byte_size` as
+  authoritative archive byte range, with `byte_offset` and `byte_size` as
   legacy mirrors only, as recorded in
   `docs/gates/RTSPINE_008B_PACKAGE_BYTE_RANGE_LEGACY_MIRROR_DECISION.md`;
 - RTSPINE-008C Package artifact hash/dependency integrity implementation and
@@ -688,11 +698,12 @@ Stop and return to architecture if any future work:
 
 ## 8. Continuous Execution Rule
 
-The coordinator must continue driving the active accepted plan until its stop
+The coordinator must continue driving an accepted workspace goal until its stop
 condition is met. Do not stop after one task, and do not wait for the human lead
-to say "continue" while accepted work remains. L0/L1 is already closed; the
-current continuation lane is RuntimeAsset production spine work unless a newer
-workspace goal explicitly changes the active lane.
+to say "continue" while accepted work remains. This README is a canonical index
+and guard document, not a source that releases implementation tasks from future
+backlog rows. L0/L1 closure is historical; current lane release must come from
+the long-plan capability graph and an explicit workspace goal.
 
 Required execution discipline:
 
@@ -710,6 +721,9 @@ Required execution discipline:
   explicit shared-contract, release, or high-risk decisions;
 - never open a write lane that can invalidate an active evidence gate.
 
-The current safe pattern is: keep VQ read-only, immediately release the next
-non-conflicting lane once its dependency closes, and keep unrelated read-only
-architecture, prep, and pressure-audit lanes moving in parallel.
+The safe pattern for future backlog triage is: keep VQ read-only, release only
+non-conflicting lanes with named prerequisites and non-goals, and keep unrelated
+read-only architecture, prep, and budget/capacity audit lanes moving in
+parallel. Future backlog rows must not release camera, input, audio, preview,
+scene, UI, Shader, or editor implementation tasks while the current boundary
+freeze says those capabilities remain long-term architecture only.

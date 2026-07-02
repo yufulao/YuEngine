@@ -248,7 +248,7 @@ Work items:
 | SE-S1-004 | Component attachment records | component type/slot tuples map to attachment restore inputs |
 | SE-S1-005 | Component-resource binding records | typed resource refs map to binding restore inputs |
 | SE-S1-006 | Scene manifest stream export | deterministic stream through existing YuSerialize boundaries |
-| SE-S1-007 | Scene import validation | malformed stream rejects without partial editor/runtime mutation |
+| SE-S1-007 | Runtime scene stream validation | malformed runtime scene streams reject without partial editor/runtime mutation; this does not open external DCC scene import |
 | SE-S1-008 | Editor-only sidecar | selection, viewport, foldout, grid, and gizmo state kept separate |
 
 ### Stage 2: Scene Validation And Cook Bridge
@@ -270,6 +270,10 @@ Work items:
 
 Goal: build the authoring surface around runtime records and an engine-backed
 viewport.
+
+Camera and viewport commands in this stage must bind to accepted Input and
+preview-camera contracts. Hard-coded preview input and fake camera control are
+not valid acceptance.
 
 Work items:
 

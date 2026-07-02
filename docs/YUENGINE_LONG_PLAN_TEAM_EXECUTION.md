@@ -16,9 +16,20 @@ and UI documents are historical/evidence context unless this file or
 
 If context is compacted or a new team takes over, preserve these facts first:
 
-- YuEngine targets a small-team native commercial engine, not a toy engine or
-  a UE/Unity clone.
-- Package, Resource, and RuntimeAsset are the production spine.
+- YuEngine's original target is unchanged: a complete, self-developed native
+  commercial game engine for the team's games, not a toy engine, report system,
+  asset viewer, or UE/Unity clone.
+- UE and Unity are responsibility and workflow references, with Unity editor
+  workflow especially important.
+- External DCC import is limited to outside-authored data such as model,
+  texture, skeleton, animation, and audio. Scene, UI, material-instance, level,
+  and gameplay structure are authored inside the YuEngine editor.
+- Shader is authored like code or game logic: source, compile, reflect, bind,
+  and package through explicit shader/runtime contracts.
+- Packaging means asset bundles plus script/logic/shader compile outputs and a
+  runnable product package.
+- Package, Resource, and RuntimeAsset are the production spine, but they are
+  not a byte-size stress goal.
 - RuntimeAsset must define asset-internal targets before deeper animation,
   model, scene, or WorldObject binding.
 - L0/L1 is complete at
@@ -34,31 +45,44 @@ If context is compacted or a new team takes over, preserve these facts first:
 ## 1. Final Product Target
 
 YuEngine is the production engine for a small independent team. It is not a
-toy engine, a technology demo, a public UE/Unity competitor, or an editor-first
-research project. The final target is a stable native commercial game engine
-that can ship and maintain the team's own games.
+toy engine, a technology demo, a public UE/Unity competitor, an editor-first
+research project, or a continuation of old one-off game code. The final target
+is a stable native commercial game engine that can ship, patch, diagnose, and
+maintain the team's own games.
 
-The closest local reference target is the shipped TouhouNewWorld package:
+UE and Unity remain the main references for architecture responsibility and
+workflow completeness. Unity is the strongest editor-workflow reference. The
+project must not arbitrarily treat Unity/UE-level editor, scene, asset, shader,
+UI, package, or runtime responsibilities as optional just because the current
+slice is small.
 
-- small native runtime binaries under `bin`;
+The local TouhouNewWorld package is an observed reference workload:
+
+- native runtime binaries under `bin`;
 - no observed Unity runtime markers such as `UnityPlayer.dll` or
   `GameAssembly.dll`;
-- resource package directory around 7.84 GB;
-- `.dat` archives around 7.23 GB and `.pak` archives around 0.60 GB;
+- packed resource archive surfaces;
 - explicit config, shader/filter, database, and resource archive surfaces.
 
-YuEngine must eventually support the same class of product pressure:
+The reference workload is not the project goal and is not a byte-size stress
+target. YuEngine must support real-project production use:
 
-- 20 hours or more of stable play;
-- 6 GB or more of shipped content;
+- stable long-session play;
 - deterministic startup, load, update, render, audio, save, and shutdown;
 - high-performance runtime loading from packed assets;
 - explicit diagnostics for missing layers and production failures;
 - repeatable build, package, validation, and release evidence.
 
-The goal is not broad feature parity with UE or Unity. The goal is a narrower
-native engine with commercial discipline strong enough for the team's game
-line.
+Authoring boundaries are part of the product target:
+
+- external DCC import: model, texture, skeleton, animation, audio, and similar
+  outside-authored content;
+- engine editor authoring: scene, UI, material instance, level/world structure,
+  gameplay-facing object composition, and product packaging;
+- shader authoring: code-like source, compile, reflection, binding, and package
+  records, not a generic external DCC import path;
+- packaging: asset bundles plus script/logic/shader compile outputs and a
+  runnable product package.
 
 ## 2. Non-Negotiable Architecture Principles
 
@@ -74,8 +98,61 @@ line.
    separate accepted gate says so.
 10. No public plugin ecosystem, marketplace, or generic editor extension work
     belongs in the current L0/L1 execution window.
+11. Long-term planning is capability-graph driven, not whole-module
+    serialization. A later capability may begin when its exact prerequisites are
+    stable; it must not wait for entire upstream modules to be complete, and it
+    must not invent temporary lower-layer substitutes.
 
 ## 3. Long-Horizon Roadmap
+
+The roadmap is a dependency graph of product capabilities, not a queue that
+finishes one whole module before starting the next. Each implementation slice
+must name the exact upstream capability it consumes and the exact downstream
+capability it unlocks.
+
+| Capability lane | Required prerequisites | Owns | Must not do |
+| --- | --- | --- | --- |
+| Package/Resource budget and index | File/VFS ranged IO, package tables, stable hashes, explicit byte/window budgets | bundle layout, mounted lookup, dependency records, no-mutation failures | claim old-package compatibility or byte-size goals |
+| RuntimeAsset family contracts | Package/Resource bytes and indexes, asset family ids, dependency tables | source/cooked schemas, validators, loaded records, stable asset-internal identity | bind asset files directly to WorldObject, editor object, raw pointer, display name, or file path |
+| Shader capability | RuntimeAsset shader source/cooked records, Package/Resource payload/hash records, RenderCore/RHI shader module and pipeline descriptors, diagnostics | shader source policy, compiler backend selection, reflection, bytecode/hash identity, material binding records | design camera control, viewport input, material graph editor, or DCC importer behavior |
+| Modern render pipeline | RHI device/swapchain/command/capture, RenderCore pass/material contracts, RuntimeAsset mesh/material/texture/shader records, scene submission records | frame/pass graph, render queues, resource binding, draw submission, capture evidence | author scenes/UI or hide asset failures inside render code |
+| Scene/world authoring | Object/World identity, Transform/Component records, RuntimeAsset target identity, Resource/Asset dependency edges | engine-authored scene files, hierarchy, component data, dependency export, runtime export | import scene files from DCC as the primary authoring path or hard-code preview input |
+| UI framework/editor | UI runtime core, Resource font/texture handles, RenderCore UI draw path, input routing when the UI stage reaches interaction | UI document/schema, layout, style, widget tree, hierarchy/inspector, runtime preview | treat UI as external DCC import or game-specific menu code |
+| Preview host/editor viewport | editor host lifecycle, RenderScene/RenderCore capture, selected runtime document data, input routing only when this lane reaches interaction | inspectable runtime preview, selection feedback, transform/edit commands | create fake camera/input/audio systems before their product lanes define contracts |
+| Script/game logic | Object/World services, reflection/native bridge, package/runtime records, diagnostics | script compile, ABI, lifecycle, runtime calls, failure reporting | implement title gameplay before engine service contracts exist |
+| Product package/run | Package builder, RuntimeAsset families, shader/script compile outputs, Resource indexes, release diagnostics | asset bundle outputs, runnable package, validation, crash/patch evidence | add marketplace/plugin ecosystem or unrelated platform tooling |
+
+Example rule: Shader can advance before the whole renderer or whole asset
+system is finished, but only through the narrow prerequisites above. A shader
+slice may consume current RHI/RenderCore descriptor contracts and
+RuntimeAsset/Package records; it may not create temporary camera controls,
+hard-coded viewport input, or a pretend material editor to make the slice look
+usable.
+
+### Current Short-Term Plan
+
+There is only one current short-term plan. It is not a list of future-stage
+mini-plans.
+
+Current short-term scope:
+
+- restore the unchanged product target in canonical docs;
+- replace whole-module ordering with the capability dependency graph above;
+- freeze the authoring boundary for external DCC import, engine-authored
+  scene/UI/material data, shader-as-code, and asset-bundle packaging;
+- audit current planning language for temporary lower-layer substitutes such as
+  hard-coded preview input, fake camera control, editor-owned runtime behavior,
+  or byte-size stress goals;
+- release no new feature implementation lane until the current capability
+  boundary names its exact prerequisites and non-goals.
+
+Current short-term exit standard:
+
+```text
+Canonical planning documents agree on the unchanged product target, the
+cross-module capability graph, and the current stage boundary. Future stages
+remain long-term architecture only, not active short-term work.
+```
 
 ### Stage A: L0 Production Foundation
 
@@ -132,7 +209,7 @@ to input, serialize core state, and shut down without project-specific shortcuts
 ### Stage C: Runtime Asset Production Spine
 
 Purpose: turn source/cooked assets into runtime records that can sustain a
-multi-GB shipped product.
+real shipped product without editor-owned runtime behavior.
 
 Required closure:
 
@@ -260,8 +337,8 @@ Current RTSPINE evidence gate state:
   `fdd78da4-da12-4956-b6ac-63ff9e377121`.
 
 This gate is closed. RTSPINE-004 may open as the only implementation write lane.
-Independent read-only architecture, code-surface scouting, and pressure-audit
-lanes may run in parallel when they cannot mutate the same evidence gate.
+Independent read-only architecture, code-surface scouting, and budget/capacity
+audit lanes may run in parallel when they cannot mutate the same evidence gate.
 
 ### 5.2 Correct RuntimeAsset Dependency Order
 
@@ -292,13 +369,13 @@ editor object, scene instance, raw pointer, display name, or file path.
 | RTSPINE-005 | Minimal interpolation contract | PASS at `origin/main@2bfe7e37d36ca711dd706728f21b1e4caecfd3db` with focused QA at `origin/main@d18f1679ebd389ecec506055764602591f5b9ab6`: Step and Linear scalar/vector/transform sampling pass fixed-time tests with no hidden global time; unsupported interpolation and sample output capacity fail without mutation |
 | RTSPINE-006 | Invalid target failure contract | PASS at `origin/main@96e0c024435f670c39ced019ff825b819a6830a3`; target-family mismatch and sample failure diagnostics fail without output mutation, and focused QA task `6d02c260-936a-456b-917b-5c2802bbb666` reports focused RuntimeAsset regex `8/8` PASS plus exact new rows `2/2` PASS without broad/full CTest |
 | RTSPINE-007 | Runtime instance mapping contract | PASS at `origin/main@37a112549190ac2123abcd72b5c688cdfa5b01e5`: asset target records map to caller-owned runtime instance rows for scene entities before any WorldObject/editor binding; focused QA task `6b6baf5f-2381-4b9c-89b1-4411fba53d23` reports exact RuntimeInstanceMapping rows `5/5` PASS without broad/full CTest |
-| RTSPINE-008 | Package/resource index pressure gate | 008A spec, 008B byte-range/index, 008C Package hash/dependency integrity, 008D File/VFS ranged IO, 008E Resource payload window/reference budget, 008F Package dependency closure/budgeted load plan, 008G RuntimeAsset packaged validation bridge, 008H RuntimeAsset transaction rollback/proof, and 008I Package archive range to RuntimeAsset Resource payload-window handoff are represented in current HEAD evidence; cite VQ-closed status only for lanes with workspace COMPLETE-PASS VQ |
+| RTSPINE-008 | Package/resource index budget and capacity gate | 008A spec, 008B byte-range/index, 008C Package hash/dependency integrity, 008D File/VFS ranged IO, 008E Resource payload window/reference budget, 008F Package dependency closure/budgeted load plan, 008G RuntimeAsset packaged validation bridge, 008H RuntimeAsset transaction rollback/proof, and 008I Package archive range to RuntimeAsset Resource payload-window handoff are represented in current HEAD evidence; cite VQ-closed status only for lanes with workspace COMPLETE-PASS VQ |
 | RTSPINE-009 | Payload-window and destination-range follow-through ledger | The `50ff335` ledger records `e2e8c3c`/`1658639` RuntimeAssetWorldAdapter bridge/handoff with exact marker aliases `RuntimeAssetWorldObjectAdapter` and `RuntimeAssetWorldObjectRestoreHandoff`, `0d2021c` Streaming U64 staging, `bc6d0ee` Resource U64 `payload_window`, `2c93ddf` RuntimeAsset payload logical count, `6ac7ff9` Streaming cache payload bridge, `08b1ccd`/`35a84c3` Package payload metadata and legacy compatibility, `50a654e`/`baae22d` Streaming pipeline cache payload consumer plus rejection/no-mutation coverage, `e5cd6ee` Package-to-Streaming artifact fixture, `10f7b30` RuntimeAssetData package payload-window consumer, `c3cf022` RHI update destination range contract, and `50ff335` ResourceUpload destination range consumer; this is implementation/focused evidence until a scoped VQ result accepts the individual lane |
 | RTSPINE-010 | ModelNode/SkeletonJoint target-family binding | VQ-closed at `origin/main@3fa4ef7bd42da8f60bd5ebb3a7f863bd76292c84`: implementation task `06724fe5-b2e4-410e-97e7-2b41c195c3a0` is COMPLETE-PASS / committed, VQ task `04e2a7a6-eac5-41d2-9624-6e5e952859c4` is COMPLETE-PASS / VQ-READY, changed paths were exactly `CMakeLists.txt`, `RuntimeAssetData.cpp`, and `RuntimeAssetDataClosedLoopTests.cpp`, focused discovery found `17` rows including new Model/Skeleton target-family rows, execution `17/17` PASS, and old unsupported target-family labels are absent |
 | RTSPINE-011 | RuntimeAssetWorldAdapter target-family alias handoff | VQ-closed at `origin/main@296100b3bda25e962c3a3a503f9f78f0160083ce`: implementation task `77376606-d3d8-45de-8079-79121593b8e7` is COMPLETE-PASS / committed, VQ task `5fb82855-a437-4eb7-b078-373069988b2d` is COMPLETE-PASS / VQ-READY, changed paths were exactly `CMakeLists.txt`, `RuntimeAssetWorldObjectAdapterBridge.cpp`, and `RuntimeAssetWorldObjectAdapterBridgeTest.cpp`, focused RuntimeAssetWorldObjectAdapter matrix reports `13/13` PASS including Model/Skeleton alias handoff, and SceneNode plus invalid/no-mutation semantics are preserved |
 | RTSPINE-012 | RuntimeAssetWorldAdapter handoff target-family proof | VQ-closed at `origin/main@54e02e049bb6f67fd15ca32d1675f1c61380ae70`: implementation task `53b6d5dc-fd17-442c-b18b-9257c4f3650c` is COMPLETE-PASS / committed, VQ task `8fbe251e-2c14-4786-a48c-5b8b0b6f8e14` is COMPLETE-PASS / VQ-READY, changed paths were exactly `CMakeLists.txt` and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, focused RuntimeAssetWorldObjectRestoreHandoff discovery/execution reports `5/5` PASS including Model/Skeleton alias restore handoff, the Unknown negative row preserves no-mutation failure semantics, and no production bridge source was changed |
 | RTSPINE-013 | RuntimeAssetWorldAdapter handoff attachment/resource binding sidecar proof | VQ-closed at `origin/main@4d9f244ca373c466478b54b7fbc0dd91bf8b5720`: implementation task `3d8c0c2b-987c-4046-8f01-4e04f16f3715` is COMPLETE-PASS / committed, VQ task `4607e700-6bd8-4f0d-a508-ac86b991e7e7` is COMPLETE-PASS / VQ-READY, changed paths were exactly `CMakeLists.txt` and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, production handoff bridge/state files were unchanged, focused RuntimeAssetWorldObjectRestoreHandoff discovery/execution reports `6/6` PASS including `RuntimeAssetWorldObjectRestoreHandoff_CarriesAttachmentAndBindingGateRecordsForTargetAliases`, and the proof covers non-zero component attachment plus component resource binding sidecar gate records for ModelNode/SkeletonJoint aliases through the existing adapter/world active restore path |
-| RTSPINE-014 | RuntimeAssetWorldAdapter handoff sidecar assembly restore | VQ-closed at `origin/main@f85c67701f2ff90c94c84cdc2761e434524128d8`: implementation task `81f4806a-cfc4-464b-a644-b163bfc0459f` is COMPLETE-PASS / committed, VQ task `dac5643f-7225-4ba0-a76b-c063178dfb97` is COMPLETE-PASS / VQ-READY, changed paths were exactly `CMakeLists.txt`, `RuntimeAssetWorldObjectRestoreHandoffState.h`, `RuntimeAssetWorldObjectRestoreHandoffBridge.cpp`, and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, focused builds `YuRuntimeAssetWorldAdapterHandoffTests`, `YuRuntimeAssetWorldAdapterTests`, and `YuWorldTests` PASS, focused RuntimeAssetWorldObjectRestoreHandoff discovery/execution reports `7/7` PASS including `RuntimeAssetWorldObjectRestoreHandoff_RestoresAttachmentAndBindingSidecarsThroughWorldAssembly`, RuntimeAssetWorldObject(Adapter|RestoreHandoff) rows report `20/20` PASS, WorldSceneAssemblyBridge rows report `27/27` PASS, and direct WorldObject/editor/GameAdapter/UI plus broader Resource/File/VFS closure remains out of scope |
+| RTSPINE-014 | RuntimeAssetWorldAdapter handoff sidecar assembly restore | VQ-closed at `origin/main@f85c67701f2ff90c94c84cdc2761e434524128d8`: implementation task `81f4806a-cfc4-464b-a644-b163bfc0459f` is COMPLETE-PASS / committed, VQ task `dac5643f-7225-4ba0-a76b-c063178dfb97` is COMPLETE-PASS / VQ-READY, changed paths were exactly `CMakeLists.txt`, `RuntimeAssetWorldObjectRestoreHandoffState.h`, `RuntimeAssetWorldObjectRestoreHandoffBridge.cpp`, and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, focused builds `YuRuntimeAssetWorldAdapterHandoffTests`, `YuRuntimeAssetWorldAdapterTests`, and `YuWorldTests` PASS, focused RuntimeAssetWorldObjectRestoreHandoff discovery/execution reports `7/7` PASS including `RuntimeAssetWorldObjectRestoreHandoff_RestoresAttachmentAndBindingSidecarsThroughWorldAssembly`, RuntimeAssetWorldObjectAdapter and RuntimeAssetWorldObjectRestoreHandoff rows report `20/20` PASS, WorldSceneAssemblyBridge rows report `27/27` PASS, and direct WorldObject/editor/GameAdapter/UI plus broader Resource/File/VFS closure remains out of scope |
 | RTSPINE-015 | RuntimeAssetWorldAdapter handoff sidecar failure status | VQ-closed at `origin/main@4587c7d1f204663577950241d4c42a5b72ab03a1`: implementation task `ab4eb0f5-0350-49af-8da3-13b4c47dda8b` is COMPLETE-PASS / committed, VQ task `f0c0c54e-32bd-4ee2-9dc2-b8c10c68c59a` is COMPLETE-PASS / VQ-READY, changed paths were exactly `CMakeLists.txt`, `RuntimeAssetWorldObjectRestoreHandoffBridge.h`, `RuntimeAssetWorldObjectRestoreHandoffResult.h`, `RuntimeAssetWorldObjectRestoreHandoffSnapshot.h`, `RuntimeAssetWorldObjectRestoreHandoffState.h`, `RuntimeAssetWorldObjectRestoreHandoffBridge.cpp`, and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, `RuntimeAssetWorldObjectRestoreHandoffStatus.h` was allowed but unchanged, result/state/snapshot expose `WorldSceneAssemblyStatus`, handoff failure remains `RestoreFailed`, focused handoff rows report `8/8` PASS including `RuntimeAssetWorldObjectRestoreHandoff_ExposesSidecarAssemblyFailureStatus`, adapter plus handoff rows report `21/21` PASS, WorldSceneAssemblyBridge rows report `27/27` PASS, and direct WorldObject/editor/GameAdapter/UI plus broader Resource/File/VFS closure remains out of scope |
 | RTSPINE-016 | RuntimeAssetData to RuntimeAssetWorldAdapter handoff fixture | VQ-closed at `origin/main@e512d3990412f90b38aee8469845c44e188dd275`: implementation task `150e051b` is COMPLETE-PASS / committed, VQ task `6f086b28-40e3-4574-bac5-33e587b2e91c` is COMPLETE-PASS / VQ-READY, changed paths were exactly `CMakeLists.txt`, `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, and `RuntimeAssetWorldObjectDataHandoffFixtureTest.cpp`, no production RuntimeAsset/RuntimeAssetWorldAdapter/World/Resource or docs/editor/GameAdapter/UI/broad File/VFS paths changed, focused `YuRuntimeAssetWorldAdapterHandoffTests` build PASS, new data handoff row `1/1` PASS, RuntimeAssetWorldObject Adapter/Handoff/DataHandoff rows report `22/22` PASS, RuntimeAssetData target/mapping rows report `14/14` PASS, World active gate/object restore rows report `34/34` PASS, and the fixture proves RuntimeAssetData `runtime_instance_mappings`, `scene_entities`, and `scene_transforms` feed RuntimeAssetWorldAdapter restore handoff through caller-owned World/ObjectRegistry identity and transform destinations without writing object handles/world object ids into asset files |
 | RTSPINE-017 | RuntimeAssetWorldAdapter World scene record-stream handoff | VQ-closed at `origin/main@088f21eb313be7c0e6ff283af922f23ec335ee09`: implementation task `1ea59c46` is COMPLETE-PASS / committed, VQ task `943f29a6-8a24-4a77-8e8a-4366285890b4` is COMPLETE-PASS / VQ-READY, changed paths were exactly `CMakeLists.txt`, `RuntimeAssetWorldObjectRecordStreamHandoffFixtureTest.cpp`, and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, no docs or production RuntimeAsset/RuntimeAssetWorldAdapter/World/Resource paths changed, focused `YuRuntimeAssetWorldAdapterHandoffTests` build PASS, new record-stream row `1/1` PASS, RuntimeAssetWorldObject Adapter/Handoff/DataHandoff rows report `22/22` PASS, WorldScene stream/decoded-plan/proof rows report `143/143` PASS, WorldSceneActiveRestoreGate rows report `4/4` PASS, and the fixture proves RuntimeAssetWorldAdapter handoff can consume caller-owned World scene record-stream and decoded-plan outputs through existing in-memory World value-stream/proof records without opening direct WorldObject/editor/GameAdapter/UI/gameplay or broader Resource/File/VFS |
@@ -373,7 +450,7 @@ Allowed parallel lanes in the current stage:
 
 - VQ evidence consistency audit for the completed scene-animation gate;
 - read-only RuntimeAsset target-identity design surface;
-- read-only package/resource index pressure audit;
+- read-only package/resource index budget/capacity audit;
 - read-only implementation-surface scouting for the next RTSPINE contracts;
 - read-only quality and risk audit that identifies safe implementation splits.
 
@@ -411,8 +488,8 @@ Stop and return to architecture when any of these happen:
 ## 8. Summary
 
 YuEngine must become a compact native production engine for the team, with the
-same kind of reliability and asset pressure as the TouhouNewWorld shipped
-package. The spine is:
+same kind of reliability and asset/toolchain discipline as the TouhouNewWorld
+class of shipped package. The spine is:
 
 ```text
 Package -> Resource -> RuntimeAsset -> Runtime records -> World/Scene instance

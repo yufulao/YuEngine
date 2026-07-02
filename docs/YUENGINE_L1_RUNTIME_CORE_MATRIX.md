@@ -73,15 +73,25 @@ success.
 
 ## 2A. Commercial Target And Asset Spine Correction
 
-The L1 matrix targets a small-team native commercial engine, not a public
-UE/Unity clone. The local TouhouNewWorld package is the current practical
-reference bar: small native runtime binaries, multi-GB packed resources,
-resource index/config/shader surfaces, and long-session gameplay stability.
+The L1 matrix targets a complete self-developed native commercial engine for
+the team's games, not a public UE/Unity clone. UE and Unity are responsibility
+and workflow references, especially Unity editor workflow. The local
+TouhouNewWorld package is the current practical reference workload: small
+native runtime binaries, packed-resource workflow, resource
+index/config/shader surfaces, and long-session gameplay stability. It is not a
+byte-size stress target.
 
 For L1, this means Package, Resource, and RuntimeAsset are not support modules;
 they are the production spine. Runtime visual, animation, model, scene,
 material, shader, audio, and save rows must prove how their records move
 through that spine.
+
+Rows close cross-module capabilities, not complete modules in isolation. A
+Shader row, for example, may advance when its exact RHI/RenderCore descriptor
+floor, RuntimeAsset source/cooked records, Package/Resource payload identity,
+and diagnostics/no-mutation failure model exist. It must not wait for the whole
+renderer or whole asset system to finish, and it must not invent temporary
+camera, input, editor viewport, or material-editor behavior.
 
 The corrected dependency order for RuntimeAsset-adjacent rows is:
 

@@ -11,16 +11,20 @@ Parent plan: `docs/YUENGINE_LONG_PLAN_TEAM_EXECUTION.md`
 ## 0. Production Target And Reference Bar
 
 YuEngine is the production engine for a small independent team. It must not be
-managed as a toy engine, a technology demo, or a public UE/Unity clone. The
-accepted reference bar is the shipped TouhouNewWorld class of native game:
+managed as a toy engine, a technology demo, or a public UE/Unity clone. Its
+original target is a complete self-developed native commercial engine with a
+runtime, editor, asset pipeline, package path, and release path owned by
+YuEngine.
+
+UE and Unity remain responsibility and workflow references, especially Unity's
+editor workflow. The accepted reference workload is the shipped TouhouNewWorld
+class of native game:
 
 - small native runtime executable and support DLLs;
 - no Unity/UE runtime shape as the target architecture;
-- shipped-content-scale packed resources used as pressure examples, with
-  explicit byte-budget assumptions named per accepted gate;
+- real-project packed-resource workflow, not a byte-size stress goal;
 - package/index/config/shader surfaces that support long-session play;
-- 20 hour scale gameplay stability, high performance, and actionable
-  diagnostics.
+- long-session stability, high performance, and actionable diagnostics.
 
 This changes the L0/L1 plan from "prove many feature slices" to "build the
 production spine":
@@ -70,10 +74,11 @@ copy their public ecosystem, universal plugin surface, editor extension market,
 multi-industry platform scope, or generic API breadth.
 
 The local TouhouNewWorld shipped package is the practical production reference:
-small native runtime, multi-GB packed content, explicit resource indexes, and
+small native runtime, packed-resource workflow, explicit resource indexes, and
 stable long-session play. YuEngine should be narrower than that game's engine
 where the team does not need a feature, but not weaker in runtime discipline,
-asset packaging, failure semantics, or performance evidence.
+asset packaging, failure semantics, editor workflow completeness, or performance
+evidence.
 
 ## 1.1 Long-Horizon Global Roadmap
 
@@ -129,19 +134,19 @@ target identity work.
 | ID | Work item | Acceptance |
 | --- | --- | --- |
 | RTSPINE-001 | Close current scene-animation evidence gate | implementation, QA, docs, VQ, `origin/main`, and matrices agree before any next lane opens |
-| RTSPINE-002 | Update production target planning docs | TouhouNewWorld-class native runtime, shipped-content-scale package pressure examples, and no-compatibility policy are written into the active plans |
+| RTSPINE-002 | Update production target planning docs | Original YuEngine target, UE/Unity reference boundary, real-project package/resource workflow, and no-compatibility policy are written into the active plans |
 | RTSPINE-003 | Define asset-internal target identity | PASS at `origin/main@5ea838f6fd3428e7e67b77c1ca85c41e6e1c09e4`: scene node, model node, and skeleton joint ids are stable bounded output records independent from WorldObject; duplicate id, missing parent, and capacity overflow fail without mutation |
 | RTSPINE-004 | Define animation track target binding | PASS at `origin/main@ebe9ea35f531aa40133262b701e5e751f8ed9ccf`: SceneNode animation tracks bind to `target_id` plus property through caller-owned binding records; missing target, unsupported property, and capacity overflow fail without mutation; no world instance, editor object, raw pointer, display name, or file path |
 | RTSPINE-005 | Define minimal interpolation | PASS at `origin/main@2bfe7e37d36ca711dd706728f21b1e4caecfd3db` with focused QA at `origin/main@d18f1679ebd389ecec506055764602591f5b9ab6`: Step and Linear sampling at fixed times are deterministic, unsupported interpolation and sample output capacity fail without mutation, exact interpolation rows report `3/3` PASS, and no broad/full CTest was run |
 | RTSPINE-006 | Define invalid target failure model | PASS at `origin/main@96e0c024435f670c39ced019ff825b819a6830a3`: target-family mismatch and sample failure diagnostics fail without output mutation; focused QA task `6d02c260-936a-456b-917b-5c2802bbb666` reports isolated clean worktree, focused RuntimeAsset regex `8/8` PASS, exact new rows `2/2` PASS, diff/hygiene/boundary PASS, and no broad/full CTest |
 | RTSPINE-007 | Define runtime instance mapping gate | PASS at `origin/main@37a112549190ac2123abcd72b5c688cdfa5b01e5`: asset target records map to caller-owned runtime instance rows for scene entities before any WorldObject/editor binding; focused QA task `6b6baf5f-2381-4b9c-89b1-4411fba53d23` reports exact RuntimeInstanceMapping rows `5/5` PASS and no broad/full CTest |
-| RTSPINE-008 | Define package/resource pressure gate | 008A pressure contract defines vocabulary, byte-range policy, hash coverage, mutation contract, and forbidden scope; 008B byte-range/index, 008C Package artifact hash/dependency integrity, 008D File/VFS ranged IO, 008E Resource payload window/reference budget, 008F Package dependency closure/budgeted load plan, 008G RuntimeAsset packaged validation bridge, 008H RuntimeAsset transaction rollback/proof, and 008I package archive range to RuntimeAsset Resource payload-window handoff are represented in current HEAD evidence |
+| RTSPINE-008 | Define package/resource budget and capacity gate | 008A contract defines vocabulary, byte-range policy, hash coverage, mutation contract, and forbidden scope; 008B byte-range/index, 008C Package artifact hash/dependency integrity, 008D File/VFS ranged IO, 008E Resource payload window/reference budget, 008F Package dependency closure/budgeted load plan, 008G RuntimeAsset packaged validation bridge, 008H RuntimeAsset transaction rollback/proof, and 008I package archive range to RuntimeAsset Resource payload-window handoff are represented in current HEAD evidence |
 | RTSPINE-009 | Record post-008H payload and destination-range spine | The `50ff335fe1ddfea77a72ce20f770baa3028df4a2` ledger records implementation/focused evidence from RuntimeAssetWorldAdapter bridge/handoff through Resource/Streaming payload-window propagation, Package payload metadata, RuntimeAssetData package payload-window consumption, RHI destination range, and ResourceUpload destination range; only lanes with explicit workspace VQ COMPLETE-PASS should be treated as VQ-closed |
 | RTSPINE-010 | Close ModelNode/SkeletonJoint target-family binding | VQ-closed at `origin/main@3fa4ef7bd42da8f60bd5ebb3a7f863bd76292c84`; implementation task `06724fe5-b2e4-410e-97e7-2b41c195c3a0` and VQ task `04e2a7a6-eac5-41d2-9624-6e5e952859c4` are COMPLETE-PASS, focused discovery found `17` rows including Model/Skeleton target-family rows, focused execution `17/17` PASS, and old unsupported target-family labels are absent |
 | RTSPINE-011 | Close RuntimeAssetWorldAdapter target-family alias handoff | VQ-closed at `origin/main@296100b3bda25e962c3a3a503f9f78f0160083ce`; implementation task `77376606-d3d8-45de-8079-79121593b8e7` and VQ task `5fb82855-a437-4eb7-b078-373069988b2d` are COMPLETE-PASS, focused RuntimeAssetWorldObjectAdapter matrix reports `13/13` PASS including Model/Skeleton alias handoff, exact implementation scope is `CMakeLists.txt`, `RuntimeAssetWorldObjectAdapterBridge.cpp`, and `RuntimeAssetWorldObjectAdapterBridgeTest.cpp`, and direct WorldObject/editor/GameAdapter plus broader Resource/File/VFS closure remains out of scope |
 | RTSPINE-012 | Close RuntimeAssetWorldAdapter handoff target-family proof | VQ-closed at `origin/main@54e02e049bb6f67fd15ca32d1675f1c61380ae70`; implementation task `53b6d5dc-fd17-442c-b18b-9257c4f3650c` and VQ task `8fbe251e-2c14-4786-a48c-5b8b0b6f8e14` are COMPLETE-PASS, focused RuntimeAssetWorldObjectRestoreHandoff discovery/execution reports `5/5` PASS including `RuntimeAssetWorldObjectRestoreHandoff_AppliesModelAndSkeletonTargetFamilyAliases`, exact implementation scope is `CMakeLists.txt` and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, the Unknown negative row preserves adapter preflight no-mutation semantics, and no production bridge source changed |
 | RTSPINE-013 | Close RuntimeAssetWorldAdapter handoff attachment/resource binding sidecar proof | VQ-closed at `origin/main@4d9f244ca373c466478b54b7fbc0dd91bf8b5720`; implementation task `3d8c0c2b-987c-4046-8f01-4e04f16f3715` and VQ task `4607e700-6bd8-4f0d-a508-ac86b991e7e7` are COMPLETE-PASS, focused RuntimeAssetWorldObjectRestoreHandoff discovery/execution reports `6/6` PASS including `RuntimeAssetWorldObjectRestoreHandoff_CarriesAttachmentAndBindingGateRecordsForTargetAliases`, exact implementation scope is `CMakeLists.txt` and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, production handoff bridge/state files were unchanged, and no direct WorldObject/editor/GameAdapter/UI or broader Resource/File/VFS gate is opened |
-| RTSPINE-014 | Close RuntimeAssetWorldAdapter handoff sidecar assembly restore | VQ-closed at `origin/main@f85c67701f2ff90c94c84cdc2761e434524128d8`; implementation task `81f4806a-cfc4-464b-a644-b163bfc0459f` and VQ task `dac5643f-7225-4ba0-a76b-c063178dfb97` are COMPLETE-PASS, focused RuntimeAssetWorldObjectRestoreHandoff discovery/execution reports `7/7` PASS including `RuntimeAssetWorldObjectRestoreHandoff_RestoresAttachmentAndBindingSidecarsThroughWorldAssembly`, RuntimeAssetWorldObject(Adapter|RestoreHandoff) rows report `20/20` PASS, WorldSceneAssemblyBridge rows report `27/27` PASS, exact implementation scope is `CMakeLists.txt`, `RuntimeAssetWorldObjectRestoreHandoffState.h`, `RuntimeAssetWorldObjectRestoreHandoffBridge.cpp`, and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, and no direct WorldObject/editor/GameAdapter/UI or broader Resource/File/VFS gate is opened |
+| RTSPINE-014 | Close RuntimeAssetWorldAdapter handoff sidecar assembly restore | VQ-closed at `origin/main@f85c67701f2ff90c94c84cdc2761e434524128d8`; implementation task `81f4806a-cfc4-464b-a644-b163bfc0459f` and VQ task `dac5643f-7225-4ba0-a76b-c063178dfb97` are COMPLETE-PASS, focused RuntimeAssetWorldObjectRestoreHandoff discovery/execution reports `7/7` PASS including `RuntimeAssetWorldObjectRestoreHandoff_RestoresAttachmentAndBindingSidecarsThroughWorldAssembly`, RuntimeAssetWorldObjectAdapter and RuntimeAssetWorldObjectRestoreHandoff rows report `20/20` PASS, WorldSceneAssemblyBridge rows report `27/27` PASS, exact implementation scope is `CMakeLists.txt`, `RuntimeAssetWorldObjectRestoreHandoffState.h`, `RuntimeAssetWorldObjectRestoreHandoffBridge.cpp`, and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, and no direct WorldObject/editor/GameAdapter/UI or broader Resource/File/VFS gate is opened |
 | RTSPINE-015 | Close RuntimeAssetWorldAdapter handoff sidecar failure status | VQ-closed at `origin/main@4587c7d1f204663577950241d4c42a5b72ab03a1`; implementation task `ab4eb0f5-0350-49af-8da3-13b4c47dda8b` and VQ task `f0c0c54e-32bd-4ee2-9dc2-b8c10c68c59a` are COMPLETE-PASS, focused RuntimeAssetWorldObjectRestoreHandoff discovery/execution reports `8/8` PASS including `RuntimeAssetWorldObjectRestoreHandoff_ExposesSidecarAssemblyFailureStatus`, RuntimeAssetWorldObjectAdapter plus RuntimeAssetWorldObjectRestoreHandoff rows report `21/21` PASS, WorldSceneAssemblyBridge rows report `27/27` PASS, exact implementation scope is `CMakeLists.txt`, `RuntimeAssetWorldObjectRestoreHandoffBridge.h`, `RuntimeAssetWorldObjectRestoreHandoffResult.h`, `RuntimeAssetWorldObjectRestoreHandoffSnapshot.h`, `RuntimeAssetWorldObjectRestoreHandoffState.h`, `RuntimeAssetWorldObjectRestoreHandoffBridge.cpp`, and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, and no docs/World/Resource/direct WorldObject/editor/GameAdapter/UI or broader Resource/File/VFS gate is opened |
 | RTSPINE-016 | Close RuntimeAssetData to RuntimeAssetWorldAdapter handoff fixture | VQ-closed at `origin/main@e512d3990412f90b38aee8469845c44e188dd275`; implementation task `150e051b` and VQ task `6f086b28-40e3-4574-bac5-33e587b2e91c` are COMPLETE-PASS, focused `YuRuntimeAssetWorldAdapterHandoffTests` build PASS, new `RuntimeAssetWorldObjectDataHandoff_FeedsRuntimeAssetDataOutputsIntoRestoreHandoff` row reports `1/1` PASS, RuntimeAssetWorldObject Adapter/Handoff/DataHandoff rows report `22/22` PASS, RuntimeAssetData target/mapping rows report `14/14` PASS, World active gate/object restore rows report `34/34` PASS, exact implementation scope is `CMakeLists.txt`, `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, and `RuntimeAssetWorldObjectDataHandoffFixtureTest.cpp`, and no production RuntimeAsset/RuntimeAssetWorldAdapter/World/Resource or docs/editor/GameAdapter/UI/broad File/VFS gate is opened |
 | RTSPINE-017 | Close RuntimeAssetWorldAdapter World scene record-stream handoff | VQ-closed at `origin/main@088f21eb313be7c0e6ff283af922f23ec335ee09`; implementation task `1ea59c46` and VQ task `943f29a6-8a24-4a77-8e8a-4366285890b4` are COMPLETE-PASS, focused `YuRuntimeAssetWorldAdapterHandoffTests` build PASS, new `RuntimeAssetWorldObjectRecordStreamHandoff_FeedsWorldSceneRecordStreamsIntoRestoreHandoff` row reports `1/1` PASS, RuntimeAssetWorldObject Adapter/Handoff/DataHandoff rows report `22/22` PASS, WorldScene stream/decoded-plan/proof rows report `143/143` PASS, WorldSceneActiveRestoreGate rows report `4/4` PASS, exact implementation scope is `CMakeLists.txt`, `RuntimeAssetWorldObjectRecordStreamHandoffFixtureTest.cpp`, and `RuntimeAssetWorldObjectRestoreHandoffBridgeTest.cpp`, and no docs/production RuntimeAsset/RuntimeAssetWorldAdapter/World/Resource/direct WorldObject/editor/GameAdapter/UI or broader Resource/File/VFS gate is opened |
@@ -152,32 +157,35 @@ target identity work.
 | RTSPINE-022 | Record WorldSceneAuthoring Asset-edge WorldObject snapshot handoff evidence | Implementation/focused evidence at `origin/main@bcfd6eaad3fc198eb4dbba4e31e49c1eed68c0db`; implementation task `e5b2a316-da0b-438f-8073-9315b362d304` is COMPLETE-PASS / committed, focused `YuRuntimeAssetWorldAdapterHandoffTests` build PASS, exact Asset-edge row PASS, authoring handoff rows report `4/4` PASS, same-module RuntimeAssetWorldObject/RuntimeAssetWorldAdapter focused matrix reports `27/27` PASS, Asset baseline rows report `9/9` PASS, RuntimeAssetData dependency/resource/package superset reports `34/34` PASS, exact implementation scope is `RuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTest.cpp`, `CMakeLists.txt` was inspected but unchanged, `git diff --check` and commit path audit PASS, WorldObject identity/transform snapshot evidence is added to the existing caller-owned Asset-edge handoff fixture, RuntimeAssetWorldAdapter restored identity/transform counts are validated, and no docs/production RuntimeAsset/RuntimeAssetWorldAdapter/World/Resource/Asset/direct WorldObject/editor/GameAdapter/UI/gameplay, broad Resource/File/VFS, Asset auto-lookup, or production Asset Manager dependency-edge follow-through gate is opened; `origin/main@afdca68851a4bd88762400101e896c238b37fbfd` is the `.gitignore` worktree-isolation baseline, not functional RuntimeAsset evidence |
 | RTSPINE-023 | Record WorldSceneAuthoring Asset-edge WorldObject snapshot failure-status evidence | VQ-ready at `origin/main@96f0bf0eaed6d2847b4128cd31146340ccc07a0d`; implementation task `6b8c3bdd-0398-44ec-a3ea-4adc116d2afe` is COMPLETE-PASS / committed and VQ task `6df0cd23-9120-42c3-826e-6de352582130` is COMPLETE-PASS / `RTSPINE-WORLDSCENEAUTHORING-ASSET-EDGE-WORLDOBJECT-SNAPSHOT-FAILURE-STATUS-U64-001-VQ-READY`; focused `YuRuntimeAssetWorldAdapterHandoffTests` build PASS; new `RuntimeAssetWorldObjectAuthoringRuntimeExportHandoff_RejectsAssetEdgeWorldObjectSnapshotFailureWithoutMutation` row reports `1/1` PASS; authoring handoff subset reports `5/5` PASS; exact implementation scope is `CMakeLists.txt` and `RuntimeAssetWorldObjectAuthoringRuntimeExportHandoffFixtureTest.cpp`; `git diff --check` and clean worktree checks PASS; the failure path returns `GateFailed` / `ProofFailed` / `PlanFailed` while preserving identity/transform, attachment/binding, and Asset dependency-edge destinations; and no docs/production RuntimeAsset/RuntimeAssetWorldAdapter/World/Resource/Asset/direct WorldObject/editor/GameAdapter/UI/gameplay, broad Resource/File/VFS, Asset auto-lookup, or production Asset Manager dependency-edge follow-through gate is opened |
 
-### 1.2.2 RTSPINE-008A Package/Resource Pressure Contract
+### 1.2.2 RTSPINE-008A Package/Resource Budget And Capacity Contract
 
 RTSPINE-008A is a docs/spec gate, not an implementation gate. It is recorded in
 `docs/gates/RTSPINE_008A_PACKAGE_RESOURCE_PRESSURE_CONTRACT.md` and must be
 treated as the source of truth for later RTSPINE-008 Package, File/VFS,
 Resource, and RuntimeAsset packaged-validation write lanes.
 
-The accepted pressure vocabulary is:
+The historical filename uses `PRESSURE`, but the active planning meaning is
+budget and capacity validation. It is not a byte-size stress goal.
+
+The accepted budget/capacity vocabulary is:
 
 - `fixture cap`: a deterministic test/storage limit used by current unit tests;
 - `budget assumption`: an explicit byte, table, dependency, or window budget
   selected by a gate;
-- `pressure example`: a shipped-content-scale fact used to choose budgets, not
+- `scale example`: a shipped-product fact used to choose budgets, not
   a pass/fail target by itself;
 - `runtime cap`: a hard runtime rejection boundary with an explicit status;
 - `evidence threshold`: the focused command or test row proving one contract.
 
 RTSPINE-008A chooses 64-bit archive byte ranges for future package/resource
-pressure contracts. Any narrower fixture value must either be named as a
+budget/capacity contracts. Any narrower fixture value must either be named as a
 fixture-only cap or be validated before it reaches Package, File/VFS, Resource,
 or RuntimeAsset state mutation.
 
 The minimum hash coverage for follow-up gates is entry payload hash, entry
 metadata hash, dependency table hash, package table hash, and optional archive
 hash when a later gate names an archive container. RuntimeAsset packaged
-validation must not claim pressure coverage until those hashes are checked
+validation must not claim budget/capacity coverage until those hashes are checked
 before Resource, Asset, RenderScene, RenderCore, RHI, Audio, or World outputs
 are published.
 
@@ -186,9 +194,9 @@ byte-range/index, RTSPINE-008C Package artifact hash/dependency integrity,
 RTSPINE-008D File/VFS ranged IO, and RTSPINE-008E Resource payload
 window/reference budget.
 For RTSPINE-008B, `archive_byte_offset` and `archive_byte_size` are the
-authoritative shipped-content pressure byte range. The existing `byte_offset`
+authoritative archive byte range. The existing `byte_offset`
 and `byte_size` fields are legacy mirrors only and cannot be counted as
-pressure evidence. RTSPINE-008C adds artifact payload, metadata, dependency
+budget/capacity evidence. RTSPINE-008C adds artifact payload, metadata, dependency
 table, and package table hash validation before publish/mutation. RTSPINE-008D
 adds File/VFS ranged read request/status, output-window, snapshot no-mutation,
 and async small-output no-partial-copy evidence. RTSPINE-008E adds Resource
@@ -220,11 +228,11 @@ Every shared task must include:
 - stale-owner timeout and reroute rule.
 
 True parallelism means independent work surfaces. The team should run read-only
-design audits, code-surface scouting, pressure gates, and disjoint implementation
+design audits, code-surface scouting, budget/capacity gates, and disjoint implementation
 lanes in parallel. The team must not split one serial dependency into duplicate
 QA or full-test lanes that do not reduce calendar time.
 
-Current immediate parallel pattern:
+Historical immediate parallel pattern archived from the RTSPINE evidence phase:
 
 ```text
 RTSPINE-005 + RTSPINE-008C evidence docs/VQ closure
@@ -2190,12 +2198,16 @@ Create these documents in order:
 Do not create new broad implementation tasks until document 1 and document 2
 exist and are accepted.
 
-## 12. Complete Backlog From Current L0 To L1 Closure
+## 12. Historical Backlog From L0 To L1 Closure
 
-This section is a full planning backlog, not a partial starter list. The landing
-team may split, merge, or assign these items, but should not skip the acceptance
-intent. If the team creates task messages, it should create them from this whole
-backlog or from phase-sized batches, not only from the first few rows.
+This section is the historical full planning backlog used to preserve L0/L1
+acceptance intent. It is not a current task source, and the team must not create
+current implementation tasks by copying the entire backlog or slicing it into
+phase batches.
+Future work must be re-screened through the long-plan capability graph and the
+current boundary freeze. These rows must not release camera, input, audio,
+preview, scene, UI, Shader, or editor implementation tasks while those
+capabilities remain long-term architecture only.
 
 ### 12.1 L0 Governance And Hygiene
 
@@ -2212,7 +2224,7 @@ backlog or from phase-sized batches, not only from the first few rows.
 
 | ID | Work item | Depends on | Acceptance |
 | --- | --- | --- | --- |
-| L0-PLAT-001 | Confirm Win32 window lifecycle | current Platform first slices | create, resize, focus, close, destroy fixtures pass |
+| L0-PLAT-001 | Confirm Win32 window lifecycle | accepted Platform first-slice baseline | create, resize, focus, close, destroy fixtures pass |
 | L0-PLAT-002 | Confirm bounded event pump | L0-PLAT-001 | deterministic drain, close/focus/resize event ordering, no sleep-based proof |
 | L0-PLAT-003 | Validate native surface descriptor boundary | L0-PLAT-001 | public value remains opaque; backend consumes through private path |
 | L0-PLAT-004 | Add Platform failure-state tests | L0-PLAT-001 | invalid descriptor/double destroy/unsupported mode return explicit statuses |
@@ -2222,7 +2234,7 @@ backlog or from phase-sized batches, not only from the first few rows.
 
 | ID | Work item | Depends on | Acceptance |
 | --- | --- | --- | --- |
-| L0-RHI-001 | Reconfirm backend-neutral device contract | current RHI first slices | capability flags, unsupported states, and handle generations are explicit |
+| L0-RHI-001 | Reconfirm backend-neutral device contract | accepted RHI first-slice baseline | capability flags, unsupported states, and handle generations are explicit |
 | L0-RHI-002 | Close D3D11 device/swapchain lifecycle | L0-RHI-001, L0-PLAT-003 | create, clear, present, capture, resize, shutdown path works on supported hardware |
 | L0-RHI-003 | Close D3D11 resource primitives | L0-RHI-002 | buffer, texture, sampler, shader, input layout, pipeline, and fence/retirement tests pass |
 | L0-RHI-004 | Close draw proof set | L0-RHI-003 | visible triangle, indexed static mesh, and texture sampling hardware-smoke pass or are explicitly environment-blocked |
@@ -2233,7 +2245,7 @@ backlog or from phase-sized batches, not only from the first few rows.
 
 | ID | Work item | Depends on | Acceptance |
 | --- | --- | --- | --- |
-| L0-REN-001 | Stabilize view packet contract | current RenderCore first slices | camera constants, viewport/scissor, frame index, and resize values are explicit |
+| L0-REN-001 | Stabilize view packet contract | accepted RenderCore first-slice baseline | camera constants, viewport/scissor, frame index, and resize values are explicit |
 | L0-REN-002 | Stabilize draw packet contract | L0-REN-001, L0-RHI-003 | geometry, material, shader, and ordering values are caller-owned and bounded |
 | L0-REN-003 | Stabilize frame packet execution | L0-REN-002 | prepare/validate/submit path works over RHI values without scene dependencies |
 | L0-REN-004 | Stabilize graph skeleton/execution plan | L0-REN-003 | pass declarations and dependency validation pass without scheduler/frame-graph expansion |
@@ -2243,9 +2255,9 @@ backlog or from phase-sized batches, not only from the first few rows.
 
 | ID | Work item | Depends on | Acceptance |
 | --- | --- | --- | --- |
-| L0-RES-001 | Close File/VFS loose read/write policy | current File first slices | PASS at `origin/main@43cfc18fec4c4c5a5135e4ed15da64c8308247ff`: path normalization, mount priority, fixture bounds, loose read/write statuses, source/cooked mount round-trips, oversized loose read `ReadTooLarge`, and snapshot ownership/status counters are explicit; focused QA task `5020f3d6-a492-4138-b81f-c5e80cdd92e2` reports `YuFileTests` build PASS, affected rows `2/2` PASS, `^File_` suite `23/23` PASS, diff-check/hygiene PASS, and no broad/full CTest |
+| L0-RES-001 | Close File/VFS loose read/write policy | accepted File first-slice baseline | PASS at `origin/main@43cfc18fec4c4c5a5135e4ed15da64c8308247ff`: path normalization, mount priority, fixture bounds, loose read/write statuses, source/cooked mount round-trips, oversized loose read `ReadTooLarge`, and snapshot ownership/status counters are explicit; focused QA task `5020f3d6-a492-4138-b81f-c5e80cdd92e2` reports `YuFileTests` build PASS, affected rows `2/2` PASS, `^File_` suite `23/23` PASS, diff-check/hygiene PASS, and no broad/full CTest |
 | L0-RES-002 | Close Package load-plan/staging baseline | L0-RES-001 | PASS at `origin/main@4714199579469a9b1b5e1307b6370fe8f39ce994`: existing `YuPackage` manifest/load-plan value contracts and `YuStreaming` `PackageResourceStaging*` value/status records cover the baseline without a new implementation commit; readiness task `da4f455c` and focused QA task `6aea6396-7af5-43ed-be9a-901e888914d2` report `YuPackageTests` and `YuStreamingTests` build PASS, `^Package_` discovery/execution `39/39` PASS, `^Streaming_PackageResourceStaging_` discovery/execution `10/10` PASS, clean read-only QA, no broad/full CTest, and no old-package compatibility claim |
-| L0-RES-003 | Close Resource cache/decode chain | current Resource first slices | PASS at `origin/main@8c3a200d813173efe1607e594777afd6f029cc7c`: existing `YuResource` cache payload, decode plan, decode result, decoded payload ownership, release/dependent clear, budget/capacity, and no-mutation records cover the baseline; readiness task `ba6025e8`, implementation fix task `abfdb2d1`, and focused QA task `ca5c3c1b-e61a-4095-8e3c-2e0dfccc2b40` report `ResourceRegistry.cpp`-only status-priority fix, `YuResourceTests` build PASS, exact decoded-payload capacity row `1/1` PASS, focused cache/decode discovery/execution `65/65` PASS, clean read-only QA, and no adjacent/full Resource or broad/full CTest |
+| L0-RES-003 | Close Resource cache/decode chain | accepted Resource first-slice baseline | PASS at `origin/main@8c3a200d813173efe1607e594777afd6f029cc7c`: existing `YuResource` cache payload, decode plan, decode result, decoded payload ownership, release/dependent clear, budget/capacity, and no-mutation records cover the baseline; readiness task `ba6025e8`, implementation fix task `abfdb2d1`, and focused QA task `ca5c3c1b-e61a-4095-8e3c-2e0dfccc2b40` report `ResourceRegistry.cpp`-only status-priority fix, `YuResourceTests` build PASS, exact decoded-payload capacity row `1/1` PASS, focused cache/decode discovery/execution `65/65` PASS, clean read-only QA, and no adjacent/full Resource or broad/full CTest |
 | L0-RES-004 | Close Resource residency/upload chain | L0-RES-003, L0-RHI-003 | Closed at `origin/main@45f91f6cda02e42f0dce7eae7ff3df6db3616467`: focused QA task `2917323c-9869-4a1c-a9fb-67a90b513a23` reports successful `YuStreamingTests` and `YuResourceTests` builds, `Streaming_ResourceUpload_` `17/17`, `Streaming_ResourceUploadCommit_` `9/9`, `Resource_LoadCommit_`/`Resource_Residency_` `18/18`, combined focused execution `44/44`, and a clean read-only QA workspace; readiness task `d88846fd` records existing Resource/Streaming/RHI value/status records for upload queue, upload commit, Resource load commit, residency budget/state, pin/unpin/eviction, and stale/invalid handle no-mutation; QA did not build or execute `YuRHITests`, RHI 38-row dependency execution, adjacent/full Resource, full `^Resource_`, or broad/full CTest; `L0-RHI-003` stays a dependency row, not a completion claim from this evidence sync |
 | L0-RES-005 | Close texture bridge to RHI | L0-RES-004, L0-RHI-003 | Closed at `origin/main@18030b201c69452a2a7da44fc3d08a4462c3d34f`: readiness task `6fc3d241` records existing `ResourceDecodedTextureBridge` mapping from decoded texture payload to `ResourceUploadKind::CreateTexture` and sampled texture binding values without Resource owning RHI lifecycle; focused QA task `261fa423-28aa-498f-944f-c4eb44cf9d23` reports read-only clean workspace, successful `YuStreamingTests` focused build, `Streaming_ResourceDecodedTextureBridge_` `5/5`, `Streaming_ResourceUpload_.*Texture` `2/2`, and RHI texture/sampler/sampling dependency discovery count `10`; the RHI dependency set was not executed, RHI closure is unchanged, and there is no adjacent/full Resource/Streaming or broad/full CTest claim |
 | L0-RES-006 | Close PCM bridge to Audio | L0-RES-003, L0-AUD-002 | Closed at `origin/main@804206712988733f38990af6975c67854b16de6a`: readiness task `69ddc757` records existing `AudioResourcePcmPacketImportBridge` mapping from Resource decoded audio metadata to `AudioPcmSamplePacketRequest` values and bridge-owned import records without Audio parsing Resource payloads or Resource owning Audio lifecycle; focused QA task `1dbfdaf6-61ff-4ac4-9e47-a2703f2e5a1e` reports read-only clean workspace, successful `YuAudioResourceTests` focused build, `AudioResource_PcmPacketImportBridge_` `8/8`, and dependency discovery counts `Audio_PcmSamplePacket_` `13` plus `Audio_PcmStreamQueue_` `15`; Audio dependency rows were not executed by this lane, `L0-AUD-002` stays a dependency row, and there is no adjacent/full Audio, AudioResource, Resource, or broad/full CTest claim |
@@ -2279,7 +2291,7 @@ dependency execution, and broad/full CTest stay outside these closures.
 
 | ID | Work item | Depends on | Acceptance |
 | --- | --- | --- | --- |
-| L0-AUD-001 | Reconfirm deterministic mixer/test backend | current Audio first slices | Closed at `origin/main@aee81a39d9d9ee063f9f57bc5bab5137d88cbc9f`: readiness task `453eca90` records READY; focused QA task `82548add-9a8a-48a7-adf1-ba837608fd07` reports first-slice discovery exactly 24 rows, tests `#804` through `#827`, successful `YuAudioTests` focused build, exact 24-row execution `24/24`, BGM/SE/SFX/music/business ID scan `0`, and clean read-only QA; executed rows excluded Callback, PCM packet/stream queue, hardware, sample, and L1 rows; L0-AUD-002, L0-AUD-003, L0-AUD-004, L0-AUD-005, L0-RES-006, L0-SAMPLE-006, AudioResource, AudioScene, adjacent/full suites, hardware smoke, sample scripts, manual proof, and broad/full CTest stay separate |
+| L0-AUD-001 | Reconfirm deterministic mixer/test backend | accepted Audio first-slice baseline | Closed at `origin/main@aee81a39d9d9ee063f9f57bc5bab5137d88cbc9f`: readiness task `453eca90` records READY; focused QA task `82548add-9a8a-48a7-adf1-ba837608fd07` reports first-slice discovery exactly 24 rows, tests `#804` through `#827`, successful `YuAudioTests` focused build, exact 24-row execution `24/24`, BGM/SE/SFX/music/business ID scan `0`, and clean read-only QA; executed rows excluded Callback, PCM packet/stream queue, hardware, sample, and L1 rows; L0-AUD-002, L0-AUD-003, L0-AUD-004, L0-AUD-005, L0-RES-006, L0-SAMPLE-006, AudioResource, AudioScene, adjacent/full suites, hardware smoke, sample scripts, manual proof, and broad/full CTest stay separate |
 | L0-AUD-002 | Close PCM packet/stream queue | L0-AUD-001 | Closed at `origin/main@0de7d7076b73d7d716f6d99dca8ac90ac9974247`: readiness task `821f0e53` records READY; focused QA task `c80e3337-96db-4521-9c0e-b81d5b882efe` reports `Audio_PcmSamplePacket_` discovery/execution `13/13`, tests `#840` through `#852`, `Audio_PcmStreamQueue_` discovery/execution `15/15`, tests `#853` through `#867`, successful `YuAudioTests` focused build, combined exact execution `28/28`, and clean read-only QA; executed rows excluded `Audio_PcmStreamQueueCallback_`, hardware, sample, AudioResource, AudioScene, L1 rows, adjacent/full suites, and broad/full CTest |
 | L0-AUD-003 | Close XAudio2 callback proof | L0-AUD-002 | Closed at `origin/main@1a1964abbb1ad021d5695ec5ea2e26ee8d5b5f6d`: readiness task `1dec3d24` records READY; fast QA task `727479bd-065f-4c6d-9a0f-0cacd2763741` reports callback discovery/execution `18/18`, tests `#828` through `#839` and `#868` through `#873`, successful `YuAudioTests` focused build, exact fast execution `18/18`, and clean read-only QA; hardware QA task `fb347834-96a8-4f5c-913d-d3f354e8478e` reports hardware and strict hardware discovery `2` rows, tests `#874` through `#875`, successful `YuAudioHardwareSmokeTests` build, `windows-hardware-smoke` execution `2/2`, `windows-strict-hardware-smoke` execution `2/2`, supported hardware classification, and no skip; L0-AUD-004/005, sample, AudioResource, AudioScene, L1 rows, adjacent/full suites, and broad/full CTest stay separate |
 | L0-AUD-004 | Audio callback cost proof | L0-AUD-003 | Closed at `origin/main@34093cf83ece469c75baad01e8a99b0e426e3d4e`: readiness task `a1b9ed42` records NEEDS-IMPLEMENTATION for the pre-fix callback handler lock/CV path; implementation task `bf2b5bc2` lands the single-file `Src/YuEngine/Audio/Src/AudioCallbackDeviceWindows.cpp` fix; focused proof QA task `39cca45c` reports commit scope limited to that file, callback hot-path static scan `0` forbidden operations over `VoiceCallback` lines `121`-`166` and handler lines `261`-`282`, successful `YuAudioTests` and `YuAudioHardwareSmokeTests` focused builds, fast callback/bridge execution `18/18`, hardware callback execution `2/2`, strict hardware callback execution `2/2`, `git diff --check HEAD^..HEAD`, and clean read-only QA; callback hot path records bounded atomic pending events while lock/CV merge, `WaitForCompletedCallbacks`, and `DrainCompletions` stay in non-callback API paths; L0-AUD-005, sample, AudioResource, AudioScene, L1 rows, adjacent/full suites, and broad/full CTest stay separate |
@@ -2313,8 +2325,8 @@ adjacent/full suites remain governed by their own IDs and evidence lanes.
 
 | ID | Work item | Depends on | Acceptance |
 | --- | --- | --- | --- |
-| L0-IN-001 | Close Win32 keyboard/mouse bridge | current Input first slices | platform events translate to input values with bounded queue behavior |
-| L0-IN-002 | Close XInput bridge | current XInput first slice | available/unavailable/connect/disconnect behavior has explicit status |
+| L0-IN-001 | Close Win32 keyboard/mouse bridge | accepted Input first-slice baseline | platform events translate to input values with bounded queue behavior |
+| L0-IN-002 | Close XInput bridge | accepted XInput first-slice baseline | available/unavailable/connect/disconnect behavior has explicit status |
 | L0-IN-003 | Reconfirm replay/action snapshot | L0-IN-001 | action snapshots are deterministic and platform-native types stay private |
 | L0-IN-004 | Add sample input path | L0-IN-001, L0-IN-003 | sample consumes input values without UI/gameplay ownership |
 
@@ -2322,9 +2334,9 @@ adjacent/full suites remain governed by their own IDs and evidence lanes.
 
 | ID | Work item | Depends on | Acceptance |
 | --- | --- | --- | --- |
-| L0-COST-001 | Reconfirm Memory owner/tag vocabulary | current Memory first slices | owner/tag/counter limitations are documented and tested where available |
-| L0-COST-002 | Reconfirm Thread/async completion shutdown | current Thread/File slices | worker lifecycle and async completion shutdown are deterministic |
-| L0-COST-003 | Reconfirm Diagnostics disabled neutrality | current Diagnostics slices | disabling diagnostics does not change runtime behavior |
+| L0-COST-001 | Reconfirm Memory owner/tag vocabulary | accepted Memory first-slice baseline | owner/tag/counter limitations are documented and tested where available |
+| L0-COST-002 | Reconfirm Thread/async completion shutdown | accepted Thread/File baseline | worker lifecycle and async completion shutdown are deterministic |
+| L0-COST-003 | Reconfirm Diagnostics disabled neutrality | accepted Diagnostics baseline | disabling diagnostics does not change runtime behavior |
 | L0-COST-004 | Add L0 sample cost counters | L0 sample paths | sample emits bounded optional counters for frame/resource/audio/input |
 | L0-COST-005 | Add hot-path smoke checks | L0 sample paths | measured fixture paths do not grow containers unexpectedly |
 
@@ -2371,9 +2383,9 @@ package runtime proof remain separate.
 
 | ID | Work item | Depends on | Acceptance |
 | --- | --- | --- | --- |
-| L1-OBJ-001 | Reconfirm Object identity/lifetime registry | current YuObject | generation handles, acquire/release, retire, and no-mutation failures pass |
-| L1-OBJ-002 | Promote component identity baseline | current World component bridges | component type/slot records are bounded and queryable without behavior lifecycle |
-| L1-OBJ-003 | Promote transform baseline | current transform bridge | POD transform records are bounded and queryable without hierarchy policy |
+| L1-OBJ-001 | Reconfirm Object identity/lifetime registry | accepted YuObject baseline | generation handles, acquire/release, retire, and no-mutation failures pass |
+| L1-OBJ-002 | Promote component identity baseline | accepted World component bridge baseline | component type/slot records are bounded and queryable without behavior lifecycle |
+| L1-OBJ-003 | Promote transform baseline | accepted transform bridge baseline | POD transform records are bounded and queryable without hierarchy policy |
 | L1-OBJ-004 | Define destroy invalidation path | L1-OBJ-001, L1-OBJ-002, L1-OBJ-003 | object destruction invalidates or explicitly requires caller cleanup for sidecars |
 | L1-OBJ-005 | Hot-path object/component query smoke | L1-OBJ-002 | measured query/update fixture has no hidden growth |
 
@@ -2381,9 +2393,9 @@ package runtime proof remain separate.
 
 | ID | Work item | Depends on | Acceptance |
 | --- | --- | --- | --- |
-| L1-WORLD-001 | Reconfirm World lifecycle fixture | current YuWorld | create/update/destroy phases are deterministic |
+| L1-WORLD-001 | Reconfirm World lifecycle fixture | accepted YuWorld baseline | create/update/destroy phases are deterministic |
 | L1-WORLD-002 | Define scene assembly record set | L1-OBJ-001, L1-OBJ-002, L1-OBJ-003 | object/transform/component/resource-binding records have explicit ownership |
-| L1-WORLD-003 | Reconfirm decoded restore plan/preflight | current P3 scene plan slices | duplicate/missing object/resource statuses are deterministic and no-mutation |
+| L1-WORLD-003 | Reconfirm decoded restore plan/preflight | accepted P3 scene-plan baseline | duplicate/missing object/resource statuses are deterministic and no-mutation |
 | L1-WORLD-004 | Design active restore coordinator gate | L1-WORLD-003 | validation-before-mutation and rollback/cleanup policy are written before code |
 | L1-WORLD-005 | Implement active restore coordinator only after gate | L1-WORLD-004 | active restore applies a validated scene assembly without hidden partial mutation |
 
@@ -2458,7 +2470,7 @@ engine capabilities.
 
 | ID | Work item | Depends on | Acceptance |
 | --- | --- | --- | --- |
-| L1-SER-001 | Reconfirm value stream contract | current YuSerialize | caller-provided buffer, version, unsupported status, and no-mutation failures pass |
+| L1-SER-001 | Reconfirm value stream contract | accepted YuSerialize baseline | caller-provided buffer, version, unsupported status, and no-mutation failures pass |
 | L1-SER-002 | Serialize scene assembly records | L1-WORLD-002, L1-SER-001 | object/transform/component/resource-binding records roundtrip deterministically |
 | L1-SER-003 | Define runtime config record | L1-KERN-001, L1-SER-001 | config serializes without File/Package dependency inside Serialize core |
 | L1-SER-004 | Define save/profile boundary | L1-SER-002 | persistence policy stays outside Serialize core and original-save compatibility |
@@ -2467,7 +2479,7 @@ engine capabilities.
 
 | ID | Work item | Depends on | Acceptance |
 | --- | --- | --- | --- |
-| L1-SCRIPT-001 | Reconfirm native call registry | current YuScript | stable call IDs and caller-owned value slots pass |
+| L1-SCRIPT-001 | Reconfirm native call registry | accepted YuScript baseline | stable call IDs and caller-owned value slots pass |
 | L1-SCRIPT-002 | Runtime phase dispatch adapter | L1-WORLD-001, L1-SCRIPT-001 | World phase trace maps to call IDs without World core depending on Script core |
 | L1-SCRIPT-003 | Script error/failure states | L1-SCRIPT-001 | missing call/invalid slots return explicit status |
 

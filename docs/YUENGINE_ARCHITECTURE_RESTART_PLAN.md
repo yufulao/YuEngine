@@ -73,6 +73,12 @@ Dependency rule: a layer may depend downward only. It may emit diagnostics outwa
 
 ## 4. Implementation Order
 
+This section records the 2026-06 restart bootstrap baseline. Current post-L0/L1
+execution is governed by `docs/YUENGINE_LONG_PLAN_TEAM_EXECUTION.md` section 3:
+capability lanes may proceed only when their exact prerequisites are stable and
+their non-goals are explicit. This list must not be read as a whole-module
+serialization rule.
+
 1. Architecture baseline and gates.
 2. Platform and hardware abstraction.
 3. RHI, audio, input, file, thread, memory.
@@ -438,6 +444,10 @@ If a game-specific need exposes a missing engine capability, work stops at the a
 - 琪露诺, 大妖精, 露米娅, 米斯蒂娅: senior implementation engineers. They enter after architecture and gate tasks define slices.
 
 ## 16. Phase Plan
+
+This phase plan is a restart bootstrap map. Current implementation lane release
+must use the long-plan capability dependency graph and each lane's named
+prerequisites, non-goals, and boundary-freeze guards.
 
 Phase 0, architecture restart:
 
